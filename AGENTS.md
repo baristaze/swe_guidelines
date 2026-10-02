@@ -40,6 +40,8 @@ cites the changed text changes with it.
   checkout commits the copy as its base, on the branch `scaffold`.
   `scaffold/base.py` commits the scaffold at a later ref onto that
   branch, fetched as one tarball, and `arch-upgrade-scaffold` merges it.
+  With `--layer`, it commits the `scaffold/` folder unchanged, for a
+  repository whose own scaffold builds on this one.
   Both scripts use the standard library only, and
   `tests/test_scaffold_new.py` and `tests/test_scaffold_base.py` hold
   them. The repository's ruff and mypy read the two scripts alone;

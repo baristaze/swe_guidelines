@@ -16,12 +16,15 @@ pnpm writes it, so the renamed workspace package moves to its name's place.
 The copy's skills sit in `.agents/skills/`, and its
 `.claude/skills` is a link to them, whatever the source holds there: the link,
 or a folder when the scaffold was copied without its links. The copy pins the
-guideline release this checkout carries and starts a git repository. When the
-checkout is a clean git checkout of the guideline, the repository's first
-commit is the scaffold as copied, on the branch `scaffold` and the main
-branch, naming the guideline commit it came from: the copy's base, which
-`scaffold/base.py` moves forward. Otherwise nothing is committed, and the
-first move grafts the base. It prints the next step.
+guideline release this checkout carries and starts a git repository. A
+layer's checkout, whose scaffold builds on the guideline's, carries no
+guideline manifest, or one of its own: its copy keeps the pins its scaffold
+holds, the guideline release the layer took. When the checkout is a clean git
+checkout, the repository's first commit is the scaffold as copied, on the
+branch `scaffold` and the main branch, naming the commit it came from and its
+repository: the guideline's, or for a layer its `origin` on GitHub. That is
+the copy's base, which `scaffold/base.py` moves forward. Otherwise nothing is
+committed, and the first move grafts the base. It prints the next step.
 
 Standard library only, so it runs before anything is installed.
 """
@@ -206,14 +209,31 @@ BRANCH = "scaffold"
 """The copy's branch that holds its base, as `base.py` keeps it."""
 REPOSITORY = "https://github.com/baristaze/swe_guidelines"
 """Where the guideline lives, unless the plugin manifest names another."""
+GUIDELINE = "swe-guidelines"
+"""The name in the guideline's plugin manifest. A layer's checkout carries no
+manifest, or one under its own name."""
+ORIGIN = re.compile(
+    r"^(?:https://github\.com/|git@github\.com:|ssh://git@github\.com/)([A-Za-z0-9][A-Za-z0-9-]*)/([A-Za-z0-9._-]+?)(?:\.git)?/?$"
+)
+"""A remote on GitHub, in each spelling git takes: its owner and repository."""
+
+
+def manifest(plugin: Path) -> dict[str, object] | None:
+    """The guideline's plugin manifest, or None when `plugin` is missing,
+    unreadable, or another plugin's, as a layer's is."""
+    try:
+        data = json.loads(plugin.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    return data if isinstance(data, dict) and data.get("name") == GUIDELINE else None
 
 
 def release(plugin: Path = PLUGIN) -> str | None:
-    """The guideline release this checkout carries, or None outside one."""
-    try:
-        return str(json.loads(plugin.read_text(encoding="utf-8"))["version"])
-    except (OSError, ValueError, KeyError):
-        return None
+    """The guideline release this checkout carries, or None outside one: a
+    layer's checkout keeps the release its scaffold took."""
+    data = manifest(plugin)
+    version = data.get("version") if data else None
+    return str(version) if version is not None else None
 
 
 def git(where: Path, *args: str, stdin: str | None = None) -> subprocess.CompletedProcess[str]:
@@ -221,8 +241,8 @@ def git(where: Path, *args: str, stdin: str | None = None) -> subprocess.Complet
 
 
 def checkout_commit(source: Path, plugin: Path) -> str | None:
-    """The guideline commit `source` is, when it sits clean in a git checkout
-    of the guideline; None otherwise: an archive, a staged plugin, or a
+    """The commit `source` is, when it sits clean in a git checkout of the
+    guideline or of a layer; None otherwise: an archive, a staged plugin, or a
     scaffold with changes of its own."""
     root = source.resolve().parent.parent
     top = git(root, "rev-parse", "--show-toplevel")
@@ -235,24 +255,31 @@ def checkout_commit(source: Path, plugin: Path) -> str | None:
     return head.stdout.strip()
 
 
-def repository(plugin: Path) -> str:
-    try:
-        named = json.loads(plugin.read_text(encoding="utf-8")).get("repository")
-    except (OSError, ValueError, AttributeError):
-        named = None
-    return named if isinstance(named, str) and named.startswith("https://github.com/") else REPOSITORY
+def repository(root: Path, plugin: Path) -> str | None:
+    """The repository the checkout at `root` is of: the guideline's manifest's,
+    else the guideline; for a layer's checkout, its `origin` on GitHub, else
+    None."""
+    data = manifest(plugin)
+    if data is not None:
+        named = data.get("repository")
+        return named if isinstance(named, str) and named.startswith("https://github.com/") else REPOSITORY
+    origin = git(root, "remote", "get-url", "origin")
+    match = ORIGIN.match(origin.stdout.strip()) if origin.returncode == 0 else None
+    return f"https://github.com/{match.group(1)}/{match.group(2)}" if match else None
 
 
-def record_base(dest: Path, names: Names, commit: str | None, plugin: Path) -> str:
-    """Commits the copy as its base when `commit` names where it came from;
-    returns the line that says what happened."""
+def record_base(dest: Path, names: Names, commit: str | None, source: str | None) -> str:
+    """Commits the copy as its base when `commit` and `source` name where it
+    came from; returns the line that says what happened."""
     if commit is None:
         return "base: not recorded, since this is not a clean checkout of the guideline; the first move grafts it"
+    if source is None:
+        return "base: not recorded, since the layer's checkout has no origin on GitHub; the first move grafts it"
     if git(dest, "var", "GIT_COMMITTER_IDENT").returncode != 0:
         return "base: not recorded, since git has no identity here; the first move grafts it"
     message = (
         f"The scaffold at {commit[:9]}, as {names.snake}\n\n"
-        f"Scaffold-Source: {repository(plugin)}\nScaffold-Commit: {commit}\nScaffold-Name: {names.snake}\n"
+        f"Scaffold-Source: {source}\nScaffold-Commit: {commit}\nScaffold-Name: {names.snake}\n"
     )
     for args, stdin in ((("add", "--all", "--force", "."), None), (("commit", "--quiet", "-F", "-"), message)):
         done = git(dest, *args, stdin=stdin)
@@ -323,7 +350,9 @@ def main(argv: list[str] | None = None, source: Path = SOURCE, plugin: Path = PL
     version = release(plugin)
     count = copy(source, dest, names, version)
     subprocess.run(["git", "init", "--quiet", str(dest)], check=True)
-    based = record_base(dest, names, checkout_commit(source, plugin), plugin)
+    commit = checkout_commit(source, plugin)
+    came_from = repository(source.resolve().parent.parent, plugin) if commit else None
+    based = record_base(dest, names, commit, came_from)
     pinned = f", pinned at guideline v{version}" if version else ""
     print(f"{count} files in {dest} as {names.snake}{pinned}")
     print(based)

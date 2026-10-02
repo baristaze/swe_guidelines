@@ -1,28 +1,49 @@
 #!/usr/bin/env python3
-"""Commit the scaffold at a ref of the guideline, under a copy's name, onto the
-copy's `scaffold` branch.
+"""Commit the scaffold at a ref of its source onto a repository's `scaffold`
+branch: under a copy's name, or unchanged for a layer.
 
     python3 scaffold/base.py v0.47.0
     python3 scaffold/base.py <commit> --repo ~/code/pressroom --name pressroom
+    python3 scaffold/base.py v0.47.0 --layer --repo ~/code/<layer>
+    python3 scaffold/base.py <ref> --source https://github.com/<owner>/<layer>
 
 A copy of the scaffold keeps its base in git. Its `scaffold` branch holds the
 scaffold as the copy took it: each commit there is the scaffold at one commit
-of the guideline, renamed by that commit's own `new.py`, and its parent is the
+of the source, renamed by that commit's own `new.py`, and its parent is the
 render before it. The copy's main branch merges the branch, so the render it
 merged last is the merge base of the next move, and `git merge scaffold` brings
 in what the scaffold changed since, three ways, and keeps what the copy
 changed.
 
-The render's parent is the copy's last render: the newest of its `scaffold`
-branch, origin's, and the last render the checkout merged, so a stale branch
-never wins, and a base whose branch was never pushed is still found.
+A layer is a repository whose own scaffold builds on its source's. It keeps
+the source's `scaffold/` folder at `scaffold/`, under the name `acme`, and
+changes and adds to it there. With `--layer`, each commit on its `scaffold`
+branch is the source's `scaffold/` folder at one commit, unchanged, and the
+layer merges it as a copy does. A layer's render records the name `acme`,
+which `new.py` refuses for a copy, so the script never moves a copy's base as
+a layer's, or a layer's as a copy's.
 
-The ref is a release tag, a branch, or a commit of the guideline on GitHub. The
-script fetches it as one tarball, never a clone, and reads only `scaffold/` and
-`.claude-plugin/` from it. The commit it writes names the guideline commit the
-tarball holds and the name the render took. A render whose tree is the branch
-head's commits nothing. The script moves only `scaffold`: it never touches the
-working tree, the index, or another branch, and it pushes nothing.
+The render's parent is the last render: the newest of the `scaffold` branch,
+origin's, and the last render the checkout merged, so a stale branch never
+wins, and a base whose branch was never pushed is still found.
+
+The source is this guideline, or a layer built on it (`--source`). Without
+`--source`, a move takes the source its base records, and a `--source` that
+names another is refused: a base keeps one source. The ref is
+a release tag, a branch, or a commit of the source on GitHub. The script
+fetches it as one tarball, never a clone, and reads only `scaffold/` and
+`.claude-plugin/` from it. A public source comes from codeload. On a 404 the
+script asks GitHub's API with the token `gh auth token` gives, which reads a
+private source; the token goes to the API alone, never to where it
+redirects. Without such a token, fetch the tarball where you can read it and
+pass the file with `--tarball`:
+
+    gh api repos/<owner>/<repo>/tarball/<ref> > source.tar.gz
+
+The commit the script writes names the source commit the tarball holds and
+the name the render took. A render whose tree is the branch head's commits
+nothing. The script moves only `scaffold`: it never touches the working tree,
+the index, or another branch, and it pushes nothing.
 
 Standard library only, as `new.py` is.
 """
@@ -44,12 +65,24 @@ from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 
 SOURCE = "https://github.com/baristaze/swe_guidelines"
-"""The guideline a copy takes its scaffold from, unless `--source` names a fork."""
+"""The guideline a repository takes its scaffold from, unless `--source` names
+a layer built on it, or a fork."""
 BRANCH = "scaffold"
-"""The copy's branch that holds its base."""
-TAKEN = ("scaffold", ".claude-plugin")
+"""The repository's branch that holds its base."""
+SCAFFOLD = "scaffold"
+"""The source's folder that holds the scaffold, `new.py`, and this script. A
+layer takes it whole, at the same path."""
+TAKEN = (SCAFFOLD, ".claude-plugin")
 """What the script reads from the tarball: the scaffold and `new.py`, and the
 plugin manifest `new.py` reads the release to pin from."""
+LAYER_NAME = "acme"
+"""The name a layer's render keeps: the scaffold's own, which `new.py` refuses
+for a copy, so it marks a layer's base."""
+CODELOAD = "https://codeload.github.com/{owner}/{repo}/tar.gz/{ref}"
+"""Where anyone fetches a public repository's tarball."""
+API = "https://api.github.com/repos/{owner}/{repo}/tarball/{ref}"
+"""Where a token fetches a private repository's tarball. GitHub answers with a
+redirect to a link of its own, which carries no token of the caller's."""
 
 SOURCE_URL = re.compile(r"^https://github\.com/([A-Za-z0-9][A-Za-z0-9-]*)/([A-Za-z0-9._-]+?)(?:\.git)?/?$")
 REF = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._/-]{0,199}$")
@@ -71,12 +104,19 @@ class Refused(Exception):
     """Why the render is not committed. The branch stays where it was."""
 
 
+class Missing(Refused):
+    """GitHub answered 404: no such ref, or a repository the request cannot read."""
+
+
 @dataclass(frozen=True)
 class Render:
     commit: str
-    """The guideline commit the tarball holds."""
+    """The source commit the tarball holds."""
     folder: Path
-    """The rendered copy."""
+    """The folder the render's tree is read from."""
+    taken: str
+    """What of the folder the render commits: all of it for a copy, `scaffold/`
+    for a layer."""
 
 
 def git(repo: Path, *args: str, env: dict[str, str] | None = None, stdin: str | None = None) -> str:
@@ -86,27 +126,76 @@ def git(repo: Path, *args: str, env: dict[str, str] | None = None, stdin: str | 
     return done.stdout.strip()
 
 
-def tarball_url(source: str, ref: str) -> str:
+def located(source: str, ref: str) -> tuple[str, str, str]:
+    """The source's owner and repository, and the ref quoted for a URL; refuses
+    a source that is not a repository on GitHub, and a ref that is not one."""
     match = SOURCE_URL.match(source)
     if match is None:
         raise Refused(f"{source!r} is not a repository on GitHub, such as {SOURCE}")
     if not REF.match(ref) or ".." in ref or "//" in ref or ref.endswith(("/", ".lock")):
         raise Refused(f"{ref!r} is not a tag, a branch, or a commit")
     owner, repo = match.groups()
-    return f"https://codeload.github.com/{owner}/{repo}/tar.gz/{urllib.parse.quote(ref, safe='/')}"
+    return owner, repo, urllib.parse.quote(ref, safe="/")
 
 
-def download(url: str, ref: str, source: str) -> bytes:
+def download(request: urllib.request.Request) -> bytes:
+    url = request.full_url
     try:
-        with urllib.request.urlopen(url, timeout=TIMEOUT) as response:
+        with urllib.request.urlopen(request, timeout=TIMEOUT) as response:
             data: bytes = response.read()
             return data
     except urllib.error.HTTPError as error:
         if error.code == 404:
-            raise Refused(f"{ref!r} is not a tag, a branch, or a commit of {source}") from error
+            raise Missing(f"{url} answered 404") from error
         raise Refused(f"{url} answered {error.code}") from error
     except (urllib.error.URLError, http.client.HTTPException, TimeoutError, OSError) as error:
         raise Refused(f"{url} could not be fetched: {error!r}") from error
+
+
+def gh_token() -> str | None:
+    """The token `gh auth token` prints for github.com, or None when gh is
+    missing or holds none."""
+    try:
+        done = subprocess.run(
+            ["gh", "auth", "token", "--hostname", "github.com"], capture_output=True, text=True, timeout=TIMEOUT, check=False
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    token = done.stdout.strip()
+    return token if done.returncode == 0 and token else None
+
+
+def fetch(source: str, ref: str) -> bytes:
+    """The tarball of `ref`: from codeload, as anyone reads a public source; on
+    a 404, from the API with the token `gh auth token` gives, which reads a
+    private one. The token rides as a header no redirect carries, so the API
+    alone sees it. Every refusal after the first 404 names `--tarball`."""
+    owner, repo, quoted = located(source, ref)
+    try:
+        return download(urllib.request.Request(CODELOAD.format(owner=owner, repo=repo, ref=quoted)))
+    except Missing:
+        pass
+    by_hand = (
+        f"fetch it where you can read it, `gh api repos/{owner}/{repo}/tarball/{quoted} > source.tar.gz`, "
+        "and pass the file with --tarball"
+    )
+    token = gh_token()
+    if token is None:
+        raise Refused(
+            f"{ref!r} is not a tag, a branch, or a commit of {source}, "
+            f"or {source} is private and `gh auth token` gives no token; {by_hand}"
+        )
+    api = API.format(owner=owner, repo=repo, ref=quoted)
+    request = urllib.request.Request(api, headers={"Accept": "application/vnd.github+json"})
+    request.add_unredirected_header("Authorization", f"Bearer {token}")
+    try:
+        return download(request)
+    except Missing as error:
+        raise Refused(
+            f"{ref!r} is not a tag, a branch, or a commit of {source} that the token `gh auth token` gives can read; {by_hand}"
+        ) from error
+    except Refused as error:
+        raise Refused(f"{error}; {by_hand}") from error
 
 
 def unpack(tarball: Path, into: Path) -> str:
@@ -170,22 +259,26 @@ def unpack_archive(archive: tarfile.TarFile, into: Path) -> str:
     for name, link in links:
         if not os.path.realpath(link).startswith(str(root) + os.sep):
             raise Refused(f"the tarball's link {name!r} points out of the scaffold")
-    if not (root / "scaffold" / "new.py").is_file() or not (root / "scaffold" / "acme_root").is_dir():
+    if not (root / SCAFFOLD / "new.py").is_file() or not (root / SCAFFOLD / "acme_root").is_dir():
         raise Refused("that commit has no scaffold/acme_root to copy; the guideline added it in v0.39.0")
     return commit
 
 
-def render(tarball: Path, name: str, work: Path) -> Render:
+def render(tarball: Path, name: str, work: Path, layer: bool) -> Render:
+    """The source's `scaffold/` folder as it is, for a layer; else the copy its
+    own `new.py` makes under `name`."""
     source = work / "source"
     source.mkdir()
     commit = unpack(tarball, source)
+    if layer:
+        return Render(commit, source, SCAFFOLD)
     folder = work / "render" / name
     done = subprocess.run(
-        [sys.executable, str(source / "scaffold" / "new.py"), str(folder)], capture_output=True, text=True, check=False
+        [sys.executable, str(source / SCAFFOLD / "new.py"), str(folder)], capture_output=True, text=True, check=False
     )
     if done.returncode != 0:
         raise Refused(f"new.py at {commit[:9]} refused: {done.stderr.strip()}")
-    return Render(commit, folder)
+    return Render(commit, folder, ".")
 
 
 def trailers(message: str) -> dict[str, str]:
@@ -230,8 +323,33 @@ def ancestor(repo: Path, older: str, newer: str) -> bool:
     return done.returncode == 0
 
 
-def name_of(repo: Path, given: str | None, head: str | None) -> str:
-    recorded = trailers(git(repo, "log", "-1", "--format=%B", head)).get(TRAILER_NAME) if head else None
+def repository_of(source: str) -> tuple[str, str] | str:
+    """What tells two spellings of one source apart from another source: its
+    owner and repository, as GitHub compares them, or the text when it is not
+    a repository on GitHub."""
+    match = SOURCE_URL.match(source)
+    return (match.group(1).lower(), match.group(2).lower()) if match else source
+
+
+def source_of(given: str | None, recorded: str | None) -> str:
+    """The source the render comes from: the one given, else the one the base
+    records, else this guideline. A base keeps one source, so a copy of a layer
+    never takes this guideline's scaffold over what the layer added."""
+    if given and recorded and repository_of(given) != repository_of(recorded):
+        raise Refused(f"the base came from {recorded}; a base keeps one source: give that --source, or none")
+    return given or recorded or SOURCE
+
+
+def name_of(repo: Path, given: str | None, recorded: str | None, layer: bool) -> str:
+    """The name the render takes: `acme` for a layer; else the one given, the
+    one the base records, or the arch-check package. A layer's base and a
+    copy's are told apart by the name the base records."""
+    if layer:
+        if recorded and recorded != LAYER_NAME:
+            raise Refused(f"the base is a copy's, rendered as {recorded!r}; move it without --layer")
+        return LAYER_NAME
+    if recorded == LAYER_NAME:
+        raise Refused(f"the base is a layer's, the scaffold unchanged as {LAYER_NAME!r}; move it with --layer")
     if given and recorded and given != recorded:
         raise Refused(f"the base was rendered as {recorded!r}; a copy keeps one name")
     name = given or recorded
@@ -253,20 +371,24 @@ def commit_render(repo: Path, made: Render, name: str, ref: str, source: str, he
     with tempfile.TemporaryDirectory() as scratch:
         env = {**os.environ, "GIT_INDEX_FILE": str(Path(scratch) / "index")}
         tree_of = ["--git-dir", git_dir, "--work-tree", str(made.folder)]
-        git(made.folder, *tree_of, "add", "--all", "--force", ".", env=env)
+        git(made.folder, *tree_of, "add", "--all", "--force", made.taken, env=env)
         tree = git(made.folder, *tree_of, "write-tree", env=env)
     if head is not None and git(repo, "rev-parse", f"{head}^{{tree}}") == tree:
         point(repo, head)
         return None
     label = made.commit[:9] if made.commit.startswith(ref) else f"{ref} ({made.commit[:9]})"
     message = (
-        f"The scaffold at {label}, as {name}\n\n"
+        f"The scaffold at {label}, {taken_as(made, name)}\n\n"
         f"{TRAILER_SOURCE}: {source}\n{TRAILER_COMMIT}: {made.commit}\n{TRAILER_NAME}: {name}\n"
     )
     parents = ["-p", head] if head else []
     new = git(repo, "commit-tree", tree, *parents, "-F", "-", stdin=message)
     point(repo, new)
     return new
+
+
+def taken_as(made: Render, name: str) -> str:
+    return "unchanged" if made.taken == SCAFFOLD else f"as {name}"
 
 
 def point(repo: Path, commit: str) -> None:
@@ -280,25 +402,35 @@ def point(repo: Path, commit: str) -> None:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="base.py", description=__doc__.split("\n\n")[0] if __doc__ else None)
-    parser.add_argument("ref", help="a release tag, a branch, or a commit of the guideline")
-    parser.add_argument("--repo", default=".", help="the copy's checkout (default: here)")
-    parser.add_argument("--name", help="the copy's name (default: the one its base records, else its arch-check package)")
-    parser.add_argument("--source", default=SOURCE, help=f"the guideline on GitHub (default: {SOURCE})")
+    parser.add_argument("ref", help="a release tag, a branch, or a commit of the source")
+    parser.add_argument("--repo", default=".", help="the repository's checkout (default: here)")
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument("--name", help="the copy's name (default: the one its base records, else its arch-check package)")
+    mode.add_argument(
+        "--layer",
+        action="store_true",
+        help="the repository is a layer: take the source's scaffold/ folder unchanged, at scaffold/, rather than render a copy",
+    )
+    parser.add_argument(
+        "--source", help=f"the source on GitHub, public or private (default: the one the base records, else {SOURCE})"
+    )
     parser.add_argument("--tarball", help="read this tarball of the ref rather than fetch it")
     args = parser.parse_args(argv)
     repo = Path(args.repo).expanduser().resolve()
     try:
-        url = tarball_url(args.source, args.ref)
         git(repo, "rev-parse", "--git-dir")
         head = base_of(repo)
-        name = name_of(repo, args.name, head)
+        recorded = trailers(git(repo, "log", "-1", "--format=%B", head)) if head else {}
+        source = source_of(args.source, recorded.get(TRAILER_SOURCE))
+        located(source, args.ref)
+        name = name_of(repo, args.name, recorded.get(TRAILER_NAME), args.layer)
         with tempfile.TemporaryDirectory() as scratch:
             work = Path(scratch)
             tarball = Path(args.tarball).expanduser() if args.tarball else work / "source.tar.gz"
             if not args.tarball:
-                tarball.write_bytes(download(url, args.ref, args.source))
-            made = render(tarball, name, work)
-            new = commit_render(repo, made, name, args.ref, args.source, head)
+                tarball.write_bytes(fetch(source, args.ref))
+            made = render(tarball, name, work, args.layer)
+            new = commit_render(repo, made, name, args.ref, source, head)
     except Refused as refusal:
         print(f"refused: {refusal}", file=sys.stderr)
         return 2
@@ -306,9 +438,14 @@ def main(argv: list[str] | None = None) -> int:
         print(f"{BRANCH} is unchanged: the scaffold at {args.ref} ({made.commit[:9]}) is its head's tree")
         return 0
     parent = f"on {head[:9]}" if head else "its first commit"
-    print(f"{BRANCH} is {new[:9]}, {parent}: the scaffold at {args.ref} ({made.commit[:9]}), as {name}")
+    print(f"{BRANCH} is {new[:9]}, {parent}: the scaffold at {args.ref} ({made.commit[:9]}), {taken_as(made, name)}")
     if head:
         print(f"next: on a branch cut from the main branch, git merge {BRANCH}")
+    elif args.layer:
+        print(
+            f"next: on a branch cut from the main branch, git merge --allow-unrelated-histories {BRANCH}; "
+            "when the layer holds this scaffold/ already, graft it with -s ours"
+        )
     else:
         print(f"next: when the copy holds this release already, graft it: git merge -s ours --allow-unrelated-histories {BRANCH}")
     return 0
