@@ -56,7 +56,9 @@ python3 scaffold/base.py v0.47.0 --repo ~/code/pressroom
 cd ~/code/pressroom && git switch -c scaffold-v0-41-0 && git merge scaffold
 ```
 
-`base.py` fetches one tarball of the release and never clones.
+`base.py` fetches one tarball of the release and never clones. A
+layer, a repository whose own scaffold builds on this one, takes the
+`scaffold/` folder unchanged with `--layer` and merges it the same way.
 `/swe-guidelines:arch-upgrade-scaffold` makes the whole move: it grafts
 a copy made before its base was recorded, merges, resolves what the
 merge leaves, and runs the gates. The move merges into the main branch

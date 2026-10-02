@@ -242,6 +242,17 @@ A project copied before its base was recorded, or from an archive,
 starts at the release it pins. The skill's first move grafts that
 release with a merge that changes no file, then merges the next.
 
+A layer is a repository whose own scaffold builds on this one. It keeps
+this repository's `scaffold/` folder at `scaffold/`, under the name
+`acme`, and changes and adds to it there. It takes each release
+unchanged: `base.py <ref> --layer` commits the `scaffold/` folder as it
+is onto the layer's `scaffold` branch, and the layer merges it as a copy
+does. A product is copied from a layer as it is from this repository,
+and `--source` names the layer when it moves. A private source is read
+with the token `gh auth token` gives. Without one, `--tarball` reads a
+tarball fetched by hand. The skill makes a layer's move too, its first
+take included.
+
 ## Optional: vendor the text
 
 A project that wants the text in its tree without the plugin fetches it
