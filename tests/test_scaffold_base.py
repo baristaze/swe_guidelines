@@ -40,6 +40,21 @@ def identity(monkeypatch):
         monkeypatch.setenv(f"GIT_{role}_EMAIL", "test@example.invalid")
 
 
+def fake_gh(folder: Path, monkeypatch, token: str | None) -> None:
+    """A `gh` first on PATH: `gh auth token` prints `token`, or fails as gh does signed out."""
+    folder.mkdir(exist_ok=True)
+    gh = folder / "gh"
+    gh.write_text("#!/bin/sh\n" + (f"echo {token}\n" if token else "echo 'not logged in' >&2\nexit 1\n"), encoding="utf-8")
+    gh.chmod(0o755)
+    monkeypatch.setenv("PATH", f"{folder}{os.pathsep}{os.environ['PATH']}")
+
+
+@pytest.fixture(autouse=True)
+def signed_out(tmp_path_factory, monkeypatch):
+    """No test reads the token of the machine it runs on."""
+    fake_gh(tmp_path_factory.mktemp("gh"), monkeypatch, None)
+
+
 def git(repo: Path, *args: str) -> str:
     return subprocess.run(["git", "-C", str(repo), *args], capture_output=True, text=True, check=True).stdout.strip()
 
@@ -392,3 +407,126 @@ def test_an_unchanged_render_in_a_clone_points_the_local_branch_at_the_newest(tm
     assert run(clone, tar) == 0
     assert "unchanged" in capsys.readouterr().out
     assert git(clone, "rev-parse", "scaffold") == git(clone, "rev-parse", "origin/scaffold")
+
+
+def a_layer(tmp_path: Path) -> Path:
+    """A repository whose own scaffold builds on the guideline's, before its first take."""
+    repo = tmp_path / "layer"
+    subprocess.run(["git", "init", "-q", str(repo)], check=True)
+    (repo / "spec.md").write_text("# The layer\n", encoding="utf-8")
+    git(repo, "add", "-A")
+    git(repo, "commit", "-q", "-m", "the spec")
+    return repo
+
+
+def test_a_layer_takes_the_scaffold_folder_unchanged_at_its_path(tmp_path, capsys):
+    source = guideline(tmp_path)
+    tar, commit = tarball(source, tmp_path / "one.tar.gz")
+    repo = a_layer(tmp_path)
+    assert run(repo, tar, "--layer") == 0
+    assert git(repo, "ls-tree", "--name-only", "scaffold") == "scaffold"
+    assert git(repo, "rev-parse", "scaffold:scaffold") == git(source, "rev-parse", "HEAD:scaffold")
+    message = git(repo, "log", "-1", "--format=%B", "scaffold")
+    assert message.startswith(f"The scaffold at v0.1.0 ({commit[:9]}), unchanged")
+    assert f"Scaffold-Commit: {commit}" in message and "Scaffold-Name: acme" in message
+    assert "git merge --allow-unrelated-histories scaffold" in capsys.readouterr().out
+    head = git(repo, "rev-parse", "scaffold")
+    assert run(repo, tar, "--layer") == 0
+    assert git(repo, "rev-parse", "scaffold") == head
+    assert "unchanged" in capsys.readouterr().out
+
+
+def test_a_layers_later_render_is_a_child_and_its_merge_keeps_what_the_layer_changed(tmp_path):
+    source = guideline(tmp_path)
+    readme = "scaffold/acme_root/README.md"
+    (source / readme).write_text("# Acme\n\nOne.\n\nTwo.\n\nThree.\n", encoding="utf-8")
+    git(source, "commit", "-q", "-am", "a longer readme")
+    one, _ = tarball(source, tmp_path / "one.tar.gz")
+    repo = a_layer(tmp_path)
+    assert run(repo, one, "--layer") == 0
+    first = git(repo, "rev-parse", "scaffold")
+    git(repo, "merge", "-q", "--allow-unrelated-histories", "scaffold", "-m", "the layer takes the scaffold")
+    (repo / readme).write_text("# Acme\n\nOne.\n\nTwo.\n\nThree, as the layer says.\n", encoding="utf-8")
+    git(repo, "commit", "-q", "-am", "the layer's own line")
+    (source / readme).write_text("# Acme\n\nOne, as the guideline says.\n\nTwo.\n\nThree.\n", encoding="utf-8")
+    git(source, "commit", "-q", "-am", "two")
+    two, commit = tarball(source, tmp_path / "two.tar.gz")
+    assert run(repo, two, "--layer", ref="v0.2.0") == 0
+    assert git(repo, "rev-parse", "scaffold^") == first
+    assert git(repo, "rev-parse", "scaffold:scaffold") == git(source, "rev-parse", "HEAD:scaffold")
+    assert f"Scaffold-Commit: {commit}" in git(repo, "log", "-1", "--format=%B", "scaffold", "--")
+    git(repo, "merge", "-q", "scaffold", "-m", "the scaffold base moves to v0.2.0")
+    merged = (repo / readme).read_text(encoding="utf-8")
+    assert merged == "# Acme\n\nOne, as the guideline says.\n\nTwo.\n\nThree, as the layer says.\n"
+
+
+def test_a_copys_base_and_a_layers_never_mix(tmp_path, capsys):
+    tar, _ = tarball(guideline(tmp_path), tmp_path / "one.tar.gz")
+    repo = copy(tmp_path)
+    assert run(repo, tar, "--name", "pressroom") == 0
+    assert run(repo, tar, "--layer") == 2
+    assert "move it without --layer" in capsys.readouterr().err
+    layer = a_layer(tmp_path)
+    assert run(layer, tar, "--layer") == 0
+    head = git(layer, "rev-parse", "scaffold")
+    assert run(layer, tar) == 2
+    assert "move it with --layer" in capsys.readouterr().err
+    assert git(layer, "rev-parse", "scaffold") == head
+
+
+def test_a_layer_takes_no_name(tmp_path, capsys):
+    tar, _ = tarball(guideline(tmp_path), tmp_path / "one.tar.gz")
+    with pytest.raises(SystemExit):
+        run(a_layer(tmp_path), tar, "--layer", "--name", "pressroom")
+    assert "not allowed with argument" in capsys.readouterr().err
+
+
+PRIVATE = "https://github.com/acme/layer"
+CODELOAD = "https://codeload.github.com/acme/layer/tar.gz/v1.0.0"
+API = "https://api.github.com/repos/acme/layer/tarball/v1.0.0"
+
+
+def github(served: bytes | None, asked: list):
+    """A fake urlopen: codeload answers 404, as it does for a private repository; the API serves `served` to the
+    token `t0ken`, and answers 404 to anything else."""
+
+    def urlopen(request, timeout):
+        asked.append(request)
+        if request.full_url == API and request.get_header("Authorization") == "Bearer t0ken" and served is not None:
+            return io.BytesIO(served)
+        raise urllib.error.HTTPError(request.full_url, 404, "Not Found", Message(), io.BytesIO())
+
+    return urlopen
+
+
+def test_a_private_source_is_read_with_the_token_gh_gives_and_only_the_api_sees_it(tmp_path, monkeypatch):
+    tar, commit = tarball(guideline(tmp_path), tmp_path / "one.tar.gz")
+    fake_gh(tmp_path / "bin", monkeypatch, "t0ken")
+    asked: list = []
+    monkeypatch.setattr(base.urllib.request, "urlopen", github(tar.read_bytes(), asked))
+    repo = a_layer(tmp_path)
+    assert base.main(["v1.0.0", "--layer", "--repo", str(repo), "--source", PRIVATE]) == 0
+    assert [request.full_url for request in asked] == [CODELOAD, API]
+    assert asked[0].get_header("Authorization") is None
+    assert asked[1].unredirected_hdrs.get("Authorization") == "Bearer t0ken"
+    assert "Authorization" not in asked[1].headers
+    message = git(repo, "log", "-1", "--format=%B", "scaffold")
+    assert f"Scaffold-Source: {PRIVATE}" in message and f"Scaffold-Commit: {commit}" in message
+
+
+@pytest.mark.parametrize(
+    ("token", "reason"),
+    [(None, "gives no token"), ("t0ken", "that the token `gh auth token` gives can read")],
+)
+def test_a_private_source_no_token_reads_is_refused_naming_tarball(tmp_path, capsys, monkeypatch, token, reason):
+    if token:
+        fake_gh(tmp_path / "bin", monkeypatch, token)
+    asked: list = []
+    monkeypatch.setattr(base.urllib.request, "urlopen", github(None, asked))
+    repo = a_layer(tmp_path)
+    assert base.main(["v1.0.0", "--layer", "--repo", str(repo), "--source", PRIVATE]) == 2
+    err = capsys.readouterr().err
+    assert reason in err and "pass the file with --tarball" in err
+    assert "gh api repos/acme/layer/tarball/v1.0.0 > source.tar.gz" in err
+    assert "t0ken" not in err
+    assert git(repo, "branch", "--list", "scaffold") == ""
