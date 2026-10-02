@@ -102,7 +102,7 @@ def fixture(tmp_path: Path) -> tuple[Path, Path]:
     (source / "scripts" / "dev.sh").write_text("#!/bin/sh\necho acme\n", encoding="utf-8")
     (source / "scripts" / "dev.sh").chmod(0o755)
     plugin = tmp_path / "plugin.json"
-    plugin.write_text(json.dumps({"version": "9.8.7"}), encoding="utf-8")
+    plugin.write_text(json.dumps({"name": "swe-guidelines", "version": "9.8.7"}), encoding="utf-8")
     return source, plugin
 
 
@@ -162,6 +162,15 @@ def test_the_copy_pins_the_release_this_checkout_carries(tmp_path):
     dest = tmp_path / "pressroom"
     assert new.main([str(dest)], source=source, plugin=plugin) == 0
     assert "swe_guidelines@v9.8.7 arch-check" in (dest / "Makefile").read_text()
+
+
+def test_a_copy_of_a_layer_keeps_the_guideline_release_its_scaffold_took(tmp_path):
+    """A layer's own manifest names the layer's version, never the guideline release its scaffold pins."""
+    source, plugin = fixture(tmp_path)
+    plugin.write_text(json.dumps({"name": "layer", "version": "3.0.0"}), encoding="utf-8")
+    dest = tmp_path / "pressroom"
+    assert new.main([str(dest)], source=source, plugin=plugin) == 0
+    assert "swe_guidelines@v0.1.0 arch-check" in (dest / "Makefile").read_text()
 
 
 def test_the_copy_leaves_out_what_a_tool_left_and_local_settings(tmp_path):
@@ -415,8 +424,11 @@ def test_a_copy_under_a_long_name_keeps_every_line_within_its_lint(tmp_path, nam
     assert linted.returncode == 0, linted.stdout
 
 
-def checkout(tmp_path: Path) -> tuple[Path, Path, str]:
-    """A clean git checkout of a guideline: its scaffold, its plugin manifest, and its head."""
+GUIDE = {"name": "swe-guidelines", "version": "9.8.7", "repository": "https://github.com/o/guide"}
+
+
+def checkout(tmp_path: Path, manifest: dict[str, str] = GUIDE, origin: str | None = None) -> tuple[Path, Path, str]:
+    """A clean git checkout of a guideline, or of a layer: its scaffold, its plugin manifest, and its head."""
     repo = tmp_path / "swe_guidelines"
     source = repo / "scaffold" / "acme_root"
     (source / "om/src/acme/om").mkdir(parents=True)
@@ -424,8 +436,10 @@ def checkout(tmp_path: Path) -> tuple[Path, Path, str]:
     (source / "README.md").write_text("# Acme\n", encoding="utf-8")
     plugin = repo / ".claude-plugin" / "plugin.json"
     plugin.parent.mkdir()
-    plugin.write_text(json.dumps({"version": "9.8.7", "repository": "https://github.com/o/guide"}), encoding="utf-8")
+    plugin.write_text(json.dumps(manifest), encoding="utf-8")
     subprocess.run(["git", "init", "-q", str(repo)], check=True)
+    if origin is not None:
+        subprocess.run(["git", "-C", str(repo), "remote", "add", "origin", origin], check=True)
     subprocess.run(["git", "-C", str(repo), "add", "-A"], check=True)
     subprocess.run(["git", "-C", str(repo), "commit", "-q", "-m", "one"], check=True)
     head = subprocess.run(["git", "-C", str(repo), "rev-parse", "HEAD"], capture_output=True, text=True, check=True)
@@ -468,6 +482,26 @@ def test_the_base_a_copy_starts_at_names_what_base_py_reads(tmp_path, identity):
     found = base.trailers(git_out(dest, "log", "-1", "--format=%B"))
     assert found == {base.TRAILER_SOURCE: "https://github.com/o/guide", base.TRAILER_COMMIT: head, base.TRAILER_NAME: "pressroom"}
     assert base.base_of(dest) == git_out(dest, "rev-parse", "HEAD") and new.BRANCH == base.BRANCH
+
+
+@pytest.mark.parametrize(
+    "origin", ["git@github.com:acme/layer.git", "https://github.com/acme/layer.git", "https://github.com/acme/layer"]
+)
+def test_a_copy_from_a_layers_checkout_records_the_layers_repository(tmp_path, identity, origin):
+    source, plugin, head = checkout(tmp_path, {"name": "layer", "version": "3.0.0"}, origin)
+    dest = tmp_path / "pressroom"
+    assert new.main([str(dest)], source=source, plugin=plugin) == 0
+    message = git_out(dest, "log", "-1", "--format=%B")
+    assert "Scaffold-Source: https://github.com/acme/layer\n" in message and f"Scaffold-Commit: {head}" in message
+
+
+@pytest.mark.parametrize("origin", [None, "https://gitlab.com/acme/layer.git"])
+def test_a_copy_from_a_layers_checkout_with_no_origin_on_github_records_no_base(tmp_path, capsys, identity, origin):
+    source, plugin, _ = checkout(tmp_path, {"name": "layer", "version": "3.0.0"}, origin)
+    dest = tmp_path / "pressroom"
+    assert new.main([str(dest)], source=source, plugin=plugin) == 0
+    assert subprocess.run(["git", "-C", str(dest), "rev-parse", "--verify", "--quiet", "HEAD"], check=False).returncode != 0
+    assert "base: not recorded, since the layer's checkout has no origin on GitHub" in capsys.readouterr().out
 
 
 def test_a_copy_from_a_checkout_with_changes_of_its_own_records_no_base(tmp_path, capsys, identity):
