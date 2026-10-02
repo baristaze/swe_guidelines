@@ -4,8 +4,11 @@
 # so they are build arguments naming what the browser reaches; an empty
 # VITE_API_URL means the page's own origin, and an empty VITE_SENTRY_DSN
 # leaves error reporting off.
+#
+# Node 25 and later ship no corepack, so npm installs it; corepack runs the
+# pnpm that packageManager in package.json names.
 FROM node:24.21.0-alpine AS build
-RUN corepack enable
+RUN npm install --global corepack@0.35.0 && corepack enable
 WORKDIR /app
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml tsconfig.base.json eslint.config.js ./
 COPY apps/portal/package.json apps/portal/

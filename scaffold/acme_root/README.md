@@ -9,7 +9,8 @@ files. A product renames it and builds its domain on top.
 
 ## Quick start
 
-Requirements: uv, pnpm, Node (see `.nvmrc`), and Docker.
+Requirements: uv, Node (see `.nvmrc`), and Docker. `make setup`
+installs pnpm, at the version `package.json` names, when it is missing.
 
 ```bash
 make up       # the whole stack in containers, migrated and seeded; prints the URLs

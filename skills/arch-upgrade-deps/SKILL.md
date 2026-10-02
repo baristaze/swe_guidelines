@@ -37,7 +37,8 @@ never removes them. Nothing else is asked for.
 3. Inventory every declaration, in the places the Versions subsection
    names: `.python-version` and `requires-python` in every
    `pyproject.toml`; `.nvmrc`; `packageManager` and `engines` in every
-   `package.json`; the `FROM` lines of every Dockerfile; the image tags
+   `package.json`; the `FROM` lines of every Dockerfile, and the
+   version of every tool a Dockerfile installs; the image tags
    of every compose file; runtime versions and action references in
    every CI workflow; engine and runtime versions in Terraform;
    `required_version` and the provider constraints of every Terraform
