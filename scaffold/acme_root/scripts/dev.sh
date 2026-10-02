@@ -58,8 +58,9 @@ stop_tree() {
   kill "$1" 2>/dev/null || true
 }
 cleanup() {
-  for pid in "${pids[@]:-}"; do
-    [ -n "$pid" ] && stop_tree "$pid"
+  local pid
+  for pid in ${pids[@]+"${pids[@]}"}; do
+    stop_tree "$pid"
   done
 }
 trap cleanup EXIT
@@ -72,17 +73,25 @@ pids+=($!)
 pnpm --filter @acme/portal dev &
 pids+=($!)
 
-# The first process to exit stops the others and the script, with its status,
-# so a process that fails never leaves the rest running without it. A poll,
-# never `wait -n`, which the bash a macOS ships does not have.
-while :; do
+# A process that fails stops the others and the script, with its status, so
+# it never leaves the rest running without it; one that exits 0 is done. A
+# poll, never `wait -n`, which the bash a macOS ships does not have.
+while [ ${#pids[@]} -gt 0 ]; do
+  running=()
   for pid in "${pids[@]}"; do
-    if ! kill -0 "$pid" 2>/dev/null; then
-      status=0
-      wait "$pid" || status=$?
+    if kill -0 "$pid" 2>/dev/null; then
+      running+=("$pid")
+      continue
+    fi
+    status=0
+    wait "$pid" || status=$?
+    if [ "$status" -ne 0 ]; then
       echo "dev.sh: a process exited with status $status; stopping the others" >&2
-      exit $((status == 0 ? 1 : status))
+      exit "$status"
     fi
   done
-  sleep 1
+  pids=(${running[@]+"${running[@]}"})
+  if [ ${#pids[@]} -gt 0 ]; then
+    sleep 1
+  fi
 done
