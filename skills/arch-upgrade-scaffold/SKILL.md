@@ -148,12 +148,13 @@ revisions with `--`.
    conflicts, `git diff --name-only --diff-filter=U`, and resolve each
    by the table below. Then read against the same table the paths the
    merge added, `git diff --name-only --diff-filter=A HEAD`, and every
-   path it changed under `docs/adr/` and the migrations,
-   `git diff --name-only HEAD -- <root>/docs/adr <root>/om/migrations`: a
+   path it changed under `docs/adr/`, the migrations, and the lockfiles,
+   `git diff --name-only HEAD -- <root>/docs/adr <root>/om/migrations <root>/uv.lock <root>/pnpm-lock.yaml`: a
    clean merge can still bring a file, or a line, the checkout must not
    take. In a layer, the table's copy is the layer, every path it names
-   lies under `<root>`, and a lockfile regenerates there
-   (`uv lock --directory <root>`, `pnpm install --dir <root> --lockfile-only`).
+   lies under `<root>`, and a lockfile is checked and regenerates there
+   (`uv lock --check --directory <root>`, `pnpm install --dir <root> --frozen-lockfile`;
+   `uv lock --directory <root>`, `pnpm install --dir <root> --lockfile-only`).
    Commit
    with the subject `The scaffold base moves to <ref>` and a body that
    lists each conflict and how it was resolved, one line each.
@@ -165,7 +166,7 @@ revisions with `--`.
    | A file the scaffold deleted and the copy changed | Deleted, unless the copy's own code still imports or runs it. |
    | `docs/adr/` | The copy's record of its own decisions. An ADR the copy never changed takes the scaffold's change, as any file does. Into one the copy changed, no scaffold text comes, by a conflict or by a clean merge; only a rule the scaffold's change alters goes into the copy's ADR of that decision, when it has one. An ADR the scaffold removed, which the copy changed, is the copy's to remove: it goes once the ADR that now holds its decision says what the copy's said, and nothing in the copy cites its number. A new scaffold ADR whose number the copy already uses takes the copy's next free number, when its decision holds in the copy, and is removed when it does not. After the merge, no two ADRs share a number. |
    | A migration | The chain the copy's databases applied: an applied file is never edited, and a chain the copy folded stays as the copy folded it. A scaffold migration that is not in the copy's chain stays out, a fold of the scaffold's own chain included. When it changes a table the copy has, the copy writes its own migration for that change, on its chain's head. A layer applies no database: the scaffold's migrations come in as the scaffold has them, on the first take and on every move, a fold included. The layer's own migrations follow them: the first of each role's own chain has the scaffold's head as its `down_revision`, re-pointed to the new head when a move brings one, so each role keeps one head. |
-   | `uv.lock`, `pnpm-lock.yaml` | Never merged by hand: take the copy's (`git checkout --ours <file>`), and regenerate after the manifests merge (`uv lock`, `pnpm install --lockfile-only`). |
+   | `uv.lock`, `pnpm-lock.yaml` | Never merged by hand: take the copy's (`git checkout --ours <file>`), and regenerate after the manifests merge (`uv lock`, `pnpm install --lockfile-only`). A lockfile the merge left without a conflict stays as merged while its check passes (`uv lock --check`, `pnpm install --frozen-lockfile`); when a check fails, that lockfile regenerates from the merged one with the same commands, never from the copy's. |
    | What `make openapi` writes | Take either side, then run `make openapi`. |
    | The pin | Every pin names this guideline's release, never a layer's ref. In a copy of this guideline, every pin names the target: `specs/architecture.md` and the Makefile's `ARCH_CHECK`. `grep -rn "v<base release>"` finds nothing outside the ADRs and a changelog. In a copy of a layer, and in a layer, a pin takes the source's line: the release of this guideline the source took. |
 
