@@ -1,6 +1,6 @@
 ---
 name: arch-upgrade-scaffold
-description: "Move a copy of the scaffold to a later release of the guideline by merging it. The copy's scaffold branch holds the scaffold as the copy took it, and a three-way merge brings in what changed since. The first run grafts a copy with no base at the release it pins."
+description: "Move a copy of the scaffold, or a layer whose own scaffold builds on it, to a later release by merging it. The scaffold branch holds the scaffold as the repository took it, and a three-way merge brings in what changed since. The first run grafts a base at the release the repository pins, or takes a layer's first scaffold."
 allowed-tools: Read, Grep, Glob, Edit, Write, WebFetch, Bash(python3:*), Bash(git status:*), Bash(git fetch:*), Bash(git ls-remote:*), Bash(git rev-parse:*), Bash(git symbolic-ref:*), Bash(git switch:*), Bash(git log:*), Bash(git show:*), Bash(git diff:*), Bash(git merge:*), Bash(git merge-base:*), Bash(git checkout:*), Bash(git rm:*), Bash(git add:*), Bash(git commit:*), Bash(git ls-files:*), Bash(git ls-tree:*), Bash(grep:*), Bash(uv lock:*), Bash(pnpm install:*), Bash(docker info:*), Bash(make setup), Bash(make check), Bash(make openapi), Bash(make infra-up), Bash(make migrate), Bash(make migrate-check), Bash(make test-integration)
 ---
 
@@ -11,13 +11,22 @@ A path that starts with `../` is read from this skill's folder as
 
 A copy of the scaffold keeps its base in git. Its `scaffold` branch
 holds the scaffold as the copy took it: each commit there is the
-scaffold at one commit of this guideline, renamed to the copy's name by
+scaffold at one commit of its source, renamed to the copy's name by
 that commit's own `new.py`, and its parent is the render before it.
 `../../scaffold/base.py` writes those commits; its docstring holds the
 details. The copy's main branch merges the `scaffold` branch, so the
 render it merged last is the merge base of the next move. `git merge
 scaffold` then brings in what the scaffold changed since, three ways,
 and keeps what the copy changed.
+
+A layer is a repository whose own scaffold builds on its source's. It
+holds the source's `scaffold/` folder at `scaffold/`, under the name
+`acme`, and changes and adds to it there. A product is copied from a
+layer as it is from this guideline. A layer takes its source's
+`scaffold/` folder unchanged: each commit on its `scaffold` branch is
+that folder at one commit of the source, written by `base.py --layer`,
+and the layer merges the branch as a copy does. The source of a copy or
+a layer is this guideline, or a layer built on it.
 
 This skill makes one move on a work branch, commits it, and pushes
 nothing. The pull request that carries it merges with a merge commit,
@@ -26,22 +35,42 @@ next move would merge against an older one.
 
 ## Input
 
-`[<ref>] [--name <name>]`
+`[<ref>] [--name <name> | --layer] [--source <url>] [--tarball <file>]`
 
-- `<ref>`: the release, branch, or commit of this guideline to move to.
-  Without one, the release after the one the copy pins (`pinned at
-  release` in `specs/architecture.md`): the lowest `vX.Y.Z` tag above
-  the pin in `git ls-remote --tags --refs https://github.com/baristaze/swe_guidelines`,
-  which lists every release. A move takes one release, as the copy's pin
+- `<ref>`: the release, branch, or commit of the source to move to.
+  Without one, the release after the one the checkout pins (`pinned at
+  release` in `<root>/specs/architecture.md`): the lowest `vX.Y.Z` tag
+  above the pin in `git ls-remote --tags --refs https://github.com/baristaze/swe_guidelines`,
+  which lists every release. A move takes one release, as the pin
   moves: when releases lie between the pin and a target named, the
   target is the first of them, and each next one is a move of its own.
   When no tag is above the pin, stop: there is nothing newer to take.
+  With a `--source` other than this guideline, `<ref>` is required: the
+  pin names this guideline's release, never the source's. A layer's
+  first take, before it holds `scaffold/`, has no pin: without `<ref>`,
+  it takes the newest tag in that listing.
 - `--name`: the copy's name, as `new.py` took it. Without one,
   `base.py` reads the name the base recorded, else the `package` under
-  `[tool.arch-check]` in the copy's root `pyproject.toml`.
+  `[tool.arch-check]` in the copy's root `pyproject.toml`. A layer takes
+  no name.
+- `--layer`: the checkout is a layer. It is one also when it holds
+  `scaffold/acme_root/` and `scaffold/new.py`, or when its base records
+  `Scaffold-Name: acme`. A layer's first take, before it holds
+  `scaffold/`, needs the flag.
+- `--source`: the source on GitHub, `https://github.com/<owner>/<repo>`,
+  when it is a layer rather than this guideline. `base.py` reads a
+  private source with the token `gh auth token` gives.
+- `--tarball`: the source's tarball at `<ref>`, for a private source
+  with no token that reads it. Where the source can be read,
+  `gh api repos/<owner>/<repo>/tarball/<ref> > <file>` writes one.
 
-It runs at the root of the copy's checkout. `<base.py>` below is the
-absolute path of `../../scaffold/base.py`.
+It runs at the root of the checkout. `<base.py>` below is the absolute
+path of `../../scaffold/base.py`, and `<flags>` what every run of it
+carries: `--layer` in a layer, and `--name` and `--source` as given.
+`<root>` is where the scaffold's own tree sits: the checkout's root in
+a copy, `scaffold/acme_root/` in a layer. In a layer, `scaffold` names
+a branch and a folder both, so a git command that takes paths ends its
+revisions with `--`.
 
 ## Procedure
 
@@ -57,53 +86,70 @@ absolute path of `../../scaffold/base.py`.
    refuse, since the move's commits hold the move alone.
 2. **Find the base**: the last render the branch holds,
    `git log -1 --no-merges -E --grep='^Scaffold-Commit: [0-9a-f]{40}$' --format=%H HEAD`.
-   When it answers, the copy has a base, and its message names the
-   guideline commit it took (`Scaffold-Commit`) and the name
+   When it answers, the checkout has a base, and its message names the
+   source commit it took (`Scaffold-Commit`) and the name
    (`Scaffold-Name`). When it answers nothing but `scaffold` or
    `origin/scaffold` exists, the main branch has not merged its base:
    stop and say so. When a move's pull request is open, it merges
    first. Otherwise a move was squashed or dropped, and the person
    records the base the main branch holds: the render of the release it
-   pins, which `git log --format='%H %s' <branch>` names (`scaffold`, or
+   pins, which `git log --format='%H %s' <branch> --` names (`scaffold`, or
    `origin/scaffold` in a clone that has no local one), merged with
    `git merge -s ours --allow-unrelated-histories <that render>`, which
-   changes no file. Then the skill runs again. When nothing answers, the copy has no base.
-3. **Graft, only when there is no base.** The copy was made before its
+   changes no file. Then the skill runs again. When nothing answers, the
+   checkout has no base.
+3. **Graft, only when there is no base.** A layer that holds no
+   `scaffold/` yet has nothing to graft: its first take is the merge of
+   step 6, so go to step 4. Otherwise the checkout was made before its
    base was recorded, so the base is the release it pins: the version in
-   `pinned at release` in `specs/architecture.md`. Render it,
-   `python3 <base.py> v<pinned>` (with `--name` when given), then merge
-   it without changing a file:
+   `pinned at release` in `<root>/specs/architecture.md`. With a
+   `--source` other than this guideline, the pin is not the source's
+   ref: stop and say so. Render the pin,
+   `python3 <base.py> v<pinned> <flags>`, then merge it without changing
+   a file:
    `git merge -s ours --allow-unrelated-histories scaffold -m "<Name> is based on the scaffold at v<pinned>"`.
    `git diff --stat HEAD^1 HEAD` prints nothing. The merge says what the
-   copy is: the scaffold at its pin, and what the copy changed since.
-   From here on, every difference between the two is the copy's own,
-   and the next merge keeps it. When `base.py` refuses because the
+   checkout is: the scaffold at its pin, and what it changed since.
+   From here on, every difference between the two is its own, and the
+   next merge keeps it. When `base.py` refuses because the
    release has no `scaffold/acme_root/`, stop: that release predates the
-   scaffold, so the copy was not made from it, and this skill does not
+   scaffold, so the checkout was not made from it, and this skill does not
    apply. When
    the pin is the target, the graft is the whole move: go to step 8.
-4. **Render the target.** `python3 <base.py> <ref>`. It prints the new
-   head of `scaffold` and the guideline commit it holds. When it prints
+4. **Render the target.** `python3 <base.py> <ref> <flags>`, with
+   `--tarball <file>` when given. It prints the new head of `scaffold`
+   and the source commit it holds. When it refuses a private source and
+   names `--tarball`, stop and say what it printed. When it prints
    that `scaffold` is unchanged, the render is already there: when
    `git merge-base --is-ancestor scaffold HEAD` exits 0, the branch
    holds it, so stop, with nothing to merge; otherwise go on and merge
    it. When it refuses because two renders are on two lines, stop and
    say so: the person keeps on `scaffold` the one the main branch
    merged or will merge.
-5. **Read what the releases ask.** The guideline's `CHANGELOG.md` at the
+5. **Read what the releases ask.** The source's `CHANGELOG.md` at the
    target: `../../CHANGELOG.md` when the target is this plugin's release,
    else `https://raw.githubusercontent.com/<owner>/<repo>/<ref>/CHANGELOG.md`
-   for the source `base.py` names. Read each entry after the base's
-   release. Note each reversal, each rule that now holds one of the
-   copy's deviations (the Deviations table in `specs/architecture.md`),
-   and each step an entry asks of a project. Step 7 carries them.
-6. **Merge.** `git merge --no-ff --no-commit scaffold`. List the
+   for the source `base.py` names, and for a private one
+   `gh api -H 'Accept: application/vnd.github.raw' 'repos/<owner>/<repo>/contents/CHANGELOG.md?ref=<ref>'`.
+   Read each entry after the base's release. Note each reversal, each
+   rule that now holds one of the checkout's deviations (the Deviations
+   table in `<root>/specs/architecture.md`), and each step an entry asks
+   of a project. Step 7 carries them. A layer's first take has no base
+   and no deviation, and skips this step.
+6. **Merge.** `git merge --no-ff --no-commit scaffold`, and on a
+   layer's first take
+   `git merge --no-ff --no-commit --allow-unrelated-histories scaffold`,
+   which adds `scaffold/` whole. List the
    conflicts, `git diff --name-only --diff-filter=U`, and resolve each
    by the table below. Then read against the same table the paths the
    merge added, `git diff --name-only --diff-filter=A HEAD`, and every
    path it changed under `docs/adr/` and the migrations,
-   `git diff --name-only HEAD -- docs/adr om/migrations`: a clean merge
-   can still bring a file, or a line, the copy must not take. Commit
+   `git diff --name-only HEAD -- <root>/docs/adr <root>/om/migrations`: a
+   clean merge can still bring a file, or a line, the checkout must not
+   take. In a layer, the table's copy is the layer, every path it names
+   lies under `<root>`, and a lockfile regenerates there
+   (`uv lock --directory <root>`, `pnpm install --dir <root> --lockfile-only`).
+   Commit
    with the subject `The scaffold base moves to <ref>` and a body that
    lists each conflict and how it was resolved, one line each.
 
@@ -116,7 +162,7 @@ absolute path of `../../scaffold/base.py`.
    | A migration | The chain the copy's databases applied: an applied file is never edited, and a chain the copy folded stays as the copy folded it. A scaffold migration that is not in the copy's chain stays out, a fold of the scaffold's own chain included. When it changes a table the copy has, the copy writes its own migration for that change, on its chain's head. |
    | `uv.lock`, `pnpm-lock.yaml` | Never merged by hand: take the copy's (`git checkout --ours <file>`), and regenerate after the manifests merge (`uv lock`, `pnpm install --lockfile-only`). |
    | What `make openapi` writes | Take either side, then run `make openapi`. |
-   | The pin | Every pin names the target: `specs/architecture.md` and the Makefile's `ARCH_CHECK`. `grep -rn "v<base release>"` finds nothing outside the ADRs and a changelog. |
+   | The pin | In a copy, every pin names the target: `specs/architecture.md` and the Makefile's `ARCH_CHECK`. `grep -rn "v<base release>"` finds nothing outside the ADRs and a changelog. In a layer, a pin under `scaffold/` takes the source's line. |
 
 7. **Carry what the releases ask** (step 5). A deviation whose rule now
    holds leaves the Deviations table, and a row that deviates in part
@@ -127,7 +173,10 @@ absolute path of `../../scaffold/base.py`.
    status stays one date, and no ADR is renumbered. The move itself gets
    no ADR: the pin and the merge commit record it. Commit this apart
    from the merge.
-8. **Run the gates.** `make setup`, then `make check`. When
+8. **Run the gates.** In a layer, each command below runs in `<root>`
+   (`make -C <root> <target>`), unless the layer's `AGENTS.md` names its
+   gates otherwise, and `services/` is `<root>/services/`. `make setup`,
+   then `make check`. When
    `docker info` exits 0, also `make infra-up`, `make migrate`,
    `make migrate-check`, and `make test-integration`; otherwise the
    output names each one skipped. `make setup` formats the Python, and
@@ -141,7 +190,7 @@ absolute path of `../../scaffold/base.py`.
 ## Output
 
 - The base before and after: each render's commit on `scaffold`, and
-  the guideline commit it holds. When this run grafted, the graft's
+  the source commit it holds. When this run grafted, the graft's
   merge commit and the release it grafted.
 - Each conflict and its resolution, one line each, and each scaffold
   file the copy keeps out, with the reason.
