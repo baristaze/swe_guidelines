@@ -40,15 +40,18 @@ next move would merge against an older one.
 - `<ref>`: the release, branch, or commit of the source to move to.
   Without one, the release after the one the checkout pins (`pinned at
   release` in `<root>/specs/architecture.md`): the lowest `vX.Y.Z` tag
-  above the pin in `git ls-remote --tags --refs https://github.com/baristaze/swe_guidelines`,
-  which lists every release. A move takes one release, as the pin
+  above the pin in
+  `git ls-remote --tags --refs --sort=v:refname https://github.com/baristaze/swe_guidelines`,
+  which lists every release in version order, so `v0.10.0` follows
+  `v0.9.0`. A move takes one release, as the pin
   moves: when releases lie between the pin and a target named, the
   target is the first of them, and each next one is a move of its own.
   When no tag is above the pin, stop: there is nothing newer to take.
-  With a `--source` other than this guideline, `<ref>` is required: the
-  pin names this guideline's release, never the source's. A layer's
+  When the source, given or the one the base records, is not this
+  guideline, `<ref>` is required: the pin names this guideline's
+  release, never the source's. A layer's
   first take, before it holds `scaffold/`, has no pin: without `<ref>`,
-  it takes the newest tag in that listing.
+  it takes the last tag of that listing, the newest release.
 - `--name`: the copy's name, as `new.py` took it. Without one,
   `base.py` reads the name the base recorded, else the `package` under
   `[tool.arch-check]` in the copy's root `pyproject.toml`. A layer takes
@@ -58,8 +61,10 @@ next move would merge against an older one.
   `Scaffold-Name: acme`. A layer's first take, before it holds
   `scaffold/`, needs the flag.
 - `--source`: the source on GitHub, `https://github.com/<owner>/<repo>`,
-  when it is a layer rather than this guideline. `base.py` reads a
-  private source with the token `gh auth token` gives.
+  when it is a layer rather than this guideline. Without it, `base.py`
+  takes the source the base records (`Scaffold-Source`), and it refuses
+  a `--source` that names another. It reads a private source with the
+  token `gh auth token` gives.
 - `--tarball`: the source's tarball at `<ref>`, for a private source
   with no token that reads it. Where the source can be read,
   `gh api repos/<owner>/<repo>/tarball/<ref> > <file>` writes one.
@@ -159,10 +164,10 @@ revisions with `--`.
    | A file the copy deleted and the scaffold changed | It stays deleted (`git rm`). When the copy keeps its own file for the same thing, such as a screen its product replaced, carry into that file what the scaffold's change alters in behaviour. |
    | A file the scaffold deleted and the copy changed | Deleted, unless the copy's own code still imports or runs it. |
    | `docs/adr/` | The copy's record of its own decisions. An ADR the copy never changed takes the scaffold's change, as any file does. Into one the copy changed, no scaffold text comes, by a conflict or by a clean merge; only a rule the scaffold's change alters goes into the copy's ADR of that decision, when it has one. An ADR the scaffold removed, which the copy changed, is the copy's to remove: it goes once the ADR that now holds its decision says what the copy's said, and nothing in the copy cites its number. A new scaffold ADR whose number the copy already uses takes the copy's next free number, when its decision holds in the copy, and is removed when it does not. After the merge, no two ADRs share a number. |
-   | A migration | The chain the copy's databases applied: an applied file is never edited, and a chain the copy folded stays as the copy folded it. A scaffold migration that is not in the copy's chain stays out, a fold of the scaffold's own chain included. When it changes a table the copy has, the copy writes its own migration for that change, on its chain's head. |
+   | A migration | The chain the copy's databases applied: an applied file is never edited, and a chain the copy folded stays as the copy folded it. A scaffold migration that is not in the copy's chain stays out, a fold of the scaffold's own chain included. When it changes a table the copy has, the copy writes its own migration for that change, on its chain's head. A layer applies no database: the scaffold's migrations come in as the scaffold has them, on the first take and on every move, a fold included. The layer's own migrations follow them: the first of each role's own chain has the scaffold's head as its `down_revision`, re-pointed to the new head when a move brings one, so each role keeps one head. |
    | `uv.lock`, `pnpm-lock.yaml` | Never merged by hand: take the copy's (`git checkout --ours <file>`), and regenerate after the manifests merge (`uv lock`, `pnpm install --lockfile-only`). |
    | What `make openapi` writes | Take either side, then run `make openapi`. |
-   | The pin | In a copy, every pin names the target: `specs/architecture.md` and the Makefile's `ARCH_CHECK`. `grep -rn "v<base release>"` finds nothing outside the ADRs and a changelog. In a layer, a pin under `scaffold/` takes the source's line. |
+   | The pin | Every pin names this guideline's release, never a layer's ref. In a copy of this guideline, every pin names the target: `specs/architecture.md` and the Makefile's `ARCH_CHECK`. `grep -rn "v<base release>"` finds nothing outside the ADRs and a changelog. In a copy of a layer, and in a layer, a pin takes the source's line: the release of this guideline the source took. |
 
 7. **Carry what the releases ask** (step 5). A deviation whose rule now
    holds leaves the Deviations table, and a row that deviates in part
