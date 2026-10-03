@@ -23,6 +23,7 @@ from acme.ops.workos import (
 )
 
 KEY = "sk_test_never_printed"
+SIGNING_SECRET = "whsec_never_printed"
 APP = "client_app"
 LOCAL = "http://localhost:55173/auth/callback"
 DEPLOYED = "https://app.staging.example.test/auth/callback"
@@ -111,7 +112,10 @@ class FakeWorkOS:
         if path == "/webhook_endpoints" and request.method == "GET":
             if self.endpoints_status != 200:
                 return httpx.Response(self.endpoints_status, json={"message": "no"})
-            data = [{"endpoint_url": u, "status": st} for u, st in self.endpoints.items()]
+            data = [
+                {"endpoint_url": u, "status": st, "secret": SIGNING_SECRET}
+                for u, st in self.endpoints.items()
+            ]
             return httpx.Response(200, json={"data": data, "list_metadata": {"after": None}})
         return httpx.Response(404, json={"message": "no"})
 
@@ -151,6 +155,7 @@ async def test_an_enabled_webhook_endpoint_is_present_and_changes_nothing(
     assert await run(tmp_path, api, apply=False, desired=WITH_HOOK) == 0
     out = capsys.readouterr().out
     assert f"webhook {HOOK}: present" in out and "nothing to change" in out
+    assert KEY not in out and SIGNING_SECRET not in out
 
 
 @pytest.mark.parametrize(
@@ -180,7 +185,7 @@ async def test_a_webhook_endpoint_not_enabled_fails_the_run(
         out = capsys.readouterr().out
         assert f"webhook {HOOK}: {said}" in out
         assert "1 change(s) need the dashboard" in out
-        assert KEY not in out
+        assert KEY not in out and SIGNING_SECRET not in out
     assert not any(r.method != "GET" and r.url.path == "/webhook_endpoints" for r in api.requests)
 
 
