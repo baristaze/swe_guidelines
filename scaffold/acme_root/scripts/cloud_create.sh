@@ -568,7 +568,7 @@ if [ "$environment" = "staging" ]; then
 fi
 
 if [ "$environment" = "production" ]; then
-  say "== 5c. The protection on release: a ruleset only release.yml's deploy key and the admin role pass, so release moves by the release workflow alone"
+  say "== 5c. The protection on release: a ruleset a write deploy key alone passes, and release.yml's is the repository's one, so release moves by the release workflow alone"
   # release.yml pushes with the deploy key the RELEASE_DEPLOY_KEY secret holds,
   # and a push with it starts deploy-production. The key pair is made here, in
   # a temporary folder removed however the step ends: the public half becomes
@@ -583,6 +583,14 @@ if [ "$environment" = "production" ]; then
     key_id="$(gh api 'repos/{owner}/{repo}/keys' -q ".[] | select(.title == \"$key_title\") | .id" | head -n 1)"
     secret_set="$(gh secret list --json name -q '.[] | select(.name == "RELEASE_DEPLOY_KEY") | .name')"
   fi
+  # A ruleset's deploy-key bypass names no key: every write deploy key of the
+  # repository passes it. So the run refuses while a write key other than
+  # release.yml's exists, and names it.
+  if ! $dry_run; then
+    others="$(gh api 'repos/{owner}/{repo}/keys' -q ".[] | select(.read_only == false and .title != \"$key_title\") | .title")"
+    [ -z "$others" ] || refuse "write deploy keys other than \"$key_title\" would pass the release ruleset too: $(printf '%s' "$others" | paste -sd, -); delete them or make them read-only (Settings, Deploy keys), then run again"
+  fi
+  say "+ gh api repos/{owner}/{repo}/keys  (no write deploy key but \"$key_title\", since every one passes the ruleset)"
   if [ -n "$key_id" ] && [ -n "$secret_set" ]; then
     say "The deploy key \"$key_title\" and the secret RELEASE_DEPLOY_KEY are there already."
   else
@@ -603,17 +611,14 @@ if [ "$environment" = "production" ]; then
   fi
   # Creations, updates, deletions, and force pushes are restricted; the
   # required check is the one a pull request into release fails, so nothing
-  # merges into it. The deploy key bypasses for release.yml, and the admin
-  # role for a rollback pushed by hand.
+  # merges into it. The deploy key is the one bypass actor; an admin resets
+  # release by turning the ruleset off for that push.
   ruleset="$(jq -n '{
     name: "release: moved by the release workflow alone",
     target: "branch",
     enforcement: "active",
     conditions: {ref_name: {include: ["refs/heads/release"], exclude: []}},
-    bypass_actors: [
-      {actor_id: null, actor_type: "DeployKey", bypass_mode: "always"},
-      {actor_id: 5, actor_type: "RepositoryRole", bypass_mode: "always"}
-    ],
+    bypass_actors: [{actor_id: null, actor_type: "DeployKey", bypass_mode: "always"}],
     rules: [
       {type: "creation"}, {type: "update"}, {type: "deletion"}, {type: "non_fast_forward"},
       {type: "required_status_checks", parameters: {

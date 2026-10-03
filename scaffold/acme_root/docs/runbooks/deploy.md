@@ -180,8 +180,10 @@ again: `acme-api migrate --all` resumes where the chain stopped.
 
 A ruleset on `release`, which the production create run sets (its step
 5c): restrict creations, updates, and deletions; block force pushes;
-require the `no pull request into release` check. Its bypass list holds
-the deploy key `release` and the admin role, for a rollback push by hand.
+require the `no pull request into release` check. Its one bypass actor
+is a deploy key with write access, and since a ruleset cannot name one
+key, every write deploy key passes: the run refuses while any but
+`release` exists.
 
 `release.yml` pushes with that deploy key, whose private half the run
 stores as the `RELEASE_DEPLOY_KEY` secret without printing it, and that
@@ -222,9 +224,10 @@ the profile, and the env file.
   environment's variables are empty: run `scripts/cloud_create.sh
   staging` again.
 - **`guard` says `release` is not an ancestor of `main`.** Someone
-  committed to `release`. A bypass actor resets it
-  (`git push --force origin <main commit>:release`), then dispatch
-  `release` again.
+  committed to `release`. An admin turns the `release` ruleset off for
+  the reset (Settings, Rules, Rulesets), resets it
+  (`git push --force origin <main commit>:release`), turns the ruleset on
+  again, then dispatches `release` again.
 - **`guard` says `production` has no required reviewer.** Add it; the
   run refused to plan.
 - **`apply` says the saved plan is stale.** Someone applied in between.
