@@ -204,8 +204,12 @@ the plan would hold the plan the reviewer is meant to read.
 commit it runs, under its administrator profile. `--dry-run` prints
 every command. Production also needs `--confirm production`, and a
 released `database_deletion_protection = false`; its final snapshot and
-automated backups stay. The run prints what remains: the bootstrap root,
-the state, the static builds, the profile, and the env file.
+automated backups stay. After the destroy it removes what the state
+does not hold: the secrets the application wrote (a tenant's stay while
+the final snapshot does) and the leftovers AWS made for the destroyed
+resources. A run that stopped part way is finished by running it again.
+It prints what remains: the bootstrap root, the state, the static builds,
+the profile, and the env file.
 
 ## When it fails
 
