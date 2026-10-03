@@ -1,6 +1,6 @@
 ---
 name: ops-cloud-deployment-nuke
-description: "Destroy one cloud environment of the platform as its account's administrator: empty the buckets, destroy the environment root, and report what remains (the bootstrap root whole: the zones, the registry, the roles, the state; and production's copies of what staging built). Runs scripts/cloud_nuke.sh after checking the administrator profile and the account against deployment/cloud/environments.json. Stops after the dry run until the person says go. Refuses production unless --confirm production is typed and a released change on release, applied, sets the database's deletion protection off. Applies from a clean worktree of the exact commit the environment runs, never the working tree. The one skill besides create that needs a credential that writes, so a person invokes it by name."
+description: "Destroy one cloud environment of the platform as its account's administrator: empty the buckets, destroy the environment root, remove what Terraform does not own (the secrets the application wrote, whose tenants' share follows the database's final snapshot, and the leftovers AWS made), and report what remains (the bootstrap root whole: the zones, the registry, the roles, the state; and production's copies of what staging built). Runs scripts/cloud_nuke.sh after checking the administrator profile and the account against deployment/cloud/environments.json. Stops after the dry run until the person says go. Refuses production unless --confirm production is typed and a released change on release, applied, sets the database's deletion protection off. Applies from a clean worktree of the exact commit the environment runs, never the working tree. The one skill besides create that needs a credential that writes, so a person invokes it by name."
 disable-model-invocation: true
 allowed-tools: Read, Grep, Glob, Bash(aws:*), Bash(gh:*), Bash(jq:*), Bash(git fetch:*), Bash(git show:*)
 ---
@@ -119,8 +119,28 @@ cluster `acme-<env>`, as `deployment/README.md` lists them.
    `acme-production-final` and its automated backups; `terraform
    destroy` of the environment root, which empties every
    `acme-<env>-*` bucket it owns, versions included, and never the
-   state bucket; then the list of what remains.
-5. Read what remains and write the report. The bootstrap root stays
+   state bucket; then what Terraform does not own, found by the
+   environment's names alone: the tenants' secrets under
+   `acme/<env>/app/org/`, deleted with no recovery window when the
+   database's final snapshot `acme-<env>-final` is not found and kept
+   with it when it is (production), and any other answer stops the
+   run; the cluster's Container Insights log group; and every
+   revision of the
+   environment's task definition families. Then the list of what
+   remains. A run whose state holds nothing, while neither the cluster
+   nor the database exists, skips the apply and the destroy and goes
+   straight to what Terraform does not own, so a run that stopped after
+   its destroy is finished by running it again; an empty state beside a
+   live cluster or database, or a state that cannot be read, is refused.
+   A run again is a run like the first: its dry run, then the person's
+   word. On it, step 3's reads answer that the cluster is not found:
+   that is the destroy already run, and the script decides it, never
+   the skill.
+5. Read what remains and write the report. A run that refused at its
+   step 5 printed no list of what remains: the report says where it
+   stopped and quotes the refusal, and names nothing as gone that the
+   run did not print. A run again that skipped the apply and the
+   destroy lists under Gone only what its step 5 removed. The bootstrap root stays
    whole: the zones, because Cloudflare delegates to them; the
    registry and its images; the roles, so the pipeline can deploy the
    environment again; the budget; and the state bucket, whose
@@ -135,9 +155,7 @@ cluster `acme-<env>`, as `deployment/README.md` lists them.
    keys, its redirects, and its webhook endpoint for the environment's
    API name (kept for a recreate; removed by the person if the
    environment is not coming back); and the events the error tracker
-   holds for the environment. Each org's own secrets, under
-   `acme/<env>/app/org/`, stay in Secrets Manager, since the
-   application wrote them and Terraform does not own them. The
+   holds for the environment. The
    provider keys' values went with the secrets, so a recreate writes
    them again after its first deploy
    (`docs/runbooks/providers/workos.md`).
@@ -151,6 +169,9 @@ cluster `acme-<env>`, as `deployment/README.md` lists them.
   no automated backup deleted with it.
 - No touch of the bootstrap root: the state bucket, the zones, the
   registry, the roles.
+- No deletion outside the environment's names: every leftover is
+  found by `acme-<env>` or under `acme/<env>/app/org/`, and a tenant's
+  secret goes only once the database's final snapshot is not found.
 - No destroy of the other environment: it lives in another account,
   the profile is the one this environment names, and the script
   refuses a session that resolves to any other account.
@@ -175,15 +196,16 @@ cluster `acme-<env>`, as `deployment/README.md` lists them.
 - Services: <names>
 - Database: <identifier>, final snapshot <skipped (staging) | acme-production-final>
 - Buckets emptied and removed: <names>
+- What Terraform does not own: the tenants' secrets <count deleted | count kept with acme-production-final>; the Container Insights log group <name | none>; <count> task definition revisions
 
 ## Remains
 
 - The bootstrap root: zones <names> (delegated at Cloudflare), the registry and its images, <role names>, budget
 - State prefix environments/<staging | prod>/ in acme-state-<id>, empty
 - Production only: the final snapshot acme-production-final and the automated backups
-- Staging only: production's copies of what staging built, in production's account
+- Staging only: production's copies of what staging built, in production's account, when the artifacts bucket replicates; otherwise nothing there
 - GitHub environment and variables; ~/.config/acme/ops/<env>.env and <env>.provisioner.env; the acme-<env>-investigate profile
-- The orgs' own secrets under acme/<env>/app/org/: <count>, for the person to delete if the environment is not coming back
+- Production only: the tenants' secrets under acme/<env>/app/org/, with the final snapshot that needs them
 - <resource the destroy could not remove>: <reason>
 
 ## At the providers, untouched

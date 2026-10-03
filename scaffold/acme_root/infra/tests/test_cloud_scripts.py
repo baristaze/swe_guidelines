@@ -215,10 +215,34 @@ def test_nuke_staging_dry_run_lifts_the_protections_then_destroys(tmp_path: Path
     worktree = "<a worktree of the deployed commit> <the last commit staging deployed>"
     assert f"+ git worktree add --detach {worktree}" in out
     assert "origin/main" not in out
-    assert out.count(f"(expect account {STAGING['account_id']})") == 3
-    assert "== 5. What remains" in out
+    assert out.count(f"(expect account {STAGING['account_id']})") == 4
+    assert "== 6. What remains" in out
     assert "the bootstrap root, whole" in out
     assert "the state prefix environments/staging/" in out
+
+
+def test_nuke_removes_what_terraform_does_not_own_after_the_destroy(tmp_path: Path) -> None:
+    # The application's secrets and the leftovers AWS made are not in the
+    # state. Each is found by this environment's names alone, after the
+    # destroy, and the tenants' secrets follow the database's final snapshot.
+    result = _run(NUKE, "staging", "--dry-run", home=tmp_path)
+    assert result.returncode == 0, result.stderr
+    out = result.stdout
+    leftovers = out.index("== 5. Remove what Terraform does not own")
+    assert out.index(f"+ terraform -chdir={STAGING_ROOT} destroy") < leftovers
+    step = out[leftovers : out.index("== 6. What remains")]
+    assert "describe-db-snapshots --db-snapshot-identifier acme-staging-final" in step
+    assert "Values=acme/staging/app/org/" in step
+    assert "starts_with(Name, 'acme/staging/app/org/')" in step
+    assert "(only when acme-staging-final does not exist)" in step
+    assert "--log-group-name-prefix /aws/ecs/containerinsights/acme-staging/" in step
+    assert "--family-prefix acme-staging-" in step
+    assert "--force-delete-without-recovery" in step
+    assert "production" not in step
+    # A dry run reads nothing, so it cannot say whether production holds
+    # copies of staging's builds; it names the condition instead.
+    assert "get-bucket-replication --bucket acme-artifacts-" in out
+    assert "when the artifacts bucket replicates" in out
 
 
 def test_nuke_refuses_production_without_its_typed_name(tmp_path: Path) -> None:

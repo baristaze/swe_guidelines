@@ -2157,7 +2157,10 @@ scoped to the domain's zone and held for the run. Production is
 destroyed only behind its typed name and a released change that turned
 its deletion protection off, and it leaves a final snapshot. Outside
 production a destroy deletes secrets with no recovery window, so a
-create that follows finds their names free.
+create that follows finds their names free. A destroy also removes what
+the environment left outside the state, the secrets the application
+wrote among them; a tenant's secrets stay only beside a final snapshot
+that needs them.
 
 ### Traffic and Stress
 
