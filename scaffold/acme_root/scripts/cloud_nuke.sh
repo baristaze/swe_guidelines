@@ -398,7 +398,7 @@ if [ "$environment" = "staging" ]; then
     say "- nothing in production's account: the artifacts bucket does not replicate"
   fi
 fi
-say "- $HOME/.config/acme/ops/$environment.env and $environment.provisioner.env beside it, and the investigate profile in $HOME/.aws/config"
+say "- $HOME/.config/acme/ops/$environment.env and $environment.provisioner.env beside it, and the investigate profile in $HOME/.aws/config; their tokens, and every operator's second-factor enrolment, went with the database: a recreated $environment grants and enrols each operator again"
 if $snapshot_kept; then
   say "- the tenants' secrets under $tenant_prefix in Secrets Manager, with the final snapshot that needs them; delete them by hand only with it"
 fi
