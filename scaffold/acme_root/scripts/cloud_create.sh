@@ -588,7 +588,7 @@ if [ "$environment" = "production" ]; then
   # release.yml's exists, and names it.
   if ! $dry_run; then
     others="$(gh api 'repos/{owner}/{repo}/keys' -q ".[] | select(.read_only == false and .title != \"$key_title\") | .title")"
-    [ -z "$others" ] || refuse "write deploy keys other than \"$key_title\" would pass the release ruleset too: $(printf '%s' "$others" | paste -sd, -); delete them or make them read-only (Settings, Deploy keys), then run again"
+    [ -z "$others" ] || refuse "write deploy keys other than \"$key_title\" would pass the release ruleset too: $(printf '%s' "$others" | paste -sd, -); delete each, or delete it and add it again read-only (Settings, Deploy keys; a deploy key cannot be changed), then run again"
   fi
   say "+ gh api repos/{owner}/{repo}/keys  (no write deploy key but \"$key_title\", since every one passes the ruleset)"
   if [ -n "$key_id" ] && [ -n "$secret_set" ]; then

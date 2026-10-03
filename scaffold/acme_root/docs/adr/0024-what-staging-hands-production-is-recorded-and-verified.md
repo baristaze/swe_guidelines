@@ -60,7 +60,8 @@ account cannot rewrite, and a check of every copy against it.
 - **The release push is a deploy key's.** `release.yml` pushes the
   fast-forward with the `RELEASE_DEPLOY_KEY` secret when it is set: a
   deploy key with write access, listed as the one bypass actor of the
-  ruleset that locks `release`, which the production create run sets. Without it, the push uses the workflow's
+  ruleset that locks `release`, which the production create run
+  sets. Without it, the push uses the workflow's
   own token. That works only while no ruleset restricts `release`, and
   such a push fires no workflow, so the job dispatches
   `deploy-production.yml` itself.

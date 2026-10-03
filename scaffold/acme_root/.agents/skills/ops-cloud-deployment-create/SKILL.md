@@ -176,7 +176,8 @@ the names of what was written and never a value.
      pushes, requires `no pull request into release`, and lets the
      deploy key alone through. Every write deploy key passes such a
      ruleset, so the run refuses while another exists and names it;
-     the person deletes it or makes it read-only. A key without the
+     the person deletes it, or deletes it and adds it again read-only,
+     since a deploy key cannot be changed. A key without the
      secret, or the reverse, is made again.
    - The first deploy, through the pipeline: the script pushes
      nothing and applies no environment root itself. For staging it
