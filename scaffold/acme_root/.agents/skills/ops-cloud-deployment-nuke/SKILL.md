@@ -129,10 +129,18 @@ cluster `acme-<env>`, as `deployment/README.md` lists them.
    environment's task definition families. Then the list of what
    remains. A run whose state holds nothing, while neither the cluster
    nor the database exists, skips the apply and the destroy and goes
-   straight to what Terraform does not own, so a run that stopped part
-   way is finished by running it again; an empty state beside a live
-   cluster or database is a wrong backend, and the script refuses.
-5. Read what remains and write the report. The bootstrap root stays
+   straight to what Terraform does not own, so a run that stopped after
+   its destroy is finished by running it again; an empty state beside a
+   live cluster or database, or a state that cannot be read, is refused.
+   A run again is a run like the first: its dry run, then the person's
+   word. On it, step 3's reads answer that the cluster is not found:
+   that is the destroy already run, and the script decides it, never
+   the skill.
+5. Read what remains and write the report. A run that refused at its
+   step 5 printed no list of what remains: the report says where it
+   stopped and quotes the refusal, and names nothing as gone that the
+   run did not print. A run again that skipped the apply and the
+   destroy lists under Gone only what its step 5 removed. The bootstrap root stays
    whole: the zones, because Cloudflare delegates to them; the
    registry and its images; the roles, so the pipeline can deploy the
    environment again; the budget; and the state bucket, whose
@@ -162,8 +170,8 @@ cluster `acme-<env>`, as `deployment/README.md` lists them.
 - No touch of the bootstrap root: the state bucket, the zones, the
   registry, the roles.
 - No deletion outside the environment's names: every leftover is
-  found by `acme-<env>`, and a tenant's secret goes only once the
-  database's final snapshot is not found.
+  found by `acme-<env>` or under `acme/<env>/app/org/`, and a tenant's
+  secret goes only once the database's final snapshot is not found.
 - No destroy of the other environment: it lives in another account,
   the profile is the one this environment names, and the script
   refuses a session that resolves to any other account.

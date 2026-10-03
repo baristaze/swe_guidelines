@@ -214,14 +214,23 @@ still_running() {
   clusters="$(aws ecs describe-clusters --clusters "acme-$environment" \
     --query 'length(clusters[?status==`ACTIVE`])' --output text)"
   [ "$clusters" = "0" ] || { echo "the cluster acme-$environment"; return; }
-  if aws rds describe-db-instances --db-instance-identifier "acme-$environment" >/dev/null 2>&1; then
+  # Only a database that is not found counts as gone; any other answer is
+  # read as one that still runs.
+  local answer
+  if answer="$(aws rds describe-db-instances --db-instance-identifier "acme-$environment" 2>&1)" \
+      || ! grep -q DBInstanceNotFound <<<"$answer"; then
     echo "the database acme-$environment"
   fi
 }
 root_destroyed=false
 api_image=""
 maintenance_image=""
-if ! $dry_run && [ -z "$(terraform -chdir="$root_dir" state list)" ]; then
+resources=""
+if ! $dry_run; then
+  # A state that cannot be read is never an empty one.
+  resources="$(terraform -chdir="$root_dir" state list)" || refuse "cannot read the state at $root/"
+fi
+if ! $dry_run && [ -z "$resources" ]; then
   live="$(still_running)"
   [ -z "$live" ] || refuse "the state at $root/ holds nothing, and $live still exists: the backend is wrong"
   root_destroyed=true
