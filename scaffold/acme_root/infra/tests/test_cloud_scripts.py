@@ -145,6 +145,22 @@ def test_create_production_dry_run_sets_two_environments_and_waits_for_replicati
     assert "uv run acme-ops signals check --env production" in out
 
 
+def test_create_production_protects_release_with_a_ruleset_and_a_deploy_key(
+    tmp_path: Path,
+) -> None:
+    # release moves only by release.yml, whose push uses a deploy key the
+    # ruleset lets through; the key's private half goes straight into the
+    # secret and is never printed. Staging's run touches none of it.
+    out = _run(CREATE, "production", "--dry-run", home=tmp_path).stdout
+    step = out[out.index("== 5c.") : out.index("== 6.")]
+    assert "+ gh repo deploy-key add <its public half> --allow-write --title release" in step
+    assert "+ gh secret set RELEASE_DEPLOY_KEY < <its private half>" in step
+    assert "+ gh api -X POST repos/{owner}/{repo}/rulesets --input <the release ruleset>" in step
+    assert out.index("== 5.") < out.index("== 5c.")
+    staging = _run(CREATE, "staging", "--dry-run", home=tmp_path).stdout
+    assert "== 5c." not in staging and "RELEASE_DEPLOY_KEY" not in staging
+
+
 def test_create_refuses_to_run_for_real_without_the_cloudflare_token(tmp_path: Path) -> None:
     result = _run(CREATE, "staging", home=tmp_path, CLOUDFLARE_API_TOKEN=None)
     assert result.returncode == 2

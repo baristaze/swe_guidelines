@@ -567,6 +567,73 @@ if [ "$environment" = "staging" ]; then
   fi
 fi
 
+if [ "$environment" = "production" ]; then
+  say "== 5c. The protection on release: a ruleset only release.yml's deploy key and the admin role pass, so release moves by the release workflow alone"
+  # release.yml pushes with the deploy key the RELEASE_DEPLOY_KEY secret holds,
+  # and a push with it starts deploy-production. The key pair is made here, in
+  # a temporary folder removed however the step ends: the public half becomes
+  # a deploy key with write access, the private half the secret, and neither
+  # is printed. A key found without the secret, or the secret without the
+  # key, is made again.
+  key_title="release"
+  if $dry_run; then
+    key_id=""
+    secret_set=""
+  else
+    key_id="$(gh api 'repos/{owner}/{repo}/keys' -q ".[] | select(.title == \"$key_title\") | .id" | head -n 1)"
+    secret_set="$(gh secret list --json name -q '.[] | select(.name == "RELEASE_DEPLOY_KEY") | .name')"
+  fi
+  if [ -n "$key_id" ] && [ -n "$secret_set" ]; then
+    say "The deploy key \"$key_title\" and the secret RELEASE_DEPLOY_KEY are there already."
+  else
+    say "+ ssh-keygen -t ed25519 -N '' -C $key_title  (in a temporary folder, removed after)"
+    [ -z "$key_id" ] || say "+ gh api -X DELETE repos/{owner}/{repo}/keys/$key_id  (a \"$key_title\" key with no secret beside it)"
+    say "+ gh repo deploy-key add <its public half> --allow-write --title $key_title"
+    say "+ gh secret set RELEASE_DEPLOY_KEY < <its private half>"
+    if ! $dry_run; then
+      (
+        keydir="$(mktemp -d)"
+        trap 'rm -rf "$keydir"' EXIT
+        ssh-keygen -q -t ed25519 -N '' -C "$key_title" -f "$keydir/key"
+        [ -z "$key_id" ] || gh api -X DELETE "repos/{owner}/{repo}/keys/$key_id" >/dev/null
+        gh repo deploy-key add "$keydir/key.pub" --allow-write --title "$key_title" >/dev/null
+        gh secret set RELEASE_DEPLOY_KEY < "$keydir/key" >/dev/null
+      )
+    fi
+  fi
+  # Creations, updates, deletions, and force pushes are restricted; the
+  # required check is the one a pull request into release fails, so nothing
+  # merges into it. The deploy key bypasses for release.yml, and the admin
+  # role for a rollback pushed by hand.
+  ruleset="$(jq -n '{
+    name: "release: moved by the release workflow alone",
+    target: "branch",
+    enforcement: "active",
+    conditions: {ref_name: {include: ["refs/heads/release"], exclude: []}},
+    bypass_actors: [
+      {actor_id: null, actor_type: "DeployKey", bypass_mode: "always"},
+      {actor_id: 5, actor_type: "RepositoryRole", bypass_mode: "always"}
+    ],
+    rules: [
+      {type: "creation"}, {type: "update"}, {type: "deletion"}, {type: "non_fast_forward"},
+      {type: "required_status_checks", parameters: {
+        strict_required_status_checks_policy: true,
+        required_status_checks: [{context: "no pull request into release"}]}}
+    ]}')"
+  if $dry_run; then
+    existing=""
+  else
+    existing="$(gh api 'repos/{owner}/{repo}/rulesets' -q '.[] | select(.name == "release: moved by the release workflow alone") | .id')"
+  fi
+  if [ -n "$existing" ]; then
+    say "+ gh api -X PUT repos/{owner}/{repo}/rulesets/$existing --input <the release ruleset>"
+    if ! $dry_run; then printf '%s' "$ruleset" | gh api -X PUT "repos/{owner}/{repo}/rulesets/$existing" --input - >/dev/null; fi
+  else
+    say "+ gh api -X POST repos/{owner}/{repo}/rulesets --input <the release ruleset>"
+    if ! $dry_run; then printf '%s' "$ruleset" | gh api -X POST 'repos/{owner}/{repo}/rulesets' --input - >/dev/null; fi
+  fi
+fi
+
 say "== 6. The operator's env file for $environment"
 # The operator's token is empty: no operator exists until the
 # grant-operator workflow has run, and a token is minted, never typed. The

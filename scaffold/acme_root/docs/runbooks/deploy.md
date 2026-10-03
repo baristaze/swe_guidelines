@@ -178,21 +178,17 @@ again: `acme-api migrate --all` resumes where the chain stopped.
 
 ## The protection on `release`
 
-A ruleset on `release`, set by hand once (Settings, Rules, Rulesets):
-restrict creations, updates, and deletions; block force pushes; require
-the `no pull request into release` check. Its bypass list holds a deploy
-key and the admin role, for a rollback push by hand.
+A ruleset on `release`, which the production create run sets (its step
+5c): restrict creations, updates, and deletions; block force pushes;
+require the `no pull request into release` check. Its bypass list holds
+the deploy key `release` and the admin role, for a rollback push by hand.
 
-`release.yml` pushes with the deploy key when the `RELEASE_DEPLOY_KEY`
-secret is set, and that push starts `deploy-production`. Without it, the
-job pushes with its own token, which works only while no ruleset
-restricts `release`, and dispatches `deploy-production` itself.
-
-```bash
-ssh-keygen -t ed25519 -f release_key -N ''
-# Add release_key.pub as a deploy key with write access (Settings, Deploy keys),
-# add it to the ruleset's bypass list, and store release_key as RELEASE_DEPLOY_KEY.
-```
+`release.yml` pushes with that deploy key, whose private half the run
+stores as the `RELEASE_DEPLOY_KEY` secret without printing it, and that
+push starts `deploy-production`. A key without the secret, or the secret
+without the key, is made again on the run's next pass. Without the
+secret, the job pushes with its own token, which works only while no
+ruleset restricts `release`, and dispatches `deploy-production` itself.
 
 The `production` environment carries the owner as its required
 reviewer. `staging` and `production-plan` carry no rule: a reviewer on
