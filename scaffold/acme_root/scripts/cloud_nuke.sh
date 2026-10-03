@@ -323,19 +323,6 @@ else
   done
 fi
 
-# The grant task writes the operator tokens of the two identities no person
-# signs in as. Each expires within the hour and is checked against the
-# database the destroy removed, so they go in every environment.
-names secretsmanager list-secrets \
-  --filters "Key=name,Values=acme-$environment-provisioner-token,acme-$environment-smoke-token" \
-  --query "SecretList[?Name=='acme-$environment-provisioner-token' || Name=='acme-$environment-smoke-token'].Name"
-for name in $found; do
-  run aws secretsmanager delete-secret --secret-id "$name" --force-delete-without-recovery
-done
-if $dry_run; then
-  say "+ aws secretsmanager delete-secret --secret-id <each name above> --force-delete-without-recovery"
-fi
-
 # ECS makes the cluster's Container Insights log group when the cluster turns
 # them on, outside the state.
 names logs describe-log-groups --log-group-name-prefix "/aws/ecs/containerinsights/acme-$environment/" \

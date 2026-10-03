@@ -124,9 +124,8 @@ cluster `acme-<env>`, as `deployment/README.md` lists them.
    `acme/<env>/app/org/`, deleted with no recovery window when the
    database's final snapshot `acme-<env>-final` is not found and kept
    with it when it is (production), and any other answer stops the
-   run; the grant task's token secrets `acme-<env>-provisioner-token`
-   and `acme-<env>-smoke-token`, which expire within the hour; the
-   cluster's Container Insights log group; and every revision of the
+   run; the cluster's Container Insights log group; and every
+   revision of the
    environment's task definition families. Then the list of what
    remains. A run whose state holds nothing, while neither the cluster
    nor the database exists, skips the apply and the destroy and goes
@@ -189,7 +188,7 @@ cluster `acme-<env>`, as `deployment/README.md` lists them.
 - Services: <names>
 - Database: <identifier>, final snapshot <skipped (staging) | acme-production-final>
 - Buckets emptied and removed: <names>
-- What Terraform does not own: the tenants' secrets <count deleted | count kept with acme-production-final>; the token secrets <names | none>; the Container Insights log group <name | none>; <count> task definition revisions
+- What Terraform does not own: the tenants' secrets <count deleted | count kept with acme-production-final>; the Container Insights log group <name | none>; <count> task definition revisions
 
 ## Remains
 

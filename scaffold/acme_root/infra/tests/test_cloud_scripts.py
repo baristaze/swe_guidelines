@@ -235,7 +235,6 @@ def test_nuke_removes_what_terraform_does_not_own_after_the_destroy(tmp_path: Pa
     assert "Values=acme/staging/app/org/" in step
     assert "starts_with(Name, 'acme/staging/app/org/')" in step
     assert "(only when acme-staging-final does not exist)" in step
-    assert "Name=='acme-staging-provisioner-token' || Name=='acme-staging-smoke-token'" in step
     assert "--log-group-name-prefix /aws/ecs/containerinsights/acme-staging/" in step
     assert "--family-prefix acme-staging-" in step
     assert "--force-delete-without-recovery" in step
