@@ -366,8 +366,11 @@ cloudflare_drop_stale_cname() {
   while read -r record_id content; do
     [ -n "$record_id" ] || continue
     say "+ curl https://cloudflare-dns.com/dns-query?name=${content%.}&type=A  (does $content still answer?)"
+    # A name that resolves to nothing answers NOERROR or NXDOMAIN with no
+    # address; any other status is a resolver that could not tell.
     answers="$(curl -sS --fail -H 'accept: application/dns-json' \
-      "https://cloudflare-dns.com/dns-query?name=${content%.}&type=A" | jq -er '(.Answer // []) | length')" \
+      "https://cloudflare-dns.com/dns-query?name=${content%.}&type=A" \
+      | jq -er 'if .Status == 0 or .Status == 3 then (.Answer // []) | length else error("status \(.Status)") end')" \
       || refuse "cannot tell whether $content still answers, so $name CNAME $content stays; run this again"
     [ "$answers" = "0" ] || refuse "$name holds a CNAME to $content, a CloudFront distribution that still answers but is not this account's; a site served from elsewhere is yours to move: remove the record by hand if this environment's site is to serve there, then run this again"
     say "+ cloudflare DELETE /zones/$zone_id/dns_records/$record_id ($name CNAME $content, which no longer resolves)"
