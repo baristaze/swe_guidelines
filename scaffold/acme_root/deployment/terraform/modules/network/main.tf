@@ -7,8 +7,12 @@ data "aws_availability_zones" "available" {
 }
 
 locals {
-  zones = slice(data.aws_availability_zones.available.names, 0, var.availability_zone_count)
-  tags  = { "acme:environment" = var.environment }
+  # The public subnets and the tasks use the first zones; the database and
+  # the cache may sit in any zone, so a zone out of an instance class's
+  # capacity never stops a create. The first private subnets are the tasks'.
+  zones      = slice(data.aws_availability_zones.available.names, 0, var.availability_zone_count)
+  data_zones = data.aws_availability_zones.available.names
+  tags       = { "acme:environment" = var.environment }
 }
 
 resource "aws_vpc" "this" {
@@ -33,10 +37,10 @@ resource "aws_subnet" "public" {
 }
 
 resource "aws_subnet" "private" {
-  count             = length(local.zones)
+  count             = length(local.data_zones)
   vpc_id            = aws_vpc.this.id
   cidr_block        = cidrsubnet(var.cidr, 4, count.index + 8)
-  availability_zone = local.zones[count.index]
+  availability_zone = local.data_zones[count.index]
   tags              = merge(local.tags, { Name = "acme-${var.environment}-private-${count.index}" })
 }
 

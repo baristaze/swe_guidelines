@@ -131,7 +131,7 @@ module "database" {
   master_password_version = var.database_password_version
 
   environment         = var.environment
-  subnet_ids          = module.network.private_subnet_ids
+  subnet_ids          = module.network.data_subnet_ids
   security_group_ids  = [module.network.database_security_group_id]
   instance_class      = var.database_instance_class
   multi_az            = var.database_multi_az
@@ -143,7 +143,7 @@ module "cache" {
   source = "../cache"
 
   environment        = var.environment
-  subnet_ids         = module.network.private_subnet_ids
+  subnet_ids         = module.network.data_subnet_ids
   security_group_ids = [module.network.cache_security_group_id]
   node_type          = var.cache_node_type
   node_count         = var.cache_node_count
