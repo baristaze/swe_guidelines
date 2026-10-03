@@ -348,12 +348,20 @@ for family in $found; do
   names ecs list-task-definitions --family-prefix "$family" --status INACTIVE --query taskDefinitionArns
   inactive="$found"
   say "+ aws ecs delete-task-definitions  ($(grep -c . <<<"$inactive" || true) revisions of $family, ten to a call)"
+  # The call is rate limited to about one a second: the CLI retries a
+  # throttled one, the loop paces itself, and a batch the CLI still could
+  # not send counts as failed rather than ending the run.
   failed=0
   while read -r batch; do
     [ -n "$batch" ] || continue
     # shellcheck disable=SC2086
-    failed=$((failed + $(aws ecs delete-task-definitions --task-definitions $batch \
-      --query 'length(failures)' --output text)))
+    if answer="$(AWS_RETRY_MODE=adaptive AWS_MAX_ATTEMPTS=10 aws ecs delete-task-definitions \
+        --task-definitions $batch --query 'length(failures)' --output text)"; then
+      failed=$((failed + answer))
+    else
+      failed=$((failed + $(wc -w <<<"$batch")))
+    fi
+    sleep 1
   done < <(xargs -n 10 <<<"$inactive")
   [ "$failed" = "0" ] || say "- $failed revisions of $family could not be deleted; list them with aws ecs list-task-definitions --family-prefix $family --status INACTIVE"
 done
