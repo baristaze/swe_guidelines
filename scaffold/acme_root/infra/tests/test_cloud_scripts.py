@@ -102,6 +102,19 @@ def test_create_staging_dry_run_prints_every_step_and_writes_nothing(tmp_path: P
     assert not (ROOT / "deployment/terraform/bootstrap/staging/backend_override.tf").exists()
 
 
+def test_create_drops_a_site_cname_left_by_a_destroyed_environment(tmp_path: Path) -> None:
+    # CloudFront refuses a name whose CNAME points at another distribution,
+    # even one the nuke deleted, so the run removes that leftover before the
+    # deploy, and only while no distribution of the account serves the name.
+    result = _run(CREATE, "staging", "--dry-run", home=tmp_path)
+    assert result.returncode == 0, result.stderr
+    out = result.stdout
+    step = out[out.index("== 3c.") : out.index("== 4.")]
+    stale = step.index(f"type=CNAME&name={STAGING['site_domain_name']}  (a CNAME to CloudFront")
+    assert stale < step.index("CNAME staging.acme.example -> <the distribution's domain>")
+    assert out.index("== 3c.") < out.index("+ gh workflow run deploy-staging.yml --ref main")
+
+
 def test_create_production_dry_run_sets_two_environments_and_waits_for_replication(
     tmp_path: Path,
 ) -> None:
