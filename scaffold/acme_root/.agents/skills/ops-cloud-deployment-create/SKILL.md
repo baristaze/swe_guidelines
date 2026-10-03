@@ -184,7 +184,8 @@ the names of what was written and never a value.
      another. WorkOS comes first, since the grants below sign people
      up through it and every
      sign-in answers `503` without its key. `acme-ops workos-bootstrap`
-     proves the key and reconciles the application's redirects.
+     proves the key, reconciles the application's redirects, and fails
+     until the webhook endpoint below exists and is enabled.
      `workos_webhook_secret` is the signing secret of the endpoint
      `https://<api name>/webhooks/identity` in the WorkOS dashboard;
      until it is set, the route refuses every delivery. `sentry_dsn`

@@ -25,9 +25,14 @@ The Redirects tab's other fields have no API. The command prints what each
 should hold, as a check to make by eye on the tab: the login initiation
 URI, the app homepage URL, and the sign-out URIs with their default. The
 sign-out URIs cannot be probed either: WorkOS's logout answers the same for
-a return it lists and one it does not until a real session ends. No webhook
-is reconciled either: the endpoint is made on the dashboard, and the command
-prints the one the desired state names.
+a return it lists and one it does not until a real session ends.
+
+The webhook endpoint is read, never written: its signing secret belongs in
+the environment's secret store, which this command does not hold. Each
+endpoint the desired state names is present when the environment's list
+holds it enabled; one that is missing, disabled, or that the key cannot
+read is a dashboard step, and the run fails on it, since an environment
+with no endpoint receives nothing and nothing else says so.
 
 The Sessions tab has no API either. It bounds the AuthKit session a sign-in
 leaves in the browser, which lets the next sign-in there through with no
@@ -68,6 +73,7 @@ LEFT_TO_AUTHKIT = (
 # A Acme session's lifetimes, `ACME_SESSION_LIFETIME_SECONDS` and
 # `ACME_SESSION_IDLE_LIFETIME_SECONDS`: the Sessions tab's two bounds match them.
 SESSION_LIFETIME = timedelta(days=30)
+WEBHOOKS = "the environment's Webhooks page"
 SESSION_IDLE_LIFETIME = timedelta(days=14)
 
 
@@ -203,6 +209,27 @@ class WorkOS:
             if not after:
                 return found
 
+    async def webhook_endpoints(self) -> dict[str, str] | None:
+        """The environment's webhook endpoints, URL to status, every page
+        of them; None when the key may not read them."""
+        found: dict[str, str] = {}
+        after: str | None = None
+        while True:
+            params: dict[str, str | int] = {"limit": 100}
+            if after:
+                params["after"] = after
+            response = await self._client.get(
+                "/webhook_endpoints", params=params, headers=self._auth
+            )
+            if response.status_code in (401, 403):
+                return None
+            answer = self._json(response, "listing the webhook endpoints")
+            for item in answer.get("data", []):
+                found[str(item["endpoint_url"])] = str(item.get("status") or "")
+            after = (answer.get("list_metadata") or {}).get("after")
+            if not after:
+                return found
+
     async def create_redirect(self, uri: str) -> bool:
         """True when it was created, False when the list held it already (422)."""
         response = await self._client.post(
@@ -304,7 +331,30 @@ async def reconcile(desired: Desired, workos: WorkOS, *, apply: bool) -> Outcome
         f"inactivity timeout: {SESSION_IDLE_LIFETIME.days} days, a Acme session's idle "
         "lifetime (check it on the same tab)"
     )
-    say("webhooks: none" if not desired.webhooks else f"webhooks: {', '.join(desired.webhooks)}")
+    if not desired.webhooks:
+        say("webhooks: none")
+    else:
+        endpoints = await workos.webhook_endpoints()
+        for url in desired.webhooks:
+            if endpoints is None:
+                outcome.missing += 1
+                say(
+                    f"webhook {url}: the key cannot read the webhook endpoints (dashboard): {WEBHOOKS}"
+                )
+            elif endpoints.get(url) == "enabled":
+                say(f"webhook {url}: present")
+            elif url in endpoints:
+                outcome.missing += 1
+                say(
+                    f"webhook {url}: {endpoints[url] or 'not enabled'}; enable it (dashboard): {WEBHOOKS}"
+                )
+            else:
+                outcome.missing += 1
+                say(
+                    f"webhook {url}: missing (dashboard): create it on {WEBHOOKS}, subscribed "
+                    "to the organization events, and write its signing secret into the "
+                    "environment's workos_webhook_secret"
+                )
     say(summary(outcome))
     return outcome
 
