@@ -8,7 +8,12 @@ output "public_subnet_ids" {
 }
 
 output "private_subnet_ids" {
-  description = "Where every task, database, and cache node lives."
+  description = "Where every task lives: the private subnets of the load balancer's zones."
+  value       = slice(aws_subnet.private[*].id, 0, length(local.zones))
+}
+
+output "data_subnet_ids" {
+  description = "Where the database and the cache may live: a private subnet in every zone."
   value       = aws_subnet.private[*].id
 }
 

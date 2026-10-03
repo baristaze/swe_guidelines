@@ -352,6 +352,32 @@ cloudflare_cname() {
   fi
 }
 
+# A CNAME left by an environment the nuke destroyed points at a distribution
+# that is gone, and CloudFront refuses the name to a new one while it does
+# (CNAMEAlreadyExists). So while no distribution of this account serves the
+# name, a CNAME there to CloudFront whose target no longer resolves is that
+# leftover, and it goes before the deploy. One whose target still answers is
+# a site served from somewhere else, and that is a person's call: refused.
+cloudflare_drop_stale_cname() {
+  local name="$1" existing record_id content answers
+  say "+ cloudflare GET /zones/$zone_id/dns_records?type=CNAME&name=$name  (a CNAME to CloudFront whose target no longer resolves goes)"
+  if $dry_run; then return; fi
+  existing="$(cloudflare GET "/zones/$zone_id/dns_records?type=CNAME&name=$name&per_page=100")"
+  while read -r record_id content; do
+    [ -n "$record_id" ] || continue
+    say "+ curl https://cloudflare-dns.com/dns-query?name=${content%.}&type=A  (does $content still answer?)"
+    # A name that resolves to nothing answers NOERROR or NXDOMAIN with no
+    # address; any other status is a resolver that could not tell.
+    answers="$(curl -sS --fail -H 'accept: application/dns-json' \
+      "https://cloudflare-dns.com/dns-query?name=${content%.}&type=A" \
+      | jq -er 'if .Status == 0 or .Status == 3 then (.Answer // []) | length else error("status \(.Status)") end')" \
+      || refuse "cannot tell whether $content still answers, so $name CNAME $content stays; run this again"
+    [ "$answers" = "0" ] || refuse "$name holds a CNAME to $content, a CloudFront distribution that still answers but is not this account's; a site served from elsewhere is yours to move: remove the record by hand if this environment's site is to serve there, then run this again"
+    say "+ cloudflare DELETE /zones/$zone_id/dns_records/$record_id ($name CNAME $content, which no longer resolves)"
+    cloudflare DELETE "/zones/$zone_id/dns_records/$record_id" >/dev/null
+  done < <(printf '%s' "$existing" | jq -r '.result[] | select(.content | test("\\.cloudfront\\.net\\.?$")) | "\(.id) \(.content)"')
+}
+
 say "== 3b. The company site's certificate: its validation record at Cloudflare, then its issue"
 # The site's name is a record in this zone, not a delegation: the apex
 # cannot be delegated, and a delegation of staging.<domain> would hide the
@@ -380,11 +406,13 @@ say "== 3c. The company site's name at Cloudflare: a CNAME to its distribution, 
 # run of this script after a deploy that made it; every run checks it.
 say "+ aws cloudfront list-distributions  (the one whose alias is $site_domain_name)"
 if $dry_run; then
+  cloudflare_drop_stale_cname "$site_domain_name"
   cloudflare_cname "$site_domain_name" "<the distribution's domain>"
 else
   site_distribution="$(aws cloudfront list-distributions --output text \
     --query "DistributionList.Items[?Aliases.Items != null && contains(Aliases.Items, '$site_domain_name')].DomainName | [0]")"
   if [ -z "$site_distribution" ] || [ "$site_distribution" = "None" ]; then
+    cloudflare_drop_stale_cname "$site_domain_name"
     say "No distribution serves $site_domain_name yet: the next deploy makes it. Run this script again once that deploy is green, and this step writes $site_domain_name CNAME <its domain>."
   else
     cloudflare_cname "$site_domain_name" "$site_distribution"

@@ -485,6 +485,8 @@ Nothing else needs it; CI never does. Making the token and running the create ru
   2. A deploy makes the site's distribution, with the issued certificate. The environment root finds the certificate by the site's name.
   3. The next create run finds the distribution by its alias and writes the site's name as a CNAME to the distribution's domain (step 3c). At the apex Cloudflare flattens the CNAME into addresses. Until then the step says there is no distribution yet.
 
+  While no distribution of the account serves the site's name, a CNAME there to a CloudFront domain that no longer resolves is what a destroyed environment left, and CloudFront refuses the name to a new distribution while it stands, so step 3c deletes it before the deploy. A CNAME to a CloudFront domain that still answers is a site served from elsewhere: the run refuses and names it.
+
   If the site's name already holds an `A`, `AAAA`, or `NS` record at Cloudflare, the run refuses and names it, since what that record serves is a person's call. Remove it by hand if the site is to serve there, then run again.
 
 The site is optional, so none of this holds up a deploy. Until the environment's `SITE_DOMAIN_NAME` is set and the site's certificate is issued, a deploy (and a release, and the fast rollback) plans, applies, and publishes everything else exactly as always, leaves the site out, and says so in the run's summary.
