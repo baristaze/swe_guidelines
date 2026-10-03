@@ -11,10 +11,11 @@ read. There is one tracker project for the product and every environment
 reports into it, so the reader names that project and filters the read on
 this environment; nothing here is named per environment.
 
-X-Ray is filtered on the annotation `acme_request_id`: the collector turns
-the span attribute `acme.request_id` into it only when its X-Ray exporter
-lists the attribute under `indexed_attributes`. Without that, no filter by
-id exists, and the reader says so instead of guessing from the URL."""
+X-Ray is filtered on the annotation `acme_request_id`: the collector copies
+the span attribute `acme.request_id` into `acme_request_id`, since X-Ray
+filters only on a key of letters, digits, and underscores, and its X-Ray
+exporter lists that copy under `indexed_attributes`. Without that, no filter
+by id exists, and the reader says so instead of guessing from the URL."""
 
 import asyncio
 import re

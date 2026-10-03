@@ -46,6 +46,12 @@ locals {
     }
     processors = {
       batch = { timeout = "10s" }
+      # X-Ray filters only on an annotation whose key is letters, digits, and
+      # underscores, and the exporter keeps the dot of `acme.request_id`, so
+      # the span carries the id again under a key X-Ray can filter on.
+      "attributes/request_id" = {
+        actions = [{ key = "acme_request_id", from_attribute = "acme.request_id", action = "insert" }]
+      }
     }
     exporters = {
       awsemf = {
@@ -54,15 +60,15 @@ locals {
         log_stream_name         = "{TaskId}"
         dimension_rollup_option = "NoDimensionRollup"
       }
-      # The request id becomes the annotation `acme_request_id`, the one
-      # filter by id X-Ray has (ops/src/acme/ops/signals/cloud.py).
-      awsxray = { indexed_attributes = ["acme.request_id"] }
+      # The request id is the annotation `acme_request_id`, the one filter
+      # by id X-Ray has (ops/src/acme/ops/signals/cloud.py).
+      awsxray = { indexed_attributes = ["acme_request_id"] }
     }
     service = {
       extensions = ["health_check"]
       pipelines = {
         metrics = { receivers = ["prometheus"], processors = ["batch"], exporters = ["awsemf"] }
-        traces  = { receivers = ["otlp"], processors = ["batch"], exporters = ["awsxray"] }
+        traces  = { receivers = ["otlp"], processors = ["attributes/request_id", "batch"], exporters = ["awsxray"] }
       }
     }
   }
