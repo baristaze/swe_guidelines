@@ -57,6 +57,8 @@ class FakeWorkOS:
         default: str | None = None,
         mirrored: bool = True,
         key: str = KEY,
+        endpoints: dict[str, str] | None = None,
+        endpoints_status: int = 200,
     ) -> None:
         self.accepted = set(accepted)
         self.listed: list[str] = sorted(listed if listed is not None else accepted)
@@ -65,6 +67,8 @@ class FakeWorkOS:
         self.key = key
         self.created: list[str] = []
         self.requests: list[httpx.Request] = []
+        self.endpoints = endpoints or {}
+        self.endpoints_status = endpoints_status
 
     def __call__(self, request: httpx.Request) -> httpx.Response:
         self.requests.append(request)
@@ -104,6 +108,11 @@ class FakeWorkOS:
             if self.mirrored:
                 self.accepted.add(uri)
             return httpx.Response(201, json={"object": "redirect_uri", "uri": uri})
+        if path == "/webhook_endpoints" and request.method == "GET":
+            if self.endpoints_status != 200:
+                return httpx.Response(self.endpoints_status, json={"message": "no"})
+            data = [{"endpoint_url": u, "status": st} for u, st in self.endpoints.items()]
+            return httpx.Response(200, json={"data": data, "list_metadata": {"after": None}})
         return httpx.Response(404, json={"message": "no"})
 
 
@@ -120,14 +129,59 @@ async def run(
     *,
     apply: bool,
     key: str | None = KEY,
+    desired: str = DESIRED,
 ) -> int:
     transport = api if isinstance(api, httpx.MockTransport) else httpx.MockTransport(api)
     return await workos_bootstrap_command(
         argparse.Namespace(environment="staging", apply=apply),
         transport=transport,
         environ={} if key is None else {"WORKOS_API_KEY": key},
-        root=repo(tmp_path),
+        root=repo(tmp_path, desired),
     )
+
+
+HOOK = "https://api.staging.example.test/webhooks/identity"
+WITH_HOOK = DESIRED.replace("  webhooks: []", f"  webhooks:\n    - {HOOK}")
+
+
+async def test_an_enabled_webhook_endpoint_is_present_and_changes_nothing(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    api = FakeWorkOS({LOCAL, DEPLOYED}, default=DEPLOYED, endpoints={HOOK: "enabled"})
+    assert await run(tmp_path, api, apply=False, desired=WITH_HOOK) == 0
+    out = capsys.readouterr().out
+    assert f"webhook {HOOK}: present" in out and "nothing to change" in out
+
+
+@pytest.mark.parametrize(
+    ("endpoints", "status", "said"),
+    [
+        ({}, 200, "missing (dashboard)"),
+        ({HOOK: "disabled"}, 200, "disabled; enable it (dashboard)"),
+        ({"https://elsewhere.test/hook": "enabled"}, 200, "missing (dashboard)"),
+        ({HOOK: "enabled"}, 403, "the key cannot read the webhook endpoints (dashboard)"),
+    ],
+    ids=["none", "disabled", "another", "unreadable"],
+)
+async def test_a_webhook_endpoint_not_enabled_fails_the_run(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    endpoints: dict[str, str],
+    status: int,
+    said: str,
+) -> None:
+    # An environment with no endpoint receives nothing, and nothing else
+    # says so: the run names the dashboard step and fails, dry run or not.
+    api = FakeWorkOS(
+        {LOCAL, DEPLOYED}, default=DEPLOYED, endpoints=endpoints, endpoints_status=status
+    )
+    for apply in (False, True):
+        assert await run(tmp_path, api, apply=apply, desired=WITH_HOOK) == 1
+        out = capsys.readouterr().out
+        assert f"webhook {HOOK}: {said}" in out
+        assert "1 change(s) need the dashboard" in out
+        assert KEY not in out
+    assert not any(r.method != "GET" and r.url.path == "/webhook_endpoints" for r in api.requests)
 
 
 def test_the_committed_desired_state_names_both_applications() -> None:
