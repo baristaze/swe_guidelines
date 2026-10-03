@@ -417,7 +417,17 @@ async def mint_operator_token(
         else:
             login_token = await device_sign_in(client, sleep=sleep or asyncio.sleep)
         code = (await asyncio.to_thread(getpass.getpass, "TOTP code: ")).strip()
-        verified = await client.verify_second_factor(login_token, code)
+        try:
+            verified = await client.verify_second_factor(login_token, code)
+        except ApiError as error:
+            if not not_enrolled(error):
+                raise
+            await sign_out(client, login_token)
+            raise ValueError(
+                f"no second factor is enrolled for you on {env.name}, and an environment "
+                "created again holds none: enrol first (docs/runbooks/operator.md, The "
+                "second factor), then run this again"
+            ) from None
         try:
             minted = await client.request(
                 "POST", "/v1/admin/me/tokens", json={"permission": permission}, token=verified.token
@@ -426,6 +436,16 @@ async def mint_operator_token(
             await sign_out(client, verified.token)
             raise
     return MintedToken(token=str(minted["token"]), id=UUID(str(minted["id"])))
+
+
+def not_enrolled(error: ApiError) -> bool:
+    """Whether the plane refused a sign-in's code because its identity has
+    enrolled no second factor yet."""
+    if error.code == "second_factor_not_enrolled":
+        return True
+    return error.code == "validation_failed" and error.message.startswith(
+        "no second factor is enrolled"
+    )
 
 
 def in_a_persons_terminal(args: argparse.Namespace, env: Environment) -> bool:

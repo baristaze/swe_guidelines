@@ -53,9 +53,10 @@ class SignInRoutes:
     """The device sign-in, answered pending `pending` times (the first of them
     a slow-down), then the second factor and the mint."""
 
-    def __init__(self, pending: int = 2, mint_status: int = 200) -> None:
+    def __init__(self, pending: int = 2, mint_status: int = 200, enrolled: bool = True) -> None:
         self.pending = pending
         self.mint_status = mint_status
+        self.enrolled = enrolled
         self.paths: list[str] = []
         self.signed_out: list[str] = []
 
@@ -78,6 +79,12 @@ class SignInRoutes:
         if path == "/v1/auth/second-factor":
             assert request.headers["authorization"] == "Bearer lgn_first"
             assert body == {"totp_code": "123456"}
+            if not self.enrolled:
+                refusal = {
+                    "code": "validation_failed",
+                    "message": "no second factor is enrolled for this sign-in",
+                }
+                return httpx.Response(400, json={"error": refusal})
             return httpx.Response(200, json={"token": "lgn_verified", **LOGIN})
         if path == "/v1/admin/me/tokens":
             assert request.headers["authorization"] == "Bearer lgn_verified"
@@ -153,6 +160,33 @@ async def test_the_operator_token_is_minted_in_a_terminal_and_written_unprinted(
     assert "lgn_" not in captured.out + captured.err
     assert f"--revoke {MINTED_ID}" in captured.out, "the id is no secret, and ends it sooner"
     assert routes.signed_out == [], "the mint ended the sign-in itself"
+
+
+async def test_an_operator_who_has_not_enrolled_is_told_to_enrol(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # A recreated environment's database holds no enrolment, so an operator
+    # of the one before is not enrolled there: the run says what to do, ends
+    # the sign-in it holds, and writes nothing.
+    file = env_file(tmp_path, "staging")
+    before = file.read_text()
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setattr("sys.stdin", Terminal())
+    monkeypatch.setattr(ops_main.getpass, "getpass", lambda prompt: "123456")
+
+    async def no_wait(seconds: float) -> None:
+        return None
+
+    monkeypatch.setattr(ops_main.asyncio, "sleep", no_wait)
+    routes = SignInRoutes(pending=0, enrolled=False)
+    with pytest.raises(ValueError, match=r"enrol first .*The second factor"):
+        await token_command(
+            argparse.Namespace(env="staging", identity="operator", profile=None, dev_email=None),
+            transport=httpx.MockTransport(routes),
+        )
+    assert routes.signed_out == ["lgn_first"]
+    assert "/v1/admin/me/tokens" not in routes.paths
+    assert file.read_text() == before
 
 
 async def test_the_local_stack_signs_the_operator_in_by_address(
