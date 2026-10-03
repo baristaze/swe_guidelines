@@ -355,16 +355,22 @@ cloudflare_cname() {
 # A CNAME left by an environment the nuke destroyed points at a distribution
 # that is gone, and CloudFront refuses the name to a new one while it does
 # (CNAMEAlreadyExists). So while no distribution of this account serves the
-# name, a CNAME there to CloudFront is that leftover, and it goes before the
-# deploy that makes the new distribution.
+# name, a CNAME there to CloudFront whose target no longer resolves is that
+# leftover, and it goes before the deploy. One whose target still answers is
+# a site served from somewhere else, and that is a person's call: refused.
 cloudflare_drop_stale_cname() {
-  local name="$1" existing record_id content
-  say "+ cloudflare GET /zones/$zone_id/dns_records?type=CNAME&name=$name  (a CNAME to CloudFront, with no distribution here serving $name, goes)"
+  local name="$1" existing record_id content answers
+  say "+ cloudflare GET /zones/$zone_id/dns_records?type=CNAME&name=$name  (a CNAME to CloudFront whose target no longer resolves goes)"
   if $dry_run; then return; fi
   existing="$(cloudflare GET "/zones/$zone_id/dns_records?type=CNAME&name=$name&per_page=100")"
   while read -r record_id content; do
     [ -n "$record_id" ] || continue
-    say "+ cloudflare DELETE /zones/$zone_id/dns_records/$record_id ($name CNAME $content, whose distribution is gone)"
+    say "+ curl https://cloudflare-dns.com/dns-query?name=${content%.}&type=A  (does $content still answer?)"
+    answers="$(curl -sS --fail -H 'accept: application/dns-json' \
+      "https://cloudflare-dns.com/dns-query?name=${content%.}&type=A" | jq -er '(.Answer // []) | length')" \
+      || refuse "cannot tell whether $content still answers, so $name CNAME $content stays; run this again"
+    [ "$answers" = "0" ] || refuse "$name holds a CNAME to $content, a CloudFront distribution that still answers but is not this account's; a site served from elsewhere is yours to move: remove the record by hand if this environment's site is to serve there, then run this again"
+    say "+ cloudflare DELETE /zones/$zone_id/dns_records/$record_id ($name CNAME $content, which no longer resolves)"
     cloudflare DELETE "/zones/$zone_id/dns_records/$record_id" >/dev/null
   done < <(printf '%s' "$existing" | jq -r '.result[] | select(.content | test("\\.cloudfront\\.net\\.?$")) | "\(.id) \(.content)"')
 }

@@ -147,8 +147,13 @@ the names of what was written and never a value.
      certificate (3b), then, once a deploy has made the site's
      distribution, the name as a CNAME to it, DNS only (3c). On a first
      run there is no distribution yet, and 3c says so: the person runs
-     the script again after the first green deploy. A name that holds
-     an address record is refused, and the person decides.
+     the script again after the first green deploy. While no
+     distribution of the account serves the name, 3c deletes a CNAME
+     there to CloudFront whose target no longer resolves, the record a
+     nuked environment left, since CloudFront refuses the name to a new
+     distribution while it stands; one whose target still answers is
+     refused. A name that holds an address record is refused, and the
+     person decides.
    - The investigate profile, `acme-<env>-investigate`: the role's ARN
      with the Identity Center profile as its `source_profile`.
    - The GitHub environments and their variables: `staging-build` and
