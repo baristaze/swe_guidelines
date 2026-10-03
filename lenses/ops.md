@@ -490,7 +490,10 @@ run ending at its bootstrap, and the order across accounts. The
 destroy script: the word staging goes on, production's typed name, the
 branch and the state it reads deletion protection from, the final
 snapshot and the backups it keeps, the exact origin commit it applies
-from in a clean worktree, and the report of what remains.
+from in a clean worktree, what it removes that the state does not hold
+(the application's secrets, the tenants' kept beside a final snapshot,
+and what the cloud made for the destroyed resources), and the report of
+what remains.
 
 **Violation.** A step of creation done by hand in the console; a run
 that executes a command it did not print, or has no dry run; a
@@ -499,7 +502,9 @@ turns deletion protection off; a protection check read on `main`
 instead of `release` and the applied state; a production destroy that
 skips the final snapshot or deletes the automated backups; a destroy
 that ends without naming what remains, the snapshot among it; a
-destroy applied from the working tree it was started in.
+destroy applied from the working tree it was started in; a destroy that
+leaves the application's secrets behind with no snapshot to need them,
+or deletes a tenant's secret while the final snapshot exists.
 
 **Severity.** high
 
