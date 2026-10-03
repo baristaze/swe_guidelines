@@ -399,6 +399,7 @@ if [ "$environment" = "staging" ]; then
   fi
 fi
 say "- $HOME/.config/acme/ops/$environment.env and $environment.provisioner.env beside it, and the investigate profile in $HOME/.aws/config; their tokens, and every operator's second-factor enrolment, went with the database: a recreated $environment grants and enrols each operator again"
+say "- the GitHub environments and their variables: SMOKE_EMAIL still names the smoke identity, whose grant went with the database, so a recreated $environment's smoke step fails until the grant runs again"
 if $snapshot_kept; then
   say "- the tenants' secrets under $tenant_prefix in Secrets Manager, with the final snapshot that needs them; delete them by hand only with it"
 fi

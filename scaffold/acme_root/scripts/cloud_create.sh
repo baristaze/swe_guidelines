@@ -642,7 +642,7 @@ case "$environment" in
   production) grant_branch=release ;;
 esac
 say "== 8. The first operator, the provisioner, and the smoke identity, through the pipeline"
-say "Each identity signs up at https://$app_domain_name first, like any person. Then, on $grant_branch:"
+say "Each identity signs up at https://$app_domain_name first, like any person. Then, on $grant_branch, one at a time: a run waits for the one before it, and GitHub keeps one waiting run per environment, so a dispatch made while another waits cancels that one:"
 say "  gh workflow run grant-operator.yml --ref $grant_branch -f environment=$environment -f email=<operator> -f permission=read"
 say "    The operator enrols the second factor at the operator plane's first sign-in, then runs, in their own terminal:"
 say "    uv run acme-ops token --env $environment --identity operator"
@@ -655,7 +655,7 @@ say "    then, under your own sign-in and never an agent's: uv run acme-ops toke
 say "    (the token lasts an hour: mint it again, with mint_token alone, before each traffic run)"
 say "  gh workflow run grant-operator.yml ... -f email=<smoke identity> -f permission=read"
 say "    then: gh variable set SMOKE_EMAIL --env $environment --body <smoke identity>"
-say "Until SMOKE_EMAIL is set, every deploy's smoke step is skipped, and says so."
+say "Until SMOKE_EMAIL is set, every deploy's smoke step is skipped, and says so. Once set, it fails until this environment's database holds the smoke identity's grant: a recreated environment keeps the variable and loses the grant."
 
 say "== 9. When a deploy is green after that, the smoke test: the deploy ran it; one request by hand, then its signals by request id"
 say "id=\$(curl -s -o /dev/null -D - $api_url/v1/me | awk 'tolower(\$1) == \"x-request-id:\" { print \$2 }' | tr -d '\\r')"
