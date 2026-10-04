@@ -1,0 +1,154 @@
+# `release` is the commit of the newest published release: a branch moved
+# only here, by a fast-forward from `main`, after a person approves. Once a
+# release pull request merges, a person or an agent dispatches this workflow
+# on `main`, with that pull request's squash as `commit` (empty takes main's
+# tip, as the dispatch saw it).
+#
+# `version` refuses anything but the squash of a release pull request whose
+# version is not tagged yet, on `main`, with its section in the changelog.
+# `approval` waits for a reviewer of the `human-approval` environment, and
+# refuses while that environment has no required-reviewers rule, so nothing
+# is published unreviewed. Only then does `publish` fast-forward `release`,
+# tag the commit, and publish the GitHub release, its notes the changelog's
+# section.
+#
+# The tag is made with the run's token, which starts no workflow, so the
+# checks release-tag.yml makes on a pushed tag run here, before the approval.
+name: release
+
+on:
+  workflow_dispatch:
+    inputs:
+      commit:
+        description: >-
+          The squash of the release pull request, by its full sha. Empty
+          takes main's tip.
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  version:
+    name: the commit is an unreleased release on main
+    runs-on: ubuntu-26.04
+    timeout-minutes: 10
+    outputs:
+      sha: ${{ steps.commit.outputs.sha }}
+      version: ${{ steps.commit.outputs.version }}
+      title: ${{ steps.commit.outputs.title }}
+    steps:
+      - name: dispatched on main
+        if: github.ref != 'refs/heads/main'
+        env:
+          REF: ${{ github.ref }}
+        run: |
+          echo "::error::dispatch the release workflow on main, not $REF"
+          exit 1
+      # Actions are pinned by commit; the comment names the tag the commit carries.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.commit || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      # The uv version lives in .github/pins/, where dependabot updates it.
+      - name: read the uv pin
+        id: pins
+        run: echo "uv=$(sed -n 's|^uv==||p' .github/pins/requirements.txt)" >> "$GITHUB_OUTPUT"
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          version: ${{ steps.pins.outputs.uv }}
+          python-version: "3.14"
+      - name: the squash of a release pull request, on main, not tagged yet
+        id: commit
+        env:
+          REQUESTED: ${{ inputs.commit }}
+        run: |
+          sha="$(git rev-parse HEAD)"
+          if [ -n "$REQUESTED" ] && [ "$REQUESTED" != "$sha" ]; then
+            echo "::error::commit names a commit by its full sha; '$REQUESTED' is $sha"
+            exit 1
+          fi
+          git fetch --quiet origin main
+          if ! git merge-base --is-ancestor "$sha" origin/main; then
+            echo "::error::$sha is not on main; a release is the squash of its pull request on main"
+            exit 1
+          fi
+          version="$(jq -er .version .claude-plugin/plugin.json)"
+          subject="$(git log -1 --format=%s "$sha")"
+          case "$subject" in
+            "Release $version: "*) ;;
+            *)
+              echo "::error::$sha is not the squash of the release pull request of $version: its subject is '$subject'"
+              exit 1 ;;
+          esac
+          if git ls-remote --exit-code --tags origin "refs/tags/v$version" >/dev/null; then
+            echo "::error::v$version is tagged already"
+            exit 1
+          fi
+          if ! awk -v heading="## $version (" 'index($0, heading) == 1 { found = 1 } END { exit !found }' CHANGELOG.md; then
+            echo "::error::CHANGELOG.md has no section for $version"
+            exit 1
+          fi
+          if git ls-remote --exit-code --heads origin release >/dev/null; then
+            git fetch --quiet origin release
+            if ! git merge-base --is-ancestor origin/release "$sha"; then
+              echo "::error::release ($(git rev-parse origin/release)) is not an ancestor of $sha: someone committed to release. An administrator resets it to a main commit, then dispatches again."
+              exit 1
+            fi
+          fi
+          title="${subject#"Release $version: "}"
+          title="${title% (#*)}"
+          {
+            echo "sha=$sha"
+            echo "version=$version"
+            echo "title=$title"
+          } >> "$GITHUB_OUTPUT"
+          echo "Releases v$version at \`$sha\`: $title" >> "$GITHUB_STEP_SUMMARY"
+      - name: check the tag against every copy of the version
+        env:
+          VERSION: ${{ steps.commit.outputs.version }}
+        run: uv run --no-project python scripts/check_version.py --tag "v$VERSION"
+
+  approval:
+    needs: version
+    uses: ./.github/workflows/human-approval.yml
+    permissions:
+      actions: read
+      contents: read
+    with:
+      subject: the release of v${{ needs.version.outputs.version }} at ${{ needs.version.outputs.sha }}
+
+  publish:
+    name: fast-forward release, tag, and publish
+    needs: [version, approval]
+    runs-on: ubuntu-26.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.version.outputs.sha }}
+          fetch-depth: 0
+      # git refuses a push that is not a fast-forward, and so does the
+      # ruleset that keeps release from being rewritten.
+      - name: fast-forward release
+        env:
+          SHA: ${{ needs.version.outputs.sha }}
+        run: git push origin "$SHA:refs/heads/release"
+      - name: tag and publish the release
+        env:
+          SHA: ${{ needs.version.outputs.sha }}
+          VERSION: ${{ needs.version.outputs.version }}
+          TITLE: ${{ needs.version.outputs.title }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          awk -v heading="## $VERSION (" 'index($0, heading) == 1 { found = 1; next } found && /^## / { exit } found { print }' CHANGELOG.md > "$RUNNER_TEMP/notes.md"
+          gh release create "v$VERSION" --target "$SHA" --title "$VERSION: $TITLE" --notes-file "$RUNNER_TEMP/notes.md"
+          echo "Published v$VERSION at \`$SHA\`; release is there too." >> "$GITHUB_STEP_SUMMARY"

@@ -50,6 +50,8 @@ one this repository makes.
   Production has two: one reads and plans, one applies.
 - Both environments are one graph with different numbers. A new
   environment is another root, never a copy.
+- `main`, `release`, and `scaffold` are never deleted and never
+  rewritten: `scripts/branch_rulesets.sh` sets a ruleset on each.
 
 The steps, the rollback, and what to check at the approval are in
 [the deploy runbook](../docs/runbooks/deploy.md).

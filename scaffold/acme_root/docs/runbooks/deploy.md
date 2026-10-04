@@ -194,7 +194,16 @@ ruleset restricts `release`, and dispatches `deploy-production` itself.
 
 The `production` environment carries the owner as its required
 reviewer. `staging` and `production-plan` carry no rule: a reviewer on
-the plan would hold the plan the reviewer is meant to read.
+the plan would hold the plan the reviewer is meant to read. A run asks
+once: its one job that declares `production`, `apply` or `rollback`, is
+the one that waits, and every job that declares it runs the rule check
+before its credential
+([ADR 0082](../adr/0082-a-deploy-asks-a-person-once.md)).
+
+`main`, `release`, and `scaffold` are never deleted and never rewritten.
+`scripts/branch_rulesets.sh`, run once per repository by an
+administrator, sets a ruleset on each that blocks a deletion and a force
+push, with no bypass actor; `--dry-run` prints each one.
 
 ## Nuke
 
@@ -224,12 +233,13 @@ the profile, and the env file.
   environment's variables are empty: run `scripts/cloud_create.sh
   staging` again.
 - **`guard` says `release` is not an ancestor of `main`.** Someone
-  committed to `release`. An admin turns the `release` ruleset off for
-  the reset (Settings, Rules, Rulesets), resets it
-  (`git push --force origin <main commit>:release`), turns the ruleset on
+  committed to `release`. An admin turns off both of its rulesets for
+  the reset (Settings, Rules, Rulesets: `release: moved by the release
+  workflow alone` and `release: never deleted, never rewritten`), resets
+  it (`git push --force origin <main commit>:release`), turns them on
   again, then dispatches `release` again.
-- **`guard` says `production` has no required reviewer.** Add it; the
-  run refused to plan.
+- **A job says `production` has no required-reviewers rule.** Add the
+  reviewer; the run refused before any credential.
 - **`apply` says the saved plan is stale.** Someone applied in between.
   Rerun for a fresh plan.
 - **"Not authorized to perform sts:AssumeRoleWithWebIdentity".** The job
