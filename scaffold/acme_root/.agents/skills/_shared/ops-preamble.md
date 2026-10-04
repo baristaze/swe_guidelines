@@ -72,7 +72,10 @@ repository. It holds:
 - `ACME_ERROR_TRACKER_ORG` and `ACME_ERROR_TRACKER_PROJECT`, which
   name the product's one project and hold the same value in every
   environment: one project takes every environment's errors, and a
-  read of it filters on `environment:<env>`.
+  read of it filters on `environment:<env>`. The org is the tracker's
+  slug, which need not be the product's name. The create run writes
+  them, and the url, from `error_tracker` in
+  `deployment/cloud/environments.json`.
 
 `local.env` points at the compose stack and adds the twins,
 `ACME_PROMETHEUS_URL` and `ACME_JAEGER_URL`, on the ports `.env`

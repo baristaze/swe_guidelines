@@ -137,7 +137,11 @@ Facts that decide how the steps below go. Read them before the browser.
    claude.ai's "Computer actions available". When one shows, on any
    site, set nothing and send nothing: the session is `not-run`, and
    its `note` asks the person to turn that setting off. Never change
-   it yourself.
+   it yourself. Some sites show the line only once a message is sent,
+   such as claude.ai's "Connected" line under the device's name: look again on the
+   conversation page right after the send, and when it shows there,
+   stop that session, record it `not-run` with the same `note`, and
+   score nothing it answered.
 
    Otherwise set the model and the effort, then verify with a
    screenshot of the chip. `model_label` is the model picker's checked
@@ -291,9 +295,10 @@ Facts that decide how the steps below go. Read them before the browser.
    `save_to_disk`. Its region is right of the sidebar and below the
    page's header, where claude.ai writes the conversation's own title:
    it shows that line and the chip, and no conversation title. Copy it
-   into the run folder as `<site>.jpg` with `python3`
-   (`shutil.copyfile` from the path the tool reports); the tool saves
-   JPEG. These are the evidence a pull request carries.
+   into the run folder as `<site>` with the extension of the path the
+   tool reports (`<site>.png` when it saves PNG), with `python3`
+   (`shutil.copyfile` from that path). These are the evidence a pull
+   request carries.
 10. Close the tabs `tabs_create_mcp` opened in step 3, and no other.
 11. Only when the arguments have `compare=`: compare this run with the
     earlier ones as `references/compare.md` says.
