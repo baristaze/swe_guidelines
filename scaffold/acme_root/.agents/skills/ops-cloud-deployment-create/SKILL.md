@@ -37,7 +37,8 @@ rather than working around it.
 Everything about the environment's account comes from
 `deployment/cloud/environments.json`: the account id, the region, the
 administrator profile, the Identity Center profile an operator signs in
-with, and the three public names. Read it first and say what it names.
+with, the three public names, and the error tracker. Read it first and
+say what it names.
 
 The script also needs `OWNER_EMAIL` and `ALARM_EMAIL` (as environment
 variables or as `--owner-email`, `--alarm-email`), and
@@ -85,15 +86,17 @@ the repository's environments and their variables.
 
 No env file is read. The script writes one, the file the preamble
 describes: `~/.config/acme/ops/<env>.env`, owner-only, with
-`ACME_API_URL` set and the lines `ACME_OPERATOR_TOKEN` and the
-tracker's left empty, because no operator exists until
-`grant-operator.yml` has run and the operator has enrolled a second
-factor. It writes no provisioner's file: `acme-ops token --identity
-provisioner` makes that one when the person copies the token. The script prints the two tracker lines,
-`ACME_ERROR_TRACKER_URL` and `ACME_ERROR_TRACKER_TOKEN`, as the one
-part of the file a person fills by hand, once the product's project
-exists in the error tracker; it writes `ACME_ERROR_TRACKER_ORG` and
-`ACME_ERROR_TRACKER_PROJECT` itself. It appends the
+`ACME_API_URL` set and the line `ACME_OPERATOR_TOKEN` left empty,
+because no operator exists until `grant-operator.yml` has run and the
+operator has enrolled a second factor. It writes no provisioner's file:
+`acme-ops token --identity provisioner` makes that one when the person
+copies the token. It writes `ACME_ERROR_TRACKER_URL`,
+`ACME_ERROR_TRACKER_ORG`, and `ACME_ERROR_TRACKER_PROJECT` from
+`error_tracker` in `environments.json`, and prints
+`ACME_ERROR_TRACKER_TOKEN` as the one part of the file a person fills
+by hand, once the product's project exists in the error tracker. An
+`error_tracker` whose url is empty is none: the four tracker lines stay
+empty. It appends the
 `acme-<env>-investigate` profile to `~/.aws/config`, chained from the
 Identity Center profile. It writes no key to any file it leaves
 behind; for production it makes one key pair, in a temporary folder it
@@ -104,7 +107,8 @@ the names of what was written and never a value.
 ## Procedure
 
 1. Read `deployment/cloud/environments.json` and name the account, the
-   region, and the three public names. Verify the administrator profile
+   region, the three public names, and the error tracker's url, org, and
+   project, or that it names none. Verify the administrator profile
    as Role and credential states. Check the GitHub login.
 2. Run the script, in dry mode first when `--dry-run` was given, or
    when it is the first time this environment is created. The script
@@ -290,7 +294,7 @@ dry run's smoke test is "not yet".
 
 - <the next run of Order, or nothing>
 - Dispatch `grant-operator.yml` for the first operator, who enrols the second factor at the console's first sign-in and runs `uv run acme-ops token --env <env> --identity operator` in their own terminal; grant the smoke identity and set `SMOKE_EMAIL`, so the next deploy runs the smoke test
-- Manual steps left: <the tracker's lines in the env file, or none>
+- Manual steps left: <the tracker's token in the env file, or none>
 - The providers, after the first deploy: write workos_api_key, workos_webhook_secret, and sentry_dsn under <sso profile | acme-prod-power>, run `acme-ops workos-bootstrap`, then roll or wait for the next deploy (docs/runbooks/providers/workos.md)
 - Hand the administrator permission set back; every later skill runs
   under acme-<env>-investigate.
