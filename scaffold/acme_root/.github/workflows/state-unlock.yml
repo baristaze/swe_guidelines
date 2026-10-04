@@ -25,6 +25,8 @@ on:
 permissions:
   id-token: write
   contents: read
+  # The rule check reads production's protection rules.
+  actions: read
 
 concurrency:
   group: state-unlock
@@ -49,6 +51,27 @@ jobs:
           case "$ENVIRONMENT:$REF" in
             staging:refs/heads/main|production:refs/heads/release) ;;
             *) echo "::error::$ENVIRONMENT's lock is removed from its own branch only (staging: main, production: release), not $REF"; exit 1 ;;
+          esac
+      # Production's reviewer gates its deploy credential; this refuses
+      # before the credential when the rule is missing, since then nothing
+      # waited. human-approval.yml's rule check, word for word.
+      - name: production requires a reviewer
+        if: inputs.environment == 'production'
+        env:
+          ENVIRONMENT: ${{ inputs.environment }}
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          if ! rules="$(gh api "repos/$REPOSITORY/environments/$ENVIRONMENT" --jq '[.protection_rules[]? | .type] | join(",")' 2>&1)"; then
+            echo "::error::the $ENVIRONMENT environment cannot be read ($rules): create it with a required reviewer before this runs. A private repository can have that rule only under GitHub Enterprise; on Free, Pro, or Team this refuses every run."
+            exit 1
+          fi
+          case ",$rules," in
+            *,required_reviewers,*)
+              echo "The \`$ENVIRONMENT\` environment requires a reviewer; the job that declares it waits for one." >> "$GITHUB_STEP_SUMMARY" ;;
+            *)
+              echo "::error::the $ENVIRONMENT environment has no required-reviewers rule (rules: '$rules'); without it the job that declares it would run unreviewed. Add the reviewer before this runs. A private repository can have that rule only under GitHub Enterprise; on Free, Pro, or Team this refuses every run."
+              exit 1 ;;
           esac
       - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
         with:

@@ -7,6 +7,7 @@ dry run that wrote a profile or an env file by mistake would be caught.
 
 import json
 import os
+import re
 import shutil
 import subprocess
 from pathlib import Path
@@ -465,3 +466,211 @@ def test_a_deploy_without_a_site_name_deploys_everything_else() -> None:
     assert publish and all(
         "needs.resolve.outputs.site_domain_name != ''" in s["if"] for s in publish
     )
+
+
+WORKFLOWS = ROOT / ".github" / "workflows"
+RULESETS = ROOT / "scripts" / "branch_rulesets.sh"
+CREDENTIAL = "aws-actions/configure-aws-credentials@"
+
+
+def _workflow(name: str) -> dict:
+    return yaml.safe_load((WORKFLOWS / name).read_text())
+
+
+def _rule_check() -> str:
+    """human-approval.yml's rule check: the one script every gate runs
+    before a reviewer environment's job, so its absence fails the run."""
+    return _workflow("human-approval.yml")["jobs"]["rule"]["steps"][0]["run"]
+
+
+def _needs(job: dict) -> list[str]:
+    needs = job.get("needs", [])
+    return [needs] if isinstance(needs, str) else list(needs)
+
+
+def _reviewer_environments() -> set[str]:
+    """The environments the create run gives a required reviewer."""
+    return set(re.findall(r"create_environment (\S+) \S+ -f 'reviewers", CREATE.read_text()))
+
+
+def test_the_create_run_gives_production_alone_a_reviewer() -> None:
+    assert _reviewer_environments() == {"production"}
+
+
+def test_a_production_run_asks_a_person_once_on_the_job_that_holds_the_deploy_role() -> None:
+    """Production's deploy role trusts the `production` environment's
+    subject, so its reviewer gates the credential itself, and each job that
+    declares it waits on its own. So in each mode of a run, release and
+    rollback, exactly one job declares a reviewer environment, and it is the
+    job that assumes the deploy role: a second would ask twice, and an
+    approval in a job of its own would leave the credential ungated."""
+    jobs = _workflow("deploy-production.yml")["jobs"]
+    modes: dict[str, set[str]] = {}
+
+    def of(name: str) -> set[str]:
+        if name not in modes:
+            job = jobs[name]
+            own = {"release", "rollback"}
+            for mode in ("release", "rollback"):
+                if f"needs.guard.outputs.mode == '{mode}'" in job.get("if", ""):
+                    own = {mode}
+            for need in _needs(job):
+                own &= of(need)
+            modes[name] = own
+        return modes[name]
+
+    reviewer = _reviewer_environments()
+    waits = {}
+    for mode in ("release", "rollback"):
+        waits[mode] = [
+            name for name in jobs if mode in of(name) and jobs[name].get("environment") in reviewer
+        ]
+    assert waits == {"release": ["apply"], "rollback": ["rollback"]}
+    for name in ("apply", "rollback"):
+        assert any(CREDENTIAL in step.get("uses", "") for step in jobs[name]["steps"])
+
+
+def _environments_of(workflow: dict, job: dict) -> set[str]:
+    environment = job.get("environment")
+    if environment is None:
+        return set()
+    if environment == "${{ inputs.environment }}":
+        triggers = workflow[True]  # `on:` is YAML's true
+        spec = (triggers.get("workflow_dispatch") or triggers.get("workflow_call"))["inputs"]
+        options = spec["environment"].get("options") or [spec["environment"].get("default")]
+        return set(options)
+    return {environment}
+
+
+def _checks(job: dict, environment: str) -> int | None:
+    """The index of the step that runs the rule check for `environment`."""
+    for index, step in enumerate(job.get("steps", [])):
+        if step.get("run") == _rule_check() and step.get("env", {}).get("ENVIRONMENT") in (
+            environment,
+            "${{ inputs.environment }}",
+        ):
+            return index
+    return None
+
+
+@pytest.mark.parametrize("name", sorted(p.name for p in WORKFLOWS.glob("*.yml")))
+def test_every_job_that_declares_production_runs_the_rule_check_first(name: str) -> None:
+    """Without the reviewer rule, a job that declares `production` waits for
+    nobody and holds the deploy role. So the rule check runs before its
+    credential: in the job itself, ahead of the credential step, or in a job
+    it needs."""
+    workflow = _workflow(name)
+    jobs = workflow["jobs"]
+
+    def checked_before(job_name: str) -> bool:
+        job = jobs[job_name]
+        if _checks(job, "production") is not None:
+            return True
+        return any(checked_before(need) for need in _needs(job))
+
+    for job_name, job in jobs.items():
+        if "production" not in _environments_of(workflow, job):
+            continue
+        steps = job.get("steps", [])
+        credential = next(
+            (i for i, step in enumerate(steps) if CREDENTIAL in step.get("uses", "")), len(steps)
+        )
+        own = _checks(job, "production")
+        assert (own is not None and own < credential) or any(
+            checked_before(need) for need in _needs(job)
+        ), f"{name}: {job_name} declares production with no rule check before its credential"
+
+
+def test_every_rule_check_is_human_approvals_word_for_word() -> None:
+    copies = [
+        (path.name, step)
+        for path in sorted(WORKFLOWS.glob("*.yml"))
+        for job in _workflow(path.name)["jobs"].values()
+        for step in job.get("steps", [])
+        if "protection_rules" in step.get("run", "")
+    ]
+    assert len(copies) == 4
+    assert all(step["run"] == _rule_check() for _, step in copies), [n for n, _ in copies]
+
+
+def test_the_approval_waits_only_after_the_rule_check() -> None:
+    jobs = _workflow("human-approval.yml")["jobs"]
+    assert [name for name, job in jobs.items() if "environment" in job] == ["approve"]
+    assert jobs["approve"]["needs"] == "rule"
+    assert jobs["approve"]["environment"] == "${{ inputs.environment }}"
+
+
+PLAN = "A private repository can have that rule only under GitHub Enterprise"
+
+
+@pytest.mark.parametrize(
+    ("answer", "status", "returncode", "says"),
+    [
+        ("required_reviewers,branch_policy", 0, 0, ("requires a reviewer",)),
+        (
+            "branch_policy",
+            0,
+            1,
+            ("::error::the production environment has no required-reviewers", PLAN),
+        ),
+        ("", 0, 1, ("::error::the production environment has no required-reviewers", PLAN)),
+        ("HTTP 404: Not Found", 1, 1, ("::error::the production environment cannot be read", PLAN)),
+    ],
+)
+def test_the_rule_check_refuses_an_environment_with_no_reviewer(
+    tmp_path: Path, answer: str, status: int, returncode: int, says: tuple[str, ...]
+) -> None:
+    """The check runs as the runner runs a step (bash -e, pipefail), with a
+    `gh` that answers what the environments API would. A refusal says that a
+    private repository has the rule only under GitHub Enterprise."""
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    gh = bin_dir / "gh"
+    gh.write_text('#!/usr/bin/env bash\nprintf "%s" "$GH_ANSWER"\nexit "$GH_STATUS"\n')
+    gh.chmod(0o755)
+    summary = tmp_path / "summary.md"
+    result = subprocess.run(
+        ["bash", "--noprofile", "--norc", "-eo", "pipefail", "-c", _rule_check()],
+        capture_output=True,
+        text=True,
+        env={
+            "PATH": f"{bin_dir}{os.pathsep}{os.environ['PATH']}",
+            "ENVIRONMENT": "production",
+            "REPOSITORY": "acme/acme",
+            "GH_TOKEN": "unused",
+            "GITHUB_STEP_SUMMARY": str(summary),
+            "GH_ANSWER": answer,
+            "GH_STATUS": str(status),
+        },
+    )
+    assert result.returncode == returncode, result.stderr
+    out = result.stdout + (summary.read_text() if summary.exists() else "")
+    assert all(s in out for s in says), out
+
+
+def test_the_branch_rulesets_keep_main_release_and_scaffold(tmp_path: Path) -> None:
+    """main, release, and scaffold are never deleted and never rewritten: a
+    ruleset each, with no bypass actor. The dry run calls no `gh` at all."""
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    gh = bin_dir / "gh"
+    gh.write_text("#!/usr/bin/env bash\necho called >&2\nexit 9\n")
+    gh.chmod(0o755)
+    result = subprocess.run(
+        ["bash", str(RULESETS), "--dry-run"],
+        capture_output=True,
+        text=True,
+        env={"PATH": f"{bin_dir}{os.pathsep}{os.environ['PATH']}", "HOME": str(tmp_path)},
+        cwd=ROOT,
+    )
+    assert result.returncode == 0, result.stderr
+    rulesets = [json.loads(line) for line in result.stdout.splitlines() if line.startswith("{")]
+    assert [r["conditions"]["ref_name"]["include"] for r in rulesets] == [
+        ["refs/heads/main"],
+        ["refs/heads/release"],
+        ["refs/heads/scaffold"],
+    ]
+    for ruleset in rulesets:
+        assert ruleset["enforcement"] == "active" and ruleset["bypass_actors"] == []
+        assert [rule["type"] for rule in ruleset["rules"]] == ["deletion", "non_fast_forward"]
+    assert rulesets[2]["name"] == "scaffold: never deleted, never rewritten"
