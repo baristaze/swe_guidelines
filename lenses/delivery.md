@@ -580,7 +580,8 @@ checker's enumeration instead (CTX-12).
 **Violation.** An exception to a guideline rule introduced with no
 ADR; code that embodies an ADR's decision without citing its number;
 a row of `specs/architecture.md` left naming a deviation the change
-ended; a copy's new ADR numbered below 1001. (What an ADR says once it is accepted is OPS-29.)
+ended; a copy's new ADR numbered below 1001. (What an ADR says once
+it is accepted is OPS-29.)
 
 **Severity.** medium
 
