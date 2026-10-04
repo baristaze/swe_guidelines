@@ -60,9 +60,10 @@ def test_no_planted_list_means_no_check():
 
 def test_a_planted_finding_with_a_list_of_files_is_named_at_any_of_them():
     expected = {"findings": [{"id": "A", "lens": "OM-16", "file": ["om/storage/__init__.py", "om/base.py"]}]}
-    assert E.named(expected, "- OM-16 `om/base.py:1` no tenancy namespace")["named"] == ["A"]
-    assert E.named(expected, "- OM-16 `storage/__init__.py:11` keyed by org_id")["named"] == ["A"]
-    assert E.named(expected, "- OM-16 `om/rules.py:3` no tenancy namespace")["missed"] == ["A"]
+    hit = {"expected": 1, "named": ["A"], "missed": []}
+    assert E.named(expected, "- OM-16 `om/base.py:1` no tenancy namespace") == hit
+    assert E.named(expected, "- OM-16 `storage/__init__.py:11` keyed by org_id") == hit
+    assert E.named(expected, "- OM-16 `om/rules.py:3` no tenancy namespace") == {"expected": 1, "named": [], "missed": ["A"]}
 
 
 def test_render_puts_the_expected_list_before_the_source():
