@@ -189,9 +189,17 @@ def test_evidence_is_read_and_its_unknown_keys_refused(tmp_path):
     )
     scn = S.load(write(tmp_path, "one.json", data))
     assert scn.evidence.files == ["**/*.py"] and scn.evidence.expected == "e.yaml"
-    assert scn.as_dict()["evidence"] == {"files": ["**/*.py"], "expected": "e.yaml"}
+    assert scn.as_dict()["evidence"] == {"files": ["**/*.py"], "expected": "e.yaml", "lenses": False}
     with pytest.raises(S.ScenarioError, match="unknown key"):
         S.from_data(dict(MINIMAL, evidence={"file": []}))
+
+
+def test_the_cited_lenses_are_a_switch_and_count_as_evidence():
+    scn = S.from_data(dict(MINIMAL, evidence={"lenses": True}))
+    assert scn.evidence.lenses and not scn.evidence.empty
+    assert not S.from_data(MINIMAL).evidence.lenses
+    with pytest.raises(S.ScenarioError, match="true or false"):
+        S.from_data(dict(MINIMAL, evidence={"lenses": "om"}))
 
 
 def test_expected_findings_need_a_target_of_their_own():

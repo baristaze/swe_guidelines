@@ -8,7 +8,10 @@ scenario can give the judges evidence:
 - the target's source, with line numbers, so a finding that points at a
   file and a line can be checked against that line;
 - the expected findings, the defects planted in the scenario's own
-  target, so a miss is visible.
+  target, so a miss is visible;
+- the text of each lens the artifact cites, from this checkout, so a
+  finding is weighed against what the lens says and not against what
+  a judge remembers of it.
 
 `named` is the part that is not a model's opinion: it counts which
 planted findings the artifact names by lens id and file. It is a
@@ -20,11 +23,20 @@ defect under another lens; the judges read for both.
 from __future__ import annotations
 
 import re
+from itertools import pairwise
 from pathlib import Path
 from typing import Any
 
 SOURCE_LIMIT = 80_000
+# About thirty lenses, and a whole group of them. Every judge of every
+# repeat reads it, so it bounds what the lens text adds to a run's spend.
+LENS_LIMIT = 40_000
+# An answer can name any number of ids; the ones no lens carries are
+# listed up to this many.
+UNKNOWN_SHOWN = 20
 LENS_ID = re.compile(r"\b[A-Z]{2,4}-\d{2}\b")
+LENS_HEADING = re.compile(r"^## ([A-Z]{2,4}-\d{2}) ", re.MULTILINE)
+SECTION = re.compile(r"^## ", re.MULTILINE)
 
 
 def source(target: Path, globs: list[str], limit: int = SOURCE_LIMIT) -> str:
@@ -58,7 +70,7 @@ def source(target: Path, globs: list[str], limit: int = SOURCE_LIMIT) -> str:
 
 
 def planted(expected: dict[str, Any] | None) -> list[dict[str, Any]]:
-    """The planted findings of an expected file, each with an id, a lens, and a file."""
+    """The planted findings of an expected file, each with an id, a lens, and a file or a list of them."""
     if not expected:
         return []
     out = []
@@ -100,20 +112,75 @@ def shortest_name(path: str, paths: set[str]) -> str:
     return path
 
 
+def planted_files(finding: dict[str, Any]) -> list[str]:
+    """The files a planted finding is right at: its one `file`, or each of a list."""
+    file = finding["file"]
+    return [str(f) for f in file] if isinstance(file, list) else [str(file)]
+
+
 def named(expected: dict[str, Any] | None, artifact: str) -> dict[str, Any] | None:
-    """Which planted findings the artifact names by lens id and file, and which it misses."""
+    """Which planted findings the artifact names by lens id and one of their files, and which it misses."""
     findings = planted(expected)
     if not findings:
         return None
     hit: list[str] = []
     miss: list[str] = []
-    paths = {str(f["file"]) for f in findings}
+    paths = {path for f in findings for path in planted_files(f)}
     for f in findings:
-        (hit if _names(artifact, str(f["lens"]), shortest_name(str(f["file"]), paths)) else miss).append(str(f["id"]))
+        lens = str(f["lens"])
+        found = any(_names(artifact, lens, shortest_name(path, paths)) for path in planted_files(f))
+        (hit if found else miss).append(str(f["id"]))
     return {"expected": len(findings), "named": hit, "missed": miss}
 
 
-def render(expected_text: str | None, source_text: str) -> str:
+def lens_sections(lenses_dir: Path) -> dict[str, str]:
+    """Every lens in `lenses_dir`, by id: its section of `<group>.md`, from its heading to the next.
+
+    `README.md` defines the format, so it holds no lens, whatever it shows.
+    """
+    out: dict[str, str] = {}
+    for path in sorted(lenses_dir.glob("*.md")):
+        if path.name == "README.md":
+            continue
+        text = path.read_text(encoding="utf-8")
+        starts = [m.start() for m in SECTION.finditer(text)] + [len(text)]
+        for start, end in pairwise(starts):
+            heading = LENS_HEADING.match(text, start)
+            if heading:
+                out[heading.group(1)] = text[start:end].strip()
+    return out
+
+
+def cited(lenses_dir: Path, artifact: str, limit: int = LENS_LIMIT) -> str:
+    """The text of each lens the artifact cites, once, in the order it first cites them.
+
+    The ids come from a model's answer, so an id brings text in only when
+    a lens carries it. An id of a lens group that no lens carries is
+    listed by name, up to `UNKNOWN_SHOWN` of them, so a judge sees it
+    does not exist. The text is cut at `limit` characters and says so.
+    """
+    sections = lens_sections(lenses_dir)
+    prefixes = {lens.split("-")[0] for lens in sections}
+    ids = list(dict.fromkeys(LENS_ID.findall(artifact)))
+    # A lens heading sits under the prompt's own, so it drops two levels.
+    text = "\n\n".join("##" + sections[lens] for lens in ids if lens in sections)
+    if len(text) > limit:
+        text = text[:limit] + f"\n\n[... lenses truncated at {limit} characters of {len(text)} ...]"
+    unknown = [lens for lens in ids if lens not in sections and lens.split("-")[0] in prefixes]
+    if unknown:
+        more = len(unknown) - UNKNOWN_SHOWN
+        listed = ", ".join(unknown[:UNKNOWN_SHOWN]) + (f", and {more} more" if more > 0 else "")
+        text = (text + "\n\n" if text else "") + f"No lens has the id {listed}."
+    if not text:
+        return ""
+    return (
+        "### Lenses the artifact cites\n\n"
+        "The text of each lens, as this checkout holds it. A finding is\n"
+        "weighed against what its lens says.\n\n" + text
+    )
+
+
+def render(expected_text: str | None, source_text: str, lens_text: str = "") -> str:
     """The evidence section of the judge prompt, or an empty string when there is none."""
     parts: list[str] = []
     if expected_text:
@@ -123,6 +190,8 @@ def render(expected_text: str | None, source_text: str) -> str:
             "The subject never saw this list.\n\n"
             f"```yaml\n{expected_text.strip()}\n```"
         )
+    if lens_text:
+        parts.append(lens_text)
     if source_text:
         parts.append(source_text)
     return "\n\n".join(parts)

@@ -11,7 +11,7 @@ asked to do, what it is given, how it is scored, and its runs.
 - [explain-tenancy](explain-tenancy/README.md): the `arch-explain`
   skill answering one question about the tenant fence.
 - [review-om](review-om/README.md): the `arch-review-om` skill
-  reviewing a checkout with eight planted defects.
+  reviewing a checkout with ten planted defects.
 - [support-turn](support-turn/README.md): a model answering an on-call
   question directly, with no skill.
 - [browser-judge-swe](browser-judge-swe/README.md): four chat products a reader would use,

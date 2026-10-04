@@ -1598,7 +1598,6 @@ def execute(args, scn, rt, run_dir, run_id, target, own_target, config, flags, e
     if expected_path:
         expected_text = expected_path.read_text(encoding="utf-8")
         expected_data = S.parse_text(expected_text, expected_path.suffix)
-    evidence_text = E.render(expected_text, source_text)
     resolved = {
         "run_id": run_id,
         # The scenario's content is inline; its path is a reference, so it is
@@ -1617,6 +1616,7 @@ def execute(args, scn, rt, run_dir, run_id, target, own_target, config, flags, e
         "evidence": {
             "files": list(scn.evidence.files),
             "source_chars": len(source_text),
+            "lenses": scn.evidence.lenses,
             "expected": V.shown(expected_path, ROOT),
             "note": expected_note,
         },
@@ -1894,7 +1894,10 @@ def execute(args, scn, rt, run_dir, run_id, target, own_target, config, flags, e
                     *judge_agentic(told, rt.sandbox, staged, art_dir, run_dir, index, argv_subject, flags, effort, matrix, notes)
                 ]
             else:
-                prompt = J.build_prompt(scn.rubric, describe_subject(told, argv_subject), blob, evidence=evidence_text)
+                # The lenses are the ones this repeat's answer cites, read from this checkout.
+                cited = E.cited(ROOT / "lenses", blob) if scn.evidence.lenses else ""
+                evidence = E.render(expected_text, source_text, cited)
+                prompt = J.build_prompt(scn.rubric, describe_subject(told, argv_subject), blob, evidence=evidence)
                 (art_dir / "judge-prompt.md").write_text(prompt, encoding="utf-8")
                 judgements = [*J.judge_all(flags, prompt, effort, matrix)]
             budget.spent += sum(j.cost_usd or 0.0 for j in judgements)

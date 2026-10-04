@@ -1,9 +1,11 @@
-# The defects planted in fixtures/review-om, one lens each, and what that
-# checkout does right. The file sits beside the checkout and not in it:
+# The defects planted in fixtures/review-om, and what that checkout does
+# right. The file sits beside the checkout and not in it:
 # the subject reads the checkout, and must never read the answers.
 #
 # A path is relative to the checkout. A line is where the defect shows,
 # and `shows` is that line's text, so a line that moves is caught.
+# A defect that shows in more than one file lists them all; a finding at
+# any of them is at the right place, and `line` and `shows` are the first's.
 findings:
   - id: F1
     lens: OM-04
@@ -53,6 +55,23 @@ findings:
     line: 11
     shows: 'return utcnow() - last_counted_at > timedelta(days=30)'
     what: "is_stale consults the clock through utcnow(); a rule takes the time as an argument."
+  - id: F9
+    lens: OM-16
+    file:
+      - om/src/acme/om/inventory/storage/__init__.py
+      - om/src/acme/om/base.py
+    line: 11
+    shows: 'async def get_warehouse(self, org_id: UUID, warehouse_id: UUID) -> Warehouse | None: ...'
+    what: "Every storage call is keyed by org_id, yet the OM has no tenancy namespace to own organizations, users, and memberships; inventory is its only swimlane. arch-check reports it on base.py."
+  - id: F10
+    lens: OM-03
+    file:
+      - om/src/acme/om/inventory/types/warehouse.py
+      - om/src/acme/om/inventory/types/bin.py
+      - om/src/acme/om/inventory/types/stock_movement.py
+    line: 4
+    shows: 'class Warehouse(Trackable, Identifiable, Named, SoftDeletable):'
+    what: "No entity declares MANAGER_OWNED_FIELDS (Warehouse, Bin, StockMovement), and update_warehouse's copy excludes neither PROVENANCE_FIELDS nor that tuple; each entity declares the tuple, () when empty. It shows on every entity, so a finding on any of them, or on that copy, is at the right place."
 
 # Correct on purpose. A review that flags one of these is wrong.
 clean:
@@ -65,4 +84,3 @@ clean:
   - "record_movement mints its id with new_id() (OM-12)."
   - "free_capacity in rules.py is a pure function (OM-15)."
   - "The inventory package re-exports InventoryManagerInterface, and the namespace has manager.py, types/, impl/, storage/, and rules.py (OM-14)."
-  - "No entity carries org_id; tenancy is passed to storage (OM-02)."

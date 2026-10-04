@@ -724,6 +724,35 @@ def test_the_judges_read_the_target_the_subject_saw(tmp_path, monkeypatch):
     assert staged != target and staged.name == "target"  # the staged copy, not the original
 
 
+def test_each_judge_reads_the_lenses_its_repeat_cites(tmp_path, monkeypatch):
+    monkeypatch.setattr(run, "MODELS", tmp_path / "models.yaml")
+    prompts: list[str] = []
+
+    def judge_all(flags, prompt, *args, **kwargs):
+        prompts.append(prompt)
+        return []
+
+    monkeypatch.setattr(run.J, "judge_all", judge_all)
+    scenario = {
+        "name": "cites",
+        "kind": "command",
+        "subject": {"argv": [sys.executable, "-c", "print('OM-16 and OM-03 hold')"]},
+        "evidence": {"lenses": True},
+        "rubric": "r",
+        "runtimes": EVERYWHERE,
+        "judges": {"providers": "anthropic"},
+    }
+    path = tmp_path / "cites.json"
+    path.write_text(json.dumps(scenario), encoding="utf-8")
+    assert run.main(["--scenario", str(path), "--out", str(tmp_path / "runs"), "--repeat", "1"]) == 0
+    (prompt,) = prompts
+    assert prompt.index("#### OM-16 Cross-cutting namespaces") < prompt.index("#### OM-03 The mixins declare")
+    assert "`MANAGER_OWNED_FIELDS`, a tuple, even when empty" in prompt
+    assert "#### OM-01" not in prompt  # a lens the answer does not cite
+    (run_dir,) = (tmp_path / "runs").glob("*/*")
+    assert json.loads((run_dir / "run.json").read_text(encoding="utf-8"))["evidence"]["lenses"] is True
+
+
 def test_the_workflow_runs_the_subject_in_the_container_built_before_the_keys():
     # On the host the subject could read the harness's environment and the
     # answer files; in the container it reaches its mounts and its one key.

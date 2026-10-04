@@ -3,10 +3,10 @@
 The subject is the `arch-review-om` skill, run by Claude Code in a
 container. It is asked to review a small checkout against the object
 model lenses and to report its findings by lens id. The checkout has
-eight defects planted in it, one per lens, and the subject may read,
-search, and list files, for at most 30 turns and $3. The judges get
-the source it read, with line numbers, and the list of planted
-findings, and they score the review from 0 to 100. Most of the score is
+ten defects planted in it, and the subject may read, search, and list
+files, for at most 30 turns and $3. The judges get the source it read,
+with line numbers, the text of each lens the review cites, and the
+list of planted findings, and they score the review from 0 to 100. Most of the score is
 recall and precision against that list; the rest is form: a lens id, a
 file and a line, the rule quoted, and the change to make. Beside the
 scores, the harness counts which planted findings the review named.
