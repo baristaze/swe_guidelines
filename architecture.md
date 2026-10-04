@@ -2306,6 +2306,10 @@ queue, cache, and limit by outcome. A label is bounded, never an id.
 Every process reports errors through the Sentry SDK, browser apps
 included, tagged with the service, the release, and the request id.
 Reporting is off until a DSN is set, and an event carries no secret.
+On the server, the breadcrumb of an outbound call keeps its method,
+its status, and its URL's scheme and host, which name the provider. Its
+path stays out, since a webhook's capability lives there, and so does
+its query.
 
 ### Correlation Across a Handoff
 
