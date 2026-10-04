@@ -32,7 +32,9 @@ the tree.
 
 ## Procedure
 
-1. Resolve the scope and write it down in one line.
+1. Resolve the scope and write it down in one line, with the absolute
+   path of the root of the repository under review, since reviewers
+   read the files from elsewhere.
 2. Resolve this skill's folder with `realpath`, and the paths from it to
    absolute ones: the lens catalog is `../../lenses/` and the guideline
    is `../../architecture.md`. Reviewers do not see this skill's text,
@@ -98,7 +100,9 @@ the tree.
    Lenses lines and the five sections of the group's Output in order
    (Findings, Deviations, Passed, Unverified, Not applicable), and its
    counts hold: applied plus not applicable is the number of lenses in
-   its lens file. A reviewer that fails, or returns a report that fails
+   its lens file, its `## <LENS-ID>` headings, counted with Grep. A
+   section outside these five fails nothing and is left out of the
+   merge. A reviewer that fails, or returns a report that fails
    this test, is re-run once with the same inputs and the part of the
    test it failed named in its task. If it fails again, its row in By
    group reads `not reviewed`, a `**Not reviewed.** <group>: <the
@@ -120,6 +124,9 @@ the tree.
      winner's. A fix's symbol is the first class, method, or setting
      its Fix sentence names, and two symbols are the same when they
      are spelled the same.
+   - Keep every group's lines under Passed for a place judged no
+     breach, below the lens ids; two on the same `path:line` become one
+     line with both ids.
    - Concatenate every group's Deviations lines under Deviations, in
      lens id order, or `None.` when there are none. They are not
      findings and count nowhere.
@@ -169,6 +176,8 @@ The group report shape, plus a `Groups` line and a per-group table:
 ## Passed
 
 <LENS-ID>, <LENS-ID> (`<path>`), ... (all groups, in id order; a `high` lens names the file that proved it)
+
+- **<LENS-ID>[, <LENS-ID>]** `<path>:<line>` <a place judged no breach: what it is, and why>.
 
 ## Unverified
 
