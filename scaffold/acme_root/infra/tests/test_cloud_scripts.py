@@ -113,7 +113,7 @@ def test_create_drops_a_site_cname_left_by_a_destroyed_environment(tmp_path: Pat
     stale = step.index(
         f"type=CNAME&name={STAGING['site_domain_name']}  (a CNAME to CloudFront whose target no longer resolves goes)"
     )
-    assert stale < step.index("CNAME staging.acme.example -> <the distribution's domain>")
+    assert stale < step.index(f"CNAME {STAGING['site_domain_name']} -> <the distribution's domain>")
     assert out.index("== 3c.") < out.index("+ gh workflow run deploy-staging.yml --ref main")
 
 
