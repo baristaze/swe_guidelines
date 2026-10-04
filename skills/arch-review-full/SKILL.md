@@ -1,7 +1,7 @@
 ---
 name: arch-review-full
 description: "Full architecture review: the eight lens groups of the guideline run in parallel and merge into one report. Use before a pull request, or when a change crosses layers."
-allowed-tools: Read, Grep, Glob, Agent, Bash(git diff:*), Bash(git show:*), Bash(git log:*), Bash(git status:*), Bash(git rev-parse:*), Bash(git merge-base:*), Bash(git symbolic-ref:*)
+allowed-tools: Read, Grep, Glob, Agent, Bash(git diff:*), Bash(git show:*), Bash(git log:*), Bash(git status:*), Bash(git rev-parse:*), Bash(git merge-base:*), Bash(git symbolic-ref:*), Bash(git ls-files:*)
 ---
 
 # arch-review-full
@@ -18,7 +18,10 @@ reads them (see `../arch-review-om/SKILL.md`, Input; a path that starts
 with `../` is read from this skill's folder as `realpath` resolves it).
 Resolve the scope once, here, into a concrete description (the list of
 files, or the range or commit) and hand the same description to every
-reviewer so the eight reports cover the same ground. A range or a commit
+reviewer so the eight reports cover the same ground. `all` and a path
+are listed with `git ls-files --cached --others --exclude-standard`,
+followed by `-- <path>` for a path, so the list holds every file git
+does not ignore, tracked or untracked. A range or a commit
 is handed over as the ref, with its list of files, and the reviewer
 reads each file at that ref, never from the working tree. An empty scope
 is reported as "nothing to review" and the skill stops. `all` costs
@@ -29,7 +32,13 @@ the tree.
 
 ## Procedure
 
-1. Resolve the scope and write it down in one line.
+1. Resolve the scope and write it down in one line, with the absolute
+   path of the root of the repository under review. Run every git
+   command here with that root as the working directory, never with
+   git's `-C` option: the pre-approved commands match only as written,
+   so a `-C` makes a stricter host ask first. Each reviewer reads the
+   listed files by their absolute paths with Read and Grep, and runs
+   any git command its group needs the same way.
 2. Resolve this skill's folder with `realpath`, and the paths from it to
    absolute ones: the lens catalog is `../../lenses/` and the guideline
    is `../../architecture.md`. Reviewers do not see this skill's text,
@@ -67,10 +76,17 @@ the tree.
    the `arch-reviewer` agent that `../../agents/arch-reviewer.md`
    defines for Claude Code (`swe-guidelines:arch-reviewer` when
    installed as the plugin). When no such agent is installed, give a
-   general subagent the text of `../arch-review-<group>/SKILL.md` with
-   every path in it that starts with `../` made absolute from that
-   skill's folder as `realpath` resolves it, first, since the subagent
-   reads it from elsewhere. Tell that subagent to skip the procedure's
+   general subagent the same five inputs, and first the text of
+   `../arch-review-<group>/SKILL.md` with every path in it that starts
+   with `../` made absolute from that skill's folder as `realpath`
+   resolves it, since the subagent reads it from elsewhere. Start it
+   read-only: with only the tools that skill's `allowed-tools` names
+   where the host lets the caller set them, and told in its task never
+   to edit, stage, or commit and never to run a file of the repository
+   under review. Cap it at 80 turns, the `maxTurns` of `arch-reviewer`;
+   where the host takes no cap, the task says to stop at 80 turns and
+   return the report, each lens not yet decided under Unverified as
+   "turn cap reached". Tell that subagent to skip the procedure's
    checker step and to use the part of the output passed to it instead,
    so the checker runs once. Where the agent has no subagents, run the
    eight group procedures one after another in this session, each on its
@@ -83,20 +99,38 @@ the tree.
    - `arch-review-network`
    - `arch-review-delivery`
    - `arch-review-ops`
-5. Wait for all eight. A reviewer that fails, or returns a report that
-   does not follow the group format, is re-run once; if it fails again,
-   its group is reported as "not reviewed" with the error.
+5. Wait for all eight. A report follows the group format when it opens
+   with `# Architecture review: <group title>`, has the Scope and
+   Lenses lines and the five sections of the group's Output in order
+   (Findings, Deviations, Passed, Unverified, Not applicable), and its
+   counts hold: applied plus not applicable is the number of lenses in
+   its lens file, its `## <LENS-ID>` headings, counted with Grep. A
+   section outside these five fails nothing and is left out of the
+   merge. A reviewer that fails, or returns a report that fails
+   this test, is re-run once with the same inputs and the part of the
+   test it failed named in its task. If it fails again, its row in By
+   group reads `not reviewed`, a `**Not reviewed.** <group>: <the
+   error>` line follows the Lenses line, and its lenses count as
+   unverified, so the totals still cover the catalog.
 6. Merge:
    - Concatenate all findings and sort by severity (high, medium, low),
      then by file and line.
+   - First rewrite every path to the Output's form, so the same file
+     reads the same in every report.
    - When two groups flag the same `path:line`, keep both lens ids on
      one line; the fix text comes from the higher-severity one. At
      equal severity the group whose header partition (the opening
      paragraphs of its lens file) owns the rule wins the fix text, and
-     the other id stays on the line.
-   - Two findings whose fix names the same symbol (the same class,
-     method, or setting) merge into one line the same way, whatever
-     their `path:line`; the line named is the higher-severity one's.
+     the other id stays on the line. Two findings of one group at equal
+     severity merge the same way, and the lower lens id wins.
+   - Two findings whose fix names the same symbol merge into one line
+     the same way, whatever their `path:line`; the line named is the
+     winner's. A fix's symbol is the first class, method, or setting
+     its Fix sentence names, and two symbols are the same when they
+     are spelled the same.
+   - Keep every group's lines under Passed for a place judged no
+     breach, below the lens ids; two on the same `path:line` become one
+     line with both ids.
    - Concatenate every group's Deviations lines under Deviations, in
      lens id order, or `None.` when there are none. They are not
      findings and count nowhere.
@@ -147,6 +181,8 @@ The group report shape, plus a `Groups` line and a per-group table:
 
 <LENS-ID>, <LENS-ID> (`<path>`), ... (all groups, in id order; a `high` lens names the file that proved it)
 
+- **<LENS-ID>[, <LENS-ID>]** `<path>:<line>` <a place judged no breach: what it is, and why>.
+
 ## Unverified
 
 <LENS-ID> (<what would decide it>), ...
@@ -155,3 +191,6 @@ The group report shape, plus a `Groups` line and a per-group table:
 
 <LENS-ID> (<why>), ...
 ```
+
+Every `<path>` is relative to the root of the repository under review,
+with forward slashes and no leading `./`.

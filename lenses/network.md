@@ -653,9 +653,10 @@ run and the rerun.
 
 **Principle.** Every outbound call carries a timeout from settings,
 one per client, and no call goes out without one. The gateway bounds a
-request with a deadline, a statement carries one too, and the lease
-that bounds a work handler is ASY-17, so nothing a process waits on is
-unbounded.
+request with a deadline, a storage impl's serving statement carries
+one too, and the lease that bounds a work handler is ASY-17, so nothing
+a process waits on is unbounded. A migration's connection carries a
+lock bound instead of a statement deadline (STO-35).
 
 **Source.** The Network Layer, Clients Live in One Place; The Storage
 Layer, A Storage Impl.
@@ -672,8 +673,8 @@ default nothing in settings names; a timeout hard-coded in the client
 instead of read from settings; a per-call override that disables it; a
 `fetch` or an `httpx` call outside the client with no deadline; a
 request path with no deadline, so a slow handler holds a server slot
-for good; a statement issued with no deadline, so a query that hangs
-holds its connection until the engine gives up.
+for good; a serving statement issued with no deadline, so a query
+that hangs holds its connection until the engine gives up.
 
 **Severity.** medium
 
