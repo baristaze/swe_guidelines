@@ -2,7 +2,8 @@
 # only here, by a fast-forward from `main`, after a person approves. Once a
 # release pull request merges, a person or an agent dispatches this workflow
 # on `main`, with that pull request's squash as `commit` (empty takes main's
-# tip, as the dispatch saw it).
+# tip, as the dispatch saw it), and the release's name as `title` when it is
+# not the pull request's title.
 #
 # `version` refuses anything but the squash of a release pull request whose
 # version is not tagged yet, on `main`, with its section in the changelog.
@@ -23,6 +24,12 @@ on:
         description: >-
           The squash of the release pull request, by its full sha. Empty
           takes main's tip.
+        required: false
+        default: ""
+      title:
+        description: >-
+          The release's name after its version. Empty takes the release
+          pull request's title.
         required: false
         default: ""
 
@@ -68,6 +75,7 @@ jobs:
         id: commit
         env:
           REQUESTED: ${{ inputs.commit }}
+          TITLE: ${{ inputs.title }}
         run: |
           sha="$(git rev-parse HEAD)"
           if [ -n "$REQUESTED" ] && [ "$REQUESTED" != "$sha" ]; then
@@ -102,8 +110,14 @@ jobs:
               exit 1
             fi
           fi
-          title="${subject#"Release $version: "}"
-          title="${title% (#*)}"
+          title="$TITLE"
+          if [ -z "$title" ]; then
+            title="${subject#"Release $version: "}"
+            title="${title% (#*)}"
+          fi
+          case "$title" in
+            *$'\n'*) echo "::error::the title is one line"; exit 1 ;;
+          esac
           {
             echo "sha=$sha"
             echo "version=$version"
