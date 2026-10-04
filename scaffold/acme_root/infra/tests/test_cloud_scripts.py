@@ -7,6 +7,7 @@ dry run that wrote a profile or an env file by mistake would be caught.
 
 import json
 import os
+import shutil
 import subprocess
 from pathlib import Path
 
@@ -190,6 +191,70 @@ def test_create_refuses_to_run_for_real_on_placeholders(environment: str, tmp_pa
         assert name in refusal
     root = ENVIRONMENTS["environments"][environment]["environment_root"]
     assert f"workos_client_id in deployment/terraform/{root}/variables.tf" in refusal
+
+
+def _tree_with_tracker(tmp_path: Path, tracker: dict[str, str]) -> Path:
+    """The create script beside an environments.json whose error tracker is
+    `tracker`, everything else as shipped."""
+    tree = tmp_path / "tree"
+    (tree / "scripts").mkdir(parents=True)
+    shutil.copy(CREATE, tree / "scripts")
+    (tree / "deployment" / "cloud").mkdir(parents=True)
+    layout = {**ENVIRONMENTS, "error_tracker": tracker}
+    (tree / "deployment" / "cloud" / "environments.json").write_text(json.dumps(layout))
+    for env in (STAGING, PRODUCTION):
+        root = Path("deployment/terraform") / env["environment_root"]
+        (tree / root).mkdir(parents=True)
+        shutil.copy(ROOT / root / "variables.tf", tree / root)
+    return tree / "scripts" / CREATE.name
+
+
+def test_create_writes_the_trackers_url_org_and_project_from_the_environments(
+    tmp_path: Path,
+) -> None:
+    """The tracker's org is its own slug, which need not be the product's
+    name: an env file that guessed it would name an org that does not
+    exist, and every read of the errors would fail."""
+    shipped = ENVIRONMENTS["error_tracker"]
+    out = _run(CREATE, "staging", "--dry-run", home=tmp_path).stdout
+    assert f"ACME_ERROR_TRACKER_URL={shipped['url']}\n" in out
+    assert f"ACME_ERROR_TRACKER_ORG={shipped['org']}  #" in out
+    assert f"ACME_ERROR_TRACKER_PROJECT={shipped['project']}  #" in out
+    tracker = {"url": "https://errors.acme.test", "org": "acme-xy", "project": "acme-api"}
+    result = _run(_tree_with_tracker(tmp_path, tracker), "staging", "--dry-run", home=tmp_path)
+    assert result.returncode == 0, result.stderr
+    out = result.stdout
+    assert "ACME_ERROR_TRACKER_URL=https://errors.acme.test\n" in out
+    assert "ACME_ERROR_TRACKER_ORG=acme-xy  #" in out
+    assert "ACME_ERROR_TRACKER_PROJECT=acme-api  #" in out
+    assert "Filled by hand, " in out and ": ACME_ERROR_TRACKER_TOKEN in " in out
+    assert not (tmp_path / ".config").exists()
+
+
+def test_create_refuses_a_placeholder_tracker_and_runs_without_one(tmp_path: Path) -> None:
+    """A placeholder or a half-named tracker is refused before any command,
+    like every other placeholder; an empty url is an environment with no
+    tracker, which runs, and its env file's tracker lines stay empty."""
+    real = {"CLOUDFLARE_API_TOKEN": "token"}
+    shipped = _run(CREATE, "staging", home=tmp_path, **real).stderr
+    for name in ("error_tracker.url", "error_tracker.org", "error_tracker.project"):
+        assert name in shipped
+    half = {"url": "https://errors.acme.test", "org": "", "project": "acme"}
+    refusal = _run(_tree_with_tracker(tmp_path / "half", half), "staging", home=tmp_path, **real)
+    assert refusal.returncode == 2 and refusal.stdout == ""
+    assert "error_tracker.org" in refusal.stderr
+    assert "error_tracker.url" not in refusal.stderr
+    assert "error_tracker.project" not in refusal.stderr
+    none = {"url": "", "org": "ORG_PLACEHOLDER", "project": "PROJECT_PLACEHOLDER"}
+    script = _tree_with_tracker(tmp_path / "none", none)
+    refusal = _run(script, "staging", home=tmp_path, **real)
+    assert "refused: placeholders left: " in refusal.stderr
+    assert "error_tracker" not in refusal.stderr
+    out = _run(script, "staging", "--dry-run", home=tmp_path).stdout
+    for line in ("URL", "TOKEN", "ORG", "PROJECT"):
+        assert f"ACME_ERROR_TRACKER_{line}=\n" in out or f"ACME_ERROR_TRACKER_{line}=  #" in out
+    assert "No error tracker: " in out
+    assert "sentry_dsn stays off: " in out
 
 
 @pytest.mark.parametrize("script", [CREATE, NUKE], ids=["create", "nuke"])

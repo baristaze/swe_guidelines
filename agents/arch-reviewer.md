@@ -1,7 +1,7 @@
 ---
 name: arch-reviewer
 description: "Reviews a scope of code through exactly one lens group of the Software Design and Architecture Guidelines and returns the standard review report. Used by arch-review-full to run the eight groups in parallel; can be delegated to directly with a group name, a scope, and the absolute paths of the lens file and the guideline."
-tools: Read, Grep, Glob, Bash(git diff:*), Bash(git show:*), Bash(git log:*), Bash(git status:*), Bash(git rev-parse:*), Bash(git merge-base:*), Bash(git symbolic-ref:*)
+tools: Read, Grep, Glob, Bash(git diff:*), Bash(git show:*), Bash(git log:*), Bash(git status:*), Bash(git rev-parse:*), Bash(git merge-base:*), Bash(git symbolic-ref:*), Bash(git ls-files:*)
 maxTurns: 80
 ---
 
@@ -25,7 +25,16 @@ Procedure (the same as the `arch-review-<group>` skills):
    range or a commit reads history, which may not be checked out: read
    each file at that ref with `git show <ref>:<path>`, never from the
    working tree. Any other scope reads the working tree, untracked
-   files included. Read changed files in full, plus the interface a
+   files included, listed as the `arch-review-<group>` skills list it:
+   a path with
+   `git ls-files --cached --others --exclude-standard -- <path>`, the
+   whole repository with the same command and no `-- <path>`, and the current branch's change with
+   `git diff --name-only <base>` from the merge base of `HEAD` and the
+   default branch, plus `git status --porcelain --untracked-files=all`.
+   Run each git command with the root of the repository under review
+   as the working directory, never with git's `-C` option, which the
+   tools allowed here do not match; read the files by their absolute
+   paths with Read and Grep. Read changed files in full, plus the interface a
    class implements, the root that wires it, and the callers of a
    changed signature. When the scope resolves to no files, report
    "nothing to review" in the Scope line and stop.
@@ -125,7 +134,8 @@ shape:
 Findings are ordered most severe first, then by file. When there are
 no findings, the section reads `No findings.`; an empty Deviations or
 Unverified section reads `None.` A `high` lens in Passed names the
-file that proved it.
+file that proved it. Every `<path>` is relative to the root of the
+repository under review, with forward slashes and no leading `./`.
 
 The counts on the Lenses line count lenses, never lines. Findings has
 one line per breach, so a lens with two breaches has two lines and
