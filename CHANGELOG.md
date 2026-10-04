@@ -5,68 +5,54 @@ included, stay on its GitHub release. Releases are tagged
 `vMAJOR.MINOR.PATCH`; see `CONTRIBUTING.md` for what bumps which
 number.
 
-## 0.50.0 (2026-10-04)
+## 0.51.0 (2026-10-04)
 
-A migration waits for a lock only briefly, and the deploy runs it again
-when it gives up. No capability carried in a URL reaches the error
-tracker, from the server or the portal. A copy numbers its own ADRs
-from 1001. Minor: the guideline gains one rule and sharpens two, and
-NET-26's statement deadline is reversed on a migration's connection.
+A production run asks a person once, a reusable step gates any work
+that holds no credential of its own environment, and `main`, `release`,
+and `scaffold` cannot be deleted or rewritten. The scaffold's ADRs are
+compacted once. Minor: the scaffold gains a reusable workflow, a script,
+and ADR 0082, and nothing is reversed.
 
 ### Added
 
-- Migrating a Deployed Database, and STO-35: a migration's connection
-  carries `lock_timeout` from settings, under the serving statements'
-  deadline, and no statement deadline. A migration past the bound exits
-  with a code that asks for another run, and the deploy runs it again a
-  bounded number of times before it fails the apply. The scaffold's ADR
-  0071 cites the rule.
-- Error Tracking, and the delivery lens's rule on error events: an
-  outbound call's breadcrumb keeps the method, the status, and the URL's
-  scheme and host. `outgoing_breadcrumb` in the scaffold drops the path,
-  where a webhook's capability lives.
-- Records of Decisions, and DEL-23: the scaffold's ADRs stay below 1000,
-  and a copy numbers its own from 1001. `arch-scaffold-new` and
-  `arch-deviate` number a copy's decisions from 1001, and
-  `arch-upgrade-scaffold` moves a clashing scaffold ADR into the copy's
-  range and rewrites the citations the merge brings.
+- ADR 0082 and the scaffold's `human-approval.yml`, one reusable
+  approval step: a `rule` job refuses an environment with no
+  required-reviewers rule (or one it cannot read), then an `approve` job
+  waits in that environment, `human-approval` by default. A job that
+  `needs:` it runs only after a reviewer approved the run. It is for a
+  gate whose critical job holds no credential of its own environment,
+  such as a publish with the run's own token.
+- `scripts/branch_rulesets.sh` in the scaffold sets a ruleset on `main`,
+  `release`, and `scaffold`: no deletion, no force push, no bypass
+  actor. `--dry-run` prints each one. An administrator runs it once per
+  repository. A reset of `release` in the deploy runbook turns off both
+  of its rulesets for that push.
+- The repository's own `release.yml`, dispatched on `main` with a
+  release's squash: it waits on `human-approval`, then fast-forwards
+  `release`, tags the squash, and publishes the GitHub release with the
+  changelog's section as its notes. It refuses while the environment has
+  no required reviewer. `CONTRIBUTING.md` says so.
 
 ### Changed
 
-- Reversal: NET-26 asks a statement deadline of a storage impl's serving
-  statement alone. A migration's connection carries the lock bound of
-  STO-35 instead, and a statement deadline on it that cuts a long
-  backfill is now a violation.
-- `arch-review-full` runs unattended: the review template, the skill,
-  and the reviewer agent list a scope's files with `git ls-files`, run
-  git from the root, never with `-C`; the fallback reviewer gets the
-  same inputs, read-only tools, and an 80-turn cap; and a group report
-  has a stated format test, one re-run, and one rule each for a fix's
-  symbol, a tie, and a path's form.
-- The `review-om` benchmark scenario sets `evidence.lenses: true`, so
-  its judges read the section of every lens an answer cites, and its
-  answer key expects OM-16 and the `MANAGER_OWNED_FIELDS` half of OM-03.
-  A planted finding may list each file its defect shows in.
-- The repository's `CLAUDE.md` moves to `.claude/CLAUDE.md`, `make
-  plugin` validates the plugin with `--strict`, and
-  `scripts/check_plugin.py` is removed with its test. CI's Claude Code
-  pin moves to 2.1.289.
+- A production run asks a person once, on the one job that holds the
+  deploy credential: `apply`, or `rollback` on a rollback. A test holds
+  it so. `grant-operator.yml` and `state-unlock.yml` run the same rule
+  check before their credential when the environment is `production`.
+  The check's error says that a private repository can have a
+  required-reviewers rule only under GitHub Enterprise, so on Free, Pro,
+  or Team a production deploy there refuses every run.
+- The scaffold's 47 ADRs are compacted in place: each keeps its title,
+  status, decision, every bound, identifier, and near miss, and every
+  consequence a reader acts on, and loses its repeated context, long
+  quotes of the guideline, and points made twice (26,814 words to
+  25,483). No ADR is renamed or renumbered. ADR 0024's positions not
+  taken (no WAF; no GuardDuty or Security Hub) move into its Decision
+  with their triggers.
 
 ### Fixed
 
-- A presigned URL names the bucket's regional host, so an upload from
-  the browser to a bucket made that day outside us-east-1 no longer
-  fails on a redirect.
-- The portal's error reports cut every URL at its query: breadcrumbs,
-  `request.url`, the `Referer` header, and stack frames. An invitation
-  token or a sign-in code no longer reaches the tracker.
-- The create run writes the error tracker's url, org, and project from
-  one `error_tracker` entry in `environments.json`, instead of the
-  product's name, and refuses a placeholder or a half-named tracker.
-- `arch-benchmark-browser` looks for computer actions on the
-  conversation page after the send too, and records such a session
-  `not-run`; its evidence takes the extension the tool saves, `.png`.
-- The stale-CNAME test reads the site's name from `environments.json`,
-  so it passes in a copy's gate.
-- The requeue's plan test seeds settled items and live leases, analyzed,
-  before it reads its plan, so it no longer fails at random.
+- The ops audit test's database name carries eight random hex
+  characters, inside the `audit_<slug>` pattern the audit tool accepts,
+  so two gates on one compose stack no longer drop each other's
+  database mid-run.
