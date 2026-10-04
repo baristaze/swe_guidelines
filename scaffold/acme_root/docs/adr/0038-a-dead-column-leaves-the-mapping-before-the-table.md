@@ -10,13 +10,13 @@ minutes of the roll, and again after a fast rollback. A column may
 leave the table only when no statement of the previous release names
 it.
 
-Taking a column out of every read is not enough. SQLAlchemy's mapper
-names every mapped column in the insert it emits: a column the object
-has no value for is sent as `NULL`, and one with a server default is
-read back in the insert's `RETURNING`. A deferred column is still
-mapped. So the previous release names it in every insert it makes, and
-a drop under it fails every such insert for the minutes of the roll,
-and for good if the circuit breaker rolls the deploy back.
+Taking it out of every read is not enough. SQLAlchemy's mapper names
+every mapped column in the insert it emits: a column the object has no
+value for is sent as `NULL`, and one with a server default is read back
+in the insert's `RETURNING`. A deferred column is still mapped. So a
+drop under the previous release fails every insert it makes, for the
+minutes of the roll, and for good if the circuit breaker rolls the
+deploy back.
 
 ## Decision
 
@@ -28,7 +28,7 @@ compares it. The second release drops it with a migration, and the two
 lines go.
 
 **The data goes as early as it can.** A value nothing reads is cleared
-in the first release when it is a secret, such as a hash. Clearing it
+in the first release when it is a secret, such as a hash. Clearing
 needs no drop, and a secret is better gone a release sooner.
 
 **The proof is the previous release's own tests.** Before a contract
@@ -37,10 +37,10 @@ contracted schema. A column any of them names stays one more release.
 
 ## Consequences
 
-A column's removal takes two pull requests in two releases. The first
-changes code and mapping only; the second is a migration that drops.
+A column's removal takes two pull requests in two releases: code and
+mapping first, then a migration that drops.
 
-Deferring a column is not a step of its own. It keeps the column out of
+Deferring a column is not the first release. It keeps the column out of
 the reads, and every insert still names it.
 
 After a fast rollback to the previous release, that release may write

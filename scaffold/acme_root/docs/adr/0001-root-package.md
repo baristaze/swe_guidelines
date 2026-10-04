@@ -6,8 +6,8 @@
 
 Every Python distribution in the monorepo shares one import root, so a
 namespace reads as `<root>.om.<ns>`, `<root>.infra.<capability>`, and
-`<root>.services.<svc>`. The guideline warns that a root named
-`platform` shadows the standard-library module of the same name.
+`<root>.services.<svc>`. A root named `platform` would shadow the
+standard-library module of that name.
 
 ## Decision
 

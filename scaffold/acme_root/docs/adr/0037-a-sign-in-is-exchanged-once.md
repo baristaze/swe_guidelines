@@ -4,42 +4,40 @@
 
 ## Context
 
-A sign-in answers with a login credential (`lgn_`) and the person's
-places. `POST /v1/auth/sessions` exchanges it for a session in one of
-them. The login lives ten minutes (`ACME_LOGIN_LIFETIME_SECONDS`). An
-exchange that leaves the login standing makes another session on every
-click of the org picker, and on every replayed request.
+A sign-in answers a login credential (`lgn_`) and the person's places.
+`POST /v1/auth/sessions` exchanges it for a session in one of them. The
+login lives ten minutes (`ACME_LOGIN_LIFETIME_SECONDS`). An exchange
+that leaves the login standing makes another session on every click of
+the org picker, and on every replayed request.
 
-The guideline says the app "signs in once, picks a membership, and
-exchanges it for one session", then "holds one session and drops the
-sign-in credential" ("One Tenant at a Time"). "The Gateway" adds that a
-creating `POST` accepts an `Idempotency-Key`, and a marker owns the
-retry. The exchange leaves a session row behind, so the question is
-what a retry after a lost answer gets.
+In the guideline, the app "holds one session and drops the sign-in
+credential" ("One Tenant at a Time"), and a creating `POST` accepts an
+`Idempotency-Key` whose marker owns the retry ("The Gateway"). The
+exchange leaves a session row behind, so the question is what a retry
+after a lost answer gets.
 
 ## Decision
 
 **The exchange ends the sign-in in the write that makes the session.**
-`exchange_sign_in` is one named atomic write: the login row is locked,
-refused when it is already ended, marked revoked, and the new session
-is inserted, in one transaction. The login lives in the system scope,
-so the write runs on the system login and sets the scope to the tenant
-before the insert, as a switch does. Of two exchanges at once, one
-lands. A second exchange answers `401` ("this sign-in was used already;
-sign in again"). A refused exchange, for an org the person is not in,
-ends nothing.
+`exchange_sign_in` is one named atomic write. In one transaction, the
+login row is locked, refused when it is already ended, and marked
+revoked, and the new session is inserted. The login lives in the system
+scope, so the write runs on the system login and sets the scope to the
+tenant before the insert, as a switch does. Of two exchanges at once,
+one lands. A second exchange answers `401` ("this sign-in was used
+already; sign in again"). A refused exchange, for an org the person is
+not in, ends nothing.
 
 **The exchange takes no `Idempotency-Key`.** The sign-in is the key. It
 is single-use, minted by the server, and ended in the same write as the
-effect: the idempotent consumer's shape, "marker and effect are one
-named atomic write". So no retry, replay, or second click can make a
-second session.
+effect: the idempotent consumer's shape. So no retry, replay, or second
+click can make a second session.
 
-A marker's other job is to replay the answer, and here it cannot. The
+A marker's other job, replaying the answer, cannot work here. The
 answer is the session token, and the idempotency records keep no
-secret: a replay would hand back a session without its token. The one
-way to hand back the same session is to keep its token in the clear,
-and the tenancy namespace never keeps a credential it can be handed.
+secret: a replay would hand back a session without its token. Handing
+back the same session would mean keeping its token in the clear, and
+the tenancy namespace never keeps a credential it can be handed.
 
 **A retry after a lost answer signs in again.** The session the lost
 answer made reached nobody. Its token was never shown, so it can never

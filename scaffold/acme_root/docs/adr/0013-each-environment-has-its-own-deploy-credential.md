@@ -6,13 +6,13 @@
 
 DEL-38 and Cloud: AWS put the environment protection on the apply:
 production waits for a person to approve the plan, and the approval
-holds the apply. The guideline declares every cloud resource in
-Terraform, IAM included. It says nothing about how a deploy credential
+holds the apply. The guideline declares every cloud resource, IAM
+included, in Terraform, and says nothing about how a deploy credential
 is scoped.
 
-A merge to `main` deploys staging with no approval, by design. So the
-credential a staging job holds must reach nothing of production's. And
-the credential that writes production must be out of reach until the
+A merge to `main` deploys staging with no approval, by design. So a
+staging job's credential must reach nothing of production's, and the
+credential that writes production must be out of reach until the
 approval.
 
 ## Decision
@@ -29,7 +29,7 @@ branch, and the repository's and owner's ids:
 | `acme-deploy-production` | production | `production` | `release` | apply production |
 
 A job presents `repo:<owner>@<owner id>/<name>@<repo id>:environment:<name>`
-only when it declares that environment. So the required reviewer on
+only when it declares that environment, so the required reviewer on
 `production` gates the credential itself: a job that has not waited
 there cannot mint the subject the applying role trusts.
 
@@ -51,12 +51,12 @@ Each GitHub environment holds one `AWS_ROLE_ARN` and one
 
 ## Consequences
 
-`production-plan` is a GitHub environment that exists and carries no
-reviewer: a reviewer there would hold the plan the reviewer is meant to
-read. The deploy runbook says so.
+`production-plan` is a GitHub environment with no reviewer, as the
+deploy runbook says: a reviewer there would hold the plan the reviewer
+is meant to read.
 
 The approval holds the write, not the read. The state holds no secret
-value, but a refresh by `acme-plan-production` still reads production's
+value, but a refresh by `acme-plan-production` reads production's
 secrets through the secret store before anyone approves.
 
 The first apply in a new account may meet a missing action as a plain
@@ -64,6 +64,6 @@ The first apply in a new account may meet a missing action as a plain
 graph's policy, never to widen the role.
 
 `ecs:RegisterTaskDefinition` and `ecs:DeregisterTaskDefinition` are the
-two writes in the graph that cannot be fenced to an environment, and the
+graph's two writes that cannot be fenced to an environment, and the
 policy says so where it grants them. A revision in a foreign family is
 inert until something runs it, and running one is fenced.

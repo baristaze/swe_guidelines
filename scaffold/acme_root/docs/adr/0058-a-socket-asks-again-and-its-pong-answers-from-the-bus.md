@@ -8,11 +8,11 @@ A socket checks its credential when its ticket is redeemed. After that
 it trusts the context it got until the bus carries a revocation that
 names it, or the credential expires.
 
-The bus is at most once. A publish that fails, or a subscriber whose
+The bus is at most once: a failed publish, or a subscriber whose
 connection dropped, loses the message for good. A revoked session's
 socket would then stay open until the session's absolute expiry, up to
 30 days, and an API key's until the key's, up to 90. A change of role
-would reach an open socket not at all.
+would never reach an open socket.
 
 CTX-27 (TenantContext, Stages) puts a pull behind every trust decision a
 push carries: every socket rechecks its session and its membership
@@ -32,20 +32,20 @@ every hint.
 `ACME_REALTIME_RECHECK_SECONDS` (300 by default) the handler asks the
 realtime service again, and the service calls the same `resume` the
 redemption called: the session, or the API key, and the principal
-behind it. It reads the rows, never a cached verdict: a cache is one
-more thing a revocation must reach, and the bus that lost the message is
-the same Valkey. A refusal closes the socket with 4401, as a refused
-ticket does. The first check waits a phase drawn at random within one
+behind it. The setting, `realtime_recheck_seconds`, sits beside the
+realtime service's other bounds, as Stages names it.
+
+It reads the rows, never a cached verdict: a cache is one more thing a
+revocation must reach, and the bus that lost the message is the same
+Valkey. A refusal closes the socket with 4401, as a refused ticket
+does. The first check waits a phase drawn at random within one
 interval, so sockets opened together (a deploy's reconnects) do not
 check together. No two checks are more than one interval apart, so a
 revocation the bus lost keeps its socket open for one interval at most.
 
-**The setting is the realtime service's.** `realtime_recheck_seconds`
-sits beside the realtime service's other bounds, as Stages names it.
-
 **The recheck asks and does not use.** `resume` takes
 `record_use=False` for it, and records no use of the session. An open
-socket never keeps an idle session alive. A tab left open is signed out
+socket never keeps an idle session alive: a tab left open is signed out
 at the idle lifetime, as a tab left closed is.
 
 **A change of rights closes the socket to reconnect.** The bus message
@@ -53,7 +53,7 @@ at the idle lifetime, as a tab left closed is.
 built from it closes with 1012 and the reason `rights_changed`. The
 recheck is the backstop: it compares the security it finds with the
 one the socket holds. Both clients read any close but 4401 as
-"reconnect", and the new ticket carries the new role. 4401 would sign
+"reconnect", and the new ticket carries the new role. A 4401 would sign
 the person out, and nothing about their sign-in is wrong.
 
 **The bus stays the fast path.** A revocation it carries closes the
@@ -63,21 +63,21 @@ socket at once. The recheck bounds only what the bus loses.
 database out of reach is no proof that the credential still holds. The
 client reconnects, and its ticket is minted once the database answers.
 
-**A pong answers from the bus, within a bound.** The realtime service
-keeps, for each tenant it holds a socket for, the highest `seq` it heard
-on the bus or read, and when it learned it. A ping within
-`ACME_REALTIME_HEAD_MAX_AGE_SECONDS` (60 by default) of that answers with
-it and reads nothing. Past the bound, or with nothing known, the ping
-reads the head, as the hello always does. The entry goes with the
-tenant's last socket in the process, so memory grows with the sockets
-and not with the tenants.
+**A pong answers from the bus, within a bound.** For each tenant it
+holds a socket for, the realtime service keeps the highest `seq` it
+heard on the bus or read, and when it learned it. A ping within
+`ACME_REALTIME_HEAD_MAX_AGE_SECONDS` (60 by default) of that answers
+with it and reads nothing. Past the bound, or with nothing known, the
+ping reads the head, as the hello always does. The entry goes with the
+tenant's last socket in the process, so memory grows with the sockets,
+not with the tenants.
 
 ## Why the pong stays exact enough
 
-The client treats a head above its cursor as a gap and replays. So the
+The client treats a head above its cursor as a gap and replays, so the
 head must never hide a gap for long.
 
-- It is never above the truth. A `seq` is published after its event
+- It is never above the truth: a `seq` is published after its event
   committed.
 - It is never below what this client got from this process. The
   socket's hints and the head come off the same subscription. A hint the
@@ -111,7 +111,7 @@ pong's cost falls further with them.
 
 A tab left open with no request past the idle lifetime is signed out
 when its socket rechecks. So is `acme listen` in an org where nothing
-changed for that long; it exits and asks for a sign-in, as any command
+changed for that long: it exits and asks for a sign-in, as any command
 would.
 
 A socket opened under an API key is checked as the key's every request

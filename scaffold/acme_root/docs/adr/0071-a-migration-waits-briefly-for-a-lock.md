@@ -4,69 +4,63 @@
 
 ## Context
 
-The deploy migrates a live database. The migrate task runs inside the
-apply, before the rollout, while the old tasks still serve. That is the
-guideline's order (Migrating a Deployed Database), and expand and
-contract keeps the old tasks correct over the new schema.
+The deploy migrates a live database: the migrate task runs inside the
+apply, before the rollout, while the old tasks still serve, in the
+guideline's order (Migrating a Deployed Database).
 
-A migration's DDL takes a lock on its table. `DROP INDEX` and most
-`ALTER TABLE` forms take `ACCESS EXCLUSIVE`, and `CREATE INDEX` takes
-`SHARE`. When a transaction of the serving tasks holds the table, the DDL
-waits for it. While it waits, it holds its place in the table's lock
-queue. Every read and write of the table that arrives after it queues
-behind it, even one that does not conflict with the transaction that
-holds the table. So one long transaction and one waiting migration stop
+A migration's DDL takes a lock on its table: `ACCESS EXCLUSIVE` for
+`DROP INDEX` and most `ALTER TABLE` forms, `SHARE` for `CREATE INDEX`.
+When a serving transaction holds the table, the DDL waits, and holds its
+place in the table's lock queue while it waits. Every later read and
+write of the table queues behind it, even one that does not conflict
+with the holder. One long transaction and one waiting migration stop
 the whole table.
 
-Measured on the local stack, with the API serving and a transaction that
-read a table held open for 20 seconds: a migration step that drops an
-index on that table, with no bound on its wait, waits 19.6 seconds and
-then goes through. A request for the table sent while it waits queues
-behind it and hits its own 10-second statement deadline: it answers 500
-after 10.08 seconds.
+Measured on the local stack, with the API serving and a transaction on
+a table held open for 20 seconds: a migration step that drops an index
+on that table, with no bound on its wait, waits 19.6 seconds and then
+goes through. A request for the table sent meanwhile queues behind it,
+hits its own 10-second statement deadline, and answers 500 after 10.08
+seconds.
 
-The guideline holds the bound as a rule, STO-35 (Migrating a Deployed
-Database): the migration's connection carries `lock_timeout` from
-settings, a few seconds and under the serving statements' deadline, and
-no statement deadline. A migration past it exits with a code that asks
-for another run, and the deploy runs it again a bounded number of
-times. The value of the bound, the exit code, and the number of runs
-are the choices this decision makes.
+The guideline holds the bound as a rule, STO-35: a `lock_timeout` from
+settings under the serving statements' deadline, no statement deadline,
+and an exit that asks the deploy for a bounded number of reruns. This
+decision chooses the bound's value, the exit code, and the number of
+runs.
 
 ## Decision
 
 **Every statement of the migrate command waits for a lock 5 seconds at
 most.** `ACME_DATABASE_MIGRATION_LOCK_TIMEOUT_SECONDS`, a field of
 `MigrationSettings`, is sent as `lock_timeout` in the startup packet of
-the one connection the runner opens. So the bound holds for every
+the one connection the runner opens. The bound holds for every
 statement the runner sends: each migration of every role, `check`, and
 `ensure-logins`, on the master's connection. A statement past it fails
-with `55P03`, and the role's chain rolls back whole, as it does on any
-failure.
+with `55P03`, and the role's chain rolls back whole, as on any failure.
 
 **Five seconds is half the serving statements' deadline.** A request
-that queues behind a waiting migration still has half of its 10 seconds
-left when the migration gives up. A migration that needs a lock held
-longer than that is behind a transaction that is too long for a live
-table anyway.
+queued behind a waiting migration still has half of its 10 seconds left
+when the migration gives up. A migration that needs a lock held longer
+is behind a transaction too long for a live table anyway.
 
 **There is no statement deadline.** A backfill may run long, and a lock
 it holds is one it was granted. The bound is on waiting, not on work.
 
 **A run that gave up asks to be run again.** The command prints which
 role gave up and exits 75, the temporary failure of sysexits. Nothing of
-that role was applied. The roles before it are at their heads, so a
+that role was applied, and the roles before it are at their heads, so a
 second run resumes where the first stopped. Every other failure exits 1.
 
 **The pre-rollout task runs again on 75, three runs in all.**
 `pre_rollout.sh` starts the same task again when the container exits 75.
-The commands (`ensure-logins`, then `migrate --all`) are safe to repeat.
+Its commands (`ensure-logins`, then `migrate --all`) are safe to repeat.
 The next task's cold start, about a minute, is the wait between runs,
 long enough for a serving transaction to end. A third 75 fails the apply
 with the old tasks still serving, as any failed migration does, and the
 next apply runs it again. The command itself never retries: a retry
-inside it keeps the migrate task's connection and a place in the lock
-queue through each wait, and hides the retries from the apply log.
+inside it keeps the connection and a place in the lock queue through
+each wait, and hides the retries from the apply log.
 
 **No migration builds an index `CONCURRENTLY`.** A role's chain runs in
 one transaction, which refuses it, and it bounds nothing for `ALTER
@@ -79,15 +73,15 @@ bound.
 
 With the bound, the same run on the local stack, three times: the
 migration step gives up after 5.4 seconds and exits 75, having applied
-nothing. The request sent while it waits answers 200 in 4.94 to 4.97
+nothing, and the request sent while it waits answers 200 in 4.94 to 4.97
 seconds.
 
 ## Consequences
 
 - A migration behind a long transaction costs the table 5 seconds of
   queueing at most, and the apply a minute or two of reruns.
-- A migration that needs a lock held for longer than three runs allow
-  fails the apply. The fix is to find the long transaction, not to raise
-  the bound.
+- A migration that needs a lock held longer than three runs allow fails
+  the apply. The fix is to find the long transaction, not to raise the
+  bound.
 - `acme-api migrate` and `python -m acme.om.storage.migrate` exit 0, 1,
   or 75.

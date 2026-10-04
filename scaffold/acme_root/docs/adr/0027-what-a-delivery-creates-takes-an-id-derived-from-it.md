@@ -4,10 +4,10 @@
 
 ## Context
 
-OM-12 (Identifiers): "Every id is `uuid_v7`, minted above storage with
-`new_id()`, or with `derived_id()` from a key that names the record, so
-a second run makes the same id." Idempotency on the Consumer Side says a message from
-outside carries a key derived from the provider's delivery, a UUID v5
+OM-12 (Identifiers) makes every id a `uuid_v7`, minted above storage
+with `new_id()`, or with `derived_id()` from a key that names the
+record, so a second run makes the same id. Idempotency on the Consumer
+Side keys a message from outside on the provider's delivery, a UUID v5
 over the provider's name and its delivery id, and the handler dedupes
 on it. The key lives on the row the effect produces, or the marker and
 the effect are one atomic write.
@@ -30,15 +30,14 @@ worker records each delivery that names an org as an audit entry,
 The append is idempotent on the event's id, so a copy the queue hands
 over again appends nothing.
 
-OM-12 names it with what an orchestration step makes
-([ADR 0039](0039-long-running-work-is-a-record-a-guard-parks-and-a-bound-fails.md))
-as the ids not minted with `new_id()` (Identifiers). Every other id is
-`new_id()`.
+OM-12 names these ids, and those an orchestration step makes
+([ADR 0039](0039-long-running-work-is-a-record-a-guard-parks-and-a-bound-fails.md)),
+as the ones not minted with `new_id()`. Every other id is `new_id()`.
 
 ## Consequences
 
 The effect carries its own key, with no marker table and no column. The
-id still sorts by time and still reads as a v7.
+id still sorts by time and reads as a v7.
 
 The id's random bits are not random: anyone who knew a delivery's key
 and its time could compute the id. Neither leaves the platform, and an

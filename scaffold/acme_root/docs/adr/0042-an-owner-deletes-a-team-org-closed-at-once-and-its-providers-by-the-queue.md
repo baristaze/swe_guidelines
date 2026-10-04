@@ -10,11 +10,9 @@ of a team org
 So an owner needs two ways out: make someone else an owner, or delete
 the org.
 
-An owner who deletes their org means all of it. The people in it lose
-it now. A sign-in through the org's single sign-on, or through an
-invitation to it, reaches nothing. The org's organization at the
-identity provider, with its connections and pending invitations, goes
-too.
+An owner who deletes their org means all of it: its people lose it
+now, and its organization at the identity provider goes too, with its
+connections and pending invitations.
 
 ## Decision
 
@@ -27,7 +25,7 @@ it goes only with its person's account.
 
 **The org closes in one commit.** One named atomic write,
 `TenancyStorageInterface.write_closed_org`, lands the org row with its
-provider organization let go of, soft-deletes every live user of the
+provider organization cleared, soft-deletes every live user of the
 tenant with their membership, revokes every live session and API key,
 and revokes every pending invitation. Each ended user lands
 `tenancy.user.deleted`, and each credential its revocation row, so
@@ -38,10 +36,10 @@ provider finds it.
 **The provider goes through the queue, after the close.** The same
 commit asks for `DELETE_ORG` in the org, with the provider
 organization's id in its payload. The worker deletes that organization,
-then the org. Each step finds its own work done on a rerun. A provider
-out of reach, or one that refuses the process's own key, parks the item
-without spending an attempt. A provider that refuses the call fails it
-at once, for an operator to requeue
+then the org, and each step finds its own work done on a rerun. A
+provider out of reach, or one that refuses the process's own key,
+parks the item without spending an attempt. A provider that refuses the
+call fails it at once, for an operator to requeue
 ([ADR 0051](0051-a-refused-key-is-unavailable-a-refused-request-is-refused.md)).
 The org waits, live and empty, because a claim refuses an item of a
 deleted org.
@@ -49,8 +47,8 @@ deleted org.
 **The org's data goes the retention's way.** The worker's last step
 writes `deleted_at`, keeps the org row as the record, and announces
 `tenancy.org.deleted`. The sweep purges the tenant after the thirty-day
-retention. A team org is not a person, so the retention that protects
-against a mistake is kept.
+retention. A team org is not a person, so it keeps the retention that
+guards against a mistake.
 
 **An operator's deletion takes the same path.** `DELETE
 /v1/admin/orgs/{org_id}` writes the same close and asks for the same
@@ -61,7 +59,7 @@ stands and asks for nothing more. A personal org is refused.
 
 **The owner lands in their personal org.** The same request makes a
 session in the owner's personal org, as a switch does, carrying the
-provider session the asking one came from. The portal takes it up.
+provider session the asking one came from, and the portal takes it up.
 When that session cannot be made, the answer carries none and the owner
 signs in again: the org is deleted either way.
 
@@ -82,7 +80,7 @@ operator can read them in that time; nobody can restore them.
 
 While the provider is down, or refuses the key, the org waits, empty.
 Until the worker has run, the operator plane lists the org live and
-empty, and counts it among the tenants. Nobody joins it meanwhile: an
+empty and counts it among the tenants. Nobody joins it meanwhile: an
 operator's add of a member to it is refused as not found.
 
 The worker deletes the provider organization with the Acme App's own

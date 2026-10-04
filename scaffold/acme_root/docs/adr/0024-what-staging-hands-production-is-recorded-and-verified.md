@@ -19,9 +19,9 @@ account cannot rewrite, and a check of every copy against it.
   applies declares. `acme-deploy-staging` applies and pushes nothing.
 - **What staging deployed is recorded on the repository host.** After a
   successful apply, `deploy-staging.yml`'s `record` job writes commit
-  statuses: `deployed/<image>` for each image, `deployed/portal`, and
-  `deployed/site`, each a digest. It installs nothing, and it is the
-  only job of the run with `statuses: write`.
+  statuses, each a digest: `deployed/<image>` for each image,
+  `deployed/portal`, and `deployed/site`. It installs nothing, and it is
+  the only job of the run with `statuses: write`.
 - **Production verifies before it plans.** `resolve` compares each image
   in production's registry, and a fresh download of each static build
   (`scripts/build_digest.sh`), with the recorded digests. It refuses a
@@ -36,7 +36,7 @@ account cannot rewrite, and a check of every copy against it.
 - **The fast rollback is DEL-50's: the previous release, and only that
   one.** `deploy-production.yml` takes an optional `rollback_to`: the
   newest commit of `release` before its tip whose `released/production`
-  status is a success. Behind the same approval it swaps each service's
+  status is a success. Behind the same approval, it swaps each service's
   image back to that release's digest and publishes that release's
   builds. It runs no migration, plans no Terraform, and never moves
   `release`. Anything older rolls forward through a revert on `main`.
@@ -59,12 +59,17 @@ account cannot rewrite, and a check of every copy against it.
   `deployment/`, `.github/`, and the cloud scripts.
 - **The release push is a deploy key's.** `release.yml` pushes the
   fast-forward with the `RELEASE_DEPLOY_KEY` secret when it is set: a
-  deploy key with write access, listed as the one bypass actor of the
-  ruleset that locks `release`, which the production create run
-  sets. Without it, the push uses the workflow's
-  own token. That works only while no ruleset restricts `release`, and
-  such a push fires no workflow, so the job dispatches
-  `deploy-production.yml` itself.
+  deploy key with write access, the one bypass actor of the ruleset that
+  locks `release`, which the production create run sets. Without it, the
+  push uses the workflow's own token. That works only while no ruleset
+  restricts `release`, and such a push fires no workflow, so the job
+  dispatches `deploy-production.yml` itself.
+- **No WAF.** The edge is a load balancer and CloudFront, and the rate
+  limits live in the API and fail open
+  ([ADR 0059](0059-authenticated-routes-have-limits.md)). A WAF is the
+  answer to abusive traffic the budget notices first.
+- **No GuardDuty or Security Hub.** They cost per account per month, and
+  the trail is there to read. They come with the first customer's data.
 
 ## Deviations
 
@@ -75,23 +80,14 @@ account cannot rewrite, and a check of every copy against it.
   app when the repository belongs to an organization that runs one.
 - **DEL-31** asks for a locked, versioned bundle prefix and a read of
   the version whose hash matches the record. The tree refuses direct
-  writes and compares the digest instead. A changed copy is refused
-  before any plan either way; what the lock would add is that the
-  changed version never lands.
-
-## Positions, chosen and not missed
-
-- **No WAF.** The edge is a load balancer and CloudFront, and the rate
-  limits live in the API and fail open
-  ([ADR 0059](0059-authenticated-routes-have-limits.md)). A WAF is the
-  answer to abusive traffic the budget notices first.
-- **No GuardDuty or Security Hub.** They cost per account per month, and
-  the trail is there to read. They come with the first customer's data.
+  writes and compares the digest instead. Either way a changed copy is
+  refused before any plan; the lock would add only that the changed
+  version never lands.
 
 ## Consequences
 
 - A release needs a commit that staging deployed while replication is
-  on, since only such a commit carries `deployed/` statuses and copies.
+  on: only such a commit carries `deployed/` statuses and copies.
 - A new image repository or a changed build permission is a bootstrap
   change: the administrator runs the create script again for staging,
   and for production when the registry changes.

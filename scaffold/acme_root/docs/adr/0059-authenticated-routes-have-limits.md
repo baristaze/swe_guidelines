@@ -4,14 +4,14 @@
 
 ## Context
 
-A session or an API key that calls as fast as it likes costs a lookup of
-its credential in Postgres on every call. An integration that polls with
-a key pays that lookup on every poll.
+A session or an API key that calls as fast as it likes costs a lookup
+of its credential in Postgres on every call, and so does every poll of
+an integration that polls with a key.
 
 A bearer that is unknown, expired, or revoked costs a lookup too: one
 transaction on the system login's pool, three round trips. An address
-can send a stream of dead tokens, and every one of them reaches the
-database unless something counts the failures.
+can send a stream of dead tokens, and every one reaches the database
+unless something counts the failures.
 
 The guideline's rate limit is a dependency on the shared counter
 (NET-08). Its subject is the credential id, or the client address where
@@ -32,9 +32,9 @@ and 1,200 writes a minute (`ACME_CREDENTIAL_RATE_LIMIT_READS`,
 client: a tab loading a page and following its hints, or a traffic run's
 stress profile at its fastest pace.
 
-The check lives in the auth dependency, after the manager's call.
-`rate_limited(route)` stays the per-route dependency for the sign-in
-routes. An authenticated route spends its credential's budget instead.
+The check lives in the auth dependency, after the manager's call. The
+sign-in routes keep the per-route dependency, `rate_limited(route)`. An
+authenticated route spends its credential's budget instead.
 
 **Each address has a budget of failed authentications.** A lookup that
 fails as `NotAuthenticated` (unknown, expired, revoked) answers 401 and
@@ -53,9 +53,9 @@ the increment that reaches the budget returns the time left on the
 window, and the process keeps that address and that time. The next
 request from the address is refused from memory. A shared read before
 every lookup would add a Valkey round trip to every good request, to
-catch a case that is rare. A replica that has not seen the address yet
-learns it from its own next failure. So past the budget, at most one
-failure per replica reaches the database per window.
+catch a rare case. A replica that has not seen the address yet learns
+it from its own next failure, so past the budget at most one failure
+per replica reaches the database per window.
 
 **The address is the one the proxy handling settles.** The failure
 budget keys on `request.client`, as the sign-in budget does. uvicorn
@@ -68,14 +68,14 @@ caller cannot choose its own address, or spend another's budget.
 **Both limits fail open.** When Valkey is down or the breaker is open,
 the increment answers "no count", and the request goes on.
 
-- The credential budget. A cache outage must not become an API outage.
+- The credential budget: a cache outage must not become an API outage.
   The credential already proved itself, and admission still bounds what
   the process takes in.
-- The failure budget. With no count there is nothing to refuse on. A
+- The failure budget: with no count there is nothing to refuse on. A
   dead-token flood during an outage reaches the database at one
   transaction per request, and admission bounds it. An address already
-  refused stays refused until its window ends, because that refusal is
-  in the process's memory.
+  refused stays refused until its window ends, since that refusal is in
+  the process's memory.
 
 Failing closed would refuse every authenticated request while the cache
 is down. NET-08 names that as a violation, and here it would be the
@@ -83,13 +83,13 @@ worse outage.
 
 ## Consequences
 
-Every authenticated request pays one Valkey round trip. The database
-cost of a good request does not change.
+Every authenticated request pays one Valkey round trip. A good
+request's database cost stays the same.
 
 A flood of dead tokens stops reaching the database once its address has
 spent the budget. Measured with `ops/audit/dbcalls.py` over a local
-database, 100 requests with a signed-out session and 100 with an unknown,
-well-formed token, from one address, with a budget of 10:
+database, 100 requests with a signed-out session and 100 with an
+unknown, well-formed token, from one address, with a budget of 10:
 
 | | Signed-out session | Unknown token |
 |---|---|---|

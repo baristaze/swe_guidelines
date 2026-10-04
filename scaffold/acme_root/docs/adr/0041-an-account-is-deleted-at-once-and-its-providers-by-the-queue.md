@@ -4,26 +4,22 @@
 
 ## Context
 
-A person asks to delete their account. What that means is decided:
-
-- It is a hard delete. The person is gone now, and gone from the
-  backups within seven days, the database's backup retention. There is
-  no grace period and no undo. Signing up again with the same address
-  makes a new person.
-- It is refused while the person is the last owner of a team org, and
-  refused for an operator, who leaves the allowlist first.
-- What they made in a team org stays the org's, under their id only.
-  Their user and their membership there go.
-- Their personal org goes whole.
-- Their user at the identity provider goes too, or a sign-in there
-  would carry on as if nothing happened.
+A person asks to delete their account. It is a hard delete: the person
+is gone now, and gone from the backups within seven days, the
+database's backup retention. There is no grace period and no undo, and
+signing up again with the same address makes a new person. Their
+personal org goes whole. Their user at the identity provider goes too,
+or a sign-in there would carry on as if nothing happened. What they
+made in a team org stays the org's, under their id only. A last owner
+of a team org is refused, and so is an operator, who leaves the
+allowlist first.
 
 STO-32 (The Storage Layer, Database Roles) makes the sweep's purge the
-one hard delete, save this one: a person's account may go at once
-instead of after its retention, in one atomic write that removes their
-identity and every user, membership, and credential it holds. A soft
-delete would keep a user row's email and name for the retention, which
-is the one thing the person asked not to happen here.
+one hard delete, save this one: a person's account may go at once, in
+one atomic write that removes their identity and every user,
+membership, and credential it holds. A soft delete would keep a user
+row's email and name for the retention, the one thing the person asked
+not to happen.
 
 ## Decision
 
@@ -32,19 +28,21 @@ is the one thing the person asked not to happen here.
 the person typed it. The tenancy manager checks it and the two
 refusals: `409 last_owner`, whose envelope names each org by id, name,
 and slug, and `403 operator_role_held`. Then one named atomic write,
-`TenancyStorageInterface.delete_person`, deletes the identity with its
-second factor, every user it is in any org with their memberships,
-sessions, API keys, and socket tickets, its sign-ins and operator
-tokens, the sign-in delay of its address, and every invitation sent to
-that address or accepted by one of its users. It is a cross-tenant
-method on the system scope, enumerated with the others. It counts,
-under a row lock, the owners of each team org the person owns, and
-refuses when one would be left with none, so two owners who leave at
-once cannot both go.
+`TenancyStorageInterface.delete_person`, deletes:
 
-It is the one hard delete outside the sweep that STO-32 names. The
-personal fields are the named ones the guideline asks for, so the
-delete is still a list, not a hunt.
+- the identity, with its second factor;
+- every user it is, in any org, with their memberships, sessions, API
+  keys, and socket tickets;
+- its sign-ins and operator tokens, and the sign-in delay of its
+  address;
+- every invitation sent to that address or accepted by one of its
+  users.
+
+It is a cross-tenant method on the system scope, enumerated with the
+others. Under a row lock it counts the owners of each team org the
+person owns, and refuses when one would be left with none, so two
+owners who leave at once cannot both go. The personal fields are the
+named ones the guideline asks for, so the delete is a list, not a hunt.
 
 **Every live credential is announced as revoked.** The same commit
 lands `tenancy.session.revoked` and `tenancy.api_key.deleted` for each
@@ -59,22 +57,22 @@ member.
 same commit asks for `DELETE_ACCOUNT` in the personal org, with the
 person's user id at the identity provider in its payload, since the
 identity that held it is gone. The worker deletes that user, then the
-personal org. A user the provider does not hold is deleted already,
-so a rerun finds its work done. A provider out of reach, or one that
+personal org. A user the provider does not hold counts as deleted, so
+a rerun finds its work done. A provider out of reach, or one that
 refuses the process's own key, parks the item for a minute without
 spending an attempt. A provider that refuses the call itself fails the
 item at once
 ([ADR 0051](0051-a-refused-key-is-unavailable-a-refused-request-is-refused.md)).
 
 **The personal org goes through the deletion that exists.** The last
-step soft-deletes the org and announces it. `tenancy.rules.past_retention`
-counts a deleted personal org as past its retention at once, since it
-is deleted only with its person. So the sweep's next pass runs the
-tenant purge every namespace already has. There is no second deletion
-mechanism. The org row stays as the record, as every deleted org's
-does, and a personal org's name and slug, made from its person's name,
-are replaced in the same write by "Deleted account" and
-`deleted-<id>`.
+step soft-deletes the org and announces it.
+`tenancy.rules.past_retention` counts a deleted personal org as past
+its retention at once, since it is deleted only with its person. So the
+sweep's next pass runs the tenant purge every namespace already has,
+and there is no second deletion mechanism. The org row stays as the
+record, as every deleted org's does. In the same write, a personal
+org's name and slug, made from its person's name, become "Deleted
+account" and `deleted-<id>`.
 
 **The browser ends the provider's session too.** The answer carries
 `provider_logout_url`, as a sign-out's does, and the portal goes there
@@ -82,17 +80,17 @@ on its way to `/signed-out`.
 
 ## Consequences
 
-The local delete is the promise, and it is kept at once: from the
-answer on, nobody signs in as the person and no credential of theirs
-works. The org waits for the provider, because a claim refuses an item
-of a deleted org.
+The local delete is the promise, kept at once: from the answer on,
+nobody signs in as the person and no credential of theirs works. The
+org waits for the provider, because a claim refuses an item of a
+deleted org.
 
 While the provider is down, or refuses the key, the personal org's rows
-wait, out of reach of their person; anyone else they had added to the
-org keeps it until then. A provider that refuses the call fails the
-item for good. Once the cause is fixed, a person with a `write`
-operator entry sends the item back (`acme-ops work requeue`), and the
-org's stream names who did.
+wait, out of reach of their person; anyone else they added to the org
+keeps it until then. A provider that refuses the call fails the item
+for good. Once the cause is fixed, a person with a `write` operator
+entry sends the item back (`acme-ops work requeue`), and the org's
+stream names who did.
 
 A person who signs in through the provider before the item deletes
 their user there is a new person in Acme. The item may then delete the
@@ -102,6 +100,5 @@ one again, and Acme links it by the verified address.
 The WorkOS organization a personal org gets when its owner invites
 someone to it stays at WorkOS under the org's id.
 
-The outbox rows and work items of the deletion stay for their own
-retention. They carry ids and the provider's user id, never a name or
-an address.
+The deletion's outbox rows and work items stay for their own retention.
+They carry ids and the provider's user id, never a name or an address.

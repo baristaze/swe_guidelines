@@ -4,8 +4,8 @@
 
 ## Context
 
-The guideline names technologies as defaults. It asks a project to
-record, once, every technology it uses and every substitution it makes.
+The guideline names technologies as defaults. A project records, once,
+every technology it uses and every substitution it makes.
 
 ## Decision
 
@@ -36,19 +36,18 @@ The substitution:
 The company site is one page that says what Acme is, with a link into
 the portal, and a not-found page. React would bring a script to a page
 that needs none, and Client Rendering rules out rendering it on the
-server or at build time. The page keeps the shape the stack is for, and
-only the technology it is written in changes, so it is a substitution
-and not a deviation. It covers `apps/site/package.json` alone, which
-`pyproject.toml` names as an exception to DEL-12: the rule's options
-substitute a framework for every browser app, not for one page.
-`apps/site/src/site.test.ts` fails when a page gains a `<script>` or
-loads anything from another origin, and the site becomes a React app
-like the portal the day it needs a script.
+server or at build time. Only the technology changes, not the shape, so
+it is a substitution and not a deviation. It covers
+`apps/site/package.json` alone, which `pyproject.toml` names as an
+exception to DEL-12: the rule's options substitute a framework for
+every browser app, not for one page. `apps/site/src/site.test.ts` fails
+when a page gains a `<script>` or loads anything from another origin.
+The day the site needs a script, it becomes a React app like the
+portal.
 
 One name differs and is not a substitution. The guideline writes
-`rediss://` for TLS to the cache. The cache URL here uses `valkeys://`,
-the Valkey client's TLS scheme: the same transport under the client's
-own name.
+`rediss://` for TLS to the cache; the cache URL here uses `valkeys://`,
+the Valkey client's name for the same transport.
 
 ## Consequences
 
@@ -59,5 +58,5 @@ deviation and gets an ADR of its own.
 
 The site ships no JavaScript, so its Content-Security-Policy names its
 own origin and nothing else, and it has no client code to review or
-update. What gives way is one stack for everything under `apps/`: a
-second, smaller way to build a page exists.
+update. The cost is a second, smaller way to build a page under
+`apps/`.

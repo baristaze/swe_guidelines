@@ -10,11 +10,10 @@ permission the call needs. Or it refuses the request itself: a code
 that is spent, an invitation it will not send, a parameter it calls
 invalid.
 
-The two need different answers. The first is not the call's fault. The
-same call goes through once a person fixes the key, so work that made
-it must wait, not fail. The second gets the same answer every time.
-NET-33 says only a failure that can differ is retried, so work that
-made it must fail at once.
+The first is not the call's fault: the same call goes through once a
+person fixes the key, so work that made it must wait, not fail. The
+second gets the same answer every time, and NET-33 retries only a
+failure that can differ, so work that made it must fail at once.
 
 ## Decision
 
@@ -31,11 +30,11 @@ provider's client shows the shape:
 | Any other `4xx` (the request) | `ProviderRefused` | `400`, `provider_refused` |
 
 On a sign-in call, a `401` or a `403` is the person's: the provider
-refuses the flow, as for an address it has not verified. So there it
-stays a refusal of the request. The refusal of the key names the
-setting (`ACME_WORKOS_API_KEY`) and never its value, so the log says
-which key to fix. A `404` on a deletion is not a refusal: the thing is
-gone already, and a rerun is one deletion.
+refuses the flow, as for an address it has not verified, so it stays a
+refusal of the request. The refusal of the key names the setting
+(`ACME_WORKOS_API_KEY`), never its value, so the log says which key to
+fix. A `404` on a deletion is not a refusal: the thing is gone already,
+and a rerun is one deletion.
 
 **Work reads the outcome by status.** The worker's `provider_calls`
 reads every provider failure the same way. A `503` parks the item for a
@@ -50,10 +49,9 @@ A request under a refused key answers `503`, which a client reads as
 
 An item under a refused key parks until a person fixes the key, and
 then finishes. An item whose request the provider refused fails at
-once, with the refusal as its reason, for an operator to read and
-requeue (`acme-ops work requeue`).
+once, for an operator to read and requeue (`acme-ops work requeue`).
 
-A bootstrap command a person runs has its own translation and keeps
-it: the person reads the refusal, which names the missing permission.
+A bootstrap command a person runs keeps its own translation: the person
+reads the refusal, which names the missing permission.
 
 A new provider client holds to the same split.
