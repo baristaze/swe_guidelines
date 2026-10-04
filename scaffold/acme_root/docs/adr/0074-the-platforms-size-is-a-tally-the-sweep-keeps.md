@@ -29,13 +29,13 @@ the result and counts nothing.
 "the operator plane's own state, global rows", and STO-21 keeps a report
 off the roles the application writes to. The size is the operator
 plane's own, and it is one global row, `admin.platform_sizes`, keyed by
-`EMPTY_UUID`, the platform's reference (OM-13). It is `system`-scoped: no tenant, no policy. The
-runtime and the system logins reach it through the grants the admin
-role's migration sets. The row is a persisted read model, derived and
-rebuilt by the next count. It is a row, never a cache entry: the cache
-is best effort, and a flush would lose the size until the next count.
-It is one row, never a row per count: a history needs a purge, and
-nothing reads one.
+`EMPTY_UUID`, the platform's reference (OM-13). It is `system`-scoped:
+no tenant, no policy. The runtime and the system logins reach it through
+the grants the admin role's migration sets. The row is a persisted read
+model, derived and rebuilt by the next count. It is a row, never a cache
+entry: the cache is best effort, and a flush would lose the size until
+the next count. It is one row, never a row per count: a history needs a
+purge, and nothing reads one.
 
 **Once every five minutes, not every pass.** The counts cover a day, so
 a count five minutes old is off by about a three-hundredth of its
