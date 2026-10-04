@@ -563,7 +563,8 @@ client constructed inside a manager.
 
 **Principle.** A decision that constrains future work is recorded under
 `docs/adr/` with context, decision, and consequences, dated and
-numbered. Code and comments cite the ADR by number.
+numbered. Code and comments cite the ADR by number. The scaffold's
+ADRs stay below 1000, and a copy numbers its own from 1001.
 `specs/architecture.md` pins the guideline and links the ADRs that
 depart from it.
 
@@ -579,7 +580,8 @@ checker's enumeration instead (CTX-12).
 **Violation.** An exception to a guideline rule introduced with no
 ADR; code that embodies an ADR's decision without citing its number;
 a row of `specs/architecture.md` left naming a deviation the change
-ended. (What an ADR says once it is accepted is OPS-29.)
+ended; a copy's new ADR numbered below 1001. (What an ADR says once
+it is accepted is OPS-29.)
 
 **Severity.** medium
 
