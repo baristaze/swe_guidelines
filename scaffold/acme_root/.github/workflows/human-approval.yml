@@ -1,0 +1,73 @@
+# One person's approval, asked once, that any workflow requires: a job
+# that `needs:` a call of this workflow runs only after a reviewer of the
+# named environment approved this run. It is the gate for a job whose
+# critical step holds no credential of its own environment, such as a
+# publish with the run's own token.
+#
+# A job that holds an environment's credential, like production's apply,
+# declares that environment itself and waits there, never behind a job of
+# its own before it: the role trusts the environment's subject, so the
+# reviewer gates the credential, and the job that holds it is the one that
+# waits. It runs the same rule check first.
+#
+# The approval is a setting outside the repository. The `rule` job reads
+# it before anything waits, and refuses when the environment has no
+# required-reviewers rule, or cannot be read: without the rule, `approve`
+# would pass with nobody asked.
+name: human-approval
+
+on:
+  workflow_call:
+    inputs:
+      environment:
+        description: The environment whose required reviewer is the approval.
+        type: string
+        default: human-approval
+      subject:
+        description: What the person approves, as the run's summary shows it.
+        type: string
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  rule:
+    name: the environment requires a reviewer
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      # To read the environment's protection rules.
+      actions: read
+    steps:
+      - name: the environment requires a reviewer
+        env:
+          ENVIRONMENT: ${{ inputs.environment }}
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          if ! rules="$(gh api "repos/$REPOSITORY/environments/$ENVIRONMENT" --jq '[.protection_rules[]? | .type] | join(",")' 2>&1)"; then
+            echo "::error::the $ENVIRONMENT environment cannot be read ($rules): create it with a required reviewer before this runs"
+            exit 1
+          fi
+          case ",$rules," in
+            *,required_reviewers,*)
+              echo "The \`$ENVIRONMENT\` environment requires a reviewer; the job that declares it waits for one." >> "$GITHUB_STEP_SUMMARY" ;;
+            *)
+              echo "::error::the $ENVIRONMENT environment has no required-reviewers rule (rules: '$rules'); without it the job that declares it would run unreviewed. Add the reviewer before this runs."
+              exit 1 ;;
+          esac
+
+  approve:
+    name: a person approves
+    needs: rule
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    # The wait: this job starts only once a reviewer approves the run.
+    environment: ${{ inputs.environment }}
+    steps:
+      - name: approved
+        env:
+          ENVIRONMENT: ${{ inputs.environment }}
+          SUBJECT: ${{ inputs.subject }}
+        run: echo "A reviewer of \`$ENVIRONMENT\` approved $SUBJECT." >> "$GITHUB_STEP_SUMMARY"

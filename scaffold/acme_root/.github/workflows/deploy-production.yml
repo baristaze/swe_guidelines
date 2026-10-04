@@ -26,7 +26,9 @@
 # production, takes the state lock while it plans, and writes the plan file.
 # `apply` declares `production`, whose required reviewer is the approval, and
 # a job that has not waited there never produces the subject the applying
-# role trusts. The plan is in the `plan` job's summary and in the
+# role trusts. So a run asks a person once: `apply`, or on a rollback
+# `rollback`, is its one job that declares `production`, and a test holds
+# it so. The plan is in the `plan` job's summary and in the
 # `production-plan` artifact.
 #
 # Each of the two GitHub environments holds its own variables under the same
@@ -172,21 +174,24 @@ jobs:
             exit 1
           fi
       # The approval gate is a setting outside the repository; this makes its
-      # absence a failed run instead of an unreviewed apply.
+      # absence a failed run instead of an unreviewed apply. The step is
+      # human-approval.yml's rule check, word for word (a test holds them
+      # equal), so a release asks once: the apply's own wait is the approval.
       - name: the production environment requires a reviewer
         env:
+          ENVIRONMENT: production
           GH_TOKEN: ${{ github.token }}
           REPOSITORY: ${{ github.repository }}
         run: |
-          if ! rules="$(gh api "repos/$REPOSITORY/environments/production" --jq '[.protection_rules[]? | .type] | join(",")' 2>&1)"; then
-            echo "::error::the production environment cannot be read ($rules): create it with a required reviewer (the deploy runbook) before releasing"
+          if ! rules="$(gh api "repos/$REPOSITORY/environments/$ENVIRONMENT" --jq '[.protection_rules[]? | .type] | join(",")' 2>&1)"; then
+            echo "::error::the $ENVIRONMENT environment cannot be read ($rules): create it with a required reviewer before this runs"
             exit 1
           fi
           case ",$rules," in
             *,required_reviewers,*)
-              echo "The \`production\` environment requires a reviewer; the apply waits for one." >> "$GITHUB_STEP_SUMMARY" ;;
+              echo "The \`$ENVIRONMENT\` environment requires a reviewer; the job that declares it waits for one." >> "$GITHUB_STEP_SUMMARY" ;;
             *)
-              echo "::error::the production environment has no required-reviewers rule (rules: '$rules'); without it the apply would run unreviewed. Add the reviewer (the deploy runbook) before releasing."
+              echo "::error::the $ENVIRONMENT environment has no required-reviewers rule (rules: '$rules'); without it the job that declares it would run unreviewed. Add the reviewer before this runs."
               exit 1 ;;
           esac
       - name: the cloud is configured
