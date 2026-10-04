@@ -41,7 +41,8 @@ has a condition for ending.
    the new record as one more than the highest numeric prefix present
    (`NNNN-<slug>.md`), except in a copy of the scaffold: a project whose
    `docs/adr/` holds records under file names of
-   `../../scaffold/acme_root/docs/adr/`, most of them or all. A copy's
+   `../../scaffold/acme_root/docs/adr/`, most of them or all. The
+   scaffold itself is not a copy: its records stay below 1000. A copy's
    own records go from 1001 (Records of Decisions): count only the
    prefixes at 1001 or above, and take 1001 when there is none. Refuse
    to write a path that already exists.
