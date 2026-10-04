@@ -1959,6 +1959,17 @@ The first operator is granted by the same kind of task, from a pipeline
 job a person dispatches, so production's grant waits behind the same
 approval as its apply.
 
+A migration's wait for a lock is bounded. Its DDL waits behind any
+transaction that holds its table, and every statement that arrives
+after it queues behind it, so one long transaction and one waiting
+migration stop the table. The migration's connection carries
+`lock_timeout` from settings, a few seconds and under the serving
+statements' deadline. It carries no statement deadline, since a
+backfill may run long. A migration past the bound rolls its role back
+and exits with a code of its own that asks for another run. The deploy
+runs it again a bounded number of times, then fails the apply with the
+old tasks serving.
+
 <!-- agents-only
 The grant job also mints the operator tokens of the provisioner and the
 smoke identity into the secret store, as
