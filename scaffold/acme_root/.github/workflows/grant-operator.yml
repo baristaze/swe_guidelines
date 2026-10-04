@@ -118,14 +118,14 @@ jobs:
           REPOSITORY: ${{ github.repository }}
         run: |
           if ! rules="$(gh api "repos/$REPOSITORY/environments/$ENVIRONMENT" --jq '[.protection_rules[]? | .type] | join(",")' 2>&1)"; then
-            echo "::error::the $ENVIRONMENT environment cannot be read ($rules): create it with a required reviewer before this runs"
+            echo "::error::the $ENVIRONMENT environment cannot be read ($rules): create it with a required reviewer before this runs. A private repository can have that rule only under GitHub Enterprise; on Free, Pro, or Team this refuses every run."
             exit 1
           fi
           case ",$rules," in
             *,required_reviewers,*)
               echo "The \`$ENVIRONMENT\` environment requires a reviewer; the job that declares it waits for one." >> "$GITHUB_STEP_SUMMARY" ;;
             *)
-              echo "::error::the $ENVIRONMENT environment has no required-reviewers rule (rules: '$rules'); without it the job that declares it would run unreviewed. Add the reviewer before this runs."
+              echo "::error::the $ENVIRONMENT environment has no required-reviewers rule (rules: '$rules'); without it the job that declares it would run unreviewed. Add the reviewer before this runs. A private repository can have that rule only under GitHub Enterprise; on Free, Pro, or Team this refuses every run."
               exit 1 ;;
           esac
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

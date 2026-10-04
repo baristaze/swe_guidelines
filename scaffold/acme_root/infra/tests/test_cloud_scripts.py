@@ -600,20 +600,29 @@ def test_the_approval_waits_only_after_the_rule_check() -> None:
     assert jobs["approve"]["environment"] == "${{ inputs.environment }}"
 
 
+PLAN = "A private repository can have that rule only under GitHub Enterprise"
+
+
 @pytest.mark.parametrize(
     ("answer", "status", "returncode", "says"),
     [
-        ("required_reviewers,branch_policy", 0, 0, "requires a reviewer"),
-        ("branch_policy", 0, 1, "::error::the production environment has no required-reviewers"),
-        ("", 0, 1, "::error::the production environment has no required-reviewers"),
-        ("HTTP 404: Not Found", 1, 1, "::error::the production environment cannot be read"),
+        ("required_reviewers,branch_policy", 0, 0, ("requires a reviewer",)),
+        (
+            "branch_policy",
+            0,
+            1,
+            ("::error::the production environment has no required-reviewers", PLAN),
+        ),
+        ("", 0, 1, ("::error::the production environment has no required-reviewers", PLAN)),
+        ("HTTP 404: Not Found", 1, 1, ("::error::the production environment cannot be read", PLAN)),
     ],
 )
 def test_the_rule_check_refuses_an_environment_with_no_reviewer(
-    tmp_path: Path, answer: str, status: int, returncode: int, says: str
+    tmp_path: Path, answer: str, status: int, returncode: int, says: tuple[str, ...]
 ) -> None:
     """The check runs as the runner runs a step (bash -e, pipefail), with a
-    `gh` that answers what the environments API would."""
+    `gh` that answers what the environments API would. A refusal says that a
+    private repository has the rule only under GitHub Enterprise."""
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
     gh = bin_dir / "gh"
@@ -636,7 +645,7 @@ def test_the_rule_check_refuses_an_environment_with_no_reviewer(
     )
     assert result.returncode == returncode, result.stderr
     out = result.stdout + (summary.read_text() if summary.exists() else "")
-    assert says in out
+    assert all(s in out for s in says), out
 
 
 def test_the_branch_rulesets_keep_main_release_and_scaffold(tmp_path: Path) -> None:

@@ -50,5 +50,9 @@ environment and it assumes the deploy role; every job that declares
 `production` runs the check before its credential; and the check refuses
 an environment with no reviewer.
 
+A private repository can have the required-reviewers rule only under
+GitHub Enterprise, so on Free, Pro, or Team its production deploy
+refuses every run, and the check's error says why.
+
 A reset of `release` turns off both of its rulesets for that push (the
 deploy runbook). A rollback is its own run, and it asks once.
