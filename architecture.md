@@ -1959,6 +1959,17 @@ The first operator is granted by the same kind of task, from a pipeline
 job a person dispatches, so production's grant waits behind the same
 approval as its apply.
 
+A migration's wait for a lock is bounded. Its DDL waits behind any
+transaction that holds its table, and every statement that arrives
+after it queues behind it, so one long transaction and one waiting
+migration stop the table. The migration's connection carries
+`lock_timeout` from settings, a few seconds and under the serving
+statements' deadline. It carries no statement deadline, since a
+backfill may run long. A migration past the bound rolls its role back
+and exits with a code of its own that asks for another run. The deploy
+runs it again a bounded number of times, then fails the apply with the
+old tasks serving.
+
 <!-- agents-only
 The grant job also mints the operator tokens of the provisioner and the
 smoke identity into the secret store, as
@@ -2295,6 +2306,10 @@ queue, cache, and limit by outcome. A label is bounded, never an id.
 Every process reports errors through the Sentry SDK, browser apps
 included, tagged with the service, the release, and the request id.
 Reporting is off until a DSN is set, and an event carries no secret.
+On the server, the breadcrumb of an outbound call keeps its method,
+its status, and its URL's scheme and host, which name the provider. Its
+path stays out, since a webhook's capability lives there, and so does
+its query.
 
 ### Correlation Across a Handoff
 

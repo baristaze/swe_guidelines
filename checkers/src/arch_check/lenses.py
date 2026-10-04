@@ -271,4 +271,5 @@ LENSES: dict[str, Severity] = {
     "STO-32": "medium",
     "STO-33": "high",
     "STO-34": "medium",
+    "STO-35": "medium",
 }
