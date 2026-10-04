@@ -1223,12 +1223,15 @@ names as a credential before an event leaves the process.
 
 **Look for.** The SDK's initialization in every process: the local
 variables and personal data options; the scrubber it is handed, and
-the headers, cookies, and credential fields it removes.
+the headers, cookies, and credential fields it removes; the breadcrumb
+a server process leaves for an outbound call, and the part of its URL
+it keeps.
 
 **Violation.** An SDK initialized with local variables or default
 personal data on; a process that sends events with no scrubber; a
 scrubber that leaves the authorization header, a cookie, or a field a
-request names as a credential in the event.
+request names as a credential in the event; an outbound breadcrumb
+that keeps a URL's path or query.
 
 **Severity.** high
 
