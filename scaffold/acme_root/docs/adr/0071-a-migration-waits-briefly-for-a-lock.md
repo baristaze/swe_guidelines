@@ -25,8 +25,13 @@ then goes through. A request for the table sent while it waits queues
 behind it and hits its own 10-second statement deadline: it answers 500
 after 10.08 seconds.
 
-The guideline says every statement carries a deadline from settings. It
-says nothing about a migration's wait for a lock. So this is a choice.
+The guideline holds the bound as a rule, STO-35 (Migrating a Deployed
+Database): the migration's connection carries `lock_timeout` from
+settings, a few seconds and under the serving statements' deadline, and
+no statement deadline. A migration past it exits with a code that asks
+for another run, and the deploy runs it again a bounded number of
+times. The value of the bound, the exit code, and the number of runs
+are the choices this decision makes.
 
 ## Decision
 

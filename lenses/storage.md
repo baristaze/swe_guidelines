@@ -930,3 +930,32 @@ sweep does not state. The trim that deletes the stream past its
 retention is no such write (NET-22).
 
 **Severity.** medium
+
+## STO-35 A migration's wait for a lock is bounded, and the deploy runs it again
+
+**Principle.** A migration's DDL that waits for a lock holds its place
+in the table's queue, and every statement after it waits too. So the
+migration's connection carries `lock_timeout` from settings, a few
+seconds and under the serving statements' deadline, and no statement
+deadline. A migration past the bound rolls its role back and exits with
+a code of its own that asks for another run. The deploy runs it again a
+bounded number of times, then fails the apply with the old tasks
+serving.
+
+**Source.** Deployment, Migrating a Deployed Database.
+
+**Look for.** Where the migrate command opens its connection: the
+`lock_timeout` it sets, the setting it reads, and its value against the
+serving statements' deadline. The exit code a lock-wait failure gives,
+and what the deploy's migrate step does on that code.
+
+**Violation.** A migration connection or engine opened with no lock
+bound, or one at or above the serving deadline; a statement deadline on
+it that cuts a long backfill; a lock-wait failure that exits as any
+other failure does; a migrate step that never runs it again, or runs it
+again with no bound. Where the step runs is DEL-45.
+
+**Severity.** medium
+
+**Shape.** `scaffold/acme_root/om/src/acme/om/storage/migrate.py`,
+`scaffold/acme_root/deployment/terraform/modules/service/pre_rollout.sh`
