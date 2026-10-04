@@ -10,7 +10,7 @@ subject:
   # About ten times what one review has cost; Claude Code stops the session there.
   max_usd: 3
   allowed_tools: [Read, Grep, Glob]
-  # A checkout with eight defects planted, one lens each. `--target`
+  # A checkout with ten defects planted. `--target`
   # reviews another checkout instead; the judges still get its source,
   # and the expected findings are dropped because they describe this one.
   target: ../fixtures/review-om
@@ -21,11 +21,13 @@ artifact:
 evidence:
   files: ["om/**/*.py", "om/pyproject.toml"]
   expected: ../fixtures/review-om.expected.yaml
+  # The text of each lens the review cites, so a judge reads the rule.
+  lenses: true
 rubric: |
   Score the review 0 to 100 as the author of the guideline would. The
-  evidence holds the source the review read, with line numbers, and,
-  on the scenario's own target, the planted findings and what the
-  checkout does right. Score against the evidence, not against how
+  evidence holds the source the review read, with line numbers, the
+  text of each lens the review cites, and, on the scenario's own
+  target, the planted findings and what the checkout does right. Score against the evidence, not against how
   sure the review sounds.
 
   Most of the score is recall and precision. Each planted finding the

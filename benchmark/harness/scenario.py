@@ -197,15 +197,17 @@ class EvidenceSpec:
     `files` are globs over the target: the source the artifact talks
     about, shown to the judges with line numbers. `expected` is a file
     of the findings planted in the scenario's own target, kept outside
-    that target so the subject never reads the answers.
+    that target so the subject never reads the answers. `lenses` gives
+    the judges the text of each lens the artifact cites.
     """
 
     files: list[str] = field(default_factory=list)
     expected: str | None = None
+    lenses: bool = False
 
     @property
     def empty(self) -> bool:
-        return not self.files and not self.expected
+        return not self.files and not self.expected and not self.lenses
 
 
 @dataclass(frozen=True)
@@ -335,7 +337,11 @@ class Scenario:
             "repeat": self.repeat,
             "max_spend_usd": self.max_spend_usd,
             "preflight": self.preflight.as_dict(),
-            "evidence": {"files": list(self.evidence.files), "expected": self.evidence.expected},
+            "evidence": {
+                "files": list(self.evidence.files),
+                "expected": self.evidence.expected,
+                "lenses": self.evidence.lenses,
+            },
             "path": str(self.path) if self.path else None,
         }
 
@@ -437,10 +443,14 @@ def from_data(data: Any, path: Path | None = None) -> Scenario:
     raw_evidence = data.get("evidence") or {}
     if not isinstance(raw_evidence, dict):
         raise ScenarioError(f"scenario {name}: evidence holds a mapping")
-    _only(raw_evidence, ("files", "expected"), f"scenario {name}: evidence")
+    _only(raw_evidence, ("files", "expected", "lenses"), f"scenario {name}: evidence")
+    lenses = raw_evidence.get("lenses", False)
+    if not isinstance(lenses, bool):
+        raise ScenarioError(f"scenario {name}: evidence.lenses is true or false, got {lenses!r}")
     evidence = EvidenceSpec(
         files=_strings(raw_evidence.get("files"), f"scenario {name}: evidence.files"),
         expected=raw_evidence.get("expected"),
+        lenses=lenses,
     )
     if evidence.expected and not subject.target:
         raise ScenarioError(f"scenario {name}: evidence.expected describes a target, and subject.target names none")

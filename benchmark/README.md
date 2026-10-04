@@ -83,7 +83,7 @@ and each has a page under `runs/` with what it measures and its runs.
 | Scenario | Kind | Runtimes | What it measures |
 |----------|------|----------|------------------|
 | `explain-tenancy` | `skill` | `container` | `arch-explain` on one question about the tenant fence; the cheap one to run first |
-| `review-om` | `skill` | `container` | `arch-review-om` on a checkout with eight planted defects |
+| `review-om` | `skill` | `container` | `arch-review-om` on a checkout with ten planted defects |
 | `support-turn` | `qa` | `host`, `container` | a model answering an on-call question directly, with no skill |
 | `create-full-system` | `skill` | `vm` | the scaffold skills building a whole system from a product spec |
 
@@ -112,6 +112,7 @@ artifact:
 evidence:                   # optional; what one-shot judges get besides the answer
   files: []                 # globs over the target, shown with line numbers
   expected: null            # the findings planted in the scenario's own target
+  lenses: false             # the text of each lens the answer cites
 rubric: |
   Score the answer 0 to 100 as a senior architect would...
 judges:
@@ -143,8 +144,10 @@ weighs once. The summary flags a Claude subject judged by a panel that
 includes Claude, since a model may favor its own kind.
 
 A scenario can give one-shot judges evidence: the target's source with
-line numbers, and the defects planted in it. The harness then counts,
-with no model, which planted findings the answer names.
+line numbers, the defects planted in it, and the text of each lens the
+answer cites, so a judge weighs a finding against the lens and not
+against its memory of it. The harness then counts, with no model,
+which planted findings the answer names.
 
 ## Runtimes
 

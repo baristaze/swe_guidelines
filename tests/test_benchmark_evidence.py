@@ -68,9 +68,8 @@ def test_every_planted_finding_of_review_om_points_at_the_line_it_shows():
     fixtures = Path(__file__).resolve().parent.parent / "benchmark" / "fixtures"
     text = (fixtures / "review-om.expected.yaml").read_text(encoding="utf-8")
     entries = re.findall(r"- id: (F\d+)\n\s+lens: (\S+)\n\s+file: (\S+)\n\s+line: (\d+)\n\s+shows: '(.*)'", text)
-    assert len(entries) == 8
-    lenses = {lens for _, lens, _, _, _ in entries}
-    assert len(lenses) == 8, "one lens per planted finding"
+    assert len(entries) == 10
+    assert len({fid for fid, *_ in entries}) == 10, "one id per planted finding"
     for fid, _lens, file, line, shows in entries:
         path = fixtures / "review-om" / file
         assert path.is_file(), f"{fid}: {file}"
@@ -110,3 +109,68 @@ def test_a_line_is_numbered_as_an_editor_numbers_it(tmp_path):
     (tmp_path / "a.py").write_bytes("one\x0cstill one\ntwo\u2028still two\nthree\n".encode())
     text = E.source(tmp_path, ["*.py"])
     assert "1 | one\x0cstill one\n2 | two\u2028still two\n3 | three\n```" in text
+
+
+def test_review_om_expects_what_its_lenses_say():
+    """The answer key never penalizes a finding the lens text bears out."""
+    fixtures = Path(__file__).resolve().parent.parent / "benchmark" / "fixtures"
+    text = (fixtures / "review-om.expected.yaml").read_text(encoding="utf-8")
+    findings, clean = text.split("\nclean:\n")
+    assert "lens: OM-16" in findings
+    assert re.search(r"lens: OM-03\n(?:\s+\w+: .*\n)*?\s+what: .*MANAGER_OWNED_FIELDS", findings)
+    assert "OM-16" not in clean and "tenancy" not in clean, "no clean line absolves a missing tenancy namespace"
+
+
+def write_lenses(root: Path) -> Path:
+    lenses = root / "lenses"
+    lenses.mkdir()
+    (lenses / "README.md").write_text("# Lenses\n\n## OM-99 Not a lens file\n", encoding="utf-8")
+    (lenses / "om.md").write_text(
+        "# Object model\n\n## OM-01 One model\n\nOne text.\n\n## OM-03 Mixins\n\nMixin text.\n\n## Notes\n\nAfter.\n",
+        encoding="utf-8",
+    )
+    (lenses / "storage.md").write_text("# Storage\n\n## ST-02 Tables\n\nTable text.\n", encoding="utf-8")
+    return lenses
+
+
+def test_the_cited_lenses_come_once_in_the_order_the_answer_cites_them(tmp_path):
+    lenses = write_lenses(tmp_path)
+    text = E.cited(lenses, "ST-02 first, then OM-03, then OM-03 again and ISO-86 and UTF-08.")
+    assert text.startswith("### Lenses the artifact cites")
+    assert text.index("#### ST-02 Tables") < text.index("#### OM-03 Mixins")
+    assert text.count("Mixin text.") == 1
+    assert "One text." not in text and "After." not in text  # an uncited lens, and a section that is no lens
+    assert "No lens has the id" not in text  # an id of no lens group is not a lens id
+
+
+def test_an_id_no_lens_carries_is_named_and_brings_no_text(tmp_path):
+    lenses = write_lenses(tmp_path)
+    text = E.cited(lenses, "OM-42 and OM-99 and OM-01")
+    assert text.endswith("No lens has the id OM-42, OM-99.")  # README.md holds no lens
+    assert "One text." in text
+    many = " ".join(f"OM-{n:02d}" for n in range(50, 80))
+    assert E.cited(lenses, many).endswith("OM-69, and 10 more.")
+    assert E.cited(lenses, "no lens here") == ""
+
+
+def test_the_cited_lenses_are_cut_when_long(tmp_path):
+    lenses = write_lenses(tmp_path)
+    text = E.cited(lenses, "OM-01 OM-03 ST-02", limit=20)
+    assert "lenses truncated at 20 characters" in text and "Table text." not in text
+
+
+def test_render_puts_the_lenses_between_the_expected_list_and_the_source():
+    text = E.render("findings: []", "### Source: a.py", "### Lenses the artifact cites")
+    assert text.index("### Expected findings") < text.index("### Lenses") < text.index("### Source: a.py")
+
+
+def test_the_judges_of_the_last_review_om_answer_read_the_lenses_it_cites():
+    """The checked-in answer cites OM-03 and OM-16; their text is what a judge weighs them against."""
+    root = Path(__file__).resolve().parent.parent
+    runs = sorted((root / "benchmark" / "runs" / "review-om").glob("2*/artifacts/0/answer.md"))
+    answer = runs[-1].read_text(encoding="utf-8")
+    text = E.cited(root / "lenses", answer)
+    assert "#### OM-03 The mixins declare exactly their fields" in text
+    assert "`MANAGER_OWNED_FIELDS`, a tuple, even when empty" in text
+    assert "#### OM-16 Cross-cutting namespaces are ordinary namespaces" in text
+    assert len(text) <= E.LENS_LIMIT + 200
