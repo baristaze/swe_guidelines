@@ -6,8 +6,9 @@
 
 STO-26 makes a unique key on a `SoftDeletable` table a partial index
 `WHERE deleted_at IS NULL`, so a deleted slug, address, or membership
-frees its value for reuse. `api_keys` is soft-deletable: revoking a key
-sets `deleted_at`.
+frees its value for reuse. The memory impl refuses only among the
+living, and a contract case creates, deletes, and creates again.
+`api_keys` is soft-deletable: revoking a key sets `deleted_at`.
 
 A key hash is not a name anyone picks. It digests a fresh random secret
 the platform mints, so the same hash never comes up twice, and freeing

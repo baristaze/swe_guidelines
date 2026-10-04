@@ -26,9 +26,10 @@ and it is listed with the other principal-less methods. `size` reads
 the result and counts nothing.
 
 **The tally lives in the `admin` role.** The guideline gives `admin`
-"the operator plane's own state, global rows". The size is one global
-row, `admin.platform_sizes`, keyed by `EMPTY_UUID`, the platform's
-reference (OM-13). It is `system`-scoped: no tenant, no policy. The
+"the operator plane's own state, global rows", and STO-21 keeps a report
+off the roles the application writes to. The size is the operator
+plane's own, and it is one global row, `admin.platform_sizes`, keyed by
+`EMPTY_UUID`, the platform's reference (OM-13). It is `system`-scoped: no tenant, no policy. The
 runtime and the system logins reach it through the grants the admin
 role's migration sets. The row is a persisted read model, derived and
 rebuilt by the next count. It is a row, never a cache entry: the cache

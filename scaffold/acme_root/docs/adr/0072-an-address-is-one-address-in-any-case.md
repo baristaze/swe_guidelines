@@ -8,9 +8,10 @@ A person's own sign-in through the identity provider finds the identity
 by the issuer and the subject. Every other path finds a person by the
 address: the first sign-in through the provider, which falls back to the
 address and links a person the seeding or an operator made; the operator
-allowlist's grant, disable, and grant token; adding a member by address;
-the local sign-in; and an invitation, from the pending one per address
-to the lookup a member's sign-in makes.
+allowlist's grant, disable, and grant token; adding a member by address,
+from the seeding or the operator plane; the local sign-in; and an
+invitation: the pending one per address, the refusal of a member, and
+the lookup a member's sign-in makes.
 
 Matched as typed, `Dee@example.test` and `dee@example.test` would be two
 addresses, and could be two people.

@@ -7,9 +7,9 @@
 DEL-17 (The CLI Is Different) has the CLI talk REST with an API key,
 attach an idempotency key to every creating call, turn a followed
 operation's outcome into an exit code, and trust the operating system's
-certificate store. An API key is scoped to one membership, so the CLI
-works in one tenant by construction, with no picker and never two
-credentials.
+certificate store. One Tenant at a Time adds that an API key is scoped
+to one membership, so the CLI works in one tenant by construction, with
+no picker and never two credentials.
 
 A person at a terminal has no API key until they sign in somewhere to
 mint one.
@@ -42,8 +42,9 @@ DEL-17's "with an API key" is a recorded deviation, and a review that
 sees `acme login` cites this record. The other three parts of DEL-17
 hold as written.
 
-The org choice at sign-in and the switch go through the routes the
-portal uses, so the API has one path, not two.
+The CLI has a choice of org at sign-in and a switch, which One Tenant
+at a Time says it does not need. Both go through the routes the portal
+uses, so the API has one path, not two.
 
 The deviation ends if the CLI moves to API keys minted in the portal.
 Then `login`, `orgs`, and `switch` go with it.

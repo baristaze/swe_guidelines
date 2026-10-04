@@ -86,7 +86,8 @@ delay allows once the bus is back. If the row becomes a dead letter
 first, the recheck and the credential's expiry still close the socket.
 
 In the API the relay runs after the answer is sent, so a dropped publish
-changes nothing the caller sees.
+changes nothing the caller sees: the relay logs the drop, and the row
+waits for the sweep.
 
 A frame can reach a client twice: when the mark after a publish fails,
 the sweep publishes that row again. Every consumer treats a frame as a
