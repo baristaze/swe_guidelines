@@ -27,7 +27,7 @@ test("a placeholder no link fills fails the build", () => {
 
 // The page loads nothing from another origin: no script, no font, no image,
 // no stylesheet. Only a link a person follows may leave the site.
-test.each(["index.html", "404.html"])("%s loads nothing from another origin and runs no script", (name) => {
+test.each(["index.html", "404.html", "privacy.html"])("%s loads nothing from another origin and runs no script", (name) => {
   const html = page(name);
   expect(html).not.toMatch(/<script\b/i);
   expect(html).not.toMatch(/<iframe\b/i);
@@ -62,5 +62,15 @@ test.each(["index.html", "404.html"])("%s links the icons, and each is in public
   expect(html).toContain('<link rel="apple-touch-icon" href="/apple-touch-icon.png" />');
   for (const file of ["favicon.svg", "favicon-32.png", "apple-touch-icon.png"]) {
     expect(existsSync(new URL(`../public/${file}`, import.meta.url)), file).toBe(true);
+  }
+});
+
+test("the privacy page is built, linked from the home page, and names who to ask", () => {
+  expect(existsSync(new URL("../privacy.html", import.meta.url))).toBe(true);
+  expect(page("index.html")).toContain('href="/privacy.html"');
+  const text = page("privacy.html").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ");
+  expect(text).toMatch(/Questions go to \S+@\S+/);
+  for (const processor of ["Amazon Web Services", "WorkOS", "Sentry"]) {
+    expect(text).toContain(processor);
   }
 });

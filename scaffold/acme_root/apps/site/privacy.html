@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en">
+  <!--
+    What the product keeps and who receives part of it, in plain words. Each
+    fact is the code's: the worker's retention settings, the log groups'
+    retention, the deletion of an account (ADR 0041), and the portal's storage.
+    A product that adds a service that receives part of its data names it under
+    "Who else receives some of it"; the contact address is the product's own.
+  -->
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="light dark" />
+    <title>Privacy · Acme</title>
+    <meta name="description" content="What Acme keeps about you, who else receives any of it, how long it is kept, and how to have it deleted." />
+    <link rel="canonical" href="%SITE_URL%/privacy.html" />
+    <link rel="icon" href="/favicon-32.png" type="image/png" sizes="32x32" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="stylesheet" href="/src/site.css" />
+  </head>
+  <body>
+    <a class="skip" href="#main">Skip to the content</a>
+
+    <header class="bar">
+      <nav class="bar-inner" aria-label="Main">
+        <a class="brand" href="/" aria-label="Acme home">
+          <svg width="28" height="28" viewBox="0 0 28 28" aria-hidden="true">
+            <rect width="28" height="28" rx="8" class="mark-fill" />
+            <path d="M8.5 14.5l3.8 3.8 7.2-8.1" class="mark-check" />
+          </svg>
+          <span>Acme</span>
+        </a>
+        <div class="bar-actions">
+          <a class="button" data-tone="ghost" href="%APP_URL%/login">Sign in</a>
+        </div>
+      </nav>
+    </header>
+
+    <main id="main" class="column legal">
+      <h1>Privacy</h1>
+
+      <p>
+        Acme is a multi-tenant system for teams: its <a href="%SITE_URL%/">site</a> and its <a href="%APP_URL%/">app</a>.
+        This page says what it keeps about you, who else receives any of it, how long it is kept, and how to have it
+        deleted. Questions go to <a href="mailto:privacy@acme.example">privacy@acme.example</a>.
+      </p>
+
+      <h2>What Acme keeps</h2>
+      <ul>
+        <li><strong>Your account:</strong> your email address and name, as the sign-in provider confirms them, and the orgs you belong to with your role in each.</li>
+        <li><strong>Your work:</strong> what you and your team create in it, the files you attach, and a record of who changed what and when.</li>
+        <li><strong>Service records:</strong> each request's time, route, and status, with no request body and no query string, and reports of the app's own errors, written so that no text a person wrote goes in them.</li>
+      </ul>
+      <p>
+        The company site sets no cookie and runs no script. The app keeps its sign-in in your browser's session storage and
+        your display preferences in its local storage, and sets no tracking cookie. Acme shows no ads and sells no data.
+      </p>
+
+      <h2>Who else receives some of it</h2>
+      <p>Acme uses these services, each for one purpose and each receiving only what that purpose needs:</p>
+      <ul>
+        <li><strong>Amazon Web Services</strong> (United States, us-west-2) runs the app and stores its data, encrypted at rest.</li>
+        <li><strong>WorkOS</strong> signs you in: it receives your email address, sends the sign-in code, and holds your sign-in identity.</li>
+        <li><strong>Sentry</strong> receives reports of the app's errors, which carry a request id and no text a person wrote.</li>
+      </ul>
+      <p>Acme shares nothing else with anyone, unless the law requires it.</p>
+
+      <h2>How long it is kept</h2>
+      <ul>
+        <li>Your account and your work stay while your account and your org exist.</li>
+        <li>The record of changes is kept for 90 days.</li>
+        <li>Service records are kept for 30 days.</li>
+        <li>A deleted item leaves the database within 30 days, and its backups within 7 days after that.</li>
+      </ul>
+
+      <h2>Deleting your data</h2>
+      <p>
+        You can delete your account in the app's Settings. The deletion is at once and final: your account, your personal
+        org with its records and files, and your sign-in identity at WorkOS go. The work you did in a team org stays the
+        team's. An org's owner can delete a team org the same way. Everything deleted leaves the backups within 7
+        days. You can also ask for a copy or a deletion at
+        <a href="mailto:privacy@acme.example">privacy@acme.example</a>.
+      </p>
+
+      <h2>Changes</h2>
+      <p>A service that will receive part of your data is named on this page before it does.</p>
+    </main>
+
+    <footer class="footer">
+      <div class="column footer-inner">
+        <a class="brand" href="/" aria-label="Acme home">
+          <svg width="22" height="22" viewBox="0 0 28 28" aria-hidden="true">
+            <rect width="28" height="28" rx="8" class="mark-fill" />
+            <path d="M8.5 14.5l3.8 3.8 7.2-8.1" class="mark-check" />
+          </svg>
+          <span>Acme</span>
+        </a>
+        <p class="footer-line">A multi-tenant system for teams.</p>
+        <nav class="footer-links" aria-label="Footer">
+          <a href="/">Home</a>
+          <a href="%APP_URL%/login">Sign in</a>
+          <a href="%GITHUB_URL%">GitHub</a>
+        </nav>
+      </div>
+    </footer>
+  </body>
+</html>

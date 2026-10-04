@@ -6,7 +6,7 @@ import { fillLinks, linksFor } from "./src/links";
 
 const repoRoot = fileURLToPath(new URL("../..", import.meta.url));
 
-// A static page: HTML and CSS, no script. The build runs once per deployed
+// Static pages: HTML and CSS, no script. The build runs once per deployed
 // environment (`--mode staging`, `--mode production`), each with the links
 // of its environment written into the HTML.
 export default defineConfig(({ mode }) => {
@@ -20,6 +20,7 @@ export default defineConfig(({ mode }) => {
         input: {
           index: fileURLToPath(new URL("index.html", import.meta.url)),
           notFound: fileURLToPath(new URL("404.html", import.meta.url)),
+          privacy: fileURLToPath(new URL("privacy.html", import.meta.url)),
         },
       },
     },

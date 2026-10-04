@@ -5,7 +5,8 @@
 # serves the exact files staging already served, and reaches the API through
 # this same distribution: the API's paths go to its load balancer, so every
 # call the page makes is same-origin and no browser sends a preflight. The
-# company site (name "site") calls nothing, has one page and a 404 page, and
+# company site (name "site") calls nothing, has its pages (the home page and the
+# privacy page) and a 404 page, and
 # carries its environment's links in its build.
 
 locals {

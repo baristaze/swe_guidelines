@@ -294,6 +294,48 @@ p {
   color: var(--acme-text);
 }
 
+/* The privacy page: prose in the site's column. */
+.legal {
+  padding-top: 48px;
+  padding-bottom: 64px;
+  max-width: 720px;
+}
+
+.legal h1 {
+  font-size: 36px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.legal h2 {
+  margin-top: 32px;
+  font-size: 20px;
+  font-weight: 650;
+}
+
+.legal p,
+.legal ul {
+  margin-top: 12px;
+  line-height: 1.6;
+}
+
+.legal ul {
+  padding-left: 20px;
+}
+
+.legal li + li {
+  margin-top: 6px;
+}
+
+.legal a {
+  color: var(--acme-accent);
+}
+
+.legal-date {
+  color: var(--acme-muted);
+  font-size: 14px;
+}
+
 /* The page a missing address gets. */
 .missing {
   min-height: 100vh;
