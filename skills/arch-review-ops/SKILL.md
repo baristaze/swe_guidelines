@@ -1,7 +1,7 @@
 ---
 name: arch-review-ops
 description: "Architecture review through the Operations lenses: roles, credentials, ops skills, alarms, scale-out, cost, environments, traffic, READMEs. For a change in this area, or as one leg of arch-review-full."
-allowed-tools: Read, Grep, Glob, Bash(git diff:*), Bash(git show:*), Bash(git log:*), Bash(git status:*), Bash(git rev-parse:*), Bash(git merge-base:*), Bash(git symbolic-ref:*)
+allowed-tools: Read, Grep, Glob, Bash(git diff:*), Bash(git show:*), Bash(git log:*), Bash(git status:*), Bash(git rev-parse:*), Bash(git merge-base:*), Bash(git symbolic-ref:*), Bash(git ls-files:*)
 ---
 
 # arch-review-ops
@@ -31,16 +31,20 @@ that matches:
    histories), the scope is the uncommitted change against `HEAD` plus
    the untracked files, and the Scope line says the merge base was not
    found. In a repository with no commit, it is every file not
-   ignored.
+   ignored, listed as `all` lists them.
 2. The word `all`: every file in the repository that git does not
-   ignore, tracked or untracked. Expect this to take a while.
+   ignore, tracked or untracked
+   (`git ls-files --cached --others --exclude-standard`). Expect this
+   to take a while.
 3. A range (`main..HEAD`, `main...HEAD`): the files that range
    changes, read as they are at its end.
 4. A commit that `git rev-parse --verify --quiet "<arg>^{commit}"`
    resolves (a SHA, a tag, a branch): the change that commit made,
    against its first parent.
 5. A path or a glob: every file under it as it is now, untracked files
-   included. A path that does not exist is an error; say so and stop.
+   included
+   (`git ls-files --cached --others --exclude-standard -- <path>`).
+   A path that does not exist is an error; say so and stop.
    A name that is both a commit and a path reads as the commit; write
    `./<name>` for the path.
 
@@ -179,7 +183,8 @@ under review. This skill reads and reports.
 Findings are ordered most severe first, then by file. When there are
 no findings, the section reads `No findings.`; an empty Deviations or
 Unverified section reads `None.` A `high` lens in Passed names the
-file that proved it.
+file that proved it. Every `<path>` is relative to the root of the
+repository under review, with forward slashes and no leading `./`.
 
 The counts on the Lenses line count lenses, never lines. Findings has
 one line per breach, so a lens with two breaches has two lines and
