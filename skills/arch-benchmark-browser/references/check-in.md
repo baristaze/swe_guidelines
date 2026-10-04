@@ -24,7 +24,7 @@ a checked-in run is never written over.
 
 1. With `python3`, make `benchmark/runs/browser-judge-swe/<run_id>/` and copy
    into it the run folder's `results.json` and each session's
-   `response_path`, and nothing else: the `.jpg` files stay where they
+   `response_path`, and nothing else: the screenshots stay where they
    are.
 2. With `python3`, on the copies, replace with `[redacted]`:
    - every session's `url` in `results.json`, whatever it holds, and
