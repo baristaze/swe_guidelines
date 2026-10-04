@@ -311,7 +311,7 @@ async def test_an_outbound_call_leaves_no_query_in_a_line_or_a_breadcrumb(
 ) -> None:
     """A provider's lookup names what it looks for in its query, an invitee's
     address among them. The SDK records the request as a breadcrumb, which
-    keeps its method, its status, and its URL without the query or fragment.
+    keeps its method, its status, and its URL's scheme and host.
     The HTTP client logs it at INFO with the whole URL, and that line is not
     written, as a line or as the breadcrumb a line becomes."""
     answer = httpx.MockTransport(lambda request: httpx.Response(200, json={"data": []}))
@@ -331,7 +331,37 @@ async def test_an_outbound_call_leaves_no_query_in_a_line_or_a_breadcrumb(
     assert call["data"] == {
         "http.method": "GET",
         "http.response.status_code": 200,
-        "url": "https://api.provider.example/user_management/invitations",
+        "url": "https://api.provider.example",
     }
     assert [crumb for crumb in crumbs if crumb["type"] != "http"] == []
     assert "ada.lovelace" not in written.getvalue() + json.dumps(event)
+
+
+CAPABILITY = "T0ACME/B0ACME/x9Kq2vLmN4pR7sTw"
+"""The path of a chat provider's incoming webhook: whoever holds it can post."""
+
+
+async def test_an_outbound_call_to_a_webhook_leaves_no_path_in_its_breadcrumb(
+    tracker: Captured,
+) -> None:
+    """A webhook's capability lives in its URL's path, so the breadcrumb of a
+    call to one keeps the scheme and the host, which name the provider, and
+    no segment of the path."""
+    answer = httpx.MockTransport(lambda request: httpx.Response(200, text="ok"))
+    with deployed():
+        async with httpx.AsyncClient(transport=answer) as chat:
+            await chat.post(
+                f"https://hooks.chat.example:8443/services/{CAPABILITY}",
+                json={"text": "the build is green"},
+            )
+        log.error("the build could not be announced")
+
+    (event,) = tracker.events
+    (call,) = [crumb for crumb in event["breadcrumbs"]["values"] if crumb["type"] == "http"]
+    assert call["data"] == {
+        "http.method": "POST",
+        "http.response.status_code": 200,
+        "url": "https://hooks.chat.example:8443",
+    }
+    leaked = json.dumps(event)
+    assert all(part not in leaked for part in ["services", *CAPABILITY.split("/")])
