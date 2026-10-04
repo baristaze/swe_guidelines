@@ -6,6 +6,7 @@ is written against the schema, so this is what says it still fits."""
 import asyncio
 import subprocess
 import sys
+import uuid
 from collections.abc import Iterator
 from pathlib import Path
 
@@ -17,7 +18,8 @@ from seed import FIXED, seed
 pytestmark = pytest.mark.integration
 
 ROOT = Path(__file__).resolve().parents[2]
-NAME = "audit_tools_selftest"
+# A name of the run's own, so two gates on one stack never drop each other's.
+NAME = f"audit_tools_selftest_{uuid.uuid4().hex[:8]}"
 HEAVY = FIXED["heavy_org"]
 
 
