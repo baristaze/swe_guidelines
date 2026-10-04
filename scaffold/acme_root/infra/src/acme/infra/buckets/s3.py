@@ -3,6 +3,7 @@ from typing import Any
 from uuid import UUID
 
 import aioboto3
+from botocore.config import Config
 
 from acme.infra.aws_clients import AwsClientHolder, client_config
 from acme.infra.aws_errors import ClientError, error_code, translated
@@ -28,7 +29,13 @@ class BucketsS3Impl(BucketsInterface):
     over a GET covers that host, so a store the process reaches at one
     address and a browser at another (MinIO inside the compose network, at a
     host port outside it) signs with a second client aimed at the browser's
-    address. Signing makes no request, so that client never connects."""
+    address. Signing makes no request, so that client never connects.
+
+    With no endpoint named, the store is AWS, and a URL names the bucket's
+    regional host (`<bucket>.s3.<region>.amazonaws.com`). The global host
+    answers a bucket outside us-east-1 with a redirect until its name has
+    spread, which can take a day after the bucket is made, and a browser
+    follows no redirect on a cross-origin upload."""
 
     def __init__(
         self,
@@ -43,6 +50,8 @@ class BucketsS3Impl(BucketsInterface):
         self._endpoint_url = endpoint_url
         self._region = region
         config = client_config(timeout)
+        if endpoint_url is None:
+            config = config.merge(Config(s3={"addressing_style": "virtual"}))
         self._holder = AwsClientHolder(
             "s3",
             lambda: session.client(

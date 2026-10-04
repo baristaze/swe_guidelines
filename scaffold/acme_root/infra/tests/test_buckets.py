@@ -129,6 +129,32 @@ async def test_a_presigned_upload_is_bounded_by_size_and_type() -> None:
     assert {"Content-Type": "image/png"} in policy["conditions"]
 
 
+async def test_a_presigned_url_names_the_buckets_regional_host() -> None:
+    """The global host redirects a new bucket outside us-east-1 until its name
+    has spread, and a browser follows no redirect on a cross-origin upload, so
+    both an upload and a download name the regional host."""
+    session = aioboto3.Session(
+        aws_access_key_id="k", aws_secret_access_key="s", region_name="us-west-2"
+    )
+    buckets = BucketsS3Impl(
+        session,
+        endpoint_url=None,
+        region="us-west-2",
+        bucket_prefix="t",
+        timeout=timedelta(seconds=1),
+    )
+    await buckets.start()
+    org = new_id()
+    upload = await buckets.presign_post(
+        org, Buckets.USER_FILE_UPLOADS, "a.csv", "text/csv", 1_000, timedelta(minutes=5)
+    )
+    download = await buckets.presign_get(org, Buckets.EXPORTS, "e.csv", timedelta(minutes=5))
+    await buckets.close()
+    assert upload is not None and download is not None
+    assert upload.url.startswith("https://t-user-file-uploads.s3.us-west-2.amazonaws.com/")
+    assert download.startswith("https://t-exports.s3.us-west-2.amazonaws.com/")
+
+
 async def test_an_unbounded_upload_is_refused() -> None:
     session = aioboto3.Session(
         aws_access_key_id="k", aws_secret_access_key="s", region_name="us-west-2"
