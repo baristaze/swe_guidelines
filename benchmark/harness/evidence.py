@@ -70,7 +70,7 @@ def source(target: Path, globs: list[str], limit: int = SOURCE_LIMIT) -> str:
 
 
 def planted(expected: dict[str, Any] | None) -> list[dict[str, Any]]:
-    """The planted findings of an expected file, each with an id, a lens, and a file."""
+    """The planted findings of an expected file, each with an id, a lens, and a file or a list of them."""
     if not expected:
         return []
     out = []
@@ -112,16 +112,24 @@ def shortest_name(path: str, paths: set[str]) -> str:
     return path
 
 
+def planted_files(finding: dict[str, Any]) -> list[str]:
+    """The files a planted finding is right at: its one `file`, or each of a list."""
+    file = finding["file"]
+    return [str(f) for f in file] if isinstance(file, list) else [str(file)]
+
+
 def named(expected: dict[str, Any] | None, artifact: str) -> dict[str, Any] | None:
-    """Which planted findings the artifact names by lens id and file, and which it misses."""
+    """Which planted findings the artifact names by lens id and one of their files, and which it misses."""
     findings = planted(expected)
     if not findings:
         return None
     hit: list[str] = []
     miss: list[str] = []
-    paths = {str(f["file"]) for f in findings}
+    paths = {path for f in findings for path in planted_files(f)}
     for f in findings:
-        (hit if _names(artifact, str(f["lens"]), shortest_name(str(f["file"]), paths)) else miss).append(str(f["id"]))
+        lens = str(f["lens"])
+        found = any(_names(artifact, lens, shortest_name(path, paths)) for path in planted_files(f))
+        (hit if found else miss).append(str(f["id"]))
     return {"expected": len(findings), "named": hit, "missed": miss}
 
 

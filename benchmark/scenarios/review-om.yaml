@@ -5,7 +5,7 @@ kind: skill
 runtimes: [container]
 subject:
   skill: arch-review-om
-  prompt: "Review {target}/om against the object model lenses and report findings by lens id."
+  prompt: "Review {target} against the object model lenses and report findings by lens id."
   max_turns: 30
   # About ten times what one review has cost; Claude Code stops the session there.
   max_usd: 3
