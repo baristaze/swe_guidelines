@@ -5,73 +5,68 @@ included, stay on its GitHub release. Releases are tagged
 `vMAJOR.MINOR.PATCH`; see `CONTRIBUTING.md` for what bumps which
 number.
 
-## 0.49.0 (2026-10-03)
+## 0.50.0 (2026-10-04)
 
-An environment the nuke destroyed costs nothing and holds no live
-credential, the create run that brings it back finds what it needs
-free, and production's create protects `release`. Minor: the guideline
-gains one rule, and nothing is reversed.
-
-A destroy removes what the root declares. What the application wrote,
-and what the cloud made for the destroyed resources, is not in the
-state, so it stayed: a tenant's live bot token among it. And a recreate
-met a zone out of the database's capacity and a DNS record that still
-named the distribution the nuke deleted.
+A migration waits for a lock only briefly, and the deploy runs it again
+when it gives up. No capability carried in a URL reaches the error
+tracker, from the server or the portal. A copy numbers its own ADRs
+from 1001. Minor: the guideline gains one rule and sharpens two, and
+NET-26's statement deadline is reversed on a migration's connection.
 
 ### Added
 
-- Creating and Destroying an Environment, and OPS-19: a destroy also
-  removes what the environment left outside the state, the secrets the
-  application wrote among them; a tenant's secrets stay only beside a
-  final snapshot that needs them.
-- `scripts/cloud_nuke.sh`, after the destroy, removes what Terraform
-  does not own, found by the environment's names: the tenants' secrets
-  when the database's final snapshot is not found (kept with it when
-  it is, and any other answer refuses), the cluster's Container
-  Insights log group, and every task definition revision, paced and
-  retried. A root already destroyed, with neither cluster nor database
-  left, skips the apply and the destroy and finishes this step; an
-  unreadable state refuses.
-- The production create run protects `release` (step 5c): a deploy key
-  `release` with write access, its private half stored as the
-  `RELEASE_DEPLOY_KEY` secret and never shown, and a ruleset that
-  restricts creations, updates, deletions, and force pushes, requires
-  `no pull request into release`, and lets the deploy key alone
-  through. Since such a ruleset passes every write deploy key, the run
-  refuses while another exists. The deploy runbook, ADR 0024, and the
-  create skill say so.
-- `workos-bootstrap` reads the environment's webhook endpoints, and an
-  endpoint the desired state names that is missing, disabled, or that
-  the key cannot read is a dashboard step the run fails on, instead of
-  a line it printed and passed.
+- Migrating a Deployed Database, and STO-35: a migration's connection
+  carries `lock_timeout` from settings, under the serving statements'
+  deadline, and no statement deadline. A migration past the bound exits
+  with a code that asks for another run, and the deploy runs it again a
+  bounded number of times before it fails the apply. The scaffold's ADR
+  0071 cites the rule.
+- Error Tracking, and the delivery lens's rule on error events: an
+  outbound call's breadcrumb keeps the method, the status, and the URL's
+  scheme and host. `outgoing_breadcrumb` in the scaffold drops the path,
+  where a webhook's capability lives.
+- Records of Decisions, and DEL-23: the scaffold's ADRs stay below 1000,
+  and a copy numbers its own from 1001. `arch-scaffold-new` and
+  `arch-deviate` number a copy's decisions from 1001, and
+  `arch-upgrade-scaffold` moves a clashing scaffold ADR into the copy's
+  range and rewrites the citations the merge brings.
 
 ### Changed
 
-- The network gives every zone a private subnet, and the database's and
-  the cache's subnet groups take them all; the tasks and the public
-  subnets stay in the load balancer's two zones, and the first two
-  private subnets keep their zones and ranges.
-- The create run's step 3c, while no distribution of the account serves
-  the site's name, deletes a CNAME there to CloudFront whose target no
-  longer resolves, before the deploy; a target that answers, or a
-  resolver that cannot tell, refuses.
-- `arch-upgrade-scaffold` keeps a lockfile a move merged without a
-  conflict while its check passes, and regenerates one that fails from
-  the merged file, never from the copy's.
+- Reversal: NET-26 asks a statement deadline of a storage impl's serving
+  statement alone. A migration's connection carries the lock bound of
+  STO-35 instead, and a statement deadline on it that cuts a long
+  backfill is now a violation.
+- `arch-review-full` runs unattended: the review template, the skill,
+  and the reviewer agent list a scope's files with `git ls-files`, run
+  git from the root, never with `-C`; the fallback reviewer gets the
+  same inputs, read-only tools, and an 80-turn cap; and a group report
+  has a stated format test, one re-run, and one rule each for a fix's
+  symbol, a tie, and a path's form.
+- The `review-om` benchmark scenario sets `evidence.lenses: true`, so
+  its judges read the section of every lens an answer cites, and its
+  answer key expects OM-16 and the `MANAGER_OWNED_FIELDS` half of OM-03.
+  A planted finding may list each file its defect shows in.
+- The repository's `CLAUDE.md` moves to `.claude/CLAUDE.md`, `make
+  plugin` validates the plugin with `--strict`, and
+  `scripts/check_plugin.py` is removed with its test. CI's Claude Code
+  pin moves to 2.1.289.
 
 ### Fixed
 
-- A trace is found by its request id: the collector copies
-  `acme.request_id` into `acme_request_id`, the key X-Ray can filter
-  on, and indexes the copy; the exporter kept the dot, so no trace was
-  ever found by id.
-- An operator who has not enrolled a second factor is told to enrol,
-  with the runbook's section, instead of a traceback, and the nuke's
-  report says enrolments and tokens go with the database.
-- The nuke's report names production's copies of staging's builds only
-  when the artifacts bucket replicates.
-- The create run says the grants go one at a time, since a dispatch
-  made while another waits cancels it, and both runs say a recreated
-  environment's smoke step waits on the smoke identity's grant.
-- A Node with no corepack still gets pnpm, and `dev.sh` stops loudly
-  when a process fails.
+- A presigned URL names the bucket's regional host, so an upload from
+  the browser to a bucket made that day outside us-east-1 no longer
+  fails on a redirect.
+- The portal's error reports cut every URL at its query: breadcrumbs,
+  `request.url`, the `Referer` header, and stack frames. An invitation
+  token or a sign-in code no longer reaches the tracker.
+- The create run writes the error tracker's url, org, and project from
+  one `error_tracker` entry in `environments.json`, instead of the
+  product's name, and refuses a placeholder or a half-named tracker.
+- `arch-benchmark-browser` looks for computer actions on the
+  conversation page after the send too, and records such a session
+  `not-run`; its evidence takes the extension the tool saves, `.png`.
+- The stale-CNAME test reads the site's name from `environments.json`,
+  so it passes in a copy's gate.
+- The requeue's plan test seeds settled items and live leases, analyzed,
+  before it reads its plan, so it no longer fails at random.
