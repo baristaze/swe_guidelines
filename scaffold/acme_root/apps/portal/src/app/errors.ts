@@ -43,7 +43,9 @@ export function outgoingBreadcrumb(crumb: Breadcrumb): Breadcrumb {
   return crumb;
 }
 
-// Every event carries the page's URL, and its referrer, as `request`.
+// Every event carries the page's URL, and its referrer, as `request`. A stack
+// frame carries it too: an inline script's frames name the page, and an error
+// the browser reports with no script URL gets the page's URL as its frame.
 export function outgoingEvent(event: ErrorEvent): ErrorEvent {
   const request = event.request;
   if (request) {
@@ -51,6 +53,12 @@ export function outgoingEvent(event: ErrorEvent): ErrorEvent {
     delete request.query_string;
     const headers = request.headers;
     if (headers?.Referer) headers.Referer = withoutQuery(headers.Referer);
+  }
+  for (const exception of event.exception?.values ?? []) {
+    for (const frame of exception.stacktrace?.frames ?? []) {
+      if (frame.filename) frame.filename = withoutQuery(frame.filename);
+      if (frame.abs_path) frame.abs_path = withoutQuery(frame.abs_path);
+    }
   }
   return event;
 }
