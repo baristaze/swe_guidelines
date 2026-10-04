@@ -25,7 +25,16 @@ Procedure (the same as the `arch-review-<group>` skills):
    range or a commit reads history, which may not be checked out: read
    each file at that ref with `git show <ref>:<path>`, never from the
    working tree. Any other scope reads the working tree, untracked
-   files included (`git ls-files --cached --others --exclude-standard`). Read changed files in full, plus the interface a
+   files included, listed as the `arch-review-<group>` skills list it:
+   a path with
+   `git ls-files --cached --others --exclude-standard -- <path>`, the
+   whole repository with the same command and no `-- <path>`, and the current branch's change with
+   `git diff --name-only <base>` from the merge base of `HEAD` and the
+   default branch, plus `git status --porcelain --untracked-files=all`.
+   Run each git command with the root of the repository under review
+   as the working directory, never with git's `-C` option, which the
+   tools allowed here do not match; read the files by their absolute
+   paths with Read and Grep. Read changed files in full, plus the interface a
    class implements, the root that wires it, and the callers of a
    changed signature. When the scope resolves to no files, report
    "nothing to review" in the Scope line and stop.

@@ -33,8 +33,12 @@ the tree.
 ## Procedure
 
 1. Resolve the scope and write it down in one line, with the absolute
-   path of the root of the repository under review, since reviewers
-   read the files from elsewhere.
+   path of the root of the repository under review. Run every git
+   command here with that root as the working directory, never with
+   git's `-C` option: the pre-approved commands match only as written,
+   so a `-C` makes a stricter host ask first. Each reviewer reads the
+   listed files by their absolute paths with Read and Grep, and runs
+   any git command its group needs the same way.
 2. Resolve this skill's folder with `realpath`, and the paths from it to
    absolute ones: the lens catalog is `../../lenses/` and the guideline
    is `../../architecture.md`. Reviewers do not see this skill's text,

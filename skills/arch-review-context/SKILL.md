@@ -52,7 +52,11 @@ The empty scope, `all`, and a path read the working tree. A range and
 a commit read history, which may not be checked out: read each file at
 the range's end or the commit with `git show <ref>:<path>`, never from
 the working tree. When the scope resolves to no files, report "nothing
-to review" in the report's Scope line and stop.
+to review" in the report's Scope line and stop. Run each git command
+here with the root of the repository under review as the working
+directory, never with git's `-C` option: the pre-approved commands
+match only as written, so a `-C` makes a stricter host ask first.
+Read the files by their absolute paths with Read and Grep.
 
 Read changed files in full, not only the changed lines. Rules break in
 the interaction between the new code and its neighbors, so pull in the
