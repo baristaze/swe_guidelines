@@ -38,10 +38,10 @@ chatgpt.com.md        the answer as the product's copy button gave it, in Markdo
 claude.ai.md
 gemini.google.com.md
 grok.com.md
-chatgpt.com.jpg       a screenshot of the finished conversation, the score line and the chip in view; none for a site not signed in or not run
-claude.ai.jpg
-gemini.google.com.jpg
-grok.com.jpg
+chatgpt.com.png       a screenshot of the finished conversation, the score line and the chip in view; none for a site not signed in or not run
+claude.ai.png
+gemini.google.com.png
+grok.com.png
 ```
 
 The folder's name is the run's start in UTC.
