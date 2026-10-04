@@ -64,7 +64,7 @@ findings:
     file: om/src/acme/om/inventory/types/warehouse.py
     line: 4
     shows: 'class Warehouse(Trackable, Identifiable, Named, SoftDeletable):'
-    what: "No entity declares MANAGER_OWNED_FIELDS (Warehouse, Bin, StockMovement), and update_warehouse's copy excludes neither PROVENANCE_FIELDS nor that tuple; each entity declares the tuple, () when empty."
+    what: "No entity declares MANAGER_OWNED_FIELDS (Warehouse, Bin, StockMovement), and update_warehouse's copy excludes neither PROVENANCE_FIELDS nor that tuple; each entity declares the tuple, () when empty. It shows on every entity, so a finding on any of them, or on that copy, is at the right place."
 
 # Correct on purpose. A review that flags one of these is wrong.
 clean:
