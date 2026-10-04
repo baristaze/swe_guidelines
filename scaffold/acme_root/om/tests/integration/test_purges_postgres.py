@@ -324,8 +324,11 @@ async def test_a_cross_tenant_purge_skips_a_row_another_transaction_holds(
 
 
 async def test_the_requeue_of_expired_leases_reads_its_index_across_tenants(
-    watched: tuple[LoginSessions, list[AsyncEngine]],
+    watched: tuple[LoginSessions, list[AsyncEngine]], migrated: dict[DatabaseRole, str]
 ) -> None:
+    # Both of the queue's status-led indexes cost the same while the table's
+    # statistics hold no lease, so the queue gets its rows before the plan.
+    await settled_and_leased(watched[0], migrated[DatabaseRole.QUEUE])
     (requeue,) = await plans(
         watched,
         DatabaseRole.QUEUE,
