@@ -5,9 +5,8 @@
 ## Context
 
 The guideline (Cloud: AWS) makes the smaller environment staging, and
-staging is `main`: every merge deploys it with no approval, so a merge
-is the deployment. Production is the `release` branch, moved only by a
-fast-forward from `main`. Its history is a prefix of `main`'s, so a
+staging is `main`: every merge deploys it with no approval. Production
+is the `release` branch, moved only by a fast-forward from `main`, so a
 release is a `main` commit that has run on staging. A push to `release`
 plans production, waits for a person's approval of that plan, and
 applies it, promoting what staging built for that commit. A commit
@@ -46,7 +45,7 @@ Two choices the guideline leaves open are made here.
 ## Consequences
 
 Every migration is compatible with the release before it (expand and
-contract). The old tasks serve the new schema until the roll ends, and
+contract): the old tasks serve the new schema until the roll ends, and
 an earlier release runs against a newer schema after a rollback.
 
 A rollback to the previous release is the fast rollback of ADR 0024.

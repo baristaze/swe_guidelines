@@ -4,12 +4,11 @@
 
 ## Context
 
-The Operator Context admits an identity to the operator plane when it
-is on the operator allowlist. Operator Roles says the supporter reads a
-named tenant's rows through that plane with an entry that says read,
-and the provisioner that makes tenants for a traffic run holds one that
-says write. An allowlist that only says "operator" gives every agent
-with a support credential the power to delete an org.
+The operator plane admits an identity on the operator allowlist.
+Operator Roles gives the supporter read on a named tenant's rows, and
+the provisioner that makes tenants for a traffic run write. An
+allowlist that only says "operator" would let every agent with a
+support credential delete an org.
 
 ## Decision
 
@@ -21,56 +20,54 @@ operator operation requires one. The reads (`get_orgs`, `get_org`,
 (`create_org`, `add_member`, `delete_org`, a work item's requeue)
 require write.
 
-**One writer of the allowlist.** In a deployed environment
+**One writer of the allowlist.** In a deployed environment, only
 `acme-api grant-operator --email <e> --permission read|write`, or
-`--disable`, is the only path that changes an entry. It runs as a
-one-off task on the grant task definition, started by
-`grant-operator.yml`, which a person dispatches on the environment's
-branch; production's run waits for the same approval as its apply. No
-person's cloud profile and no route of the plane writes an entry.
-Locally `make seed` grants the two local operators the same way.
+`--disable`, changes an entry. It runs as a one-off task on the grant
+task definition, started by `grant-operator.yml`, which a person
+dispatches on the environment's branch. Production's run waits for the
+same approval as its apply. No person's cloud profile and no route of
+the plane writes an entry. Locally, `make seed` grants the two local
+operators the same way.
 
-**An operator signs in as the person they are.** A person signs in
-through the identity provider with `POST /v1/auth/sign-in` and the
-callback, or the device flow, like anyone. The plane admits that
-sign-in only after a second factor: an operator enrols a TOTP secret
-with `POST /v1/admin/me/totp` and `/confirm`, and until then the plane
-admits the enrolment and nothing else. A sign-in that verified a code
-mints one operator token and does nothing else
+**An operator signs in as the person they are.** The sign-in is
+anyone's: `POST /v1/auth/sign-in` and the callback, or the device flow.
+The plane admits it only after a second factor. An operator enrols a
+TOTP secret with `POST /v1/admin/me/totp` and `/confirm`, and until
+then the plane admits the enrolment and nothing else. A sign-in that
+verified a code mints one operator token and does nothing else
 ([ADR 0068](0068-an-operator-credential-ends-by-itself.md)).
 
 **An agent holds an operator token.** A token is a `sessions` row of
 kind `operator_token` under the system scope: one permission, an hour
 at most, stored as its digest, capped by the entry on every request. A
 person mints one from a sign-in with a code. The grant job mints the
-provisioner's and the smoke identity's into the secret store. So the
-env file under `~/.config/acme/ops/` holds `ACME_OPERATOR_TOKEN` (read),
-and never a password. The provisioner's `ACME_PROVISIONER_TOKEN`
-(write) has a file of its own beside it, `<env>.provisioner.env`, which
-only the traffic generator reads: every skill that reads sources the
-env file, so none of them holds a write token.
+provisioner's and the smoke identity's into the secret store. The env
+file under `~/.config/acme/ops/` holds `ACME_OPERATOR_TOKEN` (read),
+never a password. The provisioner's `ACME_PROVISIONER_TOKEN` (write)
+has a file of its own beside it, `<env>.provisioner.env`, which only
+the traffic generator reads. Every skill that reads sources the env
+file, so none of them holds a write token.
 
 **The operator creates are idempotent.** `POST /v1/admin/orgs` and
 `POST /v1/admin/orgs/{org_id}/members` take an `Idempotency-Key` like
-every creating route. Their markers have no tenant, so they are recorded
-under the system scope, keyed by the operator's identity id, through
+every creating route. Their markers have no tenant, so they live under
+the system scope, keyed by the operator's identity id, through
 `begin_for_operator`, `finish_for_operator`, and `release_for_operator`.
-The system-scope sweep that purges the platform's own markers purges
-them too. The seeding commands and the operator's creates share one
-private path, `tenancy/impl/creates.py`, so the seed and the API make
-the same rows.
+The system-scope sweep purges them with the platform's own markers. The
+seeding commands and the operator's creates share one private path,
+`tenancy/impl/creates.py`, so the seed and the API make the same rows.
 
 ## Consequences
 
 A support agent cannot delete an org, create one, or add a member,
-whatever it is told, because its token does not carry write.
+whatever it is told: its token does not carry write.
 
 Every operator read of a tenant's rows logs one line with the org id
 and the operator's identity id, and no tenant data.
 
-An operator credential produces an identity stage, never a tenant one,
-and lives in `sessions` under the system scope, never in a tenant's
+An operator credential produces an identity stage, never a tenant one.
+It lives in `sessions` under the system scope, never in a tenant's
 `api_keys`.
 
-Operator markers live under the system scope by design. An operator
-namespace of its own would move them, and nothing else.
+An operator namespace of its own would move the operator markers out
+of the system scope, and change nothing else.

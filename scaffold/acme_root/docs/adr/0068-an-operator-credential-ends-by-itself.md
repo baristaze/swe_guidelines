@@ -9,27 +9,22 @@ verified a TOTP code, and an operator token. An operator token is a
 `sessions` row of kind `operator_token` under the system scope, lives an
 hour at most, and carries one permission (CTX-38, "The Gateway").
 
-A credential that admits to the operator plane should be short, carry
-one permission, be named, and end by itself, one at a time. A leaked
-token must end before its hour without disabling its whole operator. A
-sign-in with a code must not stand beside the token it minted, able to
-read and write with the entry's whole grant, or to enter every tenant
-the person is in.
-
-The guideline's `sign_out(ictx)` ends "the credential the identity stage
-came from", a session or not ("ending its own sign-in" is an operation
-of the identity stage, "The Operator Context").
+An operator credential should be short-lived, carry one permission, be
+named, and end by itself, one at a time. A leaked token must end before
+its hour without disabling its whole operator. A sign-in with a code
+must not stand beside the token it minted, with the entry's whole grant
+and every tenant the person is in.
 
 ## Decision
 
 **A sign-in with its second factor mints one operator token and does
 nothing else.** `admit_operator` admits it with `OperatorPermission.MINT`
-alone. The mint caps the token at the entry the stage carries. Every
+alone, and the mint caps the token at the entry the stage carries. Every
 read and every write on the plane is a token's. The gate names the
 refusal, `403 operator_token_required`, as it names
 `second_factor_not_enrolled`.
 
-**The token keeps its hour, never minutes.** A skill runs longer than
+**The token keeps its hour, never minutes**: a skill runs longer than
 five minutes, and a person would mint all day. The revoke ends a token
 sooner.
 
@@ -53,10 +48,10 @@ grant job's for that identity among them, and never a secret. `DELETE
 /v1/admin/me/tokens/{id}` stamps `revoked_at` and `updated_by`, as
 `revoke_session` does, and logs the operator, the token, and the
 credential that ended it. The next request with that token is `401
-operator token revoked`. A second revoke answers the first one's row.
-Both take `OperatorPermission.READ`, which every token carries, so a
-`read` token ends its siblings and itself. The mint answers the token's
-`id`, and `acme-ops token --list` and `--revoke <id>` use them.
+operator token revoked`, and a second revoke answers the first one's
+row. Both take `OperatorPermission.READ`, which every token carries, so
+a `read` token ends its siblings and itself. The mint answers the
+token's `id`, which `acme-ops token --list` and `--revoke <id>` use.
 
 **Another operator's token is `404`.** The guideline's roles give no
 operator the others' credentials. The allowlist is the grant job's alone
@@ -64,13 +59,15 @@ operator the others' credentials. The allowlist is the grant job's alone
 ending another identity's credentials: its disable. A `write` entry
 writes tenants' rows, not operators'.
 
-**Sign-out ends the credential presented, whichever it is.** `POST
-/v1/auth/logout` takes the identity stage. A session ends and is
-announced under its tenant. A sign-in ends, with or without its code: a
-tenant's at the picker, an operator's before its mint. An operator token
-ends: that is the operator's sign-out, and `acme-ops work requeue` signs
-its `write` token out once its one call is made. An API key never proves
-an identity, so it has no sign-out: `401`.
+**Sign-out ends the credential presented, whichever it is**, as the
+guideline's `sign_out(ictx)` ends "the credential the identity stage
+came from" ("The Operator Context"). `POST /v1/auth/logout` takes the
+identity stage. A session ends and is announced under its tenant. A
+sign-in ends, with or without its code: a tenant's at the picker, an
+operator's before its mint. An operator token ends: that is the
+operator's sign-out, and `acme-ops work requeue` signs its `write` token
+out once its one call is made. An API key never proves an identity, so
+it has no sign-out: `401`.
 
 **Disabling an operator ends its credentials.** The grant job's disable
 clears the entry and, in the same commit, ends every live operator token
@@ -78,9 +75,9 @@ and every sign-in with a code the identity holds. A grant made again
 revives none of them. The person's sessions and plain sign-ins are
 theirs, not the operator's, and stand.
 
-No operator credential holds a socket. `TICKET_CREDENTIALS` is the
-session and the API key, so an operator's revocation needs no bus
-message and no recheck: every request reads the row.
+No operator credential holds a socket: `TICKET_CREDENTIALS` is the
+session and the API key. So an operator's revocation needs no bus
+message and no recheck, since every request reads the row.
 
 ## Consequences
 
@@ -97,5 +94,5 @@ message and no recheck: every request reads the row.
 - An operator who needs a `read` token and a `write` one signs in twice,
   as ADR 0037 says of an operator who needs the plane and a tenant.
 - A leaked machine token, the provisioner's or the smoke identity's, is
-  ended by presenting it to the sign-out, or by the grant job's disable,
-  which ends it for good. A grant and a mint then issue a fresh one.
+  ended by presenting it to the sign-out, or for good by the grant job's
+  disable. A grant and a mint then issue a fresh one.

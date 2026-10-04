@@ -9,15 +9,15 @@ each, within a budget of 20 seconds a pass. The requeue of expired
 leases and the outbox relay run once a pass across tenants.
 
 A purge that asks each tenant in turn costs every idle tenant a
-transaction per namespace, mostly round trips rather than database
-time. Measured on a seed of 5,000 tenants, eight such purges cost an
-idle tenant about 20 ms a pass, so one pass reached fewer than a
-thousand tenants, and a tenant's rows waited minutes past their
-retention. The cost grows with every tenant.
+transaction per namespace, mostly in round trips. Measured on a seed of
+5,000 tenants, eight such purges cost an idle tenant about 20 ms a
+pass. One pass then reached fewer than a thousand tenants, and a
+tenant's rows waited minutes past their retention. The cost grows with
+every tenant.
 
-The rows a retention purge deletes need no tenant to find them. Each is
-picked by its own column: `deleted_at`, `expires_at`, `created_at`,
-`updated_at`, or `produced_at`.
+A row past its retention needs no tenant to find it. Each is picked by
+its own column: `deleted_at`, `expires_at`, `created_at`, `updated_at`,
+or `produced_at`.
 
 ## Decision
 
@@ -61,10 +61,9 @@ Namespace by namespace:
 
 ## Consequences
 
-A living tenant costs a pass no purge at all, and the purges across
-tenants cost a pass a few milliseconds each when idle. What a pass
-spends per tenant is its visit, which is what bounds the tenants one
-pass reaches.
+A living tenant costs a pass no purge at all. Each purge across tenants
+costs a pass a few milliseconds when idle. What a pass spends per
+tenant is its visit, and that bounds the tenants one pass reaches.
 
 The indexes follow the reads. Each purge across tenants has an index
 that leads with its retention column, and each tenant keeps an index
@@ -80,6 +79,6 @@ holds is trimmed on the next call.
 The system scope's policy makes the planner under-count rows on these
 statements. Under a policy, Postgres checks the policy before any
 operator that may raise, and `+` may. So the top of the trim's window
-is a column, computed with the lock, and not a sum in a join: a sum
-there would read a whole stream through the filter instead of bounding
-the index scan.
+is a column, computed with the lock, never a sum in a join: a sum there
+would read a whole stream through the filter instead of bounding the
+index scan.

@@ -5,11 +5,11 @@
 ## Context
 
 DEL-18 (Cross-Cutting Conventions, Exceptions) roots every exception
-raised inside the platform at `PlatformException`. The guideline also
-says the object model imports infra's interfaces and infra imports
-nothing from the object model. Both cannot hold in one class hierarchy:
-`PlatformException` lives in the object model, so an infra impl that
-raises it imports the model.
+raised inside the platform at `PlatformException`. The object model
+imports infra's interfaces, and infra imports nothing from the object
+model. Both cannot hold in one class hierarchy: `PlatformException`
+lives in the object model, so an infra impl that raises it imports the
+model.
 
 ## Decision
 
@@ -23,7 +23,7 @@ root and presents both in the same envelope.
 ## Consequences
 
 Every boundary that translates `PlatformException` also translates
-`InfraException`. `services/api/src/acme/services/api/gateway/errors.py`
-does, and a new service copies the pair. Code that catches "any platform error" catches
-both roots or neither. The roots stay two while the platform root lives
-in the object model.
+`InfraException`, as `services/api/src/acme/services/api/gateway/errors.py`
+does, and a new service copies the pair. Code that catches "any
+platform error" catches both roots or neither. The roots stay two while
+the platform root lives in the object model.

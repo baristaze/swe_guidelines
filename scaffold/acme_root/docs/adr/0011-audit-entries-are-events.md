@@ -4,14 +4,12 @@
 
 ## Context
 
-OM-16 (Namespaces as Swimlanes) makes audit, who did what, when, and
-from which app, a kind of event: an audit entry is an `Event` with an
+OM-16 (Namespaces as Swimlanes) makes audit (who did what, when, and
+from which app) a kind of event: an audit entry is an `Event` with an
 audit kind, in the events namespace's stream, until audit gains a
-reader of its own or must be kept longer than the stream.
-
-Every event already carries the actor, the request, and the app, since
-the stream records who produced what. An audit entry adds only its
-facts.
+reader of its own or must be kept longer than the stream. Every event
+already carries the actor, the request, and the app, so an audit entry
+adds only its facts.
 
 ## Decision
 
@@ -40,15 +38,12 @@ requeue build the same shape from the provenance they hold and append
 it through the event storage.
 
 Every audit payload carries ids, kinds, counts, and the error a failure
-left, never a person's address or name. So an erasure has nothing to
+left, never a person's address or name, so an erasure has nothing to
 redact in the stream (STO-34).
 
 ## Consequences
 
-The events namespace is audit's swimlane, as OM-16 states, and this
-record names its kinds and who writes each.
-
-An audit entry is read by replaying the stream, filtered by kind. There
+An audit entry is read by replaying the stream, filtered by kind; there
 is no place to query audit alone. The events table's retention is the
 audit's retention
 ([ADR 0040](0040-the-event-stream-has-a-floor.md)), and a purge of the

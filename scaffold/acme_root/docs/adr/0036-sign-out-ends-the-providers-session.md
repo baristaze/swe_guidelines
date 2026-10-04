@@ -6,17 +6,16 @@
 
 A person signs in through WorkOS AuthKit's hosted page
 ([ADR 0028](0028-sign-in-is-the-identity-providers.md)). AuthKit keeps
-a session of its own in that browser, and Acme keeps its own sessions
-beside it. A sign-out that ends Acme's session alone leaves AuthKit's
-standing, and the next `/login` on that browser signs the same person
-straight back in with no prompt. On a shared computer, the next person
-to open Acme would be the last one.
+its own session in that browser, beside Acme's. A sign-out that ends
+Acme's session alone leaves AuthKit's standing, and the next `/login`
+on that browser signs the same person back in with no prompt. On a
+shared computer, the next person to open Acme would be the last one.
 
-WorkOS documents the sign-out for this. Take the session id from the
-`sid` claim of the access token the code exchange answers, end the
-app's own session, and send the browser to WorkOS's logout for that
-session. WorkOS then sends the browser to a `return_to` that is one of
-the application's sign-out URIs.
+WorkOS's documented sign-out takes the session id from the `sid` claim
+of the access token the code exchange answers, ends the app's session,
+and sends the browser to WorkOS's logout for that session. WorkOS then
+sends the browser to a `return_to` among the application's sign-out
+URIs.
 
 ## Decision
 
@@ -39,15 +38,15 @@ check.
 
 **The id is read, not verified.** The access token comes straight from
 WorkOS over TLS, in the answer to the API's own request. The API reads
-the one claim it needs and uses nothing else of the token, so it does
-not check the signature. The id is not a secret. It leaves the server
-only inside the logout address the browser follows.
+the one claim it needs and nothing else, so it does not check the
+signature. The id is not a secret, and it leaves the server only inside
+the logout address the browser follows.
 
 **The device sign-in and the local sign-in sign out of Acme alone.**
 The browser that confirms a device code may be another machine's, and
 a terminal has no browser to send to a logout. So a device sign-in
 keeps no AuthKit session, and `acme logout` ends Acme's session only.
-The local sign-in has no provider at all.
+The local sign-in has no provider.
 
 ## Consequences
 

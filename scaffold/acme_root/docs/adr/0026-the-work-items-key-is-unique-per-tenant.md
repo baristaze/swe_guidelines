@@ -6,8 +6,8 @@
 
 ASY-16 (The Work Queue) asks for a unique index on
 `(org_id, idempotency_key)` on the work table, and calls one on the key
-alone a violation. With the key alone, a key another tenant holds
-answers "exists", and the read-back under this tenant finds nothing.
+alone a violation: a key another tenant holds would answer "exists",
+and the read-back under this tenant would find nothing.
 
 `arch-check` reads the rule partly. It looks for a unique index on the
 key alone and nothing else, so it reports the shape the lens asks for.
