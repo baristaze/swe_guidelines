@@ -4,6 +4,11 @@
   "github_repository": "acme-org/acme",
   "github_repository_id": "0",
   "github_repository_owner_id": "0",
+  "error_tracker": {
+    "url": "https://errors.acme.example",
+    "org": "ORG_PLACEHOLDER",
+    "project": "PROJECT_PLACEHOLDER"
+  },
   "environments": {
     "staging": {
       "account_id": "111111111111",
