@@ -72,8 +72,8 @@ test:              ## the checkers and generators pass their own tests (pytest t
 
 plugin:            ## validate the plugin, marketplace, skills, and agents with Claude Code (skipped when claude is not installed)
 	@if command -v claude >/dev/null 2>&1; then \
-	  claude plugin validate . --strict && claude plugin validate skills --strict && claude plugin validate agents --strict \
-	  && $(PYTHON) scripts/check_plugin.py; \
+	  claude plugin validate . --strict && claude plugin validate .claude-plugin/plugin.json --strict \
+	  && claude plugin validate skills --strict && claude plugin validate agents --strict; \
 	else echo "plugin: claude not installed, skipped"; fi
 
 # Not part of check: arch-check needs Python 3.11, and check runs on the
