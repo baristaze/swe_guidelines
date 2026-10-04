@@ -23,6 +23,7 @@ defect under another lens; the judges read for both.
 from __future__ import annotations
 
 import re
+from itertools import pairwise
 from pathlib import Path
 from typing import Any
 
@@ -135,7 +136,7 @@ def lens_sections(lenses_dir: Path) -> dict[str, str]:
             continue
         text = path.read_text(encoding="utf-8")
         starts = [m.start() for m in SECTION.finditer(text)] + [len(text)]
-        for start, end in zip(starts, starts[1:]):
+        for start, end in pairwise(starts):
             heading = LENS_HEADING.match(text, start)
             if heading:
                 out[heading.group(1)] = text[start:end].strip()
