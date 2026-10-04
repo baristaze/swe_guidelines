@@ -2383,8 +2383,10 @@ managers build once for any number of requests.
 ### Records of Decisions
 
 A decision that constrains future work is an ADR under `docs/adr/`:
-context, decision, consequences, numbered and cited by number. It [says
-what holds](#documentation-as-code): an ADR is rewritten in place when
+context, decision, consequences, numbered and cited by number. The
+scaffold's ADRs stay below 1000, and a copy numbers its own from 1001,
+so a later scaffold ADR never takes a number the copy uses. An ADR
+[says what holds](#documentation-as-code): it is rewritten in place when
 its decision changes and removed when it constrains nothing, its number
 never changes, and its status is one date. A substitution is one row of
 the one ADR that lists them. A changelog holds the latest release, and
