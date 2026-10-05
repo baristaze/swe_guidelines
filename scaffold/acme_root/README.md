@@ -14,7 +14,9 @@ installs pnpm, at the version `package.json` names, when it is missing.
 
 ```bash
 make up       # the whole stack in containers, migrated and seeded; prints the URLs
-make down     # stop it; the data stays
+make stop     # pause it: the ports free up, the containers and the data stay
+make start    # resume it, with no build, migration, or seed; `make up` on a new tree
+make down     # remove the containers; the data stays
 make reset    # wipe the data and the containers, then `make up`
 make urls     # print the URLs and the sign-ins again
 ```

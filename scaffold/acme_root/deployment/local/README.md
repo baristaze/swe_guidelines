@@ -63,7 +63,9 @@ hold for all of them. The init script runs on an empty data directory only.
 | Goal | Command |
 |------|---------|
 | Everything up, migrated and seeded; keeps data | `make up` |
-| Stop everything, keep data | `make down` |
+| Pause: free the ports, keep the containers and the data | `make stop` |
+| Resume what `make stop` left, with no build, migration, or seed | `make start` |
+| Remove every container, keep data | `make down` |
 | Wipe all data and start over | `make reset` |
 | Only the backing services, for `scripts/dev.sh` | `make infra-up` |
 | Backing services plus dashboards | `make devx-up` |
