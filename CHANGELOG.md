@@ -5,23 +5,16 @@ included, stay on its GitHub release. Releases are tagged
 `vMAJOR.MINOR.PATCH`; see `CONTRIBUTING.md` for what bumps which
 number.
 
-## 0.51.1 (2026-10-05)
+## 0.51.2 (2026-10-05)
 
-A copy stops and starts its local stack without removing it. Patch:
-two developer targets in the scaffold, and nothing is reversed.
-
-### Added
-
-- `make stop` in the scaffold stops every container of every file and
-  profile `make down` names, and removes none, so the stack's ports are
-  free and its data stays. `make start` starts the containers that
-  exist, and only those, waiting on health, with no build, migration,
-  or seed; on a tree with no container, it runs `make up`. `make help`,
-  the quick start, and the local deployment's Commands table list both
-  beside `up` and `down`.
+The breadcrumb's example of a credential in a URL's path is a chat
+provider's reply URL. Patch: wording in a docstring and a test, and
+nothing is reversed.
 
 ### Changed
 
-- `make down` and `make infra-down` say they remove the containers, so
-  they read apart from `make stop`. One `COMPOSE_ALL` names every file
-  and profile for `down`, `reset`, `stop`, and `start`.
+- `outgoing_breadcrumb`'s docstring and the privacy test that holds it
+  take their example from a chat provider's reply URL, the address a
+  copy posts to when it answers a chat command; the test posts to
+  `/commands/<credential>` and asserts, as before, that the breadcrumb
+  keeps the scheme and the host and no segment of the path.
