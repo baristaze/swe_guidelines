@@ -25,6 +25,12 @@ COMPOSE_ENV := $(foreach file,$(ENV_FILES),--env-file $(file))
 COMPOSE_LINUX := $(if $(filter Linux,$(shell uname -s)),-f deployment/local/docker-compose.linux.yml)
 COMPOSE ?= docker compose $(COMPOSE_ENV) -f deployment/local/docker-compose.yml $(COMPOSE_LINUX)
 COMPOSE_FULL := $(COMPOSE) -f deployment/local/docker-compose.full.yml
+# Every file and profile, so the targets that act on the whole stack (down,
+# reset, stop, start) leave no container of any of them behind.
+COMPOSE_ALL := $(COMPOSE_FULL) --profile devx --profile devx-seed
+# The services that have a container, running or stopped: what `start` brings
+# back. Read only when a recipe names it, so no other target calls docker.
+CREATED_SERVICES = $(shell $(COMPOSE_ALL) ps -a --services 2>/dev/null)
 ROLES := core activity queue admin
 # GlitchTip's seed is a one-shot that no service depends on, and `up --wait`
 # counts a one-shot's exit as a failure even when it exits 0. So the seed
@@ -52,7 +58,7 @@ ARCH_CHECK ?= uvx --python "$(shell cat .python-version)" --from "git+https://gi
 # until npm installs it; a pnpm already on PATH runs the version named.
 PNPM_SPEC := $(or $(shell sed -n 's/^ *"packageManager": *"\(pnpm@[^"+]*\).*/\1/p' package.json 2>/dev/null),pnpm)
 
-.PHONY: help setup pnpm up down reset urls infra-up buckets devx-up stack-up infra-down infra-reset collector-scrape migrate seed migrate-check benchmark-boot check lint format-check typecheck arch-check test-unit test-integration test-telemetry traffic openapi
+.PHONY: help setup pnpm up down stop start reset urls infra-up buckets devx-up stack-up infra-down infra-reset collector-scrape migrate seed migrate-check benchmark-boot check lint format-check typecheck arch-check test-unit test-integration test-telemetry traffic openapi
 
 # This Makefile alone, never $(MAKEFILE_LIST): the includes above put
 # .env.example and .env in that list, and grep prefixes every match with the
@@ -76,7 +82,9 @@ pnpm: ## Install pnpm with npm, at the version package.json names, when it is mi
 
 # The one-command session. `up` starts the data services first, migrates and
 # seeds them, then starts the app containers and the dashboards; it is safe
-# to rerun and keeps data. `down` keeps data; `reset` wipes it and starts over.
+# to rerun and keeps data. `stop` and `start` pause the stack and resume it;
+# `down` removes the containers and keeps data; `reset` wipes it and starts
+# over.
 # `up --wait` waits on the long-running services only, and GlitchTip's seed
 # runs to completion after it as a step of its own (see GLITCHTIP_SEED), so
 # either target exits 0 when every service is up and the seed succeeded.
@@ -88,12 +96,23 @@ up: .env ## Everything: stack, migrations, seed, app containers, dashboards; kee
 	$(COMPOSE_FULL) $(GLITCHTIP_SEED)
 	@$(MAKE) --no-print-directory urls
 
-down: ## Stop every local container; the data stays for the next `make up`
-	$(COMPOSE_FULL) --profile devx --profile devx-seed down --remove-orphans
+down: ## Remove every local container; the data stays for the next `make up`
+	$(COMPOSE_ALL) down --remove-orphans
 
-# Names every file and profile so no container of any of them is left behind.
+# A pause, lighter than `down`: `stop` removes nothing, so the ports free up
+# and the containers and their data stay. `start` starts the containers it
+# finds, and only those, so a stack `make infra-up` alone brought up comes back
+# as it was. It builds, migrates, and seeds nothing, and waits on health as
+# `up` does. A tree with no container yet has nothing to start, so `start`
+# runs `make up` there.
+stop: ## Stop every local container and remove none; the ports free up, the data stays
+	$(COMPOSE_ALL) stop
+
+start: ## Start what `make stop` left, with no build, migration, or seed; `make up` on a tree with no container
+	$(if $(CREATED_SERVICES),$(COMPOSE_ALL) start --wait $(CREATED_SERVICES),$(MAKE) --no-print-directory up)
+
 reset: ## Wipe every container and all local data, then `make up`
-	$(COMPOSE_FULL) --profile devx --profile devx-seed down -v --remove-orphans
+	$(COMPOSE_ALL) down -v --remove-orphans
 	$(MAKE) --no-print-directory up
 
 urls: ## Print the local URLs and the seeded sign-ins
@@ -132,7 +151,7 @@ stack-up: ## The local stack plus the api, maintenance, and portal containers
 
 # The shortcuts above are the developer's path; these are the steps they wrap,
 # which is what CI and a developer debugging one of them run one at a time.
-infra-down: ## Stop the dependencies; the data stays, as after `make down`
+infra-down: ## Remove the dependencies' containers; the data stays, as after `make down`
 	$(COMPOSE) down --remove-orphans
 
 infra-reset: ## Recreate the dependencies with their volumes removed, and nothing else
