@@ -332,9 +332,9 @@ def outgoing_breadcrumb(crumb: Any, hint: Any) -> Any:
     line's is its message, as `message_of` writes it. An outbound request's
     is its method, its status, and its URL's scheme and host, which name the
     provider. The rest of the URL stays out, the path included, even for
-    debugging: a webhook's capability lives in its path, and anyone who holds
-    the path can post to it. A query names what the call looked up, an
-    invitee's address among them."""
+    debugging: a chat provider's reply URL holds a credential in its path, and
+    whoever holds the path posts into the channel as the app. A query names
+    what the call looked up, an invitee's address among them."""
     record = hint.get("log_record") if isinstance(hint, dict) else None
     if isinstance(record, logging.LogRecord):
         crumb["message"] = message_of(record)

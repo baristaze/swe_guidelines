@@ -338,23 +338,24 @@ async def test_an_outbound_call_leaves_no_query_in_a_line_or_a_breadcrumb(
 
 
 CAPABILITY = "T0ACME/B0ACME/x9Kq2vLmN4pR7sTw"
-"""The path of a chat provider's incoming webhook: whoever holds it can post."""
+"""The end of a chat provider's reply URL: whoever holds it posts into the
+channel as the app."""
 
 
-async def test_an_outbound_call_to_a_webhook_leaves_no_path_in_its_breadcrumb(
+async def test_a_reply_to_a_command_leaves_no_path_in_its_breadcrumb(
     tracker: Captured,
 ) -> None:
-    """A webhook's capability lives in its URL's path, so the breadcrumb of a
-    call to one keeps the scheme and the host, which name the provider, and
-    no segment of the path."""
+    """A chat provider's reply URL holds a credential in its path, so the
+    breadcrumb of a reply keeps the scheme and the host, which name the
+    provider, and no segment of the path."""
     answer = httpx.MockTransport(lambda request: httpx.Response(200, text="ok"))
     with deployed():
         async with httpx.AsyncClient(transport=answer) as chat:
             await chat.post(
-                f"https://hooks.chat.example:8443/services/{CAPABILITY}",
-                json={"text": "the build is green"},
+                f"https://hooks.chat.example:8443/commands/{CAPABILITY}",
+                json={"text": "the command is done"},
             )
-        log.error("the build could not be announced")
+        log.error("the next command failed")
 
     (event,) = tracker.events
     (call,) = [crumb for crumb in event["breadcrumbs"]["values"] if crumb["type"] == "http"]
@@ -364,4 +365,4 @@ async def test_an_outbound_call_to_a_webhook_leaves_no_path_in_its_breadcrumb(
         "url": "https://hooks.chat.example:8443",
     }
     leaked = json.dumps(event)
-    assert all(part not in leaked for part in ["services", *CAPABILITY.split("/")])
+    assert all(part not in leaked for part in ["commands", *CAPABILITY.split("/")])
