@@ -90,7 +90,8 @@ for i in "${!releases[@]}"; do
 done
 
 if [ "${#failed[@]}" -gt 0 ]; then
-  echo "release before: failed on this schema: ${failed[*]}. A test it cannot pass by design is named in scripts/release_before_deselect.txt, with its reason." >&2
+  printf -v names '%s, ' "${failed[@]}"
+  echo "release before: failed on this schema: ${names%, }. A test it cannot pass by design is named in scripts/release_before_deselect.txt, with its reason." >&2
   exit 1
 fi
 echo "release before: every release before passes on this schema"

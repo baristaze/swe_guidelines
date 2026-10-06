@@ -1137,7 +1137,10 @@ to the fold's.
 A migration is compatible with the release before it, because a rollout
 runs both ([Deployment](#deployment)): add and backfill, switch the
 code, drop in a later release. The release before a drop no longer maps
-the column at all, since the ORM writes every mapped column.
+the column at all, since the ORM writes every mapped column. CI holds
+it: on a pull request that changes a migration, the release before runs
+its own integration suite on the branch's schema
+([`scripts/release_before.sh`](scaffold/acme_root/scripts/release_before.sh)).
 
 A backfill runs under the fence, which binds the owner, so a data
 migration lifts `FORCE` for its own statements and restores it in the
@@ -1910,6 +1913,11 @@ at start by a `config.json`.
   writes the running shape again. The fast rollback swaps images and
   bundle back to the previous release only, running no migration and no
   plan (DEL-50).
+- The previous release runs on the current schema, and CI proves it. A
+  job on every pull request runs the integration suite of the merge base
+  and of `release`'s tip on the branch's migrated schema, when the branch
+  changes a migration. It always reports, so the ruleset can require it:
+  a path filter never reports on a pull request it skips (DEL-50).
 - The approver reads the plan's text rendering, which masks sensitive
   values. The `release` ruleset forbids a push, a force push, and a
   deletion, with the repository host's app as its one bypass actor.
