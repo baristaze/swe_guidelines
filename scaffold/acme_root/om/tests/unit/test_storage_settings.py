@@ -31,8 +31,8 @@ REMOTE = "postgresql+asyncpg://acme:secret@db.example.internal:5432/acme"
     ],
 )
 def test_a_local_host_passes(host: str) -> None:
-    settings = StorageSettings(
-        _env_file=None, database_url=f"postgresql+asyncpg://t:t@{host}:5432/t"
+    settings = StorageSettings.model_validate(
+        {"_env_file": None, "database_url": f"postgresql+asyncpg://t:t@{host}:5432/t"}
     )
     settings.refuse_remote()
 
@@ -40,10 +40,10 @@ def test_a_local_host_passes(host: str) -> None:
 def test_a_remote_host_on_any_role_is_refused() -> None:
     # Away from the checkout's .env, whose role URLs would take every role
     # off the shared URL.
-    shared = StorageSettings(_env_file=None, database_url=REMOTE)
+    shared = StorageSettings.model_validate({"_env_file": None, "database_url": REMOTE})
     with pytest.raises(SystemExit, match=r"refusing to touch core at db\.example\.internal"):
         shared.refuse_remote()
-    one_role = StorageSettings(_env_file=None, database_url_queue=REMOTE)
+    one_role = StorageSettings.model_validate({"_env_file": None, "database_url_queue": REMOTE})
     with pytest.raises(SystemExit, match="refusing to touch queue"):
         one_role.refuse_remote()
 
