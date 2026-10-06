@@ -145,13 +145,50 @@ def test_a_role_on_each_instance_has_the_master_on_each() -> None:
     settings = logins(
         **{f"database_url_{role.value}": own.format(port=port) for role, port in ports.items()}
     )
-    master = "postgresql+asyncpg://acme:acme-pw@127.0.0.1:{port}/acme"
+    master = LOCAL.format(login="acme")
     assert settings.master_databases() == {
-        master.format(port=port): [role] for role, port in ports.items()
+        master.replace(":55432/", f":{port}/"): [role] for role, port in ports.items()
     }
     assert {make_url(url).port for url in settings.system_role_urls().values()} == set(
         ports.values()
     )
+
+
+def test_eight_exported_urls_take_every_role_off_the_env_file(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """A second checkout exports the four shared URLs and the four role URLs
+    at a database of its own. Each wins over the `.env` copied from
+    `.env.example`, whose role URLs name the first checkout's database, so
+    every login reaches every role on the second's."""
+    other = "postgresql+asyncpg://{login}:{login}-pw@127.0.0.1:{port}/acme_other"
+    exported = {
+        "ACME_DATABASE_URL": other.format(login="acme_runtime", port=55432),
+        "ACME_DATABASE_SYSTEM_URL": other.format(login="acme_system", port=55432),
+        "ACME_DATABASE_MIGRATION_URL": other.format(login="acme_migration", port=55432),
+        "ACME_DATABASE_MASTER_URL": other.format(login="acme", port=55432),
+    }
+    for role, port in zip(DatabaseRole, (55432, 55433, 55434, 55435), strict=True):
+        exported[f"ACME_DATABASE_URL_{role.value.upper()}"] = other.format(
+            login="acme_runtime", port=port
+        )
+    (tmp_path / ".env").write_text((Path(__file__).parents[3] / ".env.example").read_text())
+    monkeypatch.chdir(tmp_path)
+    for name in exported:
+        monkeypatch.delenv(name, raising=False)
+    first = MigrationSettings()
+    assert {make_url(url).database for url in first.role_urls().values()} == {"acme"}
+    for name, url in exported.items():
+        monkeypatch.setenv(name, url)
+    second = MigrationSettings()
+    urls = [
+        *second.role_urls().values(),
+        *second.system_role_urls().values(),
+        *second.migration_role_urls().values(),
+        *second.master_databases(),
+    ]
+    assert len(urls) == 16
+    assert {make_url(url).database for url in urls} == {"acme_other"}
 
 
 def test_ensure_logins_needs_the_master() -> None:
