@@ -988,10 +988,14 @@ exactly one, named in one map
 | `queue`    | the work queue and the channels that wake workers      |
 | `admin`    | the operator plane's own state, global rows            |
 
-One database holds every role by default. When metrics demand it, a role
-moves to its own, and the cut-over is one URL. Each role's pool declares
-its size and its wait bound, and the connection budget counts every
-process that can run at once.
+In the cloud, one instance holds every role, for its price. When metrics
+demand it, a role moves to its own, and the cut-over is one URL. The
+local stack runs each role on an instance of its own, so every local run
+proves that nothing crosses a role
+([Local: Docker Compose](#local-docker-compose)). A login and a grant
+live on one instance, so the migrate command makes them on each one a
+role lives on. Each role's pool declares its size and its wait bound,
+and the connection budget counts every process that can run at once.
 
 Nothing crosses a role, so a handoff after a core write is never a
 second write a manager remembers. The manager writes the core row and
@@ -1983,10 +1987,13 @@ operator's file with its token line empty (CTX-38).
 Every dependency runs locally in one compose stack, with the cloud's
 image or a wire-compatible stand-in, and the application runs on the
 host, so a change is a restart
-([`local/`](scaffold/acme_root/deployment/local/)). Developer dashboards
-sit in an optional `devx` profile. `make up` starts everything,
-migrates, seeds, and prints every local URL, and the steps it wraps run
-one at a time for a gate.
+([`local/`](scaffold/acme_root/deployment/local/)). Each
+[database role](#database-roles) runs on its own Postgres there, with
+its own port and volume, where the cloud runs one instance for all of
+them. A statement or a test that leans on two roles sharing an instance
+fails on the first local run. Developer dashboards sit in an optional
+`devx` profile. `make up` starts everything, migrates, seeds, and prints
+every local URL, and the steps it wraps run one at a time for a gate.
 
 > **Principle:** Every dependency runs in a local container. The
 > application runs on the host.

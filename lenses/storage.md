@@ -493,21 +493,27 @@ schema-qualified with no `search_path`; the rest is judged.
 
 **Principle.** Each role has its own connection URL, defaulting to the
 shared one, and the storage root opens one engine and pool per
-distinct URL. When metrics demand it, a role moves to its own
-database: the schema is copied under replication or a dual write until
-current, the cut-over is one URL, and the code does not change.
+distinct URL. The cloud runs every role on one instance and the local
+stack runs each on its own, and the migrate command makes the logins
+and the grants on every instance a role lives on. When metrics demand
+it, a role moves to its own database: the schema is copied under
+replication or a dual write until current, the cut-over is one URL,
+and the code does not change.
 
 **Source.** The Storage Layer, Database Roles.
 
 **Look for.** Settings exposing one URL per role, each defaulting to
 the shared URL, with one engine per distinct URL in the root. The
+local settings that set every role's URL to its own instance, and the
+migrate command's logins step, run once per distinct database. The
 runbook of a role move: the copy, its window and its rehearsal, and
 the cut-over.
 
 **Violation.** One URL for every role with no per-role override; a
-root that opens one engine per role even when the URLs agree; a role
-move that edits a table class, a statement, or a query; a cut-over
-before the copy is current, or with no rehearsal.
+root that opens one engine per role even when the URLs agree; a
+logins step that reaches one database while a role lives on another;
+a role move that edits a table class, a statement, or a query; a
+cut-over before the copy is current, or with no rehearsal.
 
 **Severity.** medium
 
