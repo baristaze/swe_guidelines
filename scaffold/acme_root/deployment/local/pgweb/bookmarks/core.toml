@@ -1,0 +1,2 @@
+# The core role's instance, as the superuser.
+url = "postgres://postgres:postgres@postgres-core:5432/acme?sslmode=disable"

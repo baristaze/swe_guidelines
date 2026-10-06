@@ -12,30 +12,62 @@
 # COMPOSE_PROJECT_NAME or -p sets another.
 name: acme
 
+# One Postgres per database role, each with its own port and volume, so every
+# local run proves that nothing crosses a role: a statement or a test that
+# leans on two roles sharing an instance fails here. The cloud runs one
+# instance for all four, for its price; the role URLs in .env.example are
+# what put each role on its own here (docs/adr/0083-each-role-on-its-own-instance-locally.md).
+# On each, the superuser is `postgres` and the local master is `acme`, which
+# the init script creates as LOGIN NOSUPERUSER NOBYPASSRLS CREATEROLE and
+# makes the owner of the database. `make migrate` has it make the three logins
+# the processes connect as on every instance, none of them a superuser or
+# BYPASSRLS. A superuser walks past every row-level security policy, so the
+# second fence only exists for a login that is not one. The init script runs
+# on an empty data directory: `make reset` after a pull.
+x-postgres: &postgres
+  image: postgres:18-alpine
+  environment:
+    POSTGRES_USER: postgres
+    POSTGRES_PASSWORD: postgres
+    POSTGRES_DB: acme
+  healthcheck:
+    test: ["CMD-SHELL", "pg_isready -U acme -d acme"]
+    interval: 2s
+    timeout: 2s
+    retries: 30
+
 services:
-  # The superuser is `postgres` and the local master is `acme`, which the
-  # init script creates as LOGIN NOSUPERUSER NOBYPASSRLS CREATEROLE and makes
-  # the owner of the database. `make migrate` has it make the three logins
-  # the processes connect as, none of them a superuser or BYPASSRLS. A
-  # superuser walks past every row-level security policy, so the second fence
-  # only exists for a login that is not one. The init script runs on an empty
-  # data directory: `make reset` after a pull.
-  postgres:
-    image: postgres:18-alpine
-    environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: acme
+  postgres-core:
+    <<: *postgres
     ports:
-      - "127.0.0.1:${ACME_POSTGRES_PORT:-55432}:5432"
+      - "127.0.0.1:${ACME_POSTGRES_CORE_PORT:-55432}:5432"
     volumes:
-      - postgres:/var/lib/postgresql
+      - postgres-core:/var/lib/postgresql
       - ./postgres/initdb:/docker-entrypoint-initdb.d:ro
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U acme -d acme"]
-      interval: 2s
-      timeout: 2s
-      retries: 30
+
+  postgres-activity:
+    <<: *postgres
+    ports:
+      - "127.0.0.1:${ACME_POSTGRES_ACTIVITY_PORT:-55433}:5432"
+    volumes:
+      - postgres-activity:/var/lib/postgresql
+      - ./postgres/initdb:/docker-entrypoint-initdb.d:ro
+
+  postgres-queue:
+    <<: *postgres
+    ports:
+      - "127.0.0.1:${ACME_POSTGRES_QUEUE_PORT:-55434}:5432"
+    volumes:
+      - postgres-queue:/var/lib/postgresql
+      - ./postgres/initdb:/docker-entrypoint-initdb.d:ro
+
+  postgres-admin:
+    <<: *postgres
+    ports:
+      - "127.0.0.1:${ACME_POSTGRES_ADMIN_PORT:-55435}:5432"
+    volumes:
+      - postgres-admin:/var/lib/postgresql
+      - ./postgres/initdb:/docker-entrypoint-initdb.d:ro
 
   valkey:
     image: valkey/valkey:9.1-alpine
@@ -87,19 +119,28 @@ services:
   # They restart on their own when a service they watch is reset under them.
   # A host port here is a knob, so a clash is fixed in .env, not in this file.
 
+  # One bookmark per role's instance (pgweb/bookmarks/), and core's open at
+  # the start; the connect dialog switches to another role. Each bookmark
+  # signs in as the superuser, not the application's login: `acme` is fenced
+  # by the row-level security policies and a browser with no tenant set reads
+  # nothing. A local dashboard is a place to look at every row.
   pgweb:
     image: sosedoff/pgweb:0.17.0
     profiles: [devx]
     restart: unless-stopped
-    environment:
-      # The superuser, not the application's login: `acme` is fenced by the
-      # row-level security policies and a browser with no tenant set reads
-      # nothing. A local dashboard is a place to look at every row.
-      PGWEB_DATABASE_URL: postgres://postgres:postgres@postgres:5432/acme?sslmode=disable
+    command: ["--bookmarks-dir=/bookmarks", "--bookmark=core"]
+    volumes:
+      - ./pgweb/bookmarks:/bookmarks:ro
     ports:
       - "127.0.0.1:${ACME_PGWEB_PORT:-58081}:8081"
     depends_on:
-      postgres:
+      postgres-core:
+        condition: service_healthy
+      postgres-activity:
+        condition: service_healthy
+      postgres-queue:
+        condition: service_healthy
+      postgres-admin:
         condition: service_healthy
 
   valkey-admin:
@@ -198,7 +239,7 @@ services:
       - prometheus
 
   # Errors: GlitchTip, a Sentry-compatible backend, in its own database on the
-  # stack's Postgres and with Postgres for its queue (VALKEY_URL empty). The
+  # core role's instance and with Postgres for its queue (VALKEY_URL empty). The
   # two one-shot services create that database and seed an admin and a
   # project whose DSN key is fixed:
   #   http://0123456789abcdef0123456789abcdef@localhost:<ACME_GLITCHTIP_PORT>/1
@@ -219,10 +260,10 @@ services:
       - sh
       - -c
       - >-
-        psql -h postgres -U postgres -d postgres -tAc "select 1 from pg_database where datname = 'glitchtip'" | grep -q 1
-        || psql -h postgres -U postgres -d postgres -c "create database glitchtip owner acme"
+        psql -h postgres-core -U postgres -d postgres -tAc "select 1 from pg_database where datname = 'glitchtip'" | grep -q 1
+        || psql -h postgres-core -U postgres -d postgres -c "create database glitchtip owner acme"
     depends_on:
-      postgres:
+      postgres-core:
         condition: service_healthy
 
   glitchtip:
@@ -231,7 +272,7 @@ services:
     restart: unless-stopped
     command: ./bin/run-all-in-one.sh
     environment: &glitchtip-env
-      DATABASE_URL: postgres://acme:acme@postgres:5432/glitchtip
+      DATABASE_URL: postgres://acme:acme@postgres-core:5432/glitchtip
       VALKEY_URL: ""
       SECRET_KEY: local-only-not-a-secret-glitchtip-key
       GLITCHTIP_DOMAIN: http://localhost:${ACME_GLITCHTIP_PORT:-58000}
@@ -268,5 +309,8 @@ services:
         condition: service_healthy
 
 volumes:
-  postgres:
+  postgres-core:
+  postgres-activity:
+  postgres-queue:
+  postgres-admin:
   minio:

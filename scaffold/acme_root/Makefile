@@ -9,8 +9,9 @@ SHELL := /bin/bash
 #
 # Both files are defaults. A variable exported in the shell wins over them,
 # as it does for the settings, for compose, and for scripts/dev.sh, so the
-# four ACME_DATABASE_* URLs exported at another database take migrate,
-# migrate-check, seed, and test-integration there. Make lets an included
+# four shared ACME_DATABASE_* URLs and the four ACME_DATABASE_URL_<ROLE>
+# exported at another database take migrate, migrate-check, seed, and
+# test-integration there. Make lets an included
 # file beat the environment, so each name the files set and the shell
 # exports is kept aside before the includes and put back after them.
 ENV_FILES := .env.example $(wildcard .env)
@@ -120,7 +121,7 @@ urls: ## Print the local URLs and the seeded sign-ins
 	@echo "  Portal         http://localhost:$(ACME_PORTAL_PORT)   /login through WorkOS; /login/dev as $(SEED_EMAIL) or $(SEED_MEMBER_EMAIL)"
 	@echo "                 two orgs: $(SEED_ADMIN_EMAIL) at /login/dev   owner of $(SEED_SECOND_ORG), admin of $(SEED_ORG)"
 	@echo "  API docs       http://127.0.0.1:$(ACME_PORT)/docs"
-	@echo "  pgweb          http://localhost:$(ACME_PGWEB_PORT)"
+	@echo "  pgweb          http://localhost:$(ACME_PGWEB_PORT)   core; a bookmark per role in its connect dialog"
 	@echo "  Valkey Admin   http://localhost:$(ACME_VALKEY_ADMIN_PORT)"
 	@echo "  ElasticMQ UI   http://localhost:$(ACME_ELASTICMQ_UI_PORT)"
 	@echo "  Grafana        http://localhost:$(ACME_GRAFANA_PORT)   metrics dashboards, no sign-in"
@@ -133,7 +134,10 @@ urls: ## Print the local URLs and the seeded sign-ins
 .env:
 	cp .env.example .env
 
-infra-up: ## Start Postgres, the cache, the queue, and the object store
+# The targets that start the stack copy .env from .env.example first, as
+# `up` does: the processes read .env, and its role URLs are what put each
+# role on its own instance. Without it, every role reads the one URL.
+infra-up: .env ## Start Postgres (one instance per database role), the cache, the queue, and the object store
 	$(COMPOSE) up -d --wait
 	$(MAKE) --no-print-directory buckets
 
@@ -142,11 +146,11 @@ infra-up: ## Start Postgres, the cache, the queue, and the object store
 buckets: ## Create the object store's buckets in MinIO, if they are missing
 	$(COMPOSE) exec -T minio sh -c 'mc alias set local http://127.0.0.1:9000 acme acme-minio-local >/dev/null && mc mb --ignore-existing local/acme-local-user-file-uploads local/acme-local-exports'
 
-devx-up: ## The local stack plus developer dashboards (pgweb, Valkey Admin, ElasticMQ UI, Prometheus and its collector, Grafana, Jaeger, GlitchTip)
+devx-up: .env ## The local stack plus developer dashboards (pgweb, Valkey Admin, ElasticMQ UI, Prometheus and its collector, Grafana, Jaeger, GlitchTip)
 	$(COMPOSE) --profile devx up -d --wait
 	$(COMPOSE) $(GLITCHTIP_SEED)
 
-stack-up: ## The local stack plus the api, maintenance, and portal containers
+stack-up: .env ## The local stack plus the api, maintenance, and portal containers
 	$(COMPOSE_FULL) up -d --build --wait
 
 # The shortcuts above are the developer's path; these are the steps they wrap,

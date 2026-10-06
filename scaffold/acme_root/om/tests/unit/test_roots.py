@@ -48,7 +48,10 @@ async def test_postgres_root_opens_one_engine_per_distinct_url_and_login() -> No
     system = "postgresql+asyncpg://acme_system:s@127.0.0.1:55432/acme"
     # Every argument comes from a settings object, the way a composition root
     # hands them over; the impl reads nothing itself.
-    settings = StorageSettings(database_url=shared, database_system_url=system)
+    # Away from the checkout's .env, whose role URLs would split the roles.
+    settings = StorageSettings.model_validate(
+        {"_env_file": None, "database_url": shared, "database_system_url": system}
+    )
     pools = settings.role_pools()
     root = StoragePostgresImpl(settings.role_urls(), pools, system_urls=settings.system_role_urls())
     assert isinstance(root.get_tenancy_storage(), TenancyStorageInterface)
@@ -56,10 +59,13 @@ async def test_postgres_root_opens_one_engine_per_distinct_url_and_login() -> No
     assert len(root._engines) == 2
     await root.close()
 
-    split = StorageSettings(
-        database_url=shared,
-        database_system_url=system,
-        database_url_queue="postgresql+asyncpg://acme_runtime:r@127.0.0.1:55432/acme_queue",
+    split = StorageSettings.model_validate(
+        {
+            "_env_file": None,
+            "database_url": shared,
+            "database_system_url": system,
+            "database_url_queue": "postgresql+asyncpg://acme_runtime:r@127.0.0.1:55432/acme_queue",
+        }
     )
     root = StoragePostgresImpl(split.role_urls(), pools, system_urls=split.system_role_urls())
     assert len(root._engines) == 4
@@ -67,9 +73,12 @@ async def test_postgres_root_opens_one_engine_per_distinct_url_and_login() -> No
 
 
 def test_role_urls_default_to_the_shared_one() -> None:
-    settings = StorageSettings(
-        database_url="postgresql+asyncpg://x@127.0.0.1/a",
-        database_url_queue="postgresql+asyncpg://x@127.0.0.1/q",
+    settings = StorageSettings.model_validate(
+        {
+            "_env_file": None,
+            "database_url": "postgresql+asyncpg://x@127.0.0.1/a",
+            "database_url_queue": "postgresql+asyncpg://x@127.0.0.1/q",
+        }
     )
     urls = settings.role_urls()
     assert urls[DatabaseRole.CORE].endswith("/a")
@@ -77,10 +86,13 @@ def test_role_urls_default_to_the_shared_one() -> None:
 
 
 def test_the_system_login_follows_a_role_to_its_own_database() -> None:
-    settings = StorageSettings(
-        database_url="postgresql+asyncpg://acme_runtime:r@db-a:5432/a",
-        database_url_queue="postgresql+asyncpg://acme_runtime:r@db-q:5432/q",
-        database_system_url="postgresql+asyncpg://acme_system:s@db-a:5432/a",
+    settings = StorageSettings.model_validate(
+        {
+            "_env_file": None,
+            "database_url": "postgresql+asyncpg://acme_runtime:r@db-a:5432/a",
+            "database_url_queue": "postgresql+asyncpg://acme_runtime:r@db-q:5432/q",
+            "database_system_url": "postgresql+asyncpg://acme_system:s@db-a:5432/a",
+        }
     )
     system = settings.system_role_urls()
     assert system[DatabaseRole.CORE] == "postgresql+asyncpg://acme_system:s@db-a:5432/a"

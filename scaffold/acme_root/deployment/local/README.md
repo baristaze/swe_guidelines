@@ -5,7 +5,7 @@ command below runs from the repository root.
 
 | File or profile | Adds |
 |-----------------|------|
-| `docker-compose.yml` | Postgres, Valkey, ElasticMQ (its queues in `elasticmq/elasticmq.conf`), MinIO |
+| `docker-compose.yml` | one Postgres per database role, Valkey, ElasticMQ (its queues in `elasticmq/elasticmq.conf`), MinIO |
 | `docker-compose.full.yml` | the `api`, `maintenance`, and `portal` containers, built from the working tree |
 | profile `devx` | pgweb, Valkey Admin, ElasticMQ UI, Prometheus, the OpenTelemetry collector for host processes, Grafana, Jaeger, GlitchTip |
 | `docker-compose.linux.yml` | Linux only, added by the Makefile: the collector on the host's network |
@@ -30,12 +30,15 @@ knob names its port as a number, so it changes with the port
 |---------|---------------|--------------------|---------|
 | portal | `ACME_PORTAL_PORT`, 55173 | `portal:8080` | `/login/dev` by address after `make seed`; `/login` through WorkOS once `ACME_WORKOS_API_KEY` is set |
 | api (`/docs`, `/metrics`, `/healthz`) | `ACME_PORT`, 8000 | `api:8000` | |
-| postgres | `ACME_POSTGRES_PORT`, 55432 | `postgres:5432` | database `acme`; the logins are below |
+| postgres-core | `ACME_POSTGRES_CORE_PORT`, 55432 | `postgres-core:5432` | database `acme`; the logins are below |
+| postgres-activity | `ACME_POSTGRES_ACTIVITY_PORT`, 55433 | `postgres-activity:5432` | as above |
+| postgres-queue | `ACME_POSTGRES_QUEUE_PORT`, 55434 | `postgres-queue:5432` | as above |
+| postgres-admin | `ACME_POSTGRES_ADMIN_PORT`, 55435 | `postgres-admin:5432` | as above |
 | valkey | `ACME_VALKEY_PORT`, 56379 | `valkey:6379` | none |
 | elasticmq (SQS) | `ACME_ELASTICMQ_PORT`, 59324 | `elasticmq:9324` | any key |
 | minio (S3) | `ACME_MINIO_PORT`, 59000 | `minio:9000` | `acme` / `acme-minio-local` |
 | MinIO console | `ACME_MINIO_CONSOLE_PORT`, 59001 | | `acme` / `acme-minio-local` |
-| pgweb | `ACME_PGWEB_PORT`, 58081 | | none |
+| pgweb | `ACME_PGWEB_PORT`, 58081 | | none; opens on core, and its connect dialog holds a bookmark per role |
 | Valkey Admin | `ACME_VALKEY_ADMIN_PORT`, 58080 | | none; connect to host `valkey`, port `6379` |
 | ElasticMQ UI | `ACME_ELASTICMQ_UI_PORT`, 53000 | | none |
 | Prometheus | `ACME_PROMETHEUS_PORT`, 59090 | `prometheus:9090` | none |
@@ -47,14 +50,24 @@ knob names its port as a number, so it changes with the port
 The worker serves its metrics on `ACME_METRICS_PORT` (9464), inside the
 network or on the host process. The collector publishes no port.
 
+## One Postgres per role
+
+Each database role runs on its own instance here: `core`, `activity`,
+`queue`, and `admin`, each with its own port and volume. The role URLs in
+`.env.example` put each role there, so a statement or a test that leans on
+two roles sharing an instance fails on every local run. The cloud runs
+one instance for all four, and its tasks set only the shared URLs. GlitchTip
+keeps its own database on the core instance.
+
 ## Postgres logins
 
 Only `postgres` is a superuser, and nothing of Acme connects as it.
 `acme_runtime` serves every request, with DML only. `acme_system` is its
 twin for the system scope. `acme_migration` owns the schemas and runs the
 migrations. `acme` is the local master: the init script in
-`postgres/initdb/` makes it, and `make migrate` has it make the other
-three. Each login's password is its name; the superuser's is `postgres`.
+`postgres/initdb/` makes it on every instance, and `make migrate` has it
+make the other three on each, with the schema of the role that lives
+there. Each login's password is its name; the superuser's is `postgres`.
 None of the four carries `BYPASSRLS`, so the row-level security policies
 hold for all of them. The init script runs on an empty data directory only.
 
@@ -81,7 +94,7 @@ alias dc='docker compose --env-file .env.example --env-file .env -f deployment/l
 dc ps                        # what runs, with health
 dc logs -f api               # one service's logs
 dc up -d --build --wait api  # rebuild and restart the API
-dc exec postgres psql -U acme
+dc exec postgres-core psql -U acme   # a role's instance: postgres-<role>
 ```
 
 On Linux, add `-f deployment/local/docker-compose.linux.yml` after the
@@ -114,7 +127,7 @@ its `-dead` queue at start. Valkey snapshots on shutdown.
 | Symptom | Likely cause and fix |
 |---------|----------------------|
 | `port is already allocated` | Another process or stack holds the port: `lsof -nP -iTCP:<port> -sTCP:LISTEN`, then set its knob in `.env` |
-| `postgres` exits right after start | A volume from another Postgres major version: `make reset` |
+| A `postgres-<role>` service exits right after start | A volume from another Postgres major version: `make reset` |
 | `make up` fails right after `glitchtip-seed` | The seed's last line says why; fix it and rerun, since the seed is idempotent |
 | The portal loads but every request fails | The API is down, or the portal was built for another `VITE_API_URL`: `dc ps api`, then `dc up -d --build --wait portal` |
 | The API refuses to start, naming a setting | `.env` predates a change; compare it with `.env.example` |

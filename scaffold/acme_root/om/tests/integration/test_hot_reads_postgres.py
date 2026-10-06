@@ -138,13 +138,18 @@ def served(found: str, *indexes: str) -> bool:
 
 
 async def analyze(migrated: dict[DatabaseRole, str], *tables: str) -> None:
-    """Statistics, as the migration login that owns the tables."""
-    engine = create_async_engine(migrated[DatabaseRole.CORE])
-    try:
-        async with engine.begin() as connection:
-            await connection.execute(text(f"ANALYZE {', '.join(tables)}"))
-    finally:
-        await engine.dispose()
+    """Statistics, as the migration login that owns the tables, each on its
+    own role's database: a role may live on an instance of its own."""
+    by_role: dict[DatabaseRole, list[str]] = {}
+    for table in tables:
+        by_role.setdefault(DatabaseRole(table.split(".")[0]), []).append(table)
+    for role, names in by_role.items():
+        engine = create_async_engine(migrated[role])
+        try:
+            async with engine.begin() as connection:
+                await connection.execute(text(f"ANALYZE {', '.join(names)}"))
+        finally:
+            await engine.dispose()
 
 
 async def test_the_pending_markers_serve_the_purge_and_the_re_mint_fence(

@@ -16,8 +16,19 @@ from acme.om.storage.logins import (
 )
 from acme.om.storage.roles import DatabaseRole
 
-LOCAL_HOSTS = frozenset({"127.0.0.1", "localhost", "::1", "postgres"})
-"""Where a development seed may write; the compose service name included."""
+LOCAL_HOSTS = frozenset(
+    {
+        "127.0.0.1",
+        "localhost",
+        "::1",
+        "postgres-core",
+        "postgres-activity",
+        "postgres-queue",
+        "postgres-admin",
+    }
+)
+"""Where a development seed may write; the compose stack's service names
+included, one instance per role."""
 
 MIGRATION_LOCK_TIMEOUT_SECONDS = 5.0
 """The default of `database_migration_lock_timeout_seconds`: half the serving
@@ -41,8 +52,10 @@ class StorageSettings(BaseSettings):
 
     # The runtime login's URL, which every request's connection uses, and the
     # system login's beside it, which only the listed system-scope methods
-    # use, on a pool of their own. A role that moves to its own database names
-    # its own URL below, and the system login follows it there.
+    # use, on a pool of their own. A role on a database of its own names its
+    # own URL below, and the system login follows it there. Unset, every role
+    # reads the one URL, as the cloud's one instance serves all four; the
+    # local stack sets all four, one instance per role.
     database_url: str = "postgresql+asyncpg://acme_runtime:acme_runtime@127.0.0.1:55432/acme"
     database_system_url: str = "postgresql+asyncpg://acme_system:acme_system@127.0.0.1:55432/acme"
     database_url_core: str | None = None
@@ -188,6 +201,17 @@ class MigrationSettings(StorageSettings):
             raise SystemExit("ensure-logins runs as the master: set ACME_DATABASE_MASTER_URL")
         return self.database_master_url
 
+    def master_databases(self) -> dict[str, list[DatabaseRole]]:
+        """Every database a role lives on, as the master's URL there, with the
+        roles it holds: one entry with all four on the cloud's one instance,
+        and one per role on the local stack's. `ensure-logins` runs once on
+        each, since a login, a grant, and a schema's owner live on one
+        instance and no other sees them."""
+        found: dict[str, list[DatabaseRole]] = {}
+        for role, url in self.under_login(self.master_url()).items():
+            found.setdefault(url, []).append(role)
+        return found
+
     def login_passwords(self) -> dict[str, str]:
         """Each login's password, from the URL that names it; a URL that names
         another login is refused, since the policies name these three."""
@@ -209,4 +233,8 @@ class MigrationSettings(StorageSettings):
         ]
         if self.database_master_url:
             found.append(("the master", self.database_master_url))
+            found.extend(
+                (f"{', '.join(role.value for role in roles)} (master)", url)
+                for url, roles in self.master_databases().items()
+            )
         return found

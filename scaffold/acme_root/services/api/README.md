@@ -221,7 +221,7 @@ container the server does.
 | Subcommand | Does |
 |------------|------|
 | `serve` | Runs the process. |
-| `migrate` | Applies every role's migration chain (`--all`) or one role's. Idempotent per revision. `migrate ensure-logins` makes the database logins, as the master. |
+| `migrate` | Applies every role's migration chain (`--all`) or one role's. Idempotent per revision. `migrate ensure-logins` makes the database logins, as the master, on each database a role lives on. |
 | `bootstrap` | Seeds a fresh local environment with one org and its owner; `--operator` puts the owner on the operator allowlist with write. Local only, like every seed. |
 | `grant-operator` | The grant job: `--email <e> --permission read\|write` puts an identity on the operator allowlist, `--email <e> --disable` takes it off, and `--email <e> --mint-token provisioner\|smoke [--expires-in N]` mints that identity's operator token into the secret store as `acme-<env>-<holder>-token`, never printed in the cloud. On a local database it prints the token instead, and `--mint-token operator` mints the local read operator's `read` token, which `make seed` writes into `~/.config/acme/ops/local.env`; a cloud refuses it. An operator signs up first; the platform's own identities (`@platform.acme.invalid`) are made by their first grant. |
 | `add-member` | Seeds a person into an existing org; a no-op for a member. |

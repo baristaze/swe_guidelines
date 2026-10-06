@@ -41,7 +41,7 @@ port is taken.
 
 ```bash
 make setup             # Python and TypeScript dependencies
-make infra-up          # Postgres, Valkey, ElasticMQ, and MinIO alone
+make infra-up          # Postgres (one per database role), Valkey, ElasticMQ, and MinIO alone
 make migrate           # the database logins, then every role's migration chain
 make seed              # the two orgs, their people, and the local operators
 make check             # lint, format, types, arch-check, unit tests
@@ -51,8 +51,9 @@ make test-integration  # the storage contracts over Postgres
 
 `scripts/dev.sh` runs the API, the worker, and the portal on the host
 with hot reload. A variable exported in the shell wins over `.env`, so
-a second checkout points the four `ACME_DATABASE_*` URLs at a
-database of its own. [deployment/local/README.md](deployment/local/README.md)
+a second checkout points all eight database URLs at a database of
+its own: the four shared `ACME_DATABASE_*` URLs and the four
+`ACME_DATABASE_URL_<ROLE>`, since a role's own URL wins. [deployment/local/README.md](deployment/local/README.md)
 works on one service at a time.
 
 ## Deploy and operate

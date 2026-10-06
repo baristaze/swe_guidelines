@@ -4,7 +4,8 @@ any database that is not a local address.
 The suites connect the way a deployed process does: the storage impls under
 the runtime login, with the system login's pool beside it, and the migrations
 and the truncation between cases under the migration login, which owns the
-tables. The master opens one connection, `ensure-logins`, once per run."""
+tables. The master runs `ensure-logins` once per run, on each database a role
+lives on: one locally per role, as the compose stack runs them."""
 
 import asyncio
 from collections.abc import AsyncIterator
@@ -16,7 +17,7 @@ from sqlalchemy.ext.asyncio import create_async_engine
 
 from acme.om.storage.impl.pg_base import LoginSessions
 from acme.om.storage.impl.postgres import login_sessions
-from acme.om.storage.migrate import VERSION_TABLE, ensure_logins_at, upgrade_all
+from acme.om.storage.migrate import VERSION_TABLE, ensure_logins_everywhere, upgrade_all
 from acme.om.storage.roles import DatabaseRole
 from acme.om.storage.settings import LOCAL_HOSTS, MigrationSettings
 
@@ -37,8 +38,8 @@ def migrated(migration_settings: MigrationSettings) -> dict[DatabaseRole, str]:
     settings = migration_settings
     bound = settings.database_migration_lock_timeout_seconds
     asyncio.run(
-        ensure_logins_at(
-            settings.master_url(), settings.login_passwords(), lock_timeout_seconds=bound
+        ensure_logins_everywhere(
+            settings.master_databases(), settings.login_passwords(), lock_timeout_seconds=bound
         )
     )
     urls = settings.migration_role_urls()

@@ -1,0 +1,2 @@
+# The queue role's instance, as the superuser.
+url = "postgres://postgres:postgres@postgres-queue:5432/acme?sslmode=disable"

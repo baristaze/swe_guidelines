@@ -1,5 +1,7 @@
 """An audit's own database on the local Postgres: made, migrated, and
-dropped by the run that uses it, and never a shared one.
+dropped by the run that uses it, and never a shared one. It holds every role,
+as the cloud's one instance does, on the master's instance (core's, on the
+local stack), so the role URLs it names all point at it.
 
     uv run python ops/audit/auditdb.py create audit_<run>
     uv run python ops/audit/auditdb.py env audit_<run>     # the URLs, as exports
@@ -27,6 +29,7 @@ from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import create_async_engine
 
 from acme.om.storage import migrate
+from acme.om.storage.roles import DatabaseRole
 from acme.om.storage.settings import LOCAL_HOSTS, MigrationSettings
 
 PREFIX = "audit_"
@@ -52,15 +55,20 @@ def on_database(url: str, name: str) -> str:
 
 
 def urls(name: str) -> dict[str, str]:
-    """Every URL a process and the migrate module read, on the audit database."""
+    """Every URL a process and the migrate module read, on the audit database.
+    Each role's own URL names it too: the local stack's `.env` puts each role
+    on an instance of its own, and a role URL left to it would take that role
+    to the stack's database instead."""
     check_name(name)
     settings = MigrationSettings()
     master = master_url()
+    runtime = on_database(settings.database_url, name)
     return {
-        "ACME_DATABASE_URL": on_database(settings.database_url, name),
+        "ACME_DATABASE_URL": runtime,
         "ACME_DATABASE_SYSTEM_URL": on_database(settings.database_system_url, name),
         "ACME_DATABASE_MIGRATION_URL": on_database(settings.database_migration_url, name),
         "ACME_DATABASE_MASTER_URL": on_database(master, name),
+        **{f"ACME_DATABASE_URL_{role.value.upper()}": runtime for role in DatabaseRole},
     }
 
 

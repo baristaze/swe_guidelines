@@ -98,7 +98,8 @@ console"; a CI pipeline that validates one root and not the others.
 
 **Principle.** Every technology dependency runs as a local container
 through one compose stack, using cloud images or wire-compatible
-stand-ins at the version Versions sets. `make up` starts the
+stand-ins at the version Versions sets, with one database instance per
+database role where the cloud runs one for all. `make up` starts the
 dependencies and the `devx` profile in containers and the application
 on the host through the start script, migrates, seeds, and prints the
 local URLs; `make down` stops both and keeps the data.
@@ -113,7 +114,8 @@ targets they wrap (`setup`, `infra-up`, `infra-down`, `infra-reset`,
 `migrate`, `seed`); CI jobs that reference compose services.
 
 **Violation.** A dependency the application needs that the compose stack
-does not run; application services baked into the default compose file
+does not run; two database roles on one local instance; application
+services baked into the default compose file
 so a code change needs an image rebuild; an `up` that starts the
 application in containers, or that skips the migration or the seed; a
 `reset` that keeps a volume; a CI job that runs a shortcut such as `make
