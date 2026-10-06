@@ -46,20 +46,25 @@ WHO = text("SELECT rolname, rolsuper, rolbypassrls FROM pg_roles WHERE rolname =
 
 
 @pytest.fixture
-async def migration_engine(migrated: dict[DatabaseRole, str]) -> AsyncIterator[AsyncEngine]:
-    """The migration login's connection, which owns the tables."""
-    engine = create_async_engine(migrated[DatabaseRole.CORE])
-    yield engine
-    await engine.dispose()
+async def migration_engines(
+    migrated: dict[DatabaseRole, str],
+) -> AsyncIterator[dict[DatabaseRole, AsyncEngine]]:
+    """The migration login's connection to each role's database, where it
+    owns that role's tables; a role may live on an instance of its own."""
+    engines = {role: create_async_engine(url) for role, url in migrated.items()}
+    yield engines
+    for engine in engines.values():
+        await engine.dispose()
 
 
 async def test_no_login_is_a_superuser_or_bypasses_rls(
-    pg_sessions: Sessions, migration_engine: AsyncEngine
+    pg_sessions: Sessions, migration_engines: dict[DatabaseRole, AsyncEngine]
 ) -> None:
     """The test that makes the fence real and not a claim. A superuser walks
     past every policy, and so does a role with BYPASSRLS; on either, every
     assertion below would pass against a database that fences nothing. Each
-    of the three logins is asked on a live connection of its own."""
+    of the three logins is asked on a live connection of its own, on every
+    role's database."""
     seen: set[str] = set()
     for factories in (pg_sessions, pg_sessions.system):
         for role in DatabaseRole:
@@ -68,42 +73,47 @@ async def test_no_login_is_a_superuser_or_bypasses_rls(
                 seen.add(found.rolname)
                 assert not found.rolsuper, f"{found.rolname} is a superuser"
                 assert not found.rolbypassrls, f"{found.rolname} carries BYPASSRLS"
-    async with migration_engine.connect() as connection:
-        found = (await connection.execute(WHO)).one()
-        seen.add(found.rolname)
-        assert not found.rolsuper, f"{found.rolname} is a superuser"
-        assert not found.rolbypassrls, f"{found.rolname} carries BYPASSRLS"
+    for engine in migration_engines.values():
+        async with engine.connect() as connection:
+            found = (await connection.execute(WHO)).one()
+            seen.add(found.rolname)
+            assert not found.rolsuper, f"{found.rolname} is a superuser"
+            assert not found.rolbypassrls, f"{found.rolname} carries BYPASSRLS"
     assert seen == {RUNTIME_LOGIN, SYSTEM_LOGIN, MIGRATION_LOGIN}
 
 
 async def test_the_runtime_and_the_system_logins_own_nothing(pg_sessions: Sessions) -> None:
     """Only an owner can drop a policy, turn FORCE off, or alter a table, so a
     login that owns nothing cannot, whatever statement reaches it. The role
-    schemas and every table in them are the migration login's."""
+    schemas and every table in them are the migration login's, on every
+    role's database."""
+    for role in DatabaseRole:
+        async with pg_sessions[role]() as session:
+            owned = (
+                await session.execute(
+                    text(
+                        "SELECT pg_get_userbyid(c.relowner) AS owner, n.nspname, c.relname"
+                        " FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace"
+                        " WHERE pg_get_userbyid(c.relowner) IN (:runtime, :system)"
+                        " UNION ALL SELECT pg_get_userbyid(nspowner), nspname, ''"
+                        " FROM pg_namespace"
+                        " WHERE pg_get_userbyid(nspowner) IN (:runtime, :system)"
+                    ),
+                    {"runtime": RUNTIME_LOGIN, "system": SYSTEM_LOGIN},
+                )
+            ).all()
+            assert owned == [], f"owned by a serving login on {role.value}: {owned}"
+            schemas = (
+                await session.execute(
+                    text(
+                        "SELECT nspname, pg_get_userbyid(nspowner) AS owner FROM pg_namespace"
+                        " WHERE nspname = ANY(:schemas)"
+                    ),
+                    {"schemas": [role.value for role in DatabaseRole]},
+                )
+            ).all()
+            assert {row.owner for row in schemas} == {MIGRATION_LOGIN}, schemas
     async with pg_sessions[DatabaseRole.CORE]() as session:
-        owned = (
-            await session.execute(
-                text(
-                    "SELECT pg_get_userbyid(c.relowner) AS owner, n.nspname, c.relname"
-                    " FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace"
-                    " WHERE pg_get_userbyid(c.relowner) IN (:runtime, :system)"
-                    " UNION ALL SELECT pg_get_userbyid(nspowner), nspname, ''"
-                    " FROM pg_namespace WHERE pg_get_userbyid(nspowner) IN (:runtime, :system)"
-                ),
-                {"runtime": RUNTIME_LOGIN, "system": SYSTEM_LOGIN},
-            )
-        ).all()
-        assert owned == [], f"owned by a serving login: {owned}"
-        schemas = (
-            await session.execute(
-                text(
-                    "SELECT nspname, pg_get_userbyid(nspowner) AS owner FROM pg_namespace"
-                    " WHERE nspname = ANY(:schemas)"
-                ),
-                {"schemas": [role.value for role in DatabaseRole]},
-            )
-        ).all()
-        assert {row.owner for row in schemas} == {MIGRATION_LOGIN}, schemas
         with pytest.raises(DBAPIError) as refused:
             await session.execute(text("ALTER TABLE core.files NO FORCE ROW LEVEL SECURITY"))
         assert "must be owner" in str(refused.value)
@@ -145,7 +155,7 @@ async def test_the_funnel_opens_the_system_scope_on_the_system_login(
 
 
 async def test_the_policy_is_what_refuses_the_other_tenant(
-    pg_sessions: Sessions, migration_engine: AsyncEngine
+    pg_sessions: Sessions, migration_engines: dict[DatabaseRole, AsyncEngine]
 ) -> None:
     """The negative control, run twice. A statement with no tenant predicate
     of its own, under one tenant's scope, reads that tenant's rows alone while
@@ -165,13 +175,14 @@ async def test_the_policy_is_what_refuses_the_other_tenant(
             await set_scope(session, mine, None, None)
             return set((await session.execute(read)).scalars())
 
+    owner = migration_engines[DatabaseRole.ACTIVITY]
     assert await orgs_seen() == {mine}
     try:
-        async with migration_engine.begin() as connection:
+        async with owner.begin() as connection:
             await connection.execute(text("ALTER TABLE activity.events DISABLE ROW LEVEL SECURITY"))
         assert await orgs_seen() == {mine, theirs}
     finally:
-        async with migration_engine.begin() as connection:
+        async with owner.begin() as connection:
             await connection.execute(text("ALTER TABLE activity.events ENABLE ROW LEVEL SECURITY"))
     assert await orgs_seen() == {mine}
 
@@ -334,7 +345,7 @@ async def _work_orgs(session: AsyncSession, org_id: UUID | None) -> set[UUID]:
 
 
 async def test_the_queue_fence_admits_each_login_to_its_half_alone(
-    pg_sessions: Sessions, migration_engine: AsyncEngine
+    pg_sessions: Sessions, migration_engines: dict[DatabaseRole, AsyncEngine]
 ) -> None:
     """The work items are fenced by login (ADR 0044). The runtime login sees
     the tenant it names and nothing under the system scope; the system login
@@ -357,7 +368,7 @@ async def test_the_queue_fence_admits_each_login_to_its_half_alone(
         assert await _work_orgs(session, mine) == set()
     async with system() as session:
         assert await _work_orgs(session, None) == set()
-    async with migration_engine.connect() as connection:
+    async with migration_engines[DatabaseRole.QUEUE].connect() as connection:
         for org_id in (mine, EMPTY_UUID):
             async with connection.begin():
                 await connection.execute(
@@ -376,7 +387,7 @@ async def test_the_queue_fence_admits_each_login_to_its_half_alone(
 
 
 async def test_the_queue_policy_is_what_refuses_the_other_tenant(
-    pg_sessions: Sessions, migration_engine: AsyncEngine
+    pg_sessions: Sessions, migration_engines: dict[DatabaseRole, AsyncEngine]
 ) -> None:
     """The negative control on the table fenced by login, run twice: a
     statement with no tenant predicate reads one tenant's items while the
@@ -390,14 +401,15 @@ async def test_the_queue_policy_is_what_refuses_the_other_tenant(
         async with pg_sessions[DatabaseRole.QUEUE]() as session:
             return await _work_orgs(session, mine)
 
+    owner = migration_engines[DatabaseRole.QUEUE]
     assert await orgs_seen() == {mine}
     try:
-        async with migration_engine.begin() as connection:
+        async with owner.begin() as connection:
             await connection.execute(
                 text("ALTER TABLE queue.work_items DISABLE ROW LEVEL SECURITY")
             )
         assert await orgs_seen() == {mine, theirs}
     finally:
-        async with migration_engine.begin() as connection:
+        async with owner.begin() as connection:
             await connection.execute(text("ALTER TABLE queue.work_items ENABLE ROW LEVEL SECURITY"))
     assert await orgs_seen() == {mine}
