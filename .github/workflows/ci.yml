@@ -141,6 +141,27 @@ jobs:
           make migrate
           make migrate-check
           make test-integration
+      # The copy's release-before job, on a branch that adds a migration. The
+      # copy as committed is the release before; the branch adds a revision to
+      # queue's chain that changes nothing, which no chain of the release
+      # before holds, so its suite runs only once the stamp works. One name
+      # stands for the three: the script is the same in each.
+      - name: the copy's release before passes on a branch that adds a migration
+        if: matrix.name == 'free_journalism'
+        working-directory: ${{ env.COPY }}
+        env:
+          GIT_AUTHOR_NAME: ci
+          GIT_AUTHOR_EMAIL: ci@example.invalid
+          GIT_COMMITTER_NAME: ci
+          GIT_COMMITTER_EMAIL: ci@example.invalid
+        run: |
+          git rev-parse -q --verify HEAD > /dev/null || { git add -A && git commit -qm "the copy"; }
+          base="$(git rev-parse HEAD)"
+          down="$(basename "$(ls om/migrations/versions/queue/*.py | sort | tail -1)" | cut -d_ -f1)"
+          printf 'revision = "209912310000"\ndown_revision = "%s"\nbranch_labels = None\ndepends_on = None\n\n\ndef upgrade() -> None:\n    pass\n\n\ndef downgrade() -> None:\n    pass\n' "$down" \
+            > om/migrations/versions/queue/209912310000_nothing.py
+          git add om/migrations && git commit -qm "a revision that changes nothing"
+          scripts/release_before.sh "$base"
       - name: stop the copy's stack
         if: always()
         working-directory: ${{ env.COPY }}

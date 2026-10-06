@@ -60,6 +60,17 @@ def test_the_migration_runner_refuses_a_remote_database_with_local(
             migrate.main([*command, "--local"])
 
 
+def test_a_stamp_refuses_a_remote_database_without_local(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """A stamp makes a version record say what the schema is not, which on a
+    shared database would make its next migration skip or repeat revisions."""
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("ACME_DATABASE_URL", REMOTE)
+    with pytest.raises(SystemExit, match="refusing to touch"):
+        migrate.main(["stamp", "--all", "--heads-of", str(tmp_path)])
+
+
 @pytest.mark.parametrize(
     "field",
     [

@@ -33,7 +33,9 @@ needs no drop, and a secret is better gone a release sooner.
 
 **The proof is the previous release's own tests.** Before a contract
 lands, the previous release runs its integration tests against the
-contracted schema. A column any of them names stays one more release.
+contracted schema: CI's `release-before` job runs them on every pull
+request that changes a migration (ADR 0084). A column any of them names
+stays one more release.
 
 ## Consequences
 

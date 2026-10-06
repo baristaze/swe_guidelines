@@ -636,7 +636,8 @@ the code, drop in a later one (expand and contract). A chain may be
 folded into one revision under the head's revision id, while every
 database that exists is at that head and a schema dump of the chain
 equals the fold's. A metadata-vs-schema check per role and a
-downgrade-then-upgrade of the head run in CI's integration job.
+downgrade-then-upgrade of the head run in CI's integration job, and the
+release before's own suite runs on the branch's schema (DEL-50).
 
 **Source.** The Storage Layer, Migrations.
 

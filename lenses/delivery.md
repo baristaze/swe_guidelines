@@ -1242,20 +1242,28 @@ that keeps a URL's path or query.
 **Principle.** The fast rollback goes to the previous release only. It
 swaps the image digests and the portal bundle, runs no migration, and
 plans no Terraform. The previous release runs on the current schema,
-because every migration is compatible with the release before it.
-Anything older rolls forward through a revert.
+because every migration is compatible with the release before it, and
+CI proves it: a job on every pull request that changes a migration runs
+the integration suite of the merge base and of `release`'s tip on the
+branch's migrated schema. The job always reports, so the ruleset can
+require it. Anything older rolls forward through a revert.
 
 **Source.** Deployment, Cloud: AWS.
 
 **Look for.** The rollback path of the production workflow: the commit
 it accepts, what it changes (the digests in the task definitions, the
 bundle the distribution serves), and whether it runs the migration
-task or a Terraform plan; what it does to `release`.
+task or a Terraform plan; what it does to `release`. The CI job that
+runs the release before's integration suite on a branch's migrated
+schema: which releases it runs, whether it runs on every pull request
+or only behind a path filter, and whether the main ruleset requires it.
 
 **Violation.** A rollback that accepts a commit older than the previous
 release, or one production never ran; a rollback that migrates, down
 or up, or plans or applies Terraform; a rollback that moves `release`
-back.
+back. No job runs the release before's suite on a branch's schema, or
+one runs behind a path filter, which never reports on a pull request it
+skips and so cannot be required.
 
 **Severity.** medium
 
