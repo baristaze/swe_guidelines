@@ -1,9 +1,14 @@
 """The local-database guard: a development command refuses a role URL whose
-host is not local, and the migration runner refuses before it connects. The
-migration runner's connection carries its lock bound, and a run that waited
-past it asks to be run again."""
+host is not local, and the migration runner refuses before it connects. With
+no role URL set every role reads the one URL, the cloud's shape, and with
+each set every login follows its role to its own database. The migration
+runner's connection carries its lock bound, and a run that waited past it
+asks to be run again."""
+
+from pathlib import Path
 
 import pytest
+from sqlalchemy.engine import make_url
 from sqlalchemy.exc import DBAPIError
 
 from acme.om.storage import migrate
@@ -13,23 +18,42 @@ from acme.om.storage.settings import MigrationSettings, StorageSettings
 REMOTE = "postgresql+asyncpg://acme:secret@db.example.internal:5432/acme"
 
 
-@pytest.mark.parametrize("host", ["127.0.0.1", "localhost", "postgres", "[::1]"])
+@pytest.mark.parametrize(
+    "host",
+    [
+        "127.0.0.1",
+        "localhost",
+        "[::1]",
+        "postgres-core",
+        "postgres-activity",
+        "postgres-queue",
+        "postgres-admin",
+    ],
+)
 def test_a_local_host_passes(host: str) -> None:
-    StorageSettings(database_url=f"postgresql+asyncpg://t:t@{host}:5432/t").refuse_remote()
+    settings = StorageSettings(
+        _env_file=None, database_url=f"postgresql+asyncpg://t:t@{host}:5432/t"
+    )
+    settings.refuse_remote()
 
 
 def test_a_remote_host_on_any_role_is_refused() -> None:
-    shared = StorageSettings(database_url=REMOTE)
+    # Away from the checkout's .env, whose role URLs would take every role
+    # off the shared URL.
+    shared = StorageSettings(_env_file=None, database_url=REMOTE)
     with pytest.raises(SystemExit, match=r"refusing to touch core at db\.example\.internal"):
         shared.refuse_remote()
-    one_role = StorageSettings(database_url_queue=REMOTE)
+    one_role = StorageSettings(_env_file=None, database_url_queue=REMOTE)
     with pytest.raises(SystemExit, match="refusing to touch queue"):
         one_role.refuse_remote()
 
 
 def test_the_migration_runner_refuses_a_remote_database_with_local(
-    monkeypatch: pytest.MonkeyPatch,
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
+    # Away from the checkout's .env, whose role URLs would take every role
+    # off the shared URL this sets.
+    monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("ACME_DATABASE_URL", REMOTE)
     for command in (["upgrade", "--all"], ["check", "--all"], ["downgrade", "--all", "--to", "-1"]):
         with pytest.raises(SystemExit, match="refusing to touch"):
@@ -94,6 +118,39 @@ def test_a_role_on_its_own_database_keeps_its_database_under_every_login() -> No
     )
     assert moved.system_role_urls()[DatabaseRole.QUEUE] == (
         "postgresql+asyncpg://acme_system:acme_system-pw@db-q:5432/q"
+    )
+
+
+def test_with_no_role_url_every_role_reads_the_one_url() -> None:
+    """The cloud's shape: one instance serves all four roles, so every login
+    reaches every role on the one URL, and the master shapes one database."""
+    settings = logins()
+    for urls in (
+        settings.role_urls(),
+        settings.system_role_urls(),
+        settings.migration_role_urls(),
+    ):
+        assert set(urls) == set(DatabaseRole)
+        assert len(set(urls.values())) == 1
+    assert settings.role_urls()[DatabaseRole.CORE] == LOCAL.format(login="acme_runtime")
+    assert settings.master_databases() == {LOCAL.format(login="acme"): list(DatabaseRole)}
+
+
+def test_a_role_on_each_instance_has_the_master_on_each() -> None:
+    """The local stack's shape: each role on an instance of its own, so the
+    master shapes four databases, one role each, under its own login."""
+    own = "postgresql+asyncpg://acme_runtime:r@127.0.0.1:{port}/acme"
+    ports = {DatabaseRole.CORE: 55432, DatabaseRole.ACTIVITY: 55433}
+    ports |= {DatabaseRole.QUEUE: 55434, DatabaseRole.ADMIN: 55435}
+    settings = logins(
+        **{f"database_url_{role.value}": own.format(port=port) for role, port in ports.items()}
+    )
+    master = "postgresql+asyncpg://acme:acme-pw@127.0.0.1:{port}/acme"
+    assert settings.master_databases() == {
+        master.format(port=port): [role] for role, port in ports.items()
+    }
+    assert {make_url(url).port for url in settings.system_role_urls().values()} == set(
+        ports.values()
     )
 
 

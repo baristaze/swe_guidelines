@@ -1,6 +1,6 @@
 """Every role's migrated schema agrees with the ORM metadata, the latest
 revision of every role downgrades and upgrades again, the logins are safe to
-make twice, a migration behind a held lock gives up within its bound, and a
+make twice and stand on every database a role lives on, a migration behind a held lock gives up within its bound, and a
 data migration passes the fence it runs under and fails when it misses rows."""
 
 import asyncio
@@ -14,13 +14,14 @@ from sqlalchemy.ext.asyncio import create_async_engine
 from acme.om.base import new_id
 from acme.om.events.storage.impl.postgres import EventStoragePostgresImpl
 from acme.om.storage.impl.pg_base import LoginSessions
+from acme.om.storage.logins import MIGRATION_LOGIN, RUNTIME_LOGIN, SYSTEM_LOGIN
 from acme.om.storage.migrate import (
     RUN_AGAIN,
     VERSION_TABLE,
     backfill,
     check,
     downgrade,
-    ensure_logins_at,
+    ensure_logins_everywhere,
     head,
     main,
     upgrade,
@@ -53,9 +54,53 @@ async def test_ensure_logins_runs_again_on_a_migrated_database(
     """The deploy runs it before every migrate, so the second run over a
     database it already shaped changes nothing and fails nothing."""
     settings = migration_settings
-    await ensure_logins_at(settings.master_url(), settings.login_passwords())
+    await ensure_logins_everywhere(settings.master_databases(), settings.login_passwords())
     for role in DatabaseRole:
         assert await check(role, migrated[role]) == []
+
+
+async def test_each_database_holds_the_logins_and_its_own_roles_schemas(
+    migration_settings: MigrationSettings, migrated: dict[DatabaseRole, str]
+) -> None:
+    """A login, a grant, and a schema's owner live on one instance, so every
+    database a role lives on carries its own: the three logins, none a
+    superuser or BYPASSRLS, and the schema of each role there owned by the
+    migration login and open to the serving logins. The cloud's one database
+    holds all four; the local stack's four hold one role each, and none
+    holds another's schema."""
+    logins = sorted((MIGRATION_LOGIN, RUNTIME_LOGIN, SYSTEM_LOGIN))
+    every_role = [role.value for role in DatabaseRole]
+    for url, roles in migration_settings.master_databases().items():
+        engine = create_async_engine(url)
+        try:
+            async with engine.connect() as connection:
+                found = await connection.execute(
+                    text(
+                        "SELECT rolname, rolsuper, rolbypassrls FROM pg_roles"
+                        " WHERE rolname = ANY(:logins) ORDER BY rolname"
+                    ),
+                    {"logins": logins},
+                )
+                assert [tuple(row) for row in found] == [(login, False, False) for login in logins]
+                owners = await connection.execute(
+                    text(
+                        "SELECT nspname, pg_get_userbyid(nspowner) FROM pg_namespace"
+                        " WHERE nspname = ANY(:schemas)"
+                    ),
+                    {"schemas": every_role},
+                )
+                assert dict(tuple(row) for row in owners) == {
+                    role.value: MIGRATION_LOGIN for role in roles
+                }
+                for role in roles:
+                    for login in (RUNTIME_LOGIN, SYSTEM_LOGIN):
+                        usage = await connection.execute(
+                            text("SELECT has_schema_privilege(:login, :schema, 'USAGE')"),
+                            {"login": login, "schema": role.value},
+                        )
+                        assert usage.scalar_one(), f"{login} has no usage on {role.value}"
+        finally:
+            await engine.dispose()
 
 
 async def test_a_migration_behind_a_held_lock_gives_up_within_its_bound(

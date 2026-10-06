@@ -3,7 +3,8 @@ each migration a pair of hand-written SQL files behind a thin wrapper.
 
 Every migration runs under the migration login, which owns the schema. The
 master opens one command only, `ensure-logins`, which makes the three logins
-and hands the migration login what it owns (`acme.om.storage.logins`).
+and hands the migration login what it owns (`acme.om.storage.logins`), on
+each database a role lives on.
 
 Every statement the runner sends waits for a lock
 `ACME_DATABASE_MIGRATION_LOCK_TIMEOUT_SECONDS` at most. A run that gives up
@@ -20,7 +21,7 @@ import importlib
 import os
 import re
 import sys
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from pathlib import Path
 from typing import Any
 
@@ -30,6 +31,7 @@ from alembic.config import Config
 from alembic.migration import MigrationContext
 from alembic.script import ScriptDirectory
 from sqlalchemy import Connection, MetaData
+from sqlalchemy.engine import make_url
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import create_async_engine
 
@@ -281,13 +283,31 @@ async def upgrade_all(
 async def ensure_logins_at(
     master_url: str,
     passwords: dict[str, str],
+    roles: Iterable[DatabaseRole] = tuple(DatabaseRole),
     *,
     lock_timeout_seconds: float = MIGRATION_LOCK_TIMEOUT_SECONDS,
 ) -> None:
-    """`ensure_logins` in one transaction on the master's connection."""
+    """`ensure_logins` for `roles` in one transaction on the master's
+    connection to one database."""
     await _with_connection(
-        master_url, lambda connection: ensure_logins(connection, passwords), lock_timeout_seconds
+        master_url,
+        lambda connection: ensure_logins(connection, passwords, roles),
+        lock_timeout_seconds,
     )
+
+
+async def ensure_logins_everywhere(
+    databases: dict[str, list[DatabaseRole]],
+    passwords: dict[str, str],
+    *,
+    lock_timeout_seconds: float = MIGRATION_LOCK_TIMEOUT_SECONDS,
+) -> None:
+    """`ensure_logins` on every database a role lives on, each for the roles
+    it holds and in a transaction of its own (`master_databases`). A run that
+    fails on one database leaves the ones before it done, which a second run
+    finds in place."""
+    for url, roles in databases.items():
+        await ensure_logins_at(url, passwords, roles, lock_timeout_seconds=lock_timeout_seconds)
 
 
 def gave_up(what: str, lock_timeout_seconds: float) -> int:
@@ -339,17 +359,24 @@ def main(argv: list[str] | None = None) -> int:
         settings.refuse_remote()
     bound = settings.database_migration_lock_timeout_seconds
     if args.command == "ensure-logins":
+        databases = settings.master_databases()
         try:
             asyncio.run(
-                ensure_logins_at(
-                    settings.master_url(), settings.login_passwords(), lock_timeout_seconds=bound
+                ensure_logins_everywhere(
+                    databases, settings.login_passwords(), lock_timeout_seconds=bound
                 )
             )
         except DBAPIError as error:
             if not lock_not_granted(error):
                 raise
             return gave_up("logins", bound)
-        print("logins: the migration login owns every role schema; the serving logins hold DML")
+        for url, roles in databases.items():
+            where = make_url(url)
+            print(
+                f"logins on {where.host}:{where.port}/{where.database}:"
+                f" the migration login owns {', '.join(role.value for role in roles)};"
+                " the serving logins hold DML"
+            )
         return 0
     urls = settings.migration_role_urls()
     roles = _roles_from_args(args)
