@@ -67,6 +67,30 @@ jobs:
       - run: make infra-down
         if: always()
 
+  # The release before runs its integration suite on this branch's schema
+  # (ADR 0084): the merge base, which staging runs, and the tip of release,
+  # which production runs and the fast rollback returns to. It always runs and
+  # reports, so the main ruleset can require it; a path filter would never
+  # report on a pull request that touches no migration, and block it. Such a
+  # pull request ends green within the checkout. A push to main skips it: the
+  # pull request ran it on its merge with that same main.
+  release-before:
+    name: the release before passes on this schema
+    if: github.event_name != 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # The merge base and origin/release, with the history between them.
+          fetch-depth: 0
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+      - run: scripts/release_before.sh "$BASE"
+        env:
+          BASE: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
+      - run: make infra-down
+        if: always()
+
   telemetry:
     name: the telemetry round trip over the devx profile
     runs-on: ubuntu-latest

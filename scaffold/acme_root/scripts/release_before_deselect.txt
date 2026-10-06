@@ -1,0 +1,8 @@
+# The tests of the release before that cannot pass on this branch's schema by
+# design, which scripts/release_before.sh leaves out (ADR 0084). One pytest
+# node id per line, as pytest prints it, or a file or a class to leave out
+# whole; a line that starts with # is a comment.
+#
+# A line comes with the branch whose migration causes it, under a comment
+# that says why, and is reviewed with it. It goes once both releases before
+# are past that branch.

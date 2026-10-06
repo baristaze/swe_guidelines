@@ -560,6 +560,7 @@ if [ "$environment" = "staging" ]; then
         required_status_checks: [
           "fast gate",
           "integration over the compose stack",
+          "the release before passes on this schema",
           "the telemetry round trip over the devx profile",
           "images build (api)", "images build (maintenance)", "images build (portal)",
           "terraform format and validate (bootstrap/staging)",

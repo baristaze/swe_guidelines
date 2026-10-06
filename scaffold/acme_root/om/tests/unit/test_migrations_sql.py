@@ -1,5 +1,7 @@
 """The migration files obey the role rules without a database."""
 
+from pathlib import Path
+
 import pytest
 
 from acme.om.media.types.file import FileStatus
@@ -7,6 +9,7 @@ from acme.om.storage.migrate import (
     MIGRATIONS_DIR,
     check_role_of_sql,
     head,
+    migrations_of,
     role_metadata,
     split_statements,
 )
@@ -75,6 +78,19 @@ def test_each_role_has_at_most_one_head_and_stamped_wrappers(role: DatabaseRole)
         assert f'revision = "{stamp}"' in wrapper.read_text()
         for suffix in (".up.sql", ".down.sql"):
             assert (MIGRATIONS_DIR / "sql" / role.value / f"{wrapper.stem}{suffix}").is_file()
+
+
+def test_the_head_of_another_checkouts_chain_is_read_from_its_files(
+    checkout_ahead: tuple[Path, str],
+) -> None:
+    """What `migrate stamp --heads-of` writes: the head each chain has in that
+    checkout, a revision this checkout's chain does not hold included."""
+    checkout, ahead = checkout_ahead
+    there = migrations_of(checkout)
+    assert head(DatabaseRole.CORE, there) == ahead
+    for role in (DatabaseRole.ACTIVITY, DatabaseRole.QUEUE, DatabaseRole.ADMIN):
+        assert head(role, there) == head(role)
+    assert migrations_of(MIGRATIONS_DIR.parents[1]) == MIGRATIONS_DIR
 
 
 def test_role_metadata_holds_only_that_role() -> None:

@@ -1,10 +1,13 @@
 """Every role's migrated schema agrees with the ORM metadata, the latest
 revision of every role downgrades and upgrades again, the logins are safe to
-make twice and stand on every database a role lives on, a migration behind a held lock gives up within its bound, and a
-data migration passes the fence it runs under and fails when it misses rows."""
+make twice and stand on every database a role lives on, a migration behind a
+held lock gives up within its bound, a stamp writes another checkout's heads
+and back, and a data migration passes the fence it runs under and fails when
+it misses rows."""
 
 import asyncio
 import time
+from pathlib import Path
 
 import pytest
 from contracts.event_storage import make_event
@@ -16,6 +19,7 @@ from acme.om.events.storage.impl.postgres import EventStoragePostgresImpl
 from acme.om.storage.impl.pg_base import LoginSessions
 from acme.om.storage.logins import MIGRATION_LOGIN, RUNTIME_LOGIN, SYSTEM_LOGIN
 from acme.om.storage.migrate import (
+    MIGRATIONS_DIR,
     RUN_AGAIN,
     VERSION_TABLE,
     backfill,
@@ -136,6 +140,25 @@ async def test_a_migration_behind_a_held_lock_gives_up_within_its_bound(
     assert await on_core(core, f"SELECT version_num FROM core.{VERSION_TABLE}") == before
     assert await asyncio.to_thread(main, ["upgrade", "--role", "core"]) == 0
     assert await check(DatabaseRole.CORE, core) == []
+
+
+async def test_a_stamp_writes_another_checkouts_heads_and_back(
+    migrated: dict[DatabaseRole, str], checkout_ahead: tuple[Path, str]
+) -> None:
+    """How the release before runs its own suite on this schema: each role's
+    record becomes the head of that checkout's chain, a revision this chain
+    does not hold included, with nothing applied; stamped back to this
+    checkout, every record is this chain's head again."""
+    checkout, ahead = checkout_ahead
+    record = f"SELECT version_num FROM core.{VERSION_TABLE}"
+    try:
+        assert await asyncio.to_thread(main, ["stamp", "--all", "--heads-of", str(checkout)]) == 0
+        assert await on_core(migrated[DatabaseRole.CORE], record) == [(ahead,)]
+        assert await check(DatabaseRole.CORE, migrated[DatabaseRole.CORE]) == []
+    finally:
+        here = str(MIGRATIONS_DIR.parents[1])
+        assert await asyncio.to_thread(main, ["stamp", "--all", "--heads-of", here]) == 0
+    assert await on_core(migrated[DatabaseRole.CORE], record) == [(head(DatabaseRole.CORE),)]
 
 
 async def seed_two_tenants(pg_sessions: LoginSessions) -> None:

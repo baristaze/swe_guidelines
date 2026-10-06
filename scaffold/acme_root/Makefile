@@ -59,7 +59,7 @@ ARCH_CHECK ?= uvx --python "$(shell cat .python-version)" --from "git+https://gi
 # until npm installs it; a pnpm already on PATH runs the version named.
 PNPM_SPEC := $(or $(shell sed -n 's/^ *"packageManager": *"\(pnpm@[^"+]*\).*/\1/p' package.json 2>/dev/null),pnpm)
 
-.PHONY: help setup pnpm up down stop start reset urls infra-up buckets devx-up stack-up infra-down infra-reset collector-scrape migrate seed migrate-check benchmark-boot check lint format-check typecheck arch-check test-unit test-integration test-telemetry traffic openapi
+.PHONY: help setup pnpm up down stop start reset urls infra-up buckets devx-up stack-up infra-down infra-reset collector-scrape migrate seed migrate-check release-before benchmark-boot check lint format-check typecheck arch-check test-unit test-integration test-telemetry traffic openapi
 
 # This Makefile alone, never $(MAKEFILE_LIST): the includes above put
 # .env.example and .env in that list, and grep prefixes every match with the
@@ -223,6 +223,14 @@ seed: ## Create two local orgs with an owner, a member, and an admin of both to 
 # in the integration tests.
 migrate-check: ## Compare every role's ORM metadata with the migrated schema
 	uv run --package acme-om python -m acme.om.storage.migrate check --all --local
+
+# A rollout runs the release before on this branch's schema, so its own
+# integration suite runs there first, as CI's release-before job does on a
+# pull request (ADR 0084). A branch that changes no migration since its merge
+# base with BASE runs nothing; one that does brings the stack up and migrates
+# it. Like test-integration, it empties every table of the local stack.
+release-before: ## Run the release before's integration suite on this branch's schema (BASE=origin/main)
+	scripts/release_before.sh $(BASE)
 
 # What a process pays to boot: imports once, then microseconds per root (ADR 0007).
 benchmark-boot: ## Time the imports and the construction of every root
