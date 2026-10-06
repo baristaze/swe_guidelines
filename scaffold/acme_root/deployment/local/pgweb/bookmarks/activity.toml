@@ -1,0 +1,2 @@
+# The activity role's instance, as the superuser.
+url = "postgres://postgres:postgres@postgres-activity:5432/acme?sslmode=disable"

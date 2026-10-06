@@ -334,9 +334,16 @@ def broken_api(stores: None, tmp_path_factory: pytest.TempPathFactory) -> Iterat
             "ACME_ENVIRONMENT": "local",
             # Both logins point at the closed port: the session lookup runs on
             # the system login, and a route that reached a live database there
-            # would answer 401 instead of raising.
+            # would answer 401 instead of raising. So does every role's own
+            # URL, which the knobs set to each role's instance.
             "ACME_DATABASE_URL": "postgresql+asyncpg://acme_runtime:acme_runtime@127.0.0.1:1/acme",
             "ACME_DATABASE_SYSTEM_URL": "postgresql+asyncpg://acme_system:acme_system@127.0.0.1:1/acme",
+            **{
+                f"ACME_DATABASE_URL_{role}": (
+                    "postgresql+asyncpg://acme_runtime:acme_runtime@127.0.0.1:1/acme"
+                )
+                for role in ("CORE", "ACTIVITY", "QUEUE", "ADMIN")
+            },
             "ACME_CACHE_BACKEND": "memory",
             "ACME_TOPICS_BACKEND": "memory",
             "ACME_BUCKETS_BACKEND": "local",

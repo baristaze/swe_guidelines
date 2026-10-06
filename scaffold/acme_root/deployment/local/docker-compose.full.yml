@@ -7,9 +7,14 @@ name: acme
 x-app-env: &app-env
   ACME_ENVIRONMENT: local
   # The runtime login and the system login, as a deployed task holds them;
-  # neither the migration login nor the master is ever a container's.
-  ACME_DATABASE_URL: postgresql+asyncpg://acme_runtime:acme_runtime@postgres:5432/acme
-  ACME_DATABASE_SYSTEM_URL: postgresql+asyncpg://acme_system:acme_system@postgres:5432/acme
+  # neither the migration login nor the master is ever a container's. Each
+  # role's URL puts it on its own instance, and both logins follow it there.
+  ACME_DATABASE_URL: postgresql+asyncpg://acme_runtime:acme_runtime@postgres-core:5432/acme
+  ACME_DATABASE_SYSTEM_URL: postgresql+asyncpg://acme_system:acme_system@postgres-core:5432/acme
+  ACME_DATABASE_URL_CORE: postgresql+asyncpg://acme_runtime:acme_runtime@postgres-core:5432/acme
+  ACME_DATABASE_URL_ACTIVITY: postgresql+asyncpg://acme_runtime:acme_runtime@postgres-activity:5432/acme
+  ACME_DATABASE_URL_QUEUE: postgresql+asyncpg://acme_runtime:acme_runtime@postgres-queue:5432/acme
+  ACME_DATABASE_URL_ADMIN: postgresql+asyncpg://acme_runtime:acme_runtime@postgres-admin:5432/acme
   ACME_CACHE_BACKEND: valkey
   ACME_TOPICS_BACKEND: valkey
   ACME_VALKEY_URL: valkey://valkey:6379/0
@@ -58,8 +63,14 @@ services:
       ACME_DEV_SIGN_IN_ENABLED: "true"
     ports:
       - "127.0.0.1:${ACME_PORT:-8000}:8000"
-    depends_on:
-      postgres:
+    depends_on: &on-the-stack
+      postgres-core:
+        condition: service_healthy
+      postgres-activity:
+        condition: service_healthy
+      postgres-queue:
+        condition: service_healthy
+      postgres-admin:
         condition: service_healthy
       valkey:
         condition: service_healthy
@@ -77,11 +88,7 @@ services:
       ACME_IDENTITY_PROVIDER: workos
       ACME_WORKOS_CLIENT_ID: ${ACME_WORKOS_CLIENT_ID:-client_STAGING_PLACEHOLDER}
       ACME_WORKOS_API_KEY: ${ACME_WORKOS_API_KEY:-}
-    depends_on:
-      postgres:
-        condition: service_healthy
-      valkey:
-        condition: service_healthy
+    depends_on: *on-the-stack
 
   # The browser loads the portal from the host and calls the API on the
   # portal's own origin: the container forwards /v1 to the api service. It

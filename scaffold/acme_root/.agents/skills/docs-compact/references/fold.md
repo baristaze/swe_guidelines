@@ -85,7 +85,7 @@ revision on the fold.
 
    ```bash
    uv run python ops/audit/auditdb.py create audit_fold_chain_<day>
-   <compose> exec -T postgres pg_dump -U postgres -d audit_fold_chain_<day> --schema-only --schema=<role> --restrict-key=fold > <evidence>/chain.<role>.sql
+   <compose> exec -T postgres-core pg_dump -U postgres -d audit_fold_chain_<day> --schema-only --schema=<role> --restrict-key=fold > <evidence>/chain.<role>.sql
    ```
 
    When `auditdb.py list` shows the name taken, another run holds it:
@@ -152,7 +152,7 @@ revision on the fold.
 
    ```bash
    uv run python ops/audit/auditdb.py create audit_fold_folded_<day>
-   <compose> exec -T postgres pg_dump -U postgres -d audit_fold_folded_<day> --schema-only --schema=<role> --restrict-key=fold > <evidence>/fold.<role>.sql
+   <compose> exec -T postgres-core pg_dump -U postgres -d audit_fold_folded_<day> --schema-only --schema=<role> --restrict-key=fold > <evidence>/fold.<role>.sql
    diff <evidence>/chain.<role>.sql <evidence>/fold.<role>.sql
    ```
 

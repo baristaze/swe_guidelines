@@ -41,7 +41,7 @@ port is taken.
 
 ```bash
 make setup             # Python and TypeScript dependencies
-make infra-up          # Postgres, Valkey, ElasticMQ, and MinIO alone
+make infra-up          # Postgres (one per database role), Valkey, ElasticMQ, and MinIO alone
 make migrate           # the database logins, then every role's migration chain
 make seed              # the two orgs, their people, and the local operators
 make check             # lint, format, types, arch-check, unit tests
