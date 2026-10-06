@@ -66,8 +66,9 @@ def commit(repo: Path, path: str, text: str) -> str:
 
 
 def repository(tmp_path: Path) -> tuple[Path, dict[str, str], str]:
-    """A repository whose main holds the script, the deselect file with one
-    line, and one migration; the environment that runs it with the fakes."""
+    """A repository whose main holds the script, the deselect file's comments
+    with one line, and one migration; the environment that runs it with the
+    fakes."""
     repo = tmp_path / "repo"
     (repo / "scripts").mkdir(parents=True)
     env = {
@@ -84,8 +85,11 @@ def repository(tmp_path: Path) -> tuple[Path, dict[str, str], str]:
     git(repo, "init", "-q", "-b", "main")
     (repo / "scripts" / "release_before.sh").write_bytes(SCRIPT.read_bytes())
     (repo / "scripts" / "release_before.sh").chmod(0o755)
+    comments = "".join(
+        line for line in DESELECT.read_text().splitlines(keepends=True) if line.startswith("#")
+    )
     (repo / "scripts" / "release_before_deselect.txt").write_text(
-        f"{DESELECT.read_text()}\n# A dropped column its test still writes.\n"
+        f"{comments}\n# A dropped column its test still writes.\n"
         "om/tests/integration/test_x.py::test_writes_x\n"
     )
     (repo / ".env.example").write_text("ACME_DATABASE_URL=example\n")
