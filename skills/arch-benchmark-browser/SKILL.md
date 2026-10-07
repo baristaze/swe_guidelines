@@ -190,7 +190,7 @@ Facts that decide how the steps below go. Read them before the browser.
    the session's `started_at`. Take one screenshot showing the sent
    message and the chip; it is a check and is not saved.
 6. Do step 4 and step 5 for every site first, then poll each site at
-   most thirty times, and count its polls into `polls`. A poll starts
+   most 180 times, and count its polls into `polls`. A poll starts
    at least a minute after the start of the site's last poll, and a
    site's first poll at least a minute after its send; where no other
    site's poll fills that minute, wait out the rest with ten-second
@@ -216,7 +216,7 @@ Facts that decide how the steps below go. Read them before the browser.
    When an answer is already done at the first poll, the finish time is
    the send time plus the site's own "Worked for" figure where it shows
    one, except on grok.com, or else the first poll's time, and `note`
-   says which. After thirty polls or thirty minutes from the send,
+   says which. After 180 polls or three hours from the send,
    record `timed-out` with what the page shows so far.
 7. When a site is done, read the conversation URL from
    `tabs_context_mcp` and drop its query string. Then read the answer,
@@ -242,7 +242,7 @@ Facts that decide how the steps below go. Read them before the browser.
      more: navigate the site's tab to its new-chat URL, do step 4 again
      without clicking a locked entry, do step 5, and poll as step 6
      says. Every field of the session is the second attempt's, and its
-     `polls` count from 0, with thirty polls and thirty minutes of its
+     `polls` count from 0, with 180 polls and three hours of its
      own. A fallback on the first attempt holds for the second: it is
      `smaller-mode` in place of `ok`, and `note` still names the locked
      entry. `note` keeps the first attempt, as one remark: the error in
