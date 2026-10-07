@@ -137,12 +137,13 @@ Facts that decide how the steps below go. Read them before the browser.
    claude.ai's "Computer actions available". When one shows, on any
    site, set nothing and send nothing: the session is `not-run`, and
    its `note` asks the person to turn that setting off. Never change
-   it yourself. Some sites show the line only once a message is sent,
-   such as claude.ai's "Connected" line under the device's name: look
-   again right after the send and at every poll of step 6. When it
-   shows, click the stop control ("Stop response") where one shows and
-   record the session `not-run` with the same `note`: both times are
-   the stop's moment, `polls` the polls made, and nothing it answered
+   it yourself. Look again right after the send and at every poll: any
+   line naming a device of the person's, under the header or in the
+   composer, is such a line, whatever state it reads (claude.ai's
+   "Connected", "Asleep or app closed"). When it shows, click the stop
+   control ("Stop response") where one shows and record the session
+   `not-run` with the same `note`: both times are the stop's moment,
+   `polls` the polls made, that poll included, and nothing it answered
    is scored.
 
    Otherwise set the model and the effort, then verify with a
@@ -274,7 +275,7 @@ Facts that decide how the steps below go. Read them before the browser.
      answer. `url` is the address the tab shows, without its query
      string; `model_label` and `effort_label` are `not set`;
      `read_version` is `not stated`; `score` is null; `polls` is 0, or
-     the polls made before step 4's stop; both times are the moment
+     step 4's count; both times are the moment
      step 3 or step 4 found or stopped it; and `<site>.md` holds the
      header only.
 
