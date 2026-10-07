@@ -4,6 +4,7 @@ that fails after the answer is logged and the sweep relays the rows."""
 
 import asyncio
 import logging
+import time
 from collections.abc import MutableMapping, Sequence
 from datetime import timedelta
 from typing import Any
@@ -214,16 +215,28 @@ async def test_the_access_line_times_the_answer_not_the_relay(
     monkeypatch: pytest.MonkeyPatch,
     caplog: pytest.LogCaptureFixture,
 ) -> None:
+    """The line's window opens after the request is sent and closes at the
+    answer's last byte, before the relay starts, so its duration is at most
+    the time from the send to the relay's start. A line that timed the relay
+    too would run its 300 ms past that. A fixed bound never tells the two
+    apart: on a loaded machine the answer alone can take that long, when a
+    pass of the garbage collector lands inside it."""
     events = container.storage.get_event_storage()
     append = events.append_events
+    relay_started: list[float] = []
 
     async def slow(org_id: UUID, appended: Sequence[Event]) -> tuple[Event, ...]:
+        relay_started.append(time.perf_counter())
         await asyncio.sleep(0.3)
         return await append(org_id, appended)
 
     monkeypatch.setattr(events, "append_events", slow)
     with caplog.at_level(logging.INFO, logger="acme.services.api.gateway.observability"):
+        sent = time.perf_counter()
         response = await client.post(FILES, headers=owner, json=UPLOAD)
     assert response.status_code == 201, response.text
     (access,) = [r for r in caplog.records if r.name == "acme.services.api.gateway.observability"]
-    assert access.http["duration_ms"] < 300  # type: ignore[attr-defined]
+    (relayed,) = relay_started
+    # The line rounds to a tenth of a millisecond; so does the bound.
+    until_the_relay = round((relayed - sent) * 1000, 1)
+    assert access.http["duration_ms"] <= until_the_relay  # type: ignore[attr-defined]
