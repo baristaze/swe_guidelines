@@ -138,10 +138,12 @@ Facts that decide how the steps below go. Read them before the browser.
    site, set nothing and send nothing: the session is `not-run`, and
    its `note` asks the person to turn that setting off. Never change
    it yourself. Some sites show the line only once a message is sent,
-   such as claude.ai's "Connected" line under the device's name: look again on the
-   conversation page right after the send, and when it shows there,
-   stop that session, record it `not-run` with the same `note`, and
-   score nothing it answered.
+   such as claude.ai's "Connected" line under the device's name: look
+   again right after the send and at every poll of step 6. When it
+   shows, click the stop control ("Stop response") where one shows and
+   record the session `not-run` with the same `note`: both times are
+   the stop's moment, `polls` the polls made, and nothing it answered
+   is scored.
 
    Otherwise set the model and the effort, then verify with a
    screenshot of the chip. `model_label` is the model picker's checked
@@ -182,15 +184,18 @@ Facts that decide how the steps below go. Read them before the browser.
    the session's `started_at`. Take one screenshot showing the sent
    message and the chip; it is a check and is not saved.
 6. Do step 4 and step 5 for every site first, then poll each site at
-   most thirty times, no more often than once a minute, and count its
-   polls into `polls`. A poll is one batch: first a scaled (0.4)
-   screenshot, which brings the tab to the front, then up to five
-   ten-second waits. On claude.ai and grok.com the signal is in the
-   page text: end the batch with one `get_page_text` and keep it to
-   four waits, so the batch stays inside its deadline. Where
-   `get_page_text` is refused, on either site, compare the poll's
-   screenshot with the previous one instead: the same last line of the
-   answer, and no stop control.
+   most thirty times, and count its polls into `polls`. A poll starts
+   at least a minute after the site's last one; where no other site's
+   poll fills that minute, wait out the rest with ten-second waits. A
+   poll is one batch: first a scaled (0.4) screenshot, which brings
+   the tab to the front, then up to five ten-second waits. The poll
+   also looks for step 4's line in its screenshot and any page text it
+   reads. On claude.ai and grok.com the signal is in the page text:
+   end the batch with one `get_page_text` and keep it to four waits,
+   so the batch stays inside its deadline. Where `get_page_text` is
+   refused, on either site, compare the poll's screenshot with the
+   previous one instead: the same last line of the answer, and no stop
+   control.
    - grok.com: the text is the same when the answer's length and its
      own last line match the previous poll's; the chrome after the
      answer is ignored. When they match, check the button beside the
@@ -211,9 +216,11 @@ Facts that decide how the steps below go. Read them before the browser.
    says which. After thirty polls or thirty minutes from the send,
    record `timed-out` with what the page shows so far.
 7. When a site is done, read the conversation URL from
-   `tabs_context_mcp` and drop its query string. Read the answer with
-   the site's copy button and `pbpaste`, as `references/copy-answer.md`
-   says, or, where that fails, with `get_page_text`. Find the
+   `tabs_context_mcp` and drop its query string. Then read the answer,
+   once: with the site's copy button and `pbpaste`, as
+   `references/copy-answer.md` says, or, where that fails, with
+   `get_page_text`. A copy button that shows later, as at step 9,
+   changes nothing. Find the
    `Score: NN/100` line, and what the answer's Method says it read: a
    commit, a tag, or a branch and a date, for `read_version` ("not
    stated" when it names none). Save `<site>.md` in the run folder:
@@ -266,9 +273,10 @@ Facts that decide how the steps below go. Read them before the browser.
    - `not-signed-in` and `not-run`: as in steps 3 and 4. There is no
      answer. `url` is the address the tab shows, without its query
      string; `model_label` and `effort_label` are `not set`;
-     `read_version` is `not stated`; `score` is null; `polls` is 0;
-     both times are the moment step 3 or step 4 found it; and
-     `<site>.md` holds the header only.
+     `read_version` is `not stated`; `score` is null; `polls` is 0, or
+     the polls made before step 4's stop; both times are the moment
+     step 3 or step 4 found or stopped it; and `<site>.md` holds the
+     header only.
 
    An answer cut short by a tool-use limit that still satisfies the
    contract is `ok` with a `note`; do not press Continue. `note` holds
@@ -287,18 +295,10 @@ Facts that decide how the steps below go. Read them before the browser.
    them is corrected, never bent to fit.
 9. Per site that sent the prompt, bring its score line into view, or,
    where there is none, the first line the page wrote back: an answer,
-   a `refused` decline, or an `errored` message. Click an empty margin
-   to clear a stray selection or menu, `find` the line, and
-   `scroll_to` its reference. Where `find` is refused, scroll the
-   conversation with the `computer` tool's `scroll` until a screenshot
-   shows the line. Take one `zoom` of the conversation column with
-   `save_to_disk`. Its region is right of the sidebar and below the
-   page's header, where claude.ai writes the conversation's own title:
-   it shows that line and the chip, and no conversation title. Copy it
-   into the run folder as `<site>` with the extension of the path the
-   tool reports (`<site>.png` when it saves PNG), with `python3`
-   (`shutil.copyfile` from that path). These are the evidence a pull
-   request carries.
+   a `refused` decline, an `errored` message, or what a `not-run`
+   session wrote before its stop, else step 4's line. Take one picture
+   of it into the run folder as `references/evidence-picture.md` says.
+   These are the evidence a pull request carries.
 10. Close the tabs `tabs_create_mcp` opened in step 3, and no other.
 11. Only when the arguments have `compare=`: compare this run with the
     earlier ones as `references/compare.md` says.
