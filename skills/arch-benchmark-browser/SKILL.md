@@ -146,7 +146,10 @@ Facts that decide how the steps below go. Read them before the browser.
    click the stop control ("Stop response") where one shows and record
    the session `not-run` with the same `note`: both times are the
    stop's moment, `polls` the polls made, that poll included, and
-   nothing it answered is scored.
+   nothing it answered is scored. A line that first shows after the
+   site is done, while its answer is read or its picture taken, counts
+   the same: the session is `not-run`, both its times the moment the
+   line was seen, and nothing it answered is scored.
 
    Otherwise set the model and the effort, then verify with a
    screenshot of the chip. `model_label` is the model picker's checked
@@ -188,8 +191,10 @@ Facts that decide how the steps below go. Read them before the browser.
    message and the chip; it is a check and is not saved.
 6. Do step 4 and step 5 for every site first, then poll each site at
    most thirty times, and count its polls into `polls`. A poll starts
-   at least a minute after the site's last one; where no other site's
-   poll fills that minute, wait out the rest with ten-second waits. A
+   at least a minute after the start of the site's last poll, and a
+   site's first poll at least a minute after its send; where no other
+   site's poll fills that minute, wait out the rest with ten-second
+   waits. A
    poll is one batch: first a scaled (0.4) screenshot, which brings
    the tab to the front, then up to five ten-second waits. The poll
    also looks for step 4's line in its screenshot and any page text it
@@ -199,14 +204,8 @@ Facts that decide how the steps below go. Read them before the browser.
    refused, on either site, compare the poll's screenshot with the
    previous one instead: the same last line of the answer, and no stop
    control.
-   - grok.com: the text is the same when the answer's length and its
-     own last line match the previous poll's; the chrome after the
-     answer is ignored. When they match, check the button beside the
-     composer with `find` or `read_page`, or with a `zoom` where both
-     are refused. "Enter voice mode" confirms the answer is done. A
-     stop control means it is not, whatever the text did: keep
-     polling. A tab that was not in front for its waits is never called
-     done.
+   - grok.com: tell when the text is done as
+     `references/grok-done.md` says.
 
    Done is the signal named above. The finish time is `date -u`, run as
    the first call after the poll that shows the signal, and `note` says
