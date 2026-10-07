@@ -1,0 +1,71 @@
+{
+  "run_id": "20261007-073011",
+  "started_at": "2026-10-07T07:30:11Z",
+  "finished_at": "2026-10-07T07:42:10Z",
+  "repository_head": "3cd6665fca5698d308fadd8d1f34b690354f5838",
+  "prompt": "You are a highly senior software engineer and architect.\nEvaluate the repository below from a software design and architecture perspective.\nGive it a score from 0 to 100, then defend your evaluation:\nhttps://github.com/baristaze/swe_guidelines\n\nDo not be biased by who wrote it, an agent or a human, or by how fast it was developed.\nEvaluate the material itself.",
+  "contract": "Report format, so evaluations compare:\nFirst line: `Score: NN/100` and nothing else on that line.\n`## Strengths`: what holds, one line each.\n`## Weaknesses`: what does not, most severe first, one line each.\n`## What I would change`: concrete edits, one line each.\n`## Method`: what you read (files, tag or commit, how deep), one line each.",
+  "sizes": {
+    "model": "m",
+    "effort": "m"
+  },
+  "note": "model=m effort=m resolved, before anything was sent, to: chatgpt.com Latest / High; claude.ai Opus 5.5 / High; gemini.google.com 3.1 Pro / none; grok.com Expert / none",
+  "sessions": [
+    {
+      "site": "chatgpt.com",
+      "url": "[redacted]",
+      "model_label": "Latest",
+      "effort_label": "High",
+      "started_at": "2026-10-07T07:32:04Z",
+      "finished_at": "2026-10-07T07:38:16Z",
+      "score": 94,
+      "read_version": "the latest published release, v0.52.0, commit 8898579, released October 6, 2026",
+      "polls": 2,
+      "response_path": "chatgpt.com.md",
+      "status": "ok",
+      "note": "the new-chat page opened on \"Work\", whose chip read \"GPT-6.1 Sol Light\" and whose model list had no \"Latest\"; the page was switched to \"Chat\" with the toggle at the top, where the \"Thinking effort\" popover and its model list match the size map; a \"Maximize usage with GPT-6.1 Sol\" promotion was closed with its ×, not \"Try it\"; after the answer, a \"Take this further in ChatGPT Work\" banner was closed with its ×, not \"Try Work\""
+    },
+    {
+      "site": "claude.ai",
+      "url": "[redacted]",
+      "model_label": "not set",
+      "effort_label": "not set",
+      "started_at": "2026-10-07T07:33:36Z",
+      "finished_at": "2026-10-07T07:33:36Z",
+      "score": null,
+      "read_version": "not stated",
+      "polls": 0,
+      "response_path": "claude.ai.md",
+      "status": "not-run",
+      "note": "step 4's check on the new-chat page (find and the page text) found no line saying the product can act on the machine, and the \"Manual\" control beside the chip reads \"Claude asks before using new tools or opening new sites.\", so Opus 5.5 and High were set and the prompt was sent at 2026-10-07T07:33:12Z; right after the send, the conversation page's text read \"[redacted], Asleep or app closed\" and \"Computer actions available\"; the session was stopped with \"Stop response\", and the page then read \"Claude's response was interrupted.\"; before the stop the product had run commands (it said it cloned the repository, and began sizing it), and nothing it answered is scored; the person may want to turn computer actions off on claude.ai for benchmark runs"
+    },
+    {
+      "site": "gemini.google.com",
+      "url": "[redacted]",
+      "model_label": "3.1 Pro",
+      "effort_label": "none",
+      "started_at": "2026-10-07T07:34:08Z",
+      "finished_at": "2026-10-07T07:36:05Z",
+      "score": null,
+      "read_version": "not stated",
+      "polls": 1,
+      "response_path": "gemini.google.com.md",
+      "status": "refused",
+      "note": "the product declined to evaluate: \"I wasn't able to access the GitHub repository you shared directly.\", and it asked for the repository's content to be pasted; no score; the answer was done at the first poll, so the finish time is that poll's time"
+    },
+    {
+      "site": "grok.com",
+      "url": "[redacted]",
+      "model_label": "Expert",
+      "effort_label": "none",
+      "started_at": "2026-10-07T07:35:01Z",
+      "finished_at": "2026-10-07T07:38:16Z",
+      "score": 81,
+      "read_version": "commit 3cd6665fca5698d308fadd8d1f34b690354f5838 on main (2026-10-06)",
+      "polls": 2,
+      "response_path": "grok.com.md",
+      "status": "ok",
+      "note": "Expert stayed checked and no plan page opened; find was refused once on grok.com at step 4 and worked on the retry; the answer was already done at the first poll, so the finish time is that poll's time, not the send time plus the page's \"Worked for 1m 27s\""
+    }
+  ]
+}
