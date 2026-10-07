@@ -134,8 +134,8 @@
           "polls": {
             "type": "integer",
             "minimum": 0,
-            "maximum": 30,
-            "description": "how many times the session was polled; thirty is the bound. A session retried after an error counts the second attempt's polls only, and note gives the first attempt's"
+            "maximum": 180,
+            "description": "how many times the session was polled; 180 is the bound, three hours at one a minute. A session retried after an error counts the second attempt's polls only, and note gives the first attempt's"
           },
           "response_path": {
             "type": "string",
