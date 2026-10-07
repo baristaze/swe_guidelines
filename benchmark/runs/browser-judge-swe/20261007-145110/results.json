@@ -1,0 +1,29 @@
+{
+  "run_id": "20261007-145110",
+  "started_at": "2026-10-07T14:51:10Z",
+  "finished_at": "2026-10-07T15:02:29Z",
+  "repository_head": "d493ebcd6dd41d1d5b7fcdc373ecaee1c67226d9",
+  "prompt": "You are a highly senior software engineer and architect.\nEvaluate the repository below from a software design and architecture perspective.\nGive it a score from 0 to 100, then defend your evaluation:\nhttps://github.com/baristaze/swe_guidelines\n\nDo not be biased by who wrote it, an agent or a human, or by how fast it was developed.\nEvaluate the material itself.",
+  "contract": "Report format, so evaluations compare:\nFirst line: `Score: NN/100` and nothing else on that line.\n`## Strengths`: what holds, one line each.\n`## Weaknesses`: what does not, most severe first, one line each.\n`## What I would change`: concrete edits, one line each.\n`## Method`: what you read (files, tag or commit, how deep), one line each.",
+  "sizes": {
+    "model": "m",
+    "effort": "m"
+  },
+  "note": "model=m effort=m resolved, before anything was sent, to: claude.ai Opus 5.5 / High; the run asked only claude.ai (sites=claude.ai); claude.ai's picker lists Sonnet 5.5 where sizes.yaml's s names Sonnet 5",
+  "sessions": [
+    {
+      "site": "claude.ai",
+      "url": "[redacted]",
+      "model_label": "Opus 5.5",
+      "effort_label": "High",
+      "started_at": "2026-10-07T14:53:24Z",
+      "finished_at": "2026-10-07T15:01:39Z",
+      "score": 74,
+      "read_version": "tag v0.52.2, commit d493ebc",
+      "polls": 7,
+      "response_path": "claude.ai.md",
+      "status": "ok",
+      "note": "the new-chat composer opened holding an unsent draft left from another session, which was cleared with select-all and Delete before the prompt was typed; step 4's check on the new-chat page (find, the page text, and a hover of the composer's \"Manual\" button, whose tooltip reads \"Claude asks before using new tools\") found no line saying the product can act on the machine and no device of the person's; Opus 5.5 and High were clicked and the chip read \"Opus 5.5 High\"; right after the send and at each of the 7 polls, the screenshot and the page text showed no such line; the answer's Method says it read benchmark/runs/browser-judge-swe/README.md and that \"The browser-benchmark page shows prior scores from other products; I saw them and did not use them\", so it read the earlier scores; the copied answer opens with a line the product wrote before its tool steps, before the score line"
+    }
+  ]
+}
