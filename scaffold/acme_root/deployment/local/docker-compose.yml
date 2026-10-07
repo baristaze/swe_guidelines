@@ -30,8 +30,13 @@ x-postgres: &postgres
     POSTGRES_USER: postgres
     POSTGRES_PASSWORD: postgres
     POSTGRES_DB: acme
+  # Healthy means a connection over TCP, the way every service and the host
+  # connect. On an empty data directory the entrypoint runs the init script on
+  # a server that listens on the local socket alone, then restarts it on the
+  # network; a check over the socket reads healthy in between, and a service
+  # waiting on it is refused (infra/tests/test_local_postgres.py).
   healthcheck:
-    test: ["CMD-SHELL", "pg_isready -U acme -d acme"]
+    test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U acme -d acme"]
     interval: 2s
     timeout: 2s
     retries: 30
