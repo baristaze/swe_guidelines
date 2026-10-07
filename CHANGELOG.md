@@ -5,41 +5,30 @@ included, stay on its GitHub release. Releases are tagged
 `vMAJOR.MINOR.PATCH`; see `CONTRIBUTING.md` for what bumps which
 number.
 
-## 0.52.0 (2026-10-06)
+## 0.52.1 (2026-10-07)
 
-Each database role runs on its own Postgres in a copy's local stack,
-and a gate runs the release before on a branch's schema before the
-branch merges. Minor: the scaffold gains a CI job, a script, a migrate
-command, and ADRs 0083 and 0084, and nothing is reversed.
+A copy's local Postgres reads healthy only once it takes a connection
+over TCP, and the release-before test holds a copy that names a test in
+its deselect file. Patch: two fixes and a pin bump, and nothing is
+reversed.
 
-### Added
+### Fixed
 
-- `release-before`, a job in a copy's CI that every pull request runs
-  and the main ruleset `cloud_create.sh` writes requires. A pull request
-  that changes nothing under `om/migrations` ends green at once.
-  Otherwise the stack migrates to the branch's head, and the integration
-  suite of each release before (the merge base, and the `release`
-  branch's tip when it differs) runs against it. `make release-before`
-  runs it locally; `scripts/release_before_deselect.txt` names any test
-  the release before cannot pass by design. DEL-50, STO-24, and the
-  guideline's Migrations and Deployment sections name it; ADR 0084
-  records it.
-- `migrate stamp --role|--all --heads-of <checkout>` writes each role's
-  version record as another checkout's head, applying nothing. It
-  refuses a database that is not local.
+- The local stack's Postgres healthcheck (`x-postgres` in
+  `deployment/local/docker-compose.yml`) asks over TCP:
+  `pg_isready -h 127.0.0.1`. On an empty data directory the image's
+  entrypoint runs the init script on a server that listens on the local
+  socket alone, so the socket check read healthy while a network
+  connection was refused, and a service waiting on `service_healthy`,
+  `glitchtip-db` among them, could exit 2. `infra/tests/test_local_postgres.py`
+  holds every Postgres server's healthcheck, in every compose file
+  under `deployment/local/`, to a client that names a host.
+- `infra/tests/test_release_before.py` builds its deselect file from the
+  real file's comments and its own line, so the first test a copy names
+  in `scripts/release_before_deselect.txt` no longer breaks the copy's
+  unit gate.
 
 ### Changed
 
-- A copy's local stack runs `postgres-core`, `postgres-activity`,
-  `postgres-queue`, and `postgres-admin`, each with its own port (55432
-  to 55435) and volume, and `.env.example` points each role's URL at
-  its instance. With no role URL set, every role reads the one URL, as
-  the cloud does. `migrate ensure-logins` runs once per database, as the
-  master there, for the roles it holds. pgweb has a bookmark per
-  instance, and GlitchTip's database sits on the core instance. The
-  guideline's Database Roles and Local: Docker Compose sections, STO-19,
-  and DEL-04 state the posture; ADR 0083 records it.
-- A copy renames `<NAME>_POSTGRES_PORT` to `<NAME>_POSTGRES_CORE_PORT`,
-  takes the three new ports and the four role URLs into its `.env`, and
-  moves its local data to the new volumes (`make reset`). A second
-  checkout repoints all eight database URLs.
+- The pinned tools move: uv 0.12.19 and ruff 0.16.9
+  (`.github/pins/requirements.txt`).
