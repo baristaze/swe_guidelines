@@ -137,11 +137,19 @@ Facts that decide how the steps below go. Read them before the browser.
    claude.ai's "Computer actions available". When one shows, on any
    site, set nothing and send nothing: the session is `not-run`, and
    its `note` asks the person to turn that setting off. Never change
-   it yourself. Some sites show the line only once a message is sent,
-   such as claude.ai's "Connected" line under the device's name: look again on the
-   conversation page right after the send, and when it shows there,
-   stop that session, record it `not-run` with the same `note`, and
-   score nothing it answered.
+   it yourself. Look again right after the send and at every poll: any
+   line naming a device of the person's, under the header or in the
+   composer, is such a line, whatever state it reads (claude.ai's
+   "Connected", "Asleep or app closed"). A link or a button to download
+   or install an app is not: the line says the product can act on the
+   machine, or names a device of the person's. When the line shows,
+   click the stop control ("Stop response") where one shows and record
+   the session `not-run` with the same `note`: both times are the
+   stop's moment, `polls` the polls made, that poll included, and
+   nothing it answered is scored. A line that first shows after the
+   site is done, while its answer is read or its picture taken, counts
+   the same: the session is `not-run`, both its times the moment the
+   line was seen, and nothing it answered is scored.
 
    Otherwise set the model and the effort, then verify with a
    screenshot of the chip. `model_label` is the model picker's checked
@@ -182,28 +190,28 @@ Facts that decide how the steps below go. Read them before the browser.
    the session's `started_at`. Take one screenshot showing the sent
    message and the chip; it is a check and is not saved.
 6. Do step 4 and step 5 for every site first, then poll each site at
-   most thirty times, no more often than once a minute, and count its
-   polls into `polls`. A poll is one batch: first a scaled (0.4)
-   screenshot, which brings the tab to the front, then up to five
-   ten-second waits. On claude.ai and grok.com the signal is in the
-   page text: end the batch with one `get_page_text` and keep it to
-   four waits, so the batch stays inside its deadline. Where
-   `get_page_text` is refused, on either site, compare the poll's
-   screenshot with the previous one instead: the same last line of the
-   answer, and no stop control.
-   - grok.com: the text is the same when the answer's length and its
-     own last line match the previous poll's; the chrome after the
-     answer is ignored. When they match, check the button beside the
-     composer with `find` or `read_page`, or with a `zoom` where both
-     are refused. "Enter voice mode" confirms the answer is done. A
-     stop control means it is not, whatever the text did: keep
-     polling. A tab that was not in front for its waits is never called
-     done.
+   most thirty times, and count its polls into `polls`. A poll starts
+   at least a minute after the start of the site's last poll, and a
+   site's first poll at least a minute after its send; where no other
+   site's poll fills that minute, wait out the rest with ten-second
+   waits. A
+   poll is one batch: first a scaled (0.4) screenshot, which brings
+   the tab to the front, then up to five ten-second waits. The poll
+   also looks for step 4's line in its screenshot and any page text it
+   reads. On claude.ai and grok.com the signal is in the page text:
+   end the batch with one `get_page_text` and keep it to four waits,
+   so the batch stays inside its deadline. Where `get_page_text` is
+   refused, on either site, compare the poll's screenshot with the
+   previous one instead: the same last line of the answer, and no stop
+   control.
+   - grok.com: tell when the text is done as
+     `references/grok-done.md` says.
 
-   Done is the signal named above. Record the finish time from `date -u`
-   when the signal is seen. On grok.com, run `date -u` at the end of
-   every poll: the finish time is the first of the two polls that
-   matched. An error the product prints in place of an answer ends the
+   Done is the signal named above. The finish time is `date -u`, run as
+   the first call after the poll that shows the signal, and `note` says
+   it was read after that poll's waits. On grok.com, run `date -u` at
+   the end of every poll: the finish time is the first of the two polls
+   that matched. An error the product prints in place of an answer ends the
    polling of that attempt, and step 7's `errored` says what follows.
    When an answer is already done at the first poll, the finish time is
    the send time plus the site's own "Worked for" figure where it shows
@@ -211,47 +219,26 @@ Facts that decide how the steps below go. Read them before the browser.
    says which. After thirty polls or thirty minutes from the send,
    record `timed-out` with what the page shows so far.
 7. When a site is done, read the conversation URL from
-   `tabs_context_mcp` and drop its query string. Read the answer with
-   the site's copy button and `pbpaste`, as `references/copy-answer.md`
-   says, or, where that fails, with `get_page_text`. Find the
+   `tabs_context_mcp` and drop its query string. Then read the answer,
+   once: with the site's copy button and `pbpaste`, as
+   `references/copy-answer.md` says, or, where that fails, with
+   `get_page_text`. A copy button that shows later, as at step 9,
+   changes nothing. Find the
    `Score: NN/100` line, and what the answer's Method says it read: a
    commit, a tag, or a branch and a date, for `read_version` ("not
-   stated" when it names none). Save `<site>.md` in the run folder:
-
-   ```text
-   # <site>
-
-   - URL: <url>
-   - Model: <model_label>
-   - Effort: <effort_label>
-   - Sent: <started_at>
-   - Finished: <finished_at> (how it was read)
-   - Status: <status>
-   - Score: <NN>/100
-   - Read: <read_version>
-   - Polls: <polls>
-   - Note: <note>
-
-   ## Answer
-
-   <the answer>
-   ```
-
-   Where `score` is null, the header's line is `- Score: none`; where
-   there is no note, it is `- Note: none`. A copied answer is saved as
-   it came. A page-text answer is bounded as "What the pages are like"
-   says, and the chrome on either side is left out; tool steps,
-   citation chips ("GitHub", "10 sources"), and image captions stay as
-   the page gave them. The statuses:
+   stated" when it names none). Save `<site>.md` in the run folder as
+   `references/site-file.md` says. The statuses:
    - `ok`: a score was found.
    - `smaller-mode`: in place of `ok`, when step 4 fell back from a
      locked model, mode, or effort.
    - `no-score`: an answer and no score line; the number the answer
      gives elsewhere goes in `note`.
-   - `refused`: the product declined.
-   - `errored`: the product printed its own error in place of an answer
-     ("I seem to be encountering an error"). Read that attempt's URL
-     from `tabs_context_mcp`, without its query string, and try once
+   - `refused`: a reply that declines, or says it cannot read the
+     repository; never `no-score` or `errored`.
+   - `errored`: only the product's own error in place of an answer
+     ("I seem to be encountering an error"), never a reply in the
+     model's own words. Read that attempt's URL from
+     `tabs_context_mcp`, without its query string, and try once
      more: navigate the site's tab to its new-chat URL, do step 4 again
      without clicking a locked entry, do step 5, and poll as step 6
      says. Every field of the session is the second attempt's, and its
@@ -266,9 +253,10 @@ Facts that decide how the steps below go. Read them before the browser.
    - `not-signed-in` and `not-run`: as in steps 3 and 4. There is no
      answer. `url` is the address the tab shows, without its query
      string; `model_label` and `effort_label` are `not set`;
-     `read_version` is `not stated`; `score` is null; `polls` is 0;
-     both times are the moment step 3 or step 4 found it; and
-     `<site>.md` holds the header only.
+     `read_version` is `not stated`; `score` is null; `polls` is 0, or
+     step 4's count; both times are the moment
+     step 3 or step 4 found or stopped it; and `<site>.md` holds the
+     header only.
 
    An answer cut short by a tool-use limit that still satisfies the
    contract is `ok` with a `note`; do not press Continue. `note` holds
@@ -287,18 +275,12 @@ Facts that decide how the steps below go. Read them before the browser.
    them is corrected, never bent to fit.
 9. Per site that sent the prompt, bring its score line into view, or,
    where there is none, the first line the page wrote back: an answer,
-   a `refused` decline, or an `errored` message. Click an empty margin
-   to clear a stray selection or menu, `find` the line, and
-   `scroll_to` its reference. Where `find` is refused, scroll the
-   conversation with the `computer` tool's `scroll` until a screenshot
-   shows the line. Take one `zoom` of the conversation column with
-   `save_to_disk`. Its region is right of the sidebar and below the
-   page's header, where claude.ai writes the conversation's own title:
-   it shows that line and the chip, and no conversation title. Copy it
-   into the run folder as `<site>` with the extension of the path the
-   tool reports (`<site>.png` when it saves PNG), with `python3`
-   (`shutil.copyfile` from that path). These are the evidence a pull
-   request carries.
+   a `refused` decline, an `errored` message, or what a `not-run`
+   session wrote before its stop, else the stop's own line (claude.ai's
+   "Claude's response was interrupted") or the sent message. Take one
+   picture of it into the run folder as `references/evidence-picture.md`
+   says. It stays below the header, and no zoom shows a line naming a
+   device. These are the evidence a pull request carries.
 10. Close the tabs `tabs_create_mcp` opened in step 3, and no other.
 11. Only when the arguments have `compare=`: compare this run with the
     earlier ones as `references/compare.md` says.

@@ -82,7 +82,10 @@ top. The cells, in the header's order, from the copied `results.json`:
 - Set: compare this run's `sizes`, `prompt`, and `contract` with those
   of each run a row names, in its `results.json` in the checkout, with
   `python3`. When one has all three the same, the row takes that row's
-  letter; otherwise the next letter no row uses, `A` when there is none.
+  letter. When rows of more than one letter do, it takes the letter of
+  the earliest such run that is not a set of its own because a session
+  read the earlier scores. Otherwise the row takes the next letter no
+  row uses, `A` when there is none.
   A session whose answer names `benchmark/runs/browser-judge-swe` or an
   earlier run, or says what an earlier run scored, read the earlier
   scores: its run takes the next letter no row uses, whatever it shares.
