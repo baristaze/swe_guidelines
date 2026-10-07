@@ -1,0 +1,54 @@
+# chatgpt.com
+
+- URL: [redacted]
+- Model: Latest
+- Effort: High
+- Sent: 2026-10-07T08:45:23Z
+- Finished: 2026-10-07T08:50:27Z (poll 2's screenshot showed "Worked for 2m 26s" above the answer; date -u when that poll was read, after its waits)
+- Status: ok
+- Score: 92/100
+- Read: the current default `main` branch as served by GitHub on October 7, 2026 (not commit-pinned)
+- Polls: 2
+- Note: none
+
+## Answer
+
+Score: 92/100
+
+## Strengths
+- The repository has a unusually coherent architectural thesis: a small-team, multi-tenant Python system that begins as one deployable shape but preserves boundaries intended to permit later scale-out without redesign; `core`, `default`, `optional`, and `style` classifications make the strength of each prescription explicit. [GitHub](https://github.com/baristaze/swe_guidelines/blob/main/architecture.md)
+- The authorization and tenancy model is particularly strong: typed context stages represent proven evidence, managers own authorization, storage independently enforces tenant isolation, and row-level security is explicitly a second fence rather than the primary mechanism. [GitHub](https://github.com/baristaze/swe_guidelines/blob/main/architecture.md)
+- The write-path design is internally consistent across transactions, outbox records, idempotency, workers, retries, leases, fencing, and durable orchestration; these pieces reinforce one another rather than appearing as disconnected distributed-systems advice. [GitHub](https://github.com/baristaze/swe_guidelines/blob/main/architecture.md)
+- The separation between domain, storage, network, infrastructure capabilities, and applications is crisp, with constructor injection and downward call direction making dependency ownership understandable and mechanically reviewable. [GitHub](https://github.com/baristaze/swe_guidelines/blob/main/architecture.md)
+- The "second implementation plus contract suite" idea is architecturally powerful: memory implementations and deterministic twins make the architecture executable without production technology, while shared contract tests reduce the classic fake-versus-real semantic drift problem. [GitHub](https://github.com/baristaze/swe_guidelines/blob/main/architecture.md)
+- Deployment is treated as part of architecture rather than an afterthought: expand-then-contract compatibility, staging-to-production artifact promotion, bounded migration locks, rollback semantics, environment isolation, Terraform, and deterministic external-service twins are unusually well integrated. [GitHub](https://github.com/baristaze/swe_guidelines/blob/main/architecture.md)
+- Operations are first-class: least-privilege operator roles, credential boundaries for agents, dashboards and alarms as code, traffic generation, cost boundaries, environment lifecycle, and an explicit telemetry round-trip connect implementation to operability. [GitHub](https://github.com/baristaze/swe_guidelines/blob/main/architecture.md)
+- The strongest differentiator is that the guideline is executable governance: 258 narrowly defined lenses feed both agent review and deterministic static checks, and checker exceptions require ADRs and become findings themselves when they go stale. [GitHub](https://github.com/baristaze/swe_guidelines/blob/main/lenses/README.md)
+- The scaffold materially strengthens the architectural claims because the repository does not stop at prose; representative source implements frozen domain models, deterministic IDs, typed context stages, manager interfaces, explicit roots, and ordered application composition in the shapes the document prescribes. [GitHub](https://github.com/baristaze/swe_guidelines/blob/main/scaffold/acme_root/om/src/acme/om/base.py)
+- Documentation itself has an architecture: `architecture.md` is authoritative, lenses derive from it, generated review skills derive from the lenses/template, and repository checks explicitly prevent those representations from silently diverging. [GitHub](https://github.com/baristaze/swe_guidelines/blob/main/AGENTS.md)
+
+## Weaknesses
+- The largest architectural tradeoff is deliberate lockstep coupling: one shared object model, one monorepo, one commit across processes, and shared domain vocabulary work extremely well for one team, but after service extraction they retain many characteristics of a distributed monolith and constrain independent service evolution, deployment, technology choice, and ownership. [GitHub](https://github.com/baristaze/swe_guidelines/blob/main/architecture.md)
+- The abstraction budget is very high: interfaces essentially everywhere, second implementations, twins, roots, contexts, scopes, decorators, storage interfaces, service interfaces, and generated clients buy consistency and testability but can impose substantial structural ceremony and duplicated semantics for code that may never need substitution. [GitHub](https://github.com/baristaze/swe_guidelines/blob/main/architecture.md)
+- The architecture has an acknowledged hot-tenant ceiling: maintaining one gapless sequence per tenant introduces an intentional serialization point, and sufficiently large tenants eventually require dedicated routing, infrastructure, or stream redesign rather than merely another replica. [GitHub](https://github.com/baristaze/swe_guidelines/blob/main/architecture.md)
+- The database-role model provides excellent blast-radius control but risks connection-pool multiplication, operational complexity, awkward cross-role transactions, and increasing cognitive cost as the number of role-isolated tables or domains grows; this area needs stronger quantitative limits and escape criteria. [GitHub](https://github.com/baristaze/swe_guidelines/blob/main/architecture.md)
+- Several production-defining qualities remain intentionally outside the common architecture: threat modelling, credential rotation schedules, SLOs and on-call policy, multi-region and broader DR, tenant export/offboarding, API deprecation, stress targets, and supply-chain rules; that makes the guideline excellent as a system shape but not yet a complete production architecture standard. [GitHub](https://github.com/baristaze/swe_guidelines/blob/main/architecture.md)
+- The dependency policy of tracking latest stable/LTS after only a patch-release delay is too universal as an architectural default; dependency risk varies dramatically by runtime criticality, ecosystem, security posture, database compatibility, and rollback cost. [GitHub](https://github.com/baristaze/swe_guidelines/blob/main/architecture.md)
+- The benchmark infrastructure is sophisticated but currently stronger as an evaluation framework for the agent tooling than as evidence that the architecture itself produces superior systems; four scenarios plus frontier-model judges cannot substitute for deterministic architectural fitness measurements or sustained workload experiments. [GitHub](https://github.com/baristaze/swe_guidelines/blob/main/benchmark/README.md)
+
+## What I would change
+- Explicitly name the post-split architecture as a coordinated-service or distributed-monolith model unless and until a service obtains independently versioned contracts and deployment, then document the exact trigger and migration path to true service autonomy.
+- Introduce an abstraction threshold: keep interfaces mandatory at architectural boundaries, persistence, external integrations, and replaceable capabilities, but permit concrete internal components until a second implementation, isolation requirement, or testing boundary actually earns the interface.
+- Make event ordering configurable by domain need: retain gapless tenant sequencing where product semantics require it, but offer partitioned or per-aggregate streams as the standard escape path before dedicating an entire database or engine to a hot tenant.
+- Add an explicit connection-budget and transaction-boundary section for database roles, including maximum expected role/pool counts, criteria for role consolidation, and how atomic workflows spanning differently isolated data are modelled.
+- Promote a minimal production-readiness layer from "not covered" into required project-level decisions: threat model, RPO/RTO, SLOs, on-call ownership, API lifecycle, tenant deletion/export, credential rotation, and software supply-chain policy.
+- Make dependency upgrades risk-tiered rather than universally latest-stable: security patches can move aggressively, while database engines, framework majors, infrastructure providers, and ordinary libraries get different qualification requirements.
+- Expand the benchmark from model judgement into architectural mutation testing: planted dependency violations, tenant leaks, transaction failures, rollout incompatibilities, queue duplication, migration-lock failures, checker precision/recall, and scaffold conformance should produce objective pass/fail measurements alongside LLM scores.
+- Add a short "when not to use this architecture" section covering organizations needing independently deployed teams, polyglot services, globally active multi-region writes, extreme hot-tenant workloads, or substantially different consistency models.
+
+## Method
+- Evaluated the current default `main` branch as served by GitHub on October 7, 2026; the rendered repository state showed 138 commits, but GitHub did not expose a reliable current commit SHA in the pages available to this review, so the evaluation is branch-state rather than commit-pinned. [GitHub](https://github.com/baristaze/swe_guidelines)
+- Read `architecture.md` end-to-end at architectural depth, including its core invariants, domain model, interfaces, contexts, storage, infrastructure, network, workers, apps, deployment, operations, telemetry, testing, scalability, resilience, technology substitution, and explicitly excluded concerns. [GitHub](https://github.com/baristaze/swe_guidelines/blob/main/architecture.md)
+- Read the repository-level architecture and governance material including `README.md`, `AGENTS.md`, `CONTRIBUTING.md`, `SECURITY.md`, `docs/adopting.md`, `lenses/README.md`, `checkers/README.md`, `benchmark/README.md`, `Makefile`, and `pyproject.toml`. [GitHub](https://github.com/baristaze/swe_guidelines)
+- Inspected representative executable scaffold implementation rather than accepting the prose at face value, including the OM base types/ID machinery, typed context model, a full manager interface, and API application-container composition. [GitHub](https://github.com/baristaze/swe_guidelines/blob/main/scaffold/acme_root/om/src/acme/om/base.py)
+- Inspected how architectural rules propagate into lenses, deterministic AST checks, ADR-backed exceptions, contract-testing expectations, generated review behavior, CI/gates, scaffolding, and benchmark scenarios; the score therefore evaluates the repository as an architecture system, not merely the prose document. [GitHub](https://github.com/baristaze/swe_guidelines/blob/main/lenses/README.md)

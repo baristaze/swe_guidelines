@@ -1,0 +1,70 @@
+{
+  "run_id": "20261007-084248",
+  "started_at": "2026-10-07T08:42:48Z",
+  "finished_at": "2026-10-07T08:54:33Z",
+  "repository_head": "54bc842b1754706399fb9d5bde8e2292d0a12872",
+  "prompt": "You are a highly senior software engineer and architect.\nEvaluate the repository below from a software design and architecture perspective.\nGive it a score from 0 to 100, then defend your evaluation:\nhttps://github.com/baristaze/swe_guidelines\n\nDo not be biased by who wrote it, an agent or a human, or by how fast it was developed.\nEvaluate the material itself.",
+  "contract": "Report format, so evaluations compare:\nFirst line: `Score: NN/100` and nothing else on that line.\n`## Strengths`: what holds, one line each.\n`## Weaknesses`: what does not, most severe first, one line each.\n`## What I would change`: concrete edits, one line each.\n`## Method`: what you read (files, tag or commit, how deep), one line each.",
+  "sizes": {
+    "model": "m",
+    "effort": "m"
+  },
+  "note": "model=m effort=m resolved, before anything was sent, to: chatgpt.com Latest / High; claude.ai Opus 5.5 / High; gemini.google.com 3.1 Pro / none; grok.com Expert / none; claude.ai's picker lists Sonnet 5.5 where sizes.yaml's s names Sonnet 5",
+  "sessions": [
+    {
+      "site": "chatgpt.com",
+      "url": "[redacted]",
+      "model_label": "Latest",
+      "effort_label": "High",
+      "started_at": "2026-10-07T08:45:23Z",
+      "finished_at": "2026-10-07T08:50:27Z",
+      "score": 92,
+      "read_version": "the current default `main` branch as served by GitHub on October 7, 2026 (not commit-pinned)",
+      "polls": 2,
+      "response_path": "chatgpt.com.md",
+      "status": "ok"
+    },
+    {
+      "site": "claude.ai",
+      "url": "[redacted]",
+      "model_label": "not set",
+      "effort_label": "not set",
+      "started_at": "2026-10-07T08:44:31Z",
+      "finished_at": "2026-10-07T08:44:31Z",
+      "score": null,
+      "read_version": "not stated",
+      "polls": 0,
+      "response_path": "claude.ai.md",
+      "status": "not-run",
+      "note": "step 4's check on the new-chat page (find, the page text, the page's interactive elements, and a zoom of the composer) found no line saying the product can act on the machine; Opus 5.5 and High were clicked and the chip read \"Opus 5.5 High\", and the prompt was sent at 2026-10-07T08:44:20Z; right after the send the conversation page's text read \"Computer actions available\", and after the stop \"[redacted], Asleep or app closed\"; \"Stop response\" was clicked at its first tool step, \"Clone repo and list history and files\", which then read Stopped, before any poll; nothing it answered is scored; please turn computer actions off on claude.ai before the next run"
+    },
+    {
+      "site": "gemini.google.com",
+      "url": "[redacted]",
+      "model_label": "3.1 Pro",
+      "effort_label": "none",
+      "started_at": "2026-10-07T08:46:02Z",
+      "finished_at": "2026-10-07T08:51:30Z",
+      "score": null,
+      "read_version": "not stated",
+      "polls": 2,
+      "response_path": "gemini.google.com.md",
+      "status": "refused",
+      "note": "the answer says \"I wasn't able to access the GitHub repository you shared\" and asks for the content to be pasted; it gives no evaluation and no score; the answer is page text, since no copy button or action row showed under it"
+    },
+    {
+      "site": "grok.com",
+      "url": "[redacted]",
+      "model_label": "Expert",
+      "effort_label": "none",
+      "started_at": "2026-10-07T08:46:43Z",
+      "finished_at": "2026-10-07T08:49:25Z",
+      "score": 84,
+      "read_version": "main at 54bc842b (release 0.52.1, 2026-10-07)",
+      "polls": 2,
+      "response_path": "grok.com.md",
+      "status": "ok",
+      "note": "Expert stayed checked and no plan page opened; a \"Grok Bot\" link in the header (\"Download Grok Bot\") names no device and says nothing of acting on the machine, so it was not taken for step 4's line and was left alone"
+    }
+  ]
+}
