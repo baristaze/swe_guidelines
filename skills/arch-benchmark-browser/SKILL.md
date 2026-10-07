@@ -277,9 +277,11 @@ Facts that decide how the steps below go. Read them before the browser.
 9. Per site that sent the prompt, bring its score line into view, or,
    where there is none, the first line the page wrote back: an answer,
    a `refused` decline, an `errored` message, or what a `not-run`
-   session wrote before its stop, else step 4's line. Take one picture
-   of it into the run folder as `references/evidence-picture.md` says.
-   These are the evidence a pull request carries.
+   session wrote before its stop, else the stop's own line (claude.ai's
+   "Claude's response was interrupted") or the sent message. Take one
+   picture of it into the run folder as `references/evidence-picture.md`
+   says. It stays below the header, and no zoom shows a line naming a
+   device. These are the evidence a pull request carries.
 10. Close the tabs `tabs_create_mcp` opened in step 3, and no other.
 11. Only when the arguments have `compare=`: compare this run with the
     earlier ones as `references/compare.md` says.
