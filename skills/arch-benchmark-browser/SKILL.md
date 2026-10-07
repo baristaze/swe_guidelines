@@ -140,11 +140,13 @@ Facts that decide how the steps below go. Read them before the browser.
    it yourself. Look again right after the send and at every poll: any
    line naming a device of the person's, under the header or in the
    composer, is such a line, whatever state it reads (claude.ai's
-   "Connected", "Asleep or app closed"). When it shows, click the stop
-   control ("Stop response") where one shows and record the session
-   `not-run` with the same `note`: both times are the stop's moment,
-   `polls` the polls made, that poll included, and nothing it answered
-   is scored.
+   "Connected", "Asleep or app closed"). A link or a button to download
+   or install an app is not: the line says the product can act on the
+   machine, or names a device of the person's. When the line shows,
+   click the stop control ("Stop response") where one shows and record
+   the session `not-run` with the same `note`: both times are the
+   stop's moment, `polls` the polls made, that poll included, and
+   nothing it answered is scored.
 
    Otherwise set the model and the effort, then verify with a
    screenshot of the chip. `model_label` is the model picker's checked
@@ -206,10 +208,11 @@ Facts that decide how the steps below go. Read them before the browser.
      polling. A tab that was not in front for its waits is never called
      done.
 
-   Done is the signal named above. Record the finish time from `date -u`
-   when the signal is seen. On grok.com, run `date -u` at the end of
-   every poll: the finish time is the first of the two polls that
-   matched. An error the product prints in place of an answer ends the
+   Done is the signal named above. The finish time is `date -u`, run as
+   the first call after the poll that shows the signal, and `note` says
+   it was read after that poll's waits. On grok.com, run `date -u` at
+   the end of every poll: the finish time is the first of the two polls
+   that matched. An error the product prints in place of an answer ends the
    polling of that attempt, and step 7's `errored` says what follows.
    When an answer is already done at the first poll, the finish time is
    the send time plus the site's own "Worked for" figure where it shows
@@ -224,42 +227,19 @@ Facts that decide how the steps below go. Read them before the browser.
    changes nothing. Find the
    `Score: NN/100` line, and what the answer's Method says it read: a
    commit, a tag, or a branch and a date, for `read_version` ("not
-   stated" when it names none). Save `<site>.md` in the run folder:
-
-   ```text
-   # <site>
-
-   - URL: <url>
-   - Model: <model_label>
-   - Effort: <effort_label>
-   - Sent: <started_at>
-   - Finished: <finished_at> (how it was read)
-   - Status: <status>
-   - Score: <NN>/100
-   - Read: <read_version>
-   - Polls: <polls>
-   - Note: <note>
-
-   ## Answer
-
-   <the answer>
-   ```
-
-   Where `score` is null, the header's line is `- Score: none`; where
-   there is no note, it is `- Note: none`. A copied answer is saved as
-   it came. A page-text answer is bounded as "What the pages are like"
-   says, and the chrome on either side is left out; tool steps,
-   citation chips ("GitHub", "10 sources"), and image captions stay as
-   the page gave them. The statuses:
+   stated" when it names none). Save `<site>.md` in the run folder as
+   `references/site-file.md` says. The statuses:
    - `ok`: a score was found.
    - `smaller-mode`: in place of `ok`, when step 4 fell back from a
      locked model, mode, or effort.
    - `no-score`: an answer and no score line; the number the answer
      gives elsewhere goes in `note`.
-   - `refused`: the product declined.
-   - `errored`: the product printed its own error in place of an answer
-     ("I seem to be encountering an error"). Read that attempt's URL
-     from `tabs_context_mcp`, without its query string, and try once
+   - `refused`: a reply that declines, or says it cannot read the
+     repository; never `no-score` or `errored`.
+   - `errored`: only the product's own error in place of an answer
+     ("I seem to be encountering an error"), never a reply in the
+     model's own words. Read that attempt's URL from
+     `tabs_context_mcp`, without its query string, and try once
      more: navigate the site's tab to its new-chat URL, do step 4 again
      without clicking a locked entry, do step 5, and poll as step 6
      says. Every field of the session is the second attempt's, and its
