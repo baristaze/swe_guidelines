@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { humanSize, usageLine } from "./storageModel";
+import { humanSize, uploadsNotice, usageLine } from "./storageModel";
 
 describe("storage model", () => {
   it("says a size in the unit a person reads", () => {
@@ -15,5 +15,10 @@ describe("storage model", () => {
   it("says the storage line in the singular and the plural", () => {
     expect(usageLine(1, 10)).toBe("1 file, 10 B");
     expect(usageLine(3, 3 * 1024 * 1024)).toBe("3 files, 3.0 MB");
+  });
+
+  it("says new uploads are paused while the flag reads off, and nothing while it reads on", () => {
+    expect(uploadsNotice(false)).toBe("New uploads are paused.");
+    expect(uploadsNotice(true)).toBeNull();
   });
 });
