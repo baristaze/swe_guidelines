@@ -16,13 +16,21 @@ export type FlagName = "media-uploads";
  * shown. */
 export const FLAGS_REFRESH_MS = 5 * 60_000;
 
-/** The snapshot's query. Its answer carries an `ETag` and `Cache-Control:
- * no-cache`, so the browser asks again with `If-None-Match`, and a read that
- * finds nothing new is a `304` with no body. A switch drops it with every
- * other answer of the old tenant (adoptSession). */
-export const flagsQuery = queryOptions({
+/** The snapshot's key and its read. Its answer carries an `ETag` and
+ * `Cache-Control: no-cache`, so the browser asks again with `If-None-Match`,
+ * and a read that finds nothing new is a `304` with no body. A switch drops
+ * it with every other answer of the old tenant (adoptSession). */
+const snapshotQuery = queryOptions({
   queryKey: keys.flags,
   queryFn: ({ signal }) => api.get<FlagsView>("/v1/flags", { signal }),
+});
+
+/** The shell's query of the snapshot, the one that reads it again on focus
+ * and on its interval. A flag's reader (useFlag) carries neither, so the
+ * shell alone sets when the snapshot is read again, however many screens
+ * read a flag. */
+export const flagsQuery = queryOptions({
+  ...snapshotQuery,
   refetchOnWindowFocus: true,
   refetchInterval: FLAGS_REFRESH_MS,
 });
@@ -33,14 +41,20 @@ export function flagOn(snapshot: FlagsView | undefined, flag: FlagName): boolean
   return snapshot?.flags[flag] === true;
 }
 
-/** Reads the snapshot. The signed-in shell calls it, so the read starts once
- * the exchange is done and starts over in each org. */
+/** Reads the snapshot, again on focus and on its interval. The signed-in
+ * shell calls it, and nothing else does, so the read starts once the
+ * exchange is done and starts over in each org. */
 export function useFlags() {
   return useQuery(flagsQuery);
 }
 
-/** The one way a view-model reads a flag. */
+/** The one way a view-model reads a flag. It reads the shell's snapshot and
+ * leaves reading it again to the shell. */
 export function useFlag(flag: FlagName): boolean {
-  const { data } = useQuery({ ...flagsQuery, select: (snapshot) => flagOn(snapshot, flag) });
+  const { data } = useQuery({
+    ...snapshotQuery,
+    refetchOnWindowFocus: false,
+    select: (snapshot) => flagOn(snapshot, flag),
+  });
   return data ?? false;
 }
