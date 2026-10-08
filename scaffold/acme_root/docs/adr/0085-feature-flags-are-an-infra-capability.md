@@ -68,7 +68,10 @@ modelled entity with a manager and storage, never a flag.
   the vendor at boot waits at most `ACME_FLAGS_TIMEOUT_SECONDS`, runs on
   the code's defaults, and says so.
 - A client hides what a flag turns off, and the server refuses it
-  whatever the client shows.
+  whatever the client shows. The portal reads the snapshot once the
+  exchange is done, again on focus and every five minutes, and drops it
+  on a switch. No browser app depends on a flag vendor's SDK, and
+  arch-check's DEL-52 decides it.
 - In LaunchDarkly, a rule on `user_id` sits above a rule on `org_id`,
   since rules match in order, and an individual target on an org's key
   matches before both; the runbook says so.

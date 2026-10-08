@@ -9,7 +9,7 @@ systems in Python, and the tools that hold a project to it.
 - **[`scaffold/`](scaffold/README.md)**: the domain-agnostic core of a
   system in this shape, a whole monorepo that runs. A new project
   copies it.
-- **[`lenses/`](lenses/README.md)**: 260 lenses in eight groups, the
+- **[`lenses/`](lenses/README.md)**: 261 lenses in eight groups, the
   checkable detail under each rule.
 - **[`checkers/`](checkers/README.md)**: `arch-check`, the static
   checker. It decides the lenses a program can decide, in a second.

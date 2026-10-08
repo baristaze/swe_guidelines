@@ -11,3 +11,9 @@ export function humanSize(bytes: number): string {
 export function usageLine(count: number, bytes: number): string {
   return `${count} ${count === 1 ? "file" : "files"}, ${humanSize(bytes)}`;
 }
+
+/** What the card says while `media-uploads` reads off, and nothing while it
+ * reads on. The server refuses a new upload while it is off. */
+export function uploadsNotice(uploadsOn: boolean): string | null {
+  return uploadsOn ? null : "New uploads are paused.";
+}

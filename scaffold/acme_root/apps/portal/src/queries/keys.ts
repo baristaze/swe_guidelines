@@ -33,6 +33,9 @@ export const keys = {
     all: ["file"] as const,
     usage: ["file", "usage"] as const,
   },
+  // The session's flags, one snapshot. No push names them, so they are read
+  // again on focus and on an interval (flags.ts).
+  flags: ["flags"] as const,
   // A `tenancy.invitation.*` push invalidates these by convention.
   invitations: {
     all: ["invitation"] as const,

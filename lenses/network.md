@@ -497,7 +497,9 @@ the channel is up.
 **Violation.** A second WebSocket or stream for one feature; a second
 component that opens its own socket; a polling endpoint or a poll on a
 timer used while the channel is up; envelopes without a type field or
-routed by ad hoc inspection.
+routed by ad hoc inspection. A poll of what no push names, since its
+change is no event the system records, is not one: the flags snapshot
+(DEL-52) is such a poll.
 
 **Severity.** medium
 

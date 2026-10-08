@@ -188,6 +188,7 @@ These are the invariants. Each links the section that states it.
   - [Views, View-Models, Models](#views-view-models-models)
   - [API Access](#api-access)
   - [One Tenant at a Time](#one-tenant-at-a-time)
+  - [Flags in the Client](#flags-in-the-client)
   - [Realtime: One Channel per App](#realtime-one-channel-per-app)
   - [The Operator Console](#the-operator-console)
   - [The CLI Is Different](#the-cli-is-different)
@@ -1291,7 +1292,8 @@ that over the provider's default, and that over the code's. A flag the
 provider does not know, or a provider that fails, reads its default.
 A server check reads one value, and the operation it gates is refused
 on the server, whatever a client shows. A client reads a snapshot of
-the flags marked for it, from the API, never from the provider.
+the flags marked for it, from the API, never from the provider
+([Flags in the Client](#flags-in-the-client)).
 
 The deployed impl evaluates in the process through OpenFeature, the
 vendor-neutral flag API, over the provider of the vendor the settings
@@ -1889,6 +1891,37 @@ and mounts afresh.
 > **Principle:** The app works in one tenant at a time. A switch is a
 > second exchange that drops the old tenant's caches. The app never
 > holds two sessions.
+
+### Flags in the Client
+
+A browser app reads its session's flags from its own API, as one
+snapshot of the flags marked for clients
+([Feature Flags](#feature-flags)). It reads the snapshot once the
+exchange is done and keeps it in the query cache under a key of its key
+factory, so a switch drops it with the old tenant's caches. It reads it
+again when the window regains focus and on an interval. It polls because
+no push names a flag's change, which is no event the system records, and
+the snapshot's `ETag` turns a read that finds nothing new into a `304`.
+Until the snapshot arrives, a flag reads off.
+
+The flags are not a claim in the token. A token outlives a change to a
+flag, and a kill switch must reach a tab that is already open. Nor does
+the browser call a flag provider: that would put the provider's key and
+its rules in the bundle, and split the source of truth between the app
+and its API. A flag in the client only shows or hides. The server checks
+it again on the operation it gates.
+
+> **Principle:** A client reads its flags as one snapshot from its own
+> API, never from a flag provider. What a flag hides, the server
+> refuses.
+
+<!-- agents-only
+The portal's snapshot is `flagsQuery` under `keys.flags`
+([`queries/flags.ts`](scaffold/acme_root/apps/portal/src/queries/flags.ts)),
+read by the signed-in shell, and a view-model reads one flag through
+`useFlag`. No browser app's `package.json` names OpenFeature or a flag
+vendor's SDK.
+-->
 
 ### Realtime: One Channel per App
 

@@ -6,11 +6,19 @@ import { SettingsPage } from "../features/settings/SettingsPage";
 import { CallbackPage } from "../features/sign_in/CallbackPage";
 import { DevSignInPage } from "../features/sign_in/DevSignInPage";
 import { LoginPage } from "../features/sign_in/LoginPage";
+import { useFlags } from "../queries/flags";
 import { RealtimeProvider } from "../realtime/RealtimeProvider";
 import { useSessionStore } from "../store/session";
 import { RequireAuth } from "./RequireAuth";
 import { RouteError } from "./RouteError";
 import { TimeZoneSync } from "./useTimeZoneSync";
+
+/** Reads the session's flags as soon as the shell mounts in an org, so a
+ * screen that reads a flag finds the snapshot in hand. */
+function FlagsSnapshot() {
+  useFlags();
+  return null;
+}
 
 /** The signed-in app, mounted once per org. A switch keeps a token held
  * throughout (see adoptSession), so the shell is never torn down on its own;
@@ -22,6 +30,7 @@ function AuthenticatedShell() {
   return (
     <RequireAuth>
       <Fragment key={orgSlug}>
+        <FlagsSnapshot />
         <TimeZoneSync />
         <RealtimeProvider>
           <Outlet />

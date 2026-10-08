@@ -558,12 +558,12 @@ Feature Flags.
 
 **Look for.** Where per-tenant or per-plan behavior is decided; every
 flag check and the operation it gates; imports of OpenFeature or a flag
-vendor's SDK; how a client learns a flag's value.
+vendor's SDK.
 
 **Violation.** A tenant entitlement expressed as a flag or an
 environment variable; OpenFeature or a vendor's flag client imported or
 constructed outside the flags package; an operation gated by a flag in
-a client alone.
+a client alone. (How a client reads its flags is DEL-52.)
 
 **Severity.** medium
 
@@ -1294,3 +1294,32 @@ one whose push credential may write anything but images and bundles;
 an install or a build run inside the apply job.
 
 **Severity.** high
+
+## DEL-52 A client reads its flags as one snapshot from its own API
+
+**Principle.** A browser app reads the flags marked for clients as one
+snapshot from its own API. It reads it once the exchange is done, keeps
+it under a key of its key factory so a switch drops it, and reads it
+again on focus and on an interval, where the `ETag` turns a read that
+finds nothing new into a `304`. A flag reads off until the snapshot
+arrives. The flags are never a claim in the token, and the browser
+never calls a flag provider. A flag in the client only shows or hides.
+
+**Source.** Client App Architecture, Flags in the Client; Infrastructure,
+Feature Flags.
+
+**Look for.** Where a browser app learns a flag's value, and when it
+reads it again; the snapshot's query key, and what a switch drops; each
+browser app's `package.json`; a flag carried in the session's token.
+
+**Violation.** A browser app that depends on OpenFeature or a flag
+vendor's SDK, or holds a provider's key; flags read once at sign-in and
+never again, or kept across a switch; a flag carried as a claim in the
+token; a flag that reads on before the snapshot arrives.
+
+**Severity.** medium
+
+**Shape.** `scaffold/acme_root/apps/portal/src/queries/flags.ts`
+
+**Check.** `arch-check` decides a browser app's dependency on OpenFeature
+or a flag vendor's SDK; the rest is judged.

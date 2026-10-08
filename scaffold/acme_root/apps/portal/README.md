@@ -14,6 +14,9 @@ sign-in, the org chip and switch, settings, and one realtime channel.
 - `src/features/<name>/`: one folder per screen, a pure model, a
   view-model hook, and a page. `home/` is where the product's screens start.
 - `src/queries/`: query keys and hooks, one file per API namespace.
+  `flags.ts` reads the session's flags as one snapshot from the API, and a
+  view-model reads a flag with `useFlag`. No flag vendor's SDK is in the
+  bundle.
 - `src/realtime/`: the socket; a push invalidates the queries of its entity.
 - `src/store/`, `src/design/`: client state and the design kit.
 
