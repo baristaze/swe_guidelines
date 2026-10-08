@@ -232,3 +232,36 @@ async def test_launchdarkly_evaluates_an_org_target_and_a_user_rule_and_never_wr
     assert caplog.records, "the SDK wrote no line, so the check below checked nothing"
     lines = [record.getMessage() for record in caplog.records]
     assert not [line for line in [flags.describe(), *lines] if SDK_KEY in line]
+
+
+def go_live_data() -> TestData:
+    """Every declared flag as the provider runbook's go-live makes it in one
+    environment: targeting on, its default rule serving the code's default,
+    and its off variation false."""
+    data = TestData.data_source()
+    for flag in Flag:
+        data.update(
+            data.flag(flag.value)
+            .boolean_flag()
+            .on(True)
+            .fallthrough_variation(FLAGS[flag].default)
+            .off_variation(False)
+        )
+    return data
+
+
+async def test_the_runbooks_go_live_keeps_each_default_and_targeting_off_reads_false() -> None:
+    """The switch to the provider changes no flag, and turning targeting off
+    is the kill switch: it serves the off variation, false, even where the
+    code's default is on."""
+    assert [flag for flag in Flag if FLAGS[flag].default], "no flag defaults on to check"
+    data = go_live_data()
+    flags = launchdarkly_flags(offline_config(data), timedelta(seconds=1))
+    await flags.start()
+    assert await flags.evaluate(ORG_A, USER_IN_A) == code_defaults()
+    assert await flags.evaluate(ORG_B) == code_defaults()
+    for flag in Flag:
+        data.update(data.flag(flag.value).on(False))
+    off = await flags.evaluate(ORG_A, USER_IN_A)
+    assert [flag for flag in Flag if off.on(flag)] == []
+    await flags.close()
