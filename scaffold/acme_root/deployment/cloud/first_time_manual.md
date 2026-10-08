@@ -536,7 +536,9 @@ dashboard:
   create run; an empty url means the deployment has no tracker.
 - [LaunchDarkly](../../docs/runbooks/providers/launchdarkly.md): a
   project with its Test and Production environments, and one flag per
-  member of `Flag`. Until its key is written and `flags_backend` says
+  member of `Flag`, with targeting on in each environment and its
+  default rule serving the code's default: a flag with targeting off
+  reads `false`. Until its key is written and `flags_backend` says
   `launchdarkly`, every flag reads its default.
 
 What they share is the order, because the secret that holds each value

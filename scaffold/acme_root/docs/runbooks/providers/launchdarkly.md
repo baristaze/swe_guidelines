@@ -42,13 +42,22 @@ says so.
 1. Make a project `acme` on the Developer plan. It comes with a Test and
    a Production environment.
 2. For each member of `Flag`, make a boolean flag with the same key,
-   such as `media-uploads`. Its default rule serves the code's default,
-   so turning targeting on changes nothing until a rule does.
+   such as `media-uploads`. In each environment, set its default rule
+   to serve the code's default and its off variation to `false`, then
+   turn targeting on. LaunchDarkly makes a flag with targeting off, and
+   targeting off serves the off variation: a flag left so reads `false`
+   for every org, whatever the code's default.
 3. Copy each environment's server-side SDK key, from the environment's
    settings: never its client-side id or its mobile key.
 
+All three come before an environment's backend becomes `launchdarkly`.
+From then on, turning a flag's targeting off is its kill switch: it
+reads `false` everywhere.
+
 A flag LaunchDarkly does not know reads the code's default, so a new
-flag ships before its LaunchDarkly flag exists.
+flag ships before its LaunchDarkly flag exists. Its flag is then made as
+step 2 says: from its making until its targeting is on, an environment
+on `launchdarkly` reads it `false`.
 
 ## The secret of a deployed environment
 
@@ -106,7 +115,8 @@ never committed.
 |--------------|-----|---------------|
 | A process stops at start: `ACME_FLAGS_BACKEND=launchdarkly is refused without ACME_LAUNCHDARKLY_SDK_KEY` | The secret is `off` | Write it, and roll |
 | `flags provider launchdarkly not ready`, and every flag reads its default | The key is another environment's or revoked, or LaunchDarkly is unreachable | The key; the SDK keeps trying, and its rules take over once it connects |
-| A flag reads its default everywhere | Its key differs from the code's, or targeting is off | The flag's page in LaunchDarkly |
+| A flag reads its default everywhere | Its key differs from the code's | The flag's key in LaunchDarkly |
+| A flag reads `false` everywhere | Its targeting is off, which serves the off variation, `false`: the kill switch, not the default | The flag's targeting in that environment |
 | A person's rule does not apply | An individual target on the org, or a rule on `org_id` above it, matches first | The flag's rule order |
 | A process stops at start: `ACME_FLAGS_BACKEND=memory is refused` | The memory backend is local only | `flags_backend` in the Terraform root |
 
