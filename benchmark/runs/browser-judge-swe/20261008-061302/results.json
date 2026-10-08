@@ -1,0 +1,29 @@
+{
+  "run_id": "20261008-061302",
+  "started_at": "2026-10-08T06:13:02Z",
+  "finished_at": "2026-10-08T06:32:11Z",
+  "repository_head": "c80a8dcab0dcb94c0f3a32484bd678888f3e0cb5",
+  "prompt": "You are a highly senior software engineer and architect.\nEvaluate the repository below from a software design and architecture perspective.\nGive it a score from 0 to 100, then defend your evaluation:\nhttps://github.com/baristaze/swe_guidelines\n\nDo not be biased by who wrote it, an agent or a human, or by how fast it was developed.\nEvaluate the material itself.",
+  "contract": "Report format, so evaluations compare:\nFirst line: `Score: NN/100` and nothing else on that line.\n`## Strengths`: what holds, one line each.\n`## Weaknesses`: what does not, most severe first, one line each.\n`## What I would change`: concrete edits, one line each.\n`## Method`: what you read (files, tag or commit, how deep), one line each.",
+  "sizes": {
+    "model": "m",
+    "effort": "m"
+  },
+  "note": "model=m effort=m resolved, before anything was sent, to: claude.ai Opus 5.5 / High; the run asked only claude.ai (sites=claude.ai); claude.ai's picker lists Sonnet 5.5 and Haiku 5.5 where sizes.yaml's s and xs name Sonnet 5 and Haiku 4.5",
+  "sessions": [
+    {
+      "site": "claude.ai",
+      "url": "[redacted]",
+      "model_label": "Opus 5.5",
+      "effort_label": "High",
+      "started_at": "2026-10-08T06:14:58Z",
+      "finished_at": "2026-10-08T06:29:16Z",
+      "score": 83,
+      "read_version": "commit c80a8dc (v0.52.2-2-gc80a8dc)",
+      "polls": 11,
+      "response_path": "claude.ai.md",
+      "status": "ok",
+      "note": "the composer's permission chip read Auto, its tooltip \"Claude runs on its own and pauses to ask if anything looks unsafe.\"; the page's accessibility tree also held a \"Manual\" button that was not drawn; the new-chat composer held no unsent draft; step 4's check on the new-chat page (find, the page text, and a screenshot) found no line saying the product can act on the machine and no device of the person's; Opus 5.5 and High were clicked and the chip read \"Opus 5.5 High\"; right after the send, a banner read \"Permission mode is set to Auto. Claude runs on its own and pauses if anything looks unsafe. This includes using your connectors and Claude in Chrome, unless you turn them off.\"; it names no device, and the run went on; no dialog asked to fetch a page or use a tool; from poll 3 the Chrome window was hidden and then shrunk to a 291x164 viewport: the poll's screenshot timed out at polls 3 to 5 and showed only the header and the composer at polls 6 to 10, and before poll 9 the extension once reported it was not connected, then answered again; every poll read the page text; right after the send and at each of the 11 polls, the page text, and the screenshot where one came back, showed no line saying the product can act on the machine and no device of the person's; the copy button's paste, after each of its two clicks, held something else on the clipboard and not this answer, so the answer is page text, from the score line to the Method's last line, without the speaker label and the tool count \"Read a file, ran 30 commands\" before it; its headings and bullets are as the page text gives them, without Markdown; the answer's Weaknesses names \"browser automation that polls chat products for scores\" beside the guideline, but it names no run folder, no earlier run, and no earlier score; the window was back at full size for the evidence picture"
+    }
+  ]
+}
