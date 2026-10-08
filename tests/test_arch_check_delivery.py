@@ -530,7 +530,6 @@ def test_del_22_the_vendors_are_an_option(tmp_path):
     assert (code, [line for _, _, line in where]) == (1, [1])
 
 
-
 # --- DEL-23
 
 GOOD_ADR = "# 1. One root package\n\nDate: 2026-09-16\n\n## Context\n\nx\n\n## Decision\n\ny\n\n## Consequences\n\nz\n"
@@ -761,4 +760,3 @@ def test_del_52_the_vendors_are_an_option(tmp_path):
     pyproject = WORKSPACE + '\n[tool.arch-check.options.DEL-52]\nvendors = ["@inhouse/"]\n'
     files = {"apps/portal/package.json": '{"dependencies": {"@inhouse/flags": "1", "flagsmith": "1"}}'}
     assert found(tmp_path, "DEL-52", files, pyproject) == (1, [("DEL-52", "apps/portal/package.json", 1)])
-
