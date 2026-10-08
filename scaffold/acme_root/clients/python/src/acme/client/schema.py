@@ -211,6 +211,14 @@ class FileView(BaseModel):
     subject_id: Annotated[UUID | None, Field(title='Subject Id')]
 
 
+class FlagsView(BaseModel):
+    """
+    The session's flags that a client may read, evaluated for its org and
+    its user. A flag read on the server alone is never in it.
+    """
+    flags: Annotated[dict[str, bool], Field(description="Each flag marked for clients, by name, and its value for the session's org and user.", title='Flags')]
+
+
 class InvitationState(StrEnum):
     pending = 'pending'
     accepted = 'accepted'

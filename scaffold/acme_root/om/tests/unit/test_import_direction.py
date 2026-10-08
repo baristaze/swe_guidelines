@@ -28,6 +28,7 @@ INFRA_INTERFACE_MODULES = frozenset(
         "acme.infra.topics",
         "acme.infra.queues",
         "acme.infra.secrets",
+        "acme.infra.flags",
     }
 )
 """A capability's interface is its package; every module beneath it, and

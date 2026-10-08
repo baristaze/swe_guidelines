@@ -119,8 +119,10 @@ class InfraSettings(BaseSettings):
 
     @field_validator("launchdarkly_sdk_key")
     @classmethod
-    def _key_off_is_none(cls, value: SecretStr | None) -> SecretStr | None:
-        """Empty or "off" means not set; the cloud secret starts as "off"."""
+    def _launchdarkly_key_off_is_none(cls, value: SecretStr | None) -> SecretStr | None:
+        """Empty or "off" means not set; the cloud secret starts as "off". Named
+        for its field: a process's settings mix this class with others, and a
+        validator another class names the same would replace this one."""
         if value is None or value.get_secret_value().strip().lower() in ("", "off"):
             return None
         return value

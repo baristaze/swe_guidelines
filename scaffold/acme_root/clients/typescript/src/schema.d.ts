@@ -441,6 +441,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/flags": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Flags
+         * @description The flags marked for clients, for the session's org and user. A
+         *     client never decides what the server allows: an operation a flag gates
+         *     is refused on the server whatever a client shows.
+         */
+        get: operations["get_flags_v1_flags_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/invitations": {
         parameters: {
             query?: never;
@@ -1185,6 +1207,20 @@ export interface components {
             status: components["schemas"]["FileStatus"];
             /** Subject Id */
             subject_id: string | null;
+        };
+        /**
+         * FlagsView
+         * @description The session's flags that a client may read, evaluated for its org and
+         *     its user. A flag read on the server alone is never in it.
+         */
+        FlagsView: {
+            /**
+             * Flags
+             * @description Each flag marked for clients, by name, and its value for the session's org and user.
+             */
+            flags: {
+                [key: string]: boolean;
+            };
         };
         /** HTTPValidationError */
         HTTPValidationError: {
@@ -3021,6 +3057,48 @@ export interface operations {
             };
         };
     };
+    get_flags_v1_flags_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "x-app"?: string | null;
+                "x-app-version"?: string | null;
+                /** @description The entity tag of the snapshot the caller holds. 304, with no body, when it is still current. */
+                "If-None-Match"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FlagsView"];
+                };
+            };
+            /** @description The snapshot `If-None-Match` names is current. */
+            304: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_invitations_v1_invitations_get: {
         parameters: {
             query?: {
@@ -3421,6 +3499,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["FileView"];
+                };
+            };
+            /** @description feature_off: `media-uploads` is off */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
             /** @description Validation Error */

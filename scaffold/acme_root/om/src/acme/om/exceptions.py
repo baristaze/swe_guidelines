@@ -63,6 +63,13 @@ class NotAuthorized(PlatformException):
     code = "not_authorized"
 
 
+class FeatureOff(NotAuthorized):
+    """A feature flag is off for the caller's org, or for the caller: the
+    operation it gates is refused on the server, whatever a client shows."""
+
+    code = "feature_off"
+
+
 class NotAuthenticated(PlatformException):
     http_status = 401
     code = "not_authenticated"

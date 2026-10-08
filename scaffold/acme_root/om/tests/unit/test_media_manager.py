@@ -12,11 +12,13 @@ from contracts.factories import make_org
 
 from acme.infra.buckets import Buckets
 from acme.infra.exceptions import UploadRefused
+from acme.infra.flags import Flag
+from acme.infra.flags.memory import FlagRule, FlagsMemoryImpl
 from acme.infra.impl.local import InfraLocalImpl
 from acme.om.base import new_id, utcnow
 from acme.om.context import Role, TenantContext
 from acme.om.events.storage.impl.memory import EventStorageMemoryImpl
-from acme.om.exceptions import NotAuthorized, NotFound, ValidationFailed
+from acme.om.exceptions import FeatureOff, NotAuthorized, NotFound, ValidationFailed
 from acme.om.media import rules
 from acme.om.media.impl.manager import MediaManagerImpl, MediaOptions
 from acme.om.media.storage.impl.memory import MediaStorageMemoryImpl
@@ -108,6 +110,27 @@ async def test_an_upload_starts_pending_under_the_managers_key(media: MediaManag
     assert created.extension == "pdf"
     assert created.created_by == ctx.user_id
     assert created.name == "Quarterly Plan.PDF"
+
+
+async def test_an_upload_is_refused_where_media_uploads_is_off_and_taken_where_it_is_on(
+    outbox: OutboxStorageMemoryImpl,
+    members: Members,
+    relay: OutboxRelayImpl,
+    infra: InfraLocalImpl,
+) -> None:
+    """Two orgs in one process, the flag off for one: the refusal is the
+    server's, whatever a client shows."""
+    off, on = context(Role.MEMBER), context(Role.MEMBER)
+    flags = FlagsMemoryImpl({Flag.MEDIA_UPLOADS.value: FlagRule(orgs={off.org_id: False})})
+    storage = MediaStorageMemoryImpl(outbox)
+    media = MediaManagerImpl(storage, infra.get_buckets(), members, relay, flags, MediaOptions())
+    refused = a_file(off)
+    with pytest.raises(FeatureOff) as raised:
+        await media.create_file(off, refused)
+    assert raised.value.code == "feature_off"
+    assert await storage.read_file(off.org_id, refused.id) is None
+    created = await media.create_file(on, a_file(on))
+    assert created.status is FileStatus.PENDING
 
 
 @pytest.mark.parametrize(
@@ -253,7 +276,7 @@ async def test_the_sweep_erases_the_object_and_the_row_past_the_retention(
 ) -> None:
     storage = MediaStorageMemoryImpl(outbox)
     buckets = infra.get_buckets()
-    media = MediaManagerImpl(storage, buckets, members, relay, MediaOptions())
+    media = MediaManagerImpl(storage, buckets, members, relay, infra.get_flags(), MediaOptions())
     ctx = context(Role.MEMBER)
     gone = await uploaded(media, ctx, a_file(ctx))
     kept = await uploaded(media, ctx, a_file(ctx))
@@ -268,6 +291,7 @@ async def test_the_sweep_erases_the_object_and_the_row_past_the_retention(
         buckets,
         members,
         relay,
+        infra.get_flags(),
         MediaOptions(retention=timedelta(0), pending_expiry=timedelta(0)),
     )
     assert await past.purge_across_tenants() == 2

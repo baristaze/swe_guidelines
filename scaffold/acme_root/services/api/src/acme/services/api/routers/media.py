@@ -13,7 +13,7 @@ from acme.services.api.gateway.auth import Ctx
 from acme.services.api.gateway.body import BoundedBody
 from acme.services.api.gateway.idempotency import Idem
 from acme.services.api.gateway.resolve import MediaService
-from acme.services.api.types.common import LIMIT_DEFAULT
+from acme.services.api.types.common import LIMIT_DEFAULT, ErrorResponse
 from acme.services.api.types.media import (
     FileContentResponse,
     FilePageView,
@@ -32,7 +32,14 @@ async def get_usage(ctx: Ctx, media: MediaService) -> StorageUsageView:
     return await media.get_usage(ctx)
 
 
-@router.post("/files", response_model=FileView, status_code=201)
+@router.post(
+    "/files",
+    response_model=FileView,
+    status_code=201,
+    responses={
+        403: {"model": ErrorResponse, "description": "feature_off: `media-uploads` is off"},
+    },
+)
 async def start_upload(
     ctx: Ctx, media: MediaService, body: StartUploadRequest, idem: Idem
 ) -> Response:
