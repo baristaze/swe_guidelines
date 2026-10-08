@@ -496,8 +496,8 @@ configured, and a second logging library; the rest is judged.
 is configured only when an endpoint is set, otherwise the no-op tracer
 runs and the code paths stay identical. Metrics are exposed on
 `/metrics` in Prometheus format through the client library directly.
-Observability is used through its vendor API, as a feature flag SDK
-is (DEL-22); the backend is a config detail.
+Observability is used through its vendor API; the backend is a config
+detail.
 
 **Source.** Telemetry, Traces and Metrics; Infrastructure,
 Infrastructure Principles.
@@ -543,23 +543,32 @@ performed outside the settings and boot path.
 
 **Shape.** `scaffold/acme_root/services/api/src/acme/services/api/settings.py`
 
-## DEL-22 Product variation is a modelled entity, not a flag
+## DEL-22 Product variation is modelled; a toggle is a flag behind its interface
 
 **Principle.** Runtime variation that belongs to the product (what a
 tenant may do, what a plan allows) is a modelled entity with a manager
-and storage. A feature flag, when needed, is a vendor SDK used
-directly with its client injected at boot.
+and storage. A release toggle or a kill switch is a feature flag:
+declared in code with its default, read through `FlagsInterface` for
+an org and a person in it, and evaluated by the impl the settings
+choose. OpenFeature and a vendor's SDK stay inside the flags package. A
+server check gates the operation, whatever a client shows.
 
-**Source.** Cross-Cutting Conventions, Configuration.
+**Source.** Cross-Cutting Conventions, Configuration; Infrastructure,
+Feature Flags.
 
-**Look for.** Where per-tenant or per-plan behavior is decided; flag
-checks in managers; a home-grown flag abstraction.
+**Look for.** Where per-tenant or per-plan behavior is decided; every
+flag check and the operation it gates; imports of OpenFeature or a flag
+vendor's SDK; how a client learns a flag's value.
 
 **Violation.** A tenant entitlement expressed as a flag or an
-environment variable; a platform wrapper around a flag SDK; a flag
-client constructed inside a manager.
+environment variable; OpenFeature or a vendor's flag client imported or
+constructed outside the flags package; an operation gated by a flag in
+a client alone.
 
 **Severity.** medium
+
+**Check.** `arch-check` decides an import of OpenFeature or a flag
+vendor's SDK outside the infra flags package; the rest is judged.
 
 ## DEL-23 Constraining decisions are ADRs, cited by number
 

@@ -495,6 +495,41 @@ def test_del_20_a_recorded_metrics_substitution_is_an_option(tmp_path):
     assert (code, [line for _, _, line in where]) == (1, [2])
 
 
+# --- DEL-22
+
+
+def test_del_22_openfeature_and_a_vendor_sdk_under_infra_flags_pass(tmp_path):
+    files = {
+        "infra/src/acme/infra/flags/openfeature.py": "from openfeature import api\n",
+        "infra/src/acme/infra/flags/launchdarkly.py": "from ld_openfeature import LaunchDarklyProvider\nimport ldclient\n",
+        "infra/src/acme/infra/impl/configured.py": "from acme.infra.flags.launchdarkly import launchdarkly_flags\n",
+        "om/src/acme/om/media/impl/manager.py": "from acme.infra.flags import Flag, FlagsInterface\n",
+    }
+    assert found(tmp_path, "DEL-22", files) == (0, [])
+
+
+def test_del_22_a_vendor_flag_import_outside_infra_flags_fails(tmp_path):
+    files = {
+        "om/src/acme/om/media/impl/manager.py": "import ldclient\nfrom acme.infra.flags import Flag\n",
+        "services/api/src/acme/services/api/routers/flags.py": "from openfeature.api import get_client\n",
+        "infra/src/acme/infra/cache/memory.py": "from UnleashClient import UnleashClient\n",
+    }
+    code, where = found(tmp_path, "DEL-22", files)
+    assert code == 1
+    assert sorted((path, line) for _, path, line in where) == [
+        ("infra/src/acme/infra/cache/memory.py", 1),
+        ("om/src/acme/om/media/impl/manager.py", 1),
+        ("services/api/src/acme/services/api/routers/flags.py", 1),
+    ]
+
+
+def test_del_22_the_vendors_are_an_option(tmp_path):
+    pyproject = WORKSPACE + '\n[tool.arch-check.options.DEL-22]\nvendors = ["inhouse_flags"]\n'
+    source = "import inhouse_flags\nimport ldclient\n"
+    code, where = found(tmp_path, "DEL-22", {"om/src/acme/om/orders/impl.py": source}, pyproject)
+    assert (code, [line for _, _, line in where]) == (1, [1])
+
+
 # --- DEL-23
 
 GOOD_ADR = "# 1. One root package\n\nDate: 2026-09-16\n\n## Context\n\nx\n\n## Decision\n\ny\n\n## Consequences\n\nz\n"

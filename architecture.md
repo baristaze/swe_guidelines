@@ -150,6 +150,7 @@ These are the invariants. Each links the section that states it.
   - [Topics](#topics)
   - [Queues](#queues)
   - [Secrets](#secrets)
+  - [Feature Flags](#feature-flags)
   - [Idempotency](#idempotency)
 - [The Network Layer](#the-network-layer)
   - [How It Starts and Where It Goes](#how-it-starts-and-where-it-goes)
@@ -1151,9 +1152,10 @@ difference, and a test with two tenants' rows catches a missing lift.
 ## Infrastructure
 
 Managers need more than rows. A cache skips an expensive read, a bucket
-parks a blob, a topic wakes other processes, and a secret store
-resolves a credential. These are capabilities, not a layer: a manager
-takes one the way it takes a storage, in its constructor.
+parks a blob, a topic wakes other processes, a secret store resolves a
+credential, and a flag turns a path off without a deploy. These are
+capabilities, not a layer: a manager takes one the way it takes a
+storage, in its constructor.
 
 ### Infrastructure Principles
 
@@ -1162,7 +1164,7 @@ takes one the way it takes a storage, in its constructor.
 - Every capability is an interface with swappable impls, and a caller
   does not know which it holds.
 - The OM imports infra interfaces. Infra imports nothing from the OM.
-- Tenancy is a keying concern. Cache, buckets, and secrets take
+- Tenancy is a keying concern. Cache, buckets, secrets, and flags take
   `org_id` first, and topic payloads carry it.
 - Cross-tenant reference data uses `EMPTY_UUID` as its `org_id`, which
   infra knows by value, without importing the OM.
@@ -1271,6 +1273,44 @@ writes it. The value is resolved for one operation and never enters an
 entity, a log, an audit payload, an error, or a subprocess's
 environment. The process's own credentials, injected at start, are
 another kind.
+
+### Feature Flags
+
+A feature flag is a release toggle or a kill switch: it turns a path
+off without a deploy, for everyone, for an org, or for a person in it.
+What a tenant may do is not a flag but a modelled entity
+([Configuration](#configuration)). Every flag is declared in code, in
+the `Flag` enum, with its default and a mark that says whether a client
+may read it
+([`flags/`](scaffold/acme_root/infra/src/acme/infra/flags/)).
+
+One call, `evaluate(org_id, user_id)`, answers a `FlagSet`: every
+declared flag's value for one audience, the org and, when given, the
+person inside it. A rule on the person wins over a rule on the org,
+that over the provider's default, and that over the code's. A flag the
+provider does not know, or a provider that fails, reads its default.
+A server check reads one value, and the operation it gates is refused
+on the server, whatever a client shows. A client reads a snapshot of
+the flags marked for it, from the API, never from the provider.
+
+The deployed impl evaluates in the process through OpenFeature, the
+vendor-neutral flag API, over the provider of the vendor the settings
+name. Its targeting key is the org, so a rollout is sticky per org,
+and `user_id` is an attribute a rule targets. Nothing outside the flags
+package imports OpenFeature or a vendor's SDK. The flag provider is
+chosen apart from the identity provider: no flag impl imports the
+identity integration or tenancy.
+
+<!-- agents-only
+A manager takes `FlagsInterface`, from `InfraInterface.get_flags()`, in
+its constructor. `ACME_FLAGS_BACKEND` is `memory` (a rules file, local
+only), `launchdarkly` (refused at boot without its key), or `none`
+(every flag reads its default, and the boot line says so); a deployed
+environment refuses `memory`. `FlagSet.for_clients()` holds the flags a
+client may read, and `GET /v1/flags` serves them with an `ETag`, `304`
+to a matching `If-None-Match`. A gated operation raises a typed error,
+`FeatureOff`.
+-->
 
 ### Idempotency
 
@@ -2216,7 +2256,7 @@ is the whole tree ([`scaffold/acme_root/`](scaffold/acme_root/)):
 ```text
 [root]/
 ├── om/               # acme-om: the object model, storage, migrations
-├── infra/            # acme-infra: cache, buckets, topics, queues, secrets
+├── infra/            # acme-infra: cache, buckets, topics, queues, secrets, flags
 ├── integrations/     # third-party providers: interface, client, twin
 ├── services/api/     # the API process: gateway, routers, services, types
 ├── workers/          # one folder per worker role
@@ -2377,7 +2417,10 @@ Every process reads one settings object at boot, from environment
 variables under one prefix, documented in `.env.example`. Backends are
 chosen there and nowhere else, and a browser app reads its settings
 from the `config.json` beside its bundle. Variation that belongs to the
-product is a modelled entity, not a flag.
+product, what a tenant may do or what a plan allows, is a modelled
+entity. A release toggle or a kill switch is a [feature
+flag](#feature-flags), declared in code and evaluated through its
+infra interface.
 
 > **Principle:** One settings object per process, read once at boot.
 > Backends are chosen there; nothing below reads the environment.
@@ -2437,7 +2480,8 @@ for the object model; FastAPI on uvicorn, httpx, and Typer; SQLAlchemy
 and Alembic over Postgres; Valkey, an S3-like object store, and SQS;
 React and TypeScript on Vite, with TanStack Query and Zustand; uv, pnpm,
 and Docker Compose; AWS in Terraform, with ECS Fargate and CloudFront;
-OpenTelemetry, Prometheus, and the Sentry SDK.
+OpenTelemetry, Prometheus, and the Sentry SDK; OpenFeature, with
+LaunchDarkly as its provider.
 
 A guideline that says "a relational database" leaves a decision open at
 every step. One that says "Postgres" closes it the same way for
