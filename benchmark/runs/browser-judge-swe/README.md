@@ -54,6 +54,7 @@ The columns:
 
 | Run | Started (UTC) | Head | Sizes | chatgpt.com | claude.ai | gemini.google.com | grok.com | Set | Note |
 |---|---|---|---|---|---|---|---|---|---|
+| [20261008-061302](20261008-061302/results.json) | 2026-10-08 06:13 | `c80a8dc` | m, m | — | [83](20261008-061302/claude.ai.md) Opus 5.5, High | — | — | B | — |
 | [20261007-145110](20261007-145110/results.json) | 2026-10-07 14:51 | `d493ebc` | m, m | — | [74](20261007-145110/claude.ai.md) Opus 5.5, High | — | — | D | A session read the earlier scores, so the run compares with none; claude.ai read earlier runs |
 | [20261007-084248](20261007-084248/results.json) | 2026-10-07 08:42 | `54bc842` | m, m | [92](20261007-084248/chatgpt.com.md) Latest, High | [not-run](20261007-084248/claude.ai.md) | [refused](20261007-084248/gemini.google.com.md) 3.1 Pro | [84](20261007-084248/grok.com.md) Expert | B | claude.ai: the page read "Computer actions available" right after the send; gemini.google.com: the answer says "I wasn't able to access the GitHub repository you shared" |
 | [20261007-073011](20261007-073011/results.json) | 2026-10-07 07:30 | `3cd6665` | m, m | [94](20261007-073011/chatgpt.com.md) Latest, High | [not-run](20261007-073011/claude.ai.md) | [refused](20261007-073011/gemini.google.com.md) 3.1 Pro | [81](20261007-073011/grok.com.md) Expert | B | claude.ai: right after the send, the conversation page's text read "Computer actions available"; gemini.google.com: the product declined to evaluate: "I wasn't able to access the GitHub repository you shared directly." |
