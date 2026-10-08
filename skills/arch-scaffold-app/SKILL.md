@@ -12,8 +12,9 @@ Conventions: `../_shared/scaffold-conventions.md`.
 Sections of `../../architecture.md`: The Network
 Layer (Clients Live in One Place, Direction of Calls), Apps (Apps Are
 Dumb, Push-First Apps), Client App Architecture (Stack; State and Data;
-Views, View-Models, Models; API Access; One Tenant at a Time; Realtime:
-One Channel per App; The Operator Console; The CLI Is Different),
+Views, View-Models, Models; API Access; One Tenant at a Time; Flags in
+the Client; Realtime: One Channel per App; The Operator Console; The CLI
+Is Different),
 Deployment (Cloud: AWS).
 
 ## Input
@@ -68,7 +69,12 @@ portal.
 3. A second portal works in one tenant at a time, as the portal does:
    no screen past the gate renders before a membership is chosen, and a
    switch clears the query cache and every tenant store and reopens the
-   socket before the new tenant's first request.
+   socket before the new tenant's first request. It reads its flags as
+   the portal's `src/queries/flags.ts` does: one snapshot of
+   `GET /v1/flags` under a key of its key factory, read by the
+   signed-in shell, again on focus and on an interval, and one flag
+   through `useFlag`. It depends on no flag vendor's SDK. The console
+   has no tenant, so it reads no flags.
 4. A command line reads its settings once, at the start of `main`, and
    hands them to the client's constructor; nothing below `main` reads
    the environment. Every call goes through `<name>-client`. A followed

@@ -1081,3 +1081,59 @@ def bounded_labels(project: Project) -> Iterator[Violation]:
                     label = const_str(elt)
                     if label and ID_LABEL.match(label):
                         yield Violation.at(file.rel, elt, f"label {label!r} is unbounded; a label is never an id")
+
+
+# --- DEL-52
+
+CLIENT_FLAG_VENDORS = [
+    "@openfeature/",
+    "launchdarkly-js-client-sdk",
+    "launchdarkly-react-client-sdk",
+    "@launchdarkly/",
+    "unleash-proxy-client",
+    "@unleash/",
+    "flagsmith",
+    "react-flagsmith",
+    "@growthbook/",
+    "statsig-js",
+    "statsig-react",
+    "@statsig/",
+    "@splitsoftware/",
+    "configcat-js",
+    "configcat-react",
+    "@optimizely/",
+    "@eppo/",
+    "@devcycle/",
+]
+"""OpenFeature and the flag vendors' JavaScript SDKs: a package name, or a scope ending in `/`."""
+
+
+def names_a_vendor(dep: str, vendors: set[str]) -> bool:
+    """Whether a package is one of `vendors`, or under a scope one of them names."""
+    return dep in vendors or any(v.endswith("/") and dep.startswith(v) for v in vendors)
+
+
+@rule(
+    "DEL-52",
+    options=("vendors",),
+    coverage="partial",
+    summary="No browser app depends on OpenFeature or a flag vendor's SDK.",
+)
+def flags_from_the_api(project: Project) -> Iterator[Violation]:
+    """A browser app reads its flags as one snapshot from its own API.
+
+    No `apps/*/package.json` names OpenFeature or a flag vendor's SDK.
+    Option `[tool.arch-check.options.DEL-52]`: `vendors`, the npm
+    packages that count, each a name or a scope ending in `/` (default
+    `CLIENT_FLAG_VENDORS`). When the snapshot is read again, what a
+    switch drops, and whether a flag reads off until it arrives, are
+    judged.
+    """
+    vendors = set(project.option("DEL-52", "vendors", list(CLIENT_FLAG_VENDORS), {"vendors"}))
+    for rel, deps in browser_apps(project):
+        if isinstance(deps, Violation):
+            yield deps
+            continue
+        for dep in sorted(deps):
+            if names_a_vendor(dep, vendors):
+                yield Violation(rel, 1, 1, f"depends on {dep}; a browser app reads its flags from its own API")

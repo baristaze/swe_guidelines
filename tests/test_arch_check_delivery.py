@@ -530,6 +530,7 @@ def test_del_22_the_vendors_are_an_option(tmp_path):
     assert (code, [line for _, _, line in where]) == (1, [1])
 
 
+
 # --- DEL-23
 
 GOOD_ADR = "# 1. One root package\n\nDate: 2026-09-16\n\n## Context\n\nx\n\n## Decision\n\ny\n\n## Consequences\n\nz\n"
@@ -733,3 +734,31 @@ def test_del_10_a_tag_or_a_range_is_no_pin(tmp_path, run):
     image = GOOD_IMAGE.replace("FROM python:3.14-slim\nUSER", f"FROM python:3.14-slim\n{run}\nUSER", 1)
     code, where = found(tmp_path, "DEL-10", {"deployment/docker/api.Dockerfile": image})
     assert (code, [line for _, _, line in where]) == (1, [5])
+
+
+# --- DEL-52
+
+
+def test_del_52_a_browser_app_with_no_flag_sdk_passes(tmp_path):
+    files = {"apps/portal/package.json": PORTAL, "apps/console/package.json": PORTAL}
+    assert found(tmp_path, "DEL-52", files) == (0, [])
+
+
+def test_del_52_a_browser_app_on_a_flag_sdk_fails(tmp_path):
+    files = {
+        "apps/portal/package.json": '{"dependencies": {"react": "1", "@openfeature/web-sdk": "1"}}',
+        "apps/console/package.json": '{"devDependencies": {"launchdarkly-js-client-sdk": "3"}}',
+    }
+    code, what = said(tmp_path, "DEL-52", files)
+    assert code == 1
+    assert sorted(what) == [
+        ("apps/console/package.json", "depends on launchdarkly-js-client-sdk; a browser app reads its flags from its own API"),
+        ("apps/portal/package.json", "depends on @openfeature/web-sdk; a browser app reads its flags from its own API"),
+    ]
+
+
+def test_del_52_the_vendors_are_an_option(tmp_path):
+    pyproject = WORKSPACE + '\n[tool.arch-check.options.DEL-52]\nvendors = ["@inhouse/"]\n'
+    files = {"apps/portal/package.json": '{"dependencies": {"@inhouse/flags": "1", "flagsmith": "1"}}'}
+    assert found(tmp_path, "DEL-52", files, pyproject) == (1, [("DEL-52", "apps/portal/package.json", 1)])
+
