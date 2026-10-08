@@ -66,6 +66,12 @@ output "workos_api_key_secret_arn" {
   depends_on  = [aws_secretsmanager_secret_version.workos_api_key]
 }
 
+output "launchdarkly_sdk_key_secret_arn" {
+  description = "LaunchDarkly's server-side SDK key, injected into every process as ACME_LAUNCHDARKLY_SDK_KEY; \"off\" until set, and ACME_FLAGS_BACKEND=launchdarkly refuses to start without it."
+  value       = aws_secretsmanager_secret.launchdarkly_sdk_key.arn
+  depends_on  = [aws_secretsmanager_secret_version.launchdarkly_sdk_key]
+}
+
 output "workos_webhook_secret_arn" {
   description = "The secret WorkOS signs its webhook deliveries with, injected into the API as ACME_WORKOS_WEBHOOK_SECRET; \"off\" until set, which refuses every delivery."
   value       = aws_secretsmanager_secret.workos_webhook_secret.arn

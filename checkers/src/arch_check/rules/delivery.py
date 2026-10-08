@@ -830,6 +830,54 @@ def telemetry_used_directly(project: Project) -> Iterator[Violation]:
                 yield Violation.at(file.rel, cls, f"{cls.name} wraps the telemetry API; it is used directly")
 
 
+# --- DEL-22
+
+FLAG_VENDORS = [
+    "openfeature",
+    "ldclient",
+    "ld_openfeature",
+    "UnleashClient",
+    "flagsmith",
+    "growthbook",
+    "statsig",
+    "splitio",
+    "configcatclient",
+    "optimizely",
+    "eppo_client",
+    "devcycle_python_sdk",
+]
+"""OpenFeature and the flag vendors' Python SDKs, by top-level import name."""
+
+
+@rule(
+    "DEL-22",
+    options=("vendors",),
+    coverage="partial",
+    summary="OpenFeature and a flag vendor's SDK are imported under <pkg>.infra.flags alone.",
+)
+def flags_behind_their_interface(project: Project) -> Iterator[Violation]:
+    """A flag is evaluated through `FlagsInterface`. OpenFeature and a
+    flag vendor's SDK are imported under `<pkg>.infra.flags` and nowhere
+    else: not in a manager, a service, a router, or another infra
+    package. Option `[tool.arch-check.options.DEL-22]`: `vendors`, the
+    top-level packages that count (default OpenFeature and the flag
+    vendors' SDKs in `FLAG_VENDORS`). Whether a tenant entitlement is
+    modelled as a flag, and whether a server checks what a client hides,
+    is judged."""
+    vendors = set(project.option("DEL-22", "vendors", list(FLAG_VENDORS), {"vendors"}))
+    home = f"{project.sub('infra')}.flags"
+    for file in project.python_files:
+        if is_under(file.module, home):
+            continue
+        for imp in project.imports(file):
+            if imp.module.partition(".")[0] in vendors:
+                yield Violation.at(
+                    file.rel,
+                    imp.node,
+                    f"imports {imp.module}; a flag is read through FlagsInterface, and its vendor stays under {home}",
+                )
+
+
 # --- DEL-23
 
 ADR_FILE = re.compile(r"^(\d{4})-[^/]+\.md$")

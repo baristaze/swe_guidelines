@@ -413,4 +413,5 @@ esac
 say "== 7. What remains at the providers (docs/runbooks/providers/)"
 say "- WorkOS $workos_environment: the organizations its team orgs made (external_id = the old org id) and the users who signed in. Harmless; a recreate makes new orgs. The Acme App application, its API keys, its redirects for https://$app_domain_name, and its webhook endpoint https://$api_domain_name/webhooks/identity stay, and the next $environment uses them."
 say "- The error tracker: the product's one project keeps the events $environment reported, tagged environment:$environment."
-say "- The values of acme/$environment/{workos_api_key,workos_webhook_secret,sentry_dsn} went with the secrets: a recreate writes each again after its first deploy. Revoke a key at its provider if $environment is not coming back."
+say "- LaunchDarkly: the project, its flags, and their rules stay, and the next $environment uses them."
+say "- The values of acme/$environment/{workos_api_key,workos_webhook_secret,sentry_dsn,launchdarkly_sdk_key} went with the secrets: a recreate writes each again after its first deploy. Revoke a key at its provider if $environment is not coming back."

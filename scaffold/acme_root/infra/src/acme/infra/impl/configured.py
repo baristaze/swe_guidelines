@@ -14,6 +14,10 @@ from acme.infra.cache.breaker import CacheBreakerImpl
 from acme.infra.cache.memory import CacheMemoryImpl
 from acme.infra.cache.valkey import CacheValkeyImpl
 from acme.infra.exceptions import InfraException
+from acme.infra.flags import FlagsInterface
+from acme.infra.flags.defaults import FlagsDefaultsImpl
+from acme.infra.flags.launchdarkly import launchdarkly_config, launchdarkly_flags
+from acme.infra.flags.memory import FlagsMemoryImpl
 from acme.infra.impl.settings import ENVIRONMENTS, InfraSettings
 from acme.infra.impl.valkey import ValkeyConnection
 from acme.infra.queues import QueuesInterface
@@ -39,17 +43,24 @@ UNSAFE_IN_CLOUD: tuple[tuple[str, str, str], ...] = (
     ("topics_backend", "memory", "ACME_TOPICS_BACKEND"),
     ("buckets_backend", "local", "ACME_BUCKETS_BACKEND"),
     ("queues_backend", "memory", "ACME_QUEUES_BACKEND"),
+    ("flags_backend", "memory", "ACME_FLAGS_BACKEND"),
 )
 
 
 def refuse_unsafe(settings: InfraSettings) -> None:
     """Each refusal is a one-line check that exits naming the setting. An
     environment name outside the known set is refused first, so a deployed
-    process cannot slip past the cloud checks under a misspelt name."""
+    process cannot slip past the cloud checks under a misspelt name. A flag
+    vendor named without its key is refused in every environment: the
+    process would run on no rules where rules were asked for."""
     if not settings.is_known_environment:
         raise UnsafeConfiguration(
             f"ACME_ENVIRONMENT={settings.environment} is not one of "
             f"{', '.join(sorted(ENVIRONMENTS))}"
+        )
+    if settings.flags_backend == "launchdarkly" and settings.launchdarkly_sdk_key is None:
+        raise UnsafeConfiguration(
+            "ACME_FLAGS_BACKEND=launchdarkly is refused without ACME_LAUNCHDARKLY_SDK_KEY"
         )
     if not settings.is_cloud_environment:
         return
@@ -137,6 +148,21 @@ class InfraConfiguredImpl(InfraInterface):
         else:
             self._secrets = SecretsLocalImpl(settings.secrets_file, settings.secret_overrides)
 
+        self._flags = self._build_flags()
+
+    def _build_flags(self) -> FlagsInterface:
+        """Built now and connected at start: the vendor's client blocks while
+        it connects, so it is made off the event loop."""
+        settings = self._settings
+        if settings.flags_backend == "launchdarkly":
+            assert settings.launchdarkly_sdk_key is not None  # refused without one
+            timeout = timedelta(seconds=settings.flags_timeout_seconds)
+            config = launchdarkly_config(settings.launchdarkly_sdk_key.get_secret_value(), timeout)
+            return launchdarkly_flags(config, start_wait=timeout)
+        if settings.flags_backend == "none":
+            return FlagsDefaultsImpl()
+        return FlagsMemoryImpl(file=settings.flags_file)
+
     def _build_cache(self, scope: CacheScope) -> CacheInterface:
         """Only the out-of-process impl is wrapped. The memory impl is a dict
         on this event loop: it cannot time out and cannot be down, so a breaker
@@ -163,6 +189,9 @@ class InfraConfiguredImpl(InfraInterface):
     def get_secrets(self) -> SecretsInterface:
         return self._secrets
 
+    def get_flags(self) -> FlagsInterface:
+        return self._flags
+
     def describe(self) -> list[str]:
         return [
             *(cache.describe() for cache in self._caches.values()),
@@ -170,12 +199,13 @@ class InfraConfiguredImpl(InfraInterface):
             self._buckets.describe(),
             self._queues.describe(),
             self._secrets.describe(),
+            self._flags.describe(),
         ]
 
     async def start(self) -> None:
         if self._valkey is not None:
             await self._valkey.start()
-        for capability in (self._topics, self._buckets, self._queues, self._secrets):
+        for capability in (self._topics, self._buckets, self._queues, self._secrets, self._flags):
             await capability.start()
 
     async def close(self) -> None:
@@ -183,7 +213,7 @@ class InfraConfiguredImpl(InfraInterface):
         last, once nothing holds it."""
         for cache in self._caches.values():
             await cache.close()
-        for capability in (self._secrets, self._queues, self._buckets, self._topics):
+        for capability in (self._flags, self._secrets, self._queues, self._buckets, self._topics):
             await capability.close()
         if self._valkey is not None:
             await self._valkey.close()

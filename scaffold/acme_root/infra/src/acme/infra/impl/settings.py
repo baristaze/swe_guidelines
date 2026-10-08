@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Literal
 
 from dotenv import dotenv_values
-from pydantic import Field, field_validator
+from pydantic import Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 ENVIRONMENTS = frozenset({"local", "test", "dev", "staging", "production"})
@@ -82,6 +82,18 @@ class InfraSettings(BaseSettings):
         default_factory=secret_overrides_from_environment, exclude=True, repr=False
     )
 
+    # Where the flags' rules come from: the memory impl over a rules file
+    # (local only, refused at boot anywhere else), LaunchDarkly through
+    # OpenFeature, or none, where every flag reads the default its
+    # declaration gives and the boot line says so.
+    flags_backend: Literal["memory", "launchdarkly", "none"] = "memory"
+    flags_file: Path = Path(".local/flags.json")
+    # The server-side SDK key of the LaunchDarkly environment. A process
+    # credential, injected at start from the secret store in a deployed
+    # environment and read from the environment locally. Empty or "off"
+    # means not set, and `launchdarkly` without it is refused at boot.
+    launchdarkly_sdk_key: SecretStr | None = Field(default=None, repr=False)
+
     aws_region: str = "us-east-1"
 
     # Every outbound call carries a timeout, one per client, so a downstream
@@ -90,6 +102,9 @@ class InfraSettings(BaseSettings):
     aws_timeout_seconds: float = 10.0
     valkey_timeout_seconds: float = 5.0
     otel_timeout_seconds: float = 10.0
+    # The flag vendor's connect and read, and the most boot waits for its
+    # first rules before it runs on the code's defaults.
+    flags_timeout_seconds: float = Field(default=10.0, gt=0)
 
     log_level: str = "INFO"
     log_json: bool = False
@@ -101,6 +116,16 @@ class InfraSettings(BaseSettings):
     def _presign_endpoint_empty_is_none(cls, value: str | None) -> str | None:
         """Empty, as `.env.example` leaves it, means the endpoint itself."""
         return value or None
+
+    @field_validator("launchdarkly_sdk_key")
+    @classmethod
+    def _launchdarkly_key_off_is_none(cls, value: SecretStr | None) -> SecretStr | None:
+        """Empty or "off" means not set; the cloud secret starts as "off". Named
+        for its field: a process's settings mix this class with others, and a
+        validator another class names the same would replace this one."""
+        if value is None or value.get_secret_value().strip().lower() in ("", "off"):
+            return None
+        return value
 
     @field_validator("sentry_dsn")
     @classmethod

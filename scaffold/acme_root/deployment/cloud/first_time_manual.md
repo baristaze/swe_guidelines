@@ -518,9 +518,10 @@ A bootstrap root is applied by a person before the change that needs it merges. 
 
 ## The providers: WorkOS and the error tracker
 
-Two providers sit outside AWS: WorkOS signs people in, and a
-Sentry-compatible error tracker receives the errors. Each is set up by
-hand once, in its own dashboard:
+Three providers sit outside AWS: WorkOS signs people in, a
+Sentry-compatible error tracker receives the errors, and LaunchDarkly
+holds the feature flags' rules. Each is set up by hand once, in its own
+dashboard:
 
 - [WorkOS](../../docs/runbooks/providers/workos.md): the Staging and
   Production environments, the Acme App application, its own API key
@@ -533,14 +534,20 @@ hand once, in its own dashboard:
   url and the slugs of its organization and its project go in
   `error_tracker` in `deployment/cloud/environments.json` before the
   create run; an empty url means the deployment has no tracker.
+- [LaunchDarkly](../../docs/runbooks/providers/launchdarkly.md): a
+  project with its Test and Production environments, and one flag per
+  member of `Flag`, with targeting on in each environment and its
+  default rule serving the code's default: a flag with targeting off
+  reads `false`. Until its key is written and `flags_backend` says
+  `launchdarkly`, every flag reads its default.
 
 What they share is the order, because the secret that holds each value
 is made by the deploy:
 
-1. The environment's first deploy makes the three secrets, each holding
+1. The environment's first deploy makes the four secrets, each holding
    `off`: `acme/<env>/workos_api_key`, `acme/<env>/workos_webhook_secret`,
-   and `acme/<env>/sentry_dsn`. With `off` the environment runs, and says
-   in its logs what is off.
+   `acme/<env>/sentry_dsn`, and `acme/<env>/launchdarkly_sdk_key`. With
+   `off` the environment runs, and says in its logs what is off.
 2. A person writes each value under their own sign-in, `acme-staging`
    for staging (in production `acme-prod-power`, when authorized),
    with `AWS_ACCESS_KEY_ID` and its siblings unset, as [Desired steady state](#desired-steady-state)

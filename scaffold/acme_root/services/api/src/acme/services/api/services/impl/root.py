@@ -9,6 +9,7 @@ from acme.om.root import Managers
 from acme.services.api.services import (
     AdminServiceInterface,
     EventsServiceInterface,
+    FlagsServiceInterface,
     MediaServiceInterface,
     RealtimeServiceInterface,
     ServicesInterface,
@@ -17,6 +18,7 @@ from acme.services.api.services import (
 )
 from acme.services.api.services.impl.admin import AdminServiceImpl
 from acme.services.api.services.impl.events import EventsServiceImpl
+from acme.services.api.services.impl.flags import FlagsServiceImpl
 from acme.services.api.services.impl.media import MediaServiceImpl
 from acme.services.api.services.impl.realtime import RealtimeServiceImpl
 from acme.services.api.services.impl.tenancy import TenancyServiceImpl
@@ -30,6 +32,7 @@ class ServicesImpl(ServicesInterface):
         admin: AdminServiceInterface,
         events: EventsServiceInterface,
         media: MediaServiceInterface,
+        flags: FlagsServiceInterface,
         realtime: RealtimeServiceInterface,
         webhooks: WebhooksServiceInterface,
     ) -> None:
@@ -37,6 +40,7 @@ class ServicesImpl(ServicesInterface):
         self._admin = admin
         self._events = events
         self._media = media
+        self._flags = flags
         self._realtime = realtime
         self._webhooks = webhooks
 
@@ -51,6 +55,9 @@ class ServicesImpl(ServicesInterface):
 
     def get_media_service(self) -> MediaServiceInterface:
         return self._media
+
+    def get_flags_service(self) -> FlagsServiceInterface:
+        return self._flags
 
     def get_realtime_service(self) -> RealtimeServiceInterface:
         return self._realtime
@@ -72,6 +79,7 @@ def build_services(
         admin=AdminServiceImpl(managers.tenancy_operator, managers.work_operator),
         events=EventsServiceImpl(managers.events),
         media=MediaServiceImpl(managers.media),
+        flags=FlagsServiceImpl(infra.get_flags()),
         realtime=RealtimeServiceImpl(
             managers.tenancy, managers.events, infra.get_topics(), head_max_age
         ),

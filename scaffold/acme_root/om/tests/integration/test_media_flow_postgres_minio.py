@@ -16,6 +16,7 @@ from contracts.factories import make_org
 
 from acme.infra.buckets import Buckets
 from acme.infra.buckets.s3 import BucketsS3Impl
+from acme.infra.flags.defaults import FlagsDefaultsImpl
 from acme.infra.impl.settings import InfraSettings
 from acme.infra.topics.memory import TopicsMemoryImpl
 from acme.om.base import new_id, utcnow
@@ -91,7 +92,10 @@ def manager(
         OutboxStoragePostgresImpl(sessions), EventStoragePostgresImpl(sessions), TopicsMemoryImpl()
     )
     members = Members()  # pyright: ignore[reportAbstractUsage] (a partial double)
-    return MediaManagerImpl(storage, buckets, members, relay, options or MediaOptions()), storage
+    flags = FlagsDefaultsImpl()
+    return MediaManagerImpl(
+        storage, buckets, members, relay, flags, options or MediaOptions()
+    ), storage
 
 
 def a_file(ctx: TenantContext, size: int = len(PDF), content_type: str = "application/pdf") -> File:

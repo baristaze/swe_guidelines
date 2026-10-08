@@ -23,3 +23,6 @@ and the ADR that says why it has that shape.
 - [providers/workos.md](providers/workos.md): the identity provider: its
   environments, the application and its key, the redirects, the webhook,
   and what breaks.
+- [providers/launchdarkly.md](providers/launchdarkly.md): the flag
+  provider: how a rule reaches an org or a person, the SDK key, the
+  switch from none, and what breaks.

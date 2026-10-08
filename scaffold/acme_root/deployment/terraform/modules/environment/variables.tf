@@ -42,6 +42,17 @@ variable "workos_client_id" {
   type        = string
 }
 
+variable "flags_backend" {
+  description = "Where the feature flags' rules come from, passed to every process as ACME_FLAGS_BACKEND: launchdarkly, once its SDK key is in the secret store (docs/runbooks/providers/launchdarkly.md), or none, where every flag reads the default its declaration gives. The memory backend is local only, and a deployed process refuses it."
+  type        = string
+  default     = "none"
+
+  validation {
+    condition     = contains(["launchdarkly", "none"], var.flags_backend)
+    error_message = "flags_backend must be launchdarkly or none; a deployed process refuses memory."
+  }
+}
+
 variable "site_domain_name" {
   description = "The company site's public name: acme.example, or staging.acme.example for staging. A record in the Cloudflare zone, not a hosted zone here; an issued certificate for it must exist in us-east-1 (the bootstrap root's). Empty leaves the site out and changes nothing else."
   type        = string
