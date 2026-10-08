@@ -52,7 +52,7 @@ the copy was, and `git merge scaffold` brings in what the scaffold
 changed since the copy's base, keeping what the copy changed:
 
 ```bash
-python3 scaffold/base.py v0.52.2 --repo ~/code/pressroom
+python3 scaffold/base.py v0.53.0 --repo ~/code/pressroom
 cd ~/code/pressroom && git switch -c scaffold-v0-41-0 && git merge scaffold
 ```
 
