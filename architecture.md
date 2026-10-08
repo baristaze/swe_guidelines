@@ -1899,8 +1899,9 @@ snapshot of the flags marked for clients
 ([Feature Flags](#feature-flags)). It reads the snapshot once the
 exchange is done and keeps it in the query cache under a key of its key
 factory, so a switch drops it with the old tenant's caches. It reads it
-again when the window regains focus and on an interval, and the
-snapshot's `ETag` turns a read that finds nothing new into a `304`.
+again when the window regains focus and on an interval. It polls because
+no push names a flag's change, which is no event the system records, and
+the snapshot's `ETag` turns a read that finds nothing new into a `304`.
 Until the snapshot arrives, a flag reads off.
 
 The flags are not a claim in the token. A token outlives a change to a
