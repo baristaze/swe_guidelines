@@ -29,6 +29,9 @@ x-app-env: &app-env
   ACME_SQS_ENDPOINT_URL: http://elasticmq:9324
   ACME_SECRETS_BACKEND: local
   ACME_SECRETS_FILE: /run/acme/secrets.env
+  # No rules file in the container: every flag reads its default.
+  ACME_FLAGS_BACKEND: memory
+  ACME_FLAGS_FILE: /run/acme/flags.json
   ACME_AWS_REGION: us-east-1
   ACME_LOG_JSON: "true"
   # Traces to Jaeger and errors to GlitchTip, both in the devx profile; without

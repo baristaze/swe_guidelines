@@ -196,6 +196,30 @@ resource "aws_secretsmanager_secret_version" "workos_api_key" {
   }
 }
 
+# LaunchDarkly's server-side SDK key for this environment: the flags'
+# rules, read through OpenFeature. A process credential, injected into
+# every process that boots the infra root as ACME_LAUNCHDARKLY_SDK_KEY, and
+# named outside the application prefix so no process reaches it through
+# the secrets capability. Terraform creates it as "off" and never writes it
+# again; a process asked for ACME_FLAGS_BACKEND=launchdarkly refuses to
+# start while it is "off", so set it before that switch, as
+# docs/runbooks/providers/launchdarkly.md says:
+#   aws secretsmanager put-secret-value --secret-id <prefix>launchdarkly_sdk_key --secret-string <key>
+resource "aws_secretsmanager_secret" "launchdarkly_sdk_key" {
+  name                    = "${var.prefix}launchdarkly_sdk_key"
+  recovery_window_in_days = local.recovery_window_in_days
+  tags                    = local.tags
+}
+
+resource "aws_secretsmanager_secret_version" "launchdarkly_sdk_key" {
+  secret_id     = aws_secretsmanager_secret.launchdarkly_sdk_key.id
+  secret_string = "off"
+
+  lifecycle {
+    ignore_changes = [secret_string]
+  }
+}
+
 # The secret WorkOS signs each webhook delivery with, which the API checks
 # at /webhooks/identity before it queues the delivery for the worker. A
 # process credential of the API alone, injected as ACME_WORKOS_WEBHOOK_SECRET

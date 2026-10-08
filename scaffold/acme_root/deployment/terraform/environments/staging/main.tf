@@ -22,6 +22,10 @@ module "environment" {
   # its secret.
   workos_client_id  = var.workos_client_id
   portal_sentry_dsn = var.portal_sentry_dsn
+  # Every flag reads its default until LaunchDarkly's SDK key is in the
+  # secret store; then this becomes "launchdarkly"
+  # (docs/runbooks/providers/launchdarkly.md).
+  flags_backend = "none"
 
   # Scale: size XS (deployment/cloud/README.md prices every size).
   # Everything below is what makes this environment the smaller one. The

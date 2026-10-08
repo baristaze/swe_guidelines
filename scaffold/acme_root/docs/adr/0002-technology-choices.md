@@ -20,6 +20,7 @@ Acme adopts every technology the guideline names, save one substitution:
 | Inbound queue | SQS (ElasticMQ locally) |
 | Topic bus | Valkey pub/sub (an in-process dispatcher in tests) |
 | Secret store | AWS Secrets Manager (the environment and a file locally) |
+| Feature flags | OpenFeature, with LaunchDarkly's provider (a rules file locally) |
 | Browser apps | React, TypeScript, Vite, TanStack Query, Zustand; served from S3 through CloudFront in the cloud |
 | Workspaces | uv, pnpm |
 | Local stack | Docker Compose |

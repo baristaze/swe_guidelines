@@ -51,6 +51,7 @@ locals {
     ACME_SQS_QUEUE_PREFIX    = module.queue.prefix
     ACME_SECRETS_BACKEND     = "aws"
     ACME_SECRETS_NAME_PREFIX = module.secrets.application_prefix
+    ACME_FLAGS_BACKEND       = var.flags_backend
     ACME_AWS_REGION          = var.region
     ACME_LOG_JSON            = "true"
     ACME_DATABASE_POOL_SIZE  = tostring(var.database_pool_size)
@@ -81,6 +82,9 @@ locals {
     ACME_DATABASE_URL        = module.secrets.database_url_secret_arn
     ACME_DATABASE_SYSTEM_URL = module.secrets.database_system_url_secret_arn
     ACME_SENTRY_DSN          = module.secrets.sentry_dsn_secret_arn
+    # Every process that boots the infra root reads it, whichever backend
+    # the flags use; with none it is read and ignored.
+    ACME_LAUNCHDARKLY_SDK_KEY = module.secrets.launchdarkly_sdk_key_secret_arn
   }
 
   # A one-off task opens small pools: it runs one command, not requests.
