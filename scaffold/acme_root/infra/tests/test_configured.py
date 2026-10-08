@@ -7,6 +7,7 @@ from pydantic import ValidationError
 from acme.infra.base import new_id
 from acme.infra.cache import CacheScope
 from acme.infra.cache.breaker import CacheBreakerImpl
+from acme.infra.flags import code_defaults
 from acme.infra.impl.configured import InfraConfiguredImpl, UnsafeConfiguration
 from acme.infra.impl.settings import InfraSettings
 from acme.infra.topics.breaker import TopicsBreakerImpl
@@ -17,7 +18,10 @@ CLOUD_BACKENDS = {
     "topics_backend": "valkey",
     "buckets_backend": "s3",
     "queues_backend": "sqs",
+    "flags_backend": "none",
 }
+
+SDK_KEY = "sdk-0b1d4c2e-flags-test-key"
 
 
 @pytest.fixture(autouse=True)
@@ -33,6 +37,7 @@ def local_settings(tmp_path: Path, **overrides: object) -> InfraSettings:
         "environment": "local",
         "buckets_root": tmp_path / "buckets",
         "secrets_file": tmp_path / "secrets.env",
+        "flags_file": tmp_path / "flags.json",
     }
     return InfraSettings.model_validate({**base, **overrides})
 
@@ -46,6 +51,7 @@ def local_settings(tmp_path: Path, **overrides: object) -> InfraSettings:
         ("topics_backend", "memory"),
         ("buckets_backend", "local"),
         ("queues_backend", "memory"),
+        ("flags_backend", "memory"),
     ],
 )
 def test_deployed_environments_refuse_local_backends(
@@ -76,6 +82,7 @@ async def test_local_environment_builds_local_impls(tmp_path: Path) -> None:
         f"buckets=local({tmp_path / 'buckets'})",
         "queues=memory",
         f"secrets=local({tmp_path / 'secrets.env'})",
+        f"flags=memory({tmp_path / 'flags.json'})",
     ]
     await infra.start()
     await infra.close()
@@ -89,11 +96,48 @@ def test_cloud_backends_are_constructed_without_connecting(tmp_path: Path) -> No
         "buckets=s3(us-east-1)",
         "queues=sqs(us-east-1)",
         "secrets=aws(us-east-1)",
+        "flags=none(every flag reads its default)",
     ]
     assert (
         infra.get_cache(CacheScope.NETWORK_RESPONSE).describe()
         == "cache[network_response]=valkey+breaker(3/30s)"
     )
+
+
+@pytest.mark.parametrize("environment", ["local", "staging"])
+@pytest.mark.parametrize("key", [None, "", "off"])
+def test_launchdarkly_without_its_key_is_refused(
+    tmp_path: Path, environment: str, key: str | None
+) -> None:
+    """A process that asked for rules never runs on none in silence."""
+    settings = local_settings(
+        tmp_path,
+        environment=environment,
+        **{**CLOUD_BACKENDS, "flags_backend": "launchdarkly"},
+        launchdarkly_sdk_key=key,
+    )
+    with pytest.raises(UnsafeConfiguration) as raised:
+        InfraConfiguredImpl(settings)
+    assert "ACME_LAUNCHDARKLY_SDK_KEY" in raised.value.message
+
+
+async def test_no_flag_backend_boots_on_the_codes_defaults_and_says_so(tmp_path: Path) -> None:
+    infra = InfraConfiguredImpl(local_settings(tmp_path, environment="staging", **CLOUD_BACKENDS))
+    assert infra.describe()[-1] == "flags=none(every flag reads its default)"
+    assert await infra.get_flags().evaluate(new_id(), new_id()) == code_defaults()
+
+
+def test_the_launchdarkly_key_is_in_no_boot_line_and_no_repr(tmp_path: Path) -> None:
+    settings = local_settings(
+        tmp_path,
+        environment="staging",
+        **{**CLOUD_BACKENDS, "flags_backend": "launchdarkly"},
+        launchdarkly_sdk_key=SDK_KEY,
+    )
+    infra = InfraConfiguredImpl(settings)
+    assert infra.describe()[-1] == "flags=launchdarkly(openfeature)"
+    assert not [line for line in infra.describe() if SDK_KEY in line]
+    assert SDK_KEY not in repr(settings)
 
 
 def test_the_breaker_wraps_the_out_of_process_impls_and_only_those(tmp_path: Path) -> None:

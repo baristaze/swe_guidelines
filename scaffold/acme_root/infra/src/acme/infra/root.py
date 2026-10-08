@@ -6,6 +6,7 @@ from abc import ABC, abstractmethod
 
 from acme.infra.buckets import BucketsInterface
 from acme.infra.cache import CacheInterface, CacheScope
+from acme.infra.flags import FlagsInterface
 from acme.infra.queues import QueuesInterface
 from acme.infra.secrets import SecretsInterface
 from acme.infra.topics import TopicsInterface
@@ -26,6 +27,9 @@ class InfraInterface(ABC):
 
     @abstractmethod
     def get_secrets(self) -> SecretsInterface: ...
+
+    @abstractmethod
+    def get_flags(self) -> FlagsInterface: ...
 
     @abstractmethod
     def describe(self) -> list[str]:

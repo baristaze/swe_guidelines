@@ -76,6 +76,9 @@ version = "0.1.0"
 source = { editable = "infra" }
 dependencies = [
     { name = "aioboto3" },
+    { name = "launchdarkly-openfeature-server" },
+    { name = "launchdarkly-server-sdk" },
+    { name = "openfeature-sdk" },
     { name = "opentelemetry-exporter-otlp-proto-http" },
     { name = "opentelemetry-sdk" },
     { name = "prometheus-client" },
@@ -90,6 +93,9 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "aioboto3", specifier = ">=15.5" },
+    { name = "launchdarkly-openfeature-server", specifier = ">=0.8.2" },
+    { name = "launchdarkly-server-sdk", specifier = ">=9.18.1" },
+    { name = "openfeature-sdk", specifier = ">=0.10.0" },
     { name = "opentelemetry-exporter-otlp-proto-http", specifier = ">=1.44" },
     { name = "opentelemetry-sdk", specifier = ">=1.44" },
     { name = "prometheus-client", specifier = ">=0.26" },
@@ -744,6 +750,15 @@ wheels = [
 ]
 
 [[package]]
+name = "expiringdict"
+version = "1.2.2"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/fc/62/c2af4ebce24c379b949de69d49e3ba97c7e9c9775dc74d18307afa8618b7/expiringdict-1.2.2.tar.gz", hash = "sha256:300fb92a7e98f15b05cf9a856c1415b3bc4f2e132be07daa326da6414c23ee09", size = 8137, upload-time = "2022-06-21T09:12:30.415Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/cb/84/a04c59324445f4bcc98dc05b39a1cd07c242dde643c1a3c21e4f7beaf2f2/expiringdict-1.2.2-py3-none-any.whl", hash = "sha256:09a5d20bc361163e6432a874edd3179676e935eb81b925eccef48d409a8a45e8", size = 8456, upload-time = "2022-06-21T09:12:28.652Z" },
+]
+
+[[package]]
 name = "fastapi"
 version = "0.141.1"
 source = { registry = "https://pypi.org/simple" }
@@ -1027,6 +1042,48 @@ wheels = [
 ]
 
 [[package]]
+name = "launchdarkly-eventsource"
+version = "1.7.3"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "urllib3" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/f5/b6/be13d4bff6ed3db625bcee9e4aef97496a014d271767be28816fc9502330/launchdarkly_eventsource-1.7.3.tar.gz", hash = "sha256:e47e32a4752e60795038deec463f63a6c6e4c20d944df155fa63036edff20450", size = 48482, upload-time = "2026-09-17T16:00:30.059Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/24/e0/68172b381d599a87675c58783387f12fa184a1da54f9f9de7de5cb08e42e/launchdarkly_eventsource-1.7.3-py3-none-any.whl", hash = "sha256:f83f6c8289d1f4b4945522cbd2b8630bd0673e6952eb2af5d32dfa0aa068ee8f", size = 29547, upload-time = "2026-09-17T16:00:29.108Z" },
+]
+
+[[package]]
+name = "launchdarkly-openfeature-server"
+version = "0.8.2"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "launchdarkly-server-sdk" },
+    { name = "openfeature-sdk" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/3a/24/f4cb51e0167876ece893bece3b94bbb858686ac7d40e0006eb66c4a4437d/launchdarkly_openfeature_server-0.8.2.tar.gz", hash = "sha256:8c7304245957bda1da3d4ac319ec4ffe4a794afaf720dce03fbf5fea77b93263", size = 15213, upload-time = "2026-10-02T22:22:41.516Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/80/5e/e618d71b94afe3538ec7d32bc8216ec245ae09b3154c8b32a42b88e616a8/launchdarkly_openfeature_server-0.8.2-py3-none-any.whl", hash = "sha256:52dc7e181733989abad326eae84a926afd5e710514071b8d776cb7586cb66501", size = 13444, upload-time = "2026-10-02T22:22:40.616Z" },
+]
+
+[[package]]
+name = "launchdarkly-server-sdk"
+version = "9.18.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "certifi" },
+    { name = "expiringdict" },
+    { name = "launchdarkly-eventsource" },
+    { name = "pyrfc3339" },
+    { name = "semver" },
+    { name = "urllib3" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/74/fd/de64737a6fe25da4ad31294797e40627a4dd05a4626a3f0f95c1b8525267/launchdarkly_server_sdk-9.18.1.tar.gz", hash = "sha256:e887b3532d731ba90683da41e3682fa366267beae8f12a35223957ad5b83e694", size = 412197, upload-time = "2026-10-06T22:20:54.464Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/ac/0c/d04982eb5d7d2b72dba84c57ff641f09296e3fca5e4c6ad9ab809e0985d4/launchdarkly_server_sdk-9.18.1-py3-none-any.whl", hash = "sha256:8fb15514f69c6042717f540e3f849148d5b733bf1dcddb22c243cc0167691b6c", size = 282926, upload-time = "2026-10-06T22:20:53.198Z" },
+]
+
+[[package]]
 name = "mako"
 version = "1.4.1"
 source = { registry = "https://pypi.org/simple" }
@@ -1209,6 +1266,15 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/24/bf/d1bda4f6168e0b2e9e5958945e01910052158313224ada5ce1fb2e1113b8/nodeenv-1.10.0.tar.gz", hash = "sha256:996c191ad80897d076bdfba80a41994c2b47c68e224c542b48feba42ba00f8bb", size = 55611, upload-time = "2025-12-20T14:08:54.006Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/88/b2/d0896bdcdc8d28a7fc5717c305f1a861c26e18c05047949fb371034d98bd/nodeenv-1.10.0-py2.py3-none-any.whl", hash = "sha256:5bb13e3eed2923615535339b3c620e76779af4cb4c6a90deccc9e36b274d3827", size = 23438, upload-time = "2025-12-20T14:08:52.782Z" },
+]
+
+[[package]]
+name = "openfeature-sdk"
+version = "0.10.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/24/30/cfc684b7d8314398d476ae8ed515c10db99c4d7f950989db464b4ded12ce/openfeature_sdk-0.10.0.tar.gz", hash = "sha256:938c2540bdea4da3b01ef507517ee636f223a35abaaca845c5587e594151b052", size = 33516, upload-time = "2026-06-01T19:45:35.136Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/da/44/8a4f5225e930ff0d999fd43f5d743a4babeb6c7e76dddc00f0e118878ef3/openfeature_sdk-0.10.0-py3-none-any.whl", hash = "sha256:75497ea75d73f684eef509a25f79ad6386368862e050af80ab70a44ae49b33e4", size = 38941, upload-time = "2026-06-01T19:45:33.011Z" },
 ]
 
 [[package]]
@@ -1539,6 +1605,15 @@ wheels = [
 ]
 
 [[package]]
+name = "pyrfc3339"
+version = "2.1.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/b4/7f/3c194647ecb80ada6937c38a162ab3edba85a8b6a58fa2919405f4de2509/pyrfc3339-2.1.0.tar.gz", hash = "sha256:c569a9714faf115cdb20b51e830e798c1f4de8dabb07f6ff25d221b5d09d8d7f", size = 12589, upload-time = "2025-08-23T16:40:31.889Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/34/90/0200184d2124484f918054751ef997ed6409cb05b7e8dcbf5a22da4c4748/pyrfc3339-2.1.0-py3-none-any.whl", hash = "sha256:560f3f972e339f579513fe1396974352fd575ef27caff160a38b312252fcddf3", size = 6758, upload-time = "2025-08-23T16:40:30.49Z" },
+]
+
+[[package]]
 name = "pyright"
 version = "1.1.414"
 source = { registry = "https://pypi.org/simple" }
@@ -1708,6 +1783,15 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/62/74/8d69dcb7a9efe8baa2046891735e5dfe433ad558ae23d9e3c14c633d1d58/s3transfer-0.14.0.tar.gz", hash = "sha256:eff12264e7c8b4985074ccce27a3b38a485bb7f7422cc8046fee9be4983e4125", size = 151547, upload-time = "2025-09-09T19:23:31.089Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/48/f0/ae7ca09223a81a1d890b2557186ea015f6e0502e9b8cb8e1813f1d8cfa4e/s3transfer-0.14.0-py3-none-any.whl", hash = "sha256:ea3b790c7077558ed1f02a3072fb3cb992bbbd253392f4b6e9e8976941c7d456", size = 85712, upload-time = "2025-09-09T19:23:30.041Z" },
+]
+
+[[package]]
+name = "semver"
+version = "3.1.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/92/f5/e1dfe8e1d91c54ce212fd93916eb01fd1c590f413be0a0978c39a97aa1bb/semver-3.1.0.tar.gz", hash = "sha256:14bc073439513d7773662a338f4db9829cf16c12b74b9568e2d2689975fbd7fc", size = 304162, upload-time = "2026-09-12T18:38:14.045Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/be/02/bce7a1d70e9d0f6ea8623c16386138c251b5855af6cd3a11433d3fba4e66/semver-3.1.0-py3-none-any.whl", hash = "sha256:6e4998f8b4762acdfea85f9bfd5b4032e0bb50038dc04bf82011b42d5d1145c5", size = 18783, upload-time = "2026-09-12T18:38:12.457Z" },
 ]
 
 [[package]]
