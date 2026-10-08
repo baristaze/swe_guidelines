@@ -212,5 +212,6 @@ cluster `acme-<env>`, as `deployment/README.md` lists them.
 
 - WorkOS (<Staging | Production>): the organizations and users its orgs made; the application's API keys, its redirects, and its webhook endpoint https://<api name>/webhooks/identity, <kept for a recreate | for the person to remove>
 - The error tracker: the events the environment reported, tagged environment:<env>
-- Provider keys to write again on a recreate: workos_api_key, workos_webhook_secret, sentry_dsn
+- LaunchDarkly: the project, its flags, and their rules, which the next <env> uses
+- Provider keys to write again on a recreate: workos_api_key, workos_webhook_secret, sentry_dsn, launchdarkly_sdk_key
 ```
