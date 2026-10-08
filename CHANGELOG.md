@@ -5,36 +5,48 @@ included, stay on its GitHub release. Releases are tagged
 `vMAJOR.MINOR.PATCH`; see `CONTRIBUTING.md` for what bumps which
 number.
 
-## 0.52.2 (2026-10-07)
+## 0.53.0 (2026-10-08)
 
-`arch-benchmark-browser` stops a session whenever its page offers to
-act on the person's machine, and a copy's access-line test no longer
-fails on a slow answer. Patch: a skill's steps and a test, two runs
-recorded, and nothing is reversed.
-
-### Fixed
-
-- `arch-benchmark-browser` looks for a line that names a device of the
-  person's, in any state, right after the send, at every poll, and
-  once a site is done. Whenever it shows, the session is stopped with
-  the product's stop control, recorded `not-run`, and scored on
-  nothing. A link to download an app is not such a line, and no
-  evidence picture shows a device line.
-- The same skill reads an answer once, when its site is done; records a
-  decline in the model's own words as `refused`, never `errored`;
-  starts a site's polls a minute apart, the first a minute after the
-  send; and gives a row the letter of the earliest matching set when
-  more than one matches. Three passages moved unchanged to its
-  `references/`.
-- The scaffold's `test_the_access_line_times_the_answer_not_the_relay`
-  holds the access line's `duration_ms` to the time from the send to
-  the relay's measured start, not to a fixed 300 ms: the relay always
-  starts after the line's end mark, and a collector pause in the answer
-  could pass the old bound.
+A feature flag is an infra capability behind `FlagsInterface`, its
+provider chosen at boot and apart from the identity provider, and a
+client reads its session's flags as one snapshot from its own API.
+Minor, with one reversal: DEL-22 no longer calls a wrapper around a
+flag SDK a violation; a vendor's flag SDK outside the infra flags
+package is one.
 
 ### Added
 
-- Two runs of the browser benchmark on 2026-10-07, at sizes `m, m`:
-  on `3cd6665`, chatgpt.com 94 and grok.com 81; on `54bc842`,
-  chatgpt.com 92 and grok.com 84. gemini.google.com declined both,
-  unable to reach the repository, and claude.ai was stopped in both.
+- `FlagsInterface` in infra, through `InfraInterface.get_flags()`.
+  `evaluate(org_id, user_id)` answers every flag declared in code for
+  one audience: a user's rule over an org's, over the provider's
+  default, over the code's. A flag the provider does not know, or a
+  provider that fails, reads its default.
+- `ACME_FLAGS_BACKEND`: `memory` for tests and the local stack, which a
+  deployed environment refuses; `launchdarkly`, through OpenFeature,
+  refused without its key; or `none`, where every flag reads its
+  default. The LaunchDarkly key is a process secret, and its runbook's
+  go-live turns each flag's targeting on, serving the code's default.
+  ADR 0085 records the decision.
+- The scaffold's one flag, `media-uploads`: `create_file` refuses a new
+  upload with `403 feature_off` where it is off.
+- `GET /v1/flags`: the session's flags marked for clients, with an
+  `ETag`, and `304` when nothing changed.
+- The portal reads that snapshot once the tenant exchange is done, and
+  again on focus and every five minutes; a switch drops it with the old
+  tenant's caches. `useFlag` reads one flag, off until the snapshot
+  arrives, and the Storage card says when new uploads are paused.
+- The guideline's Infrastructure, Feature Flags, and Client App
+  Architecture, Flags in the Client.
+- DEL-52: a browser app depends on no flag vendor's SDK, which
+  arch-check decides from each app's `package.json`.
+
+### Changed
+
+- DEL-22, reversed: product variation stays a modelled entity, and a
+  release toggle or a kill switch is a flag behind `FlagsInterface`. A
+  vendor's flag SDK or OpenFeature imported outside the infra flags
+  package is the violation, which arch-check decides. DEL-20 no longer
+  cites a flag SDK as one used directly.
+- NET-20 allows a poll of what no push names, such as the flags
+  snapshot.
+- `arch-scaffold-app` says what a new browser app writes for flags.
