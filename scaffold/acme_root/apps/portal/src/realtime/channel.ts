@@ -5,7 +5,14 @@
 // fake socket and fake timers. The provider owns one of these per session.
 import type { EventView } from "@acme/client";
 import type { ConnectionState } from "../store/connection";
-import { entityOf, isEntityChanged, parseEnvelope, type ClientCommand, type Envelope } from "./envelopes";
+import {
+  entityOf,
+  isEntityChanged,
+  parseEnvelope,
+  type ClientCommand,
+  type Envelope,
+  type EventEnvelope,
+} from "./envelopes";
 import {
   behind,
   eventEnvelope,
@@ -42,6 +49,9 @@ export interface ChannelDeps {
    * record read back from the stream (a replay, the first catch-up) comes
    * here too, only the last record of each entity. */
   route(envelope: Envelope): void;
+  /** What a page read back from the stream routes one push of, the last
+   * (`replayKey` in `router.ts`); the entity when none is handed in. */
+  replayKey?(envelope: EventEnvelope): string;
   /** Refreshes every query, for a first catch-up the stream's tail cannot answer. */
   refreshAll(): Promise<unknown>;
   connection: { getState(): ConnectionState };
@@ -71,6 +81,7 @@ export function openChannel(deps: ChannelDeps): Channel {
   // The store's actions, which never change; its state changes on every set,
   // so a read of it goes through deps.connection.getState() each time.
   const connection = deps.connection.getState();
+  const keyOf = deps.replayKey ?? ((envelope: EventEnvelope) => entityOf(envelope.payload.kind));
   let socket: SocketLike | null = null;
   let pingTimer: ReturnType<typeof setInterval> | null = null;
   let pollTimer: ReturnType<typeof setInterval> | null = null;
@@ -140,14 +151,17 @@ export function openChannel(deps: ChannelDeps): Channel {
         return;
       }
       if (stopped) return;
-      // One route per entity, not per record: routing invalidates every query
-      // the entity is read from, so a page of two hundred records of one
+      // One route per entity, not per record, where routing invalidates every
+      // query the entity is read from: a page of two hundred records of one
       // entity that each triggered a route would cancel and restart the same
-      // refetch two hundred times over. The last record of an entity is the
-      // one routed, and every record still moves the cursor.
+      // refetch two hundred times over. Where the entity's reader reads the
+      // one record a push names, it is one route per record, and the reader
+      // gathers them. The last push of each is the one routed, and every
+      // record still moves the cursor.
       const last = new Map<string, Envelope>();
       for (const event of page) {
-        apply(eventEnvelope(event), (routed) => last.set(entityOf(event.kind), routed));
+        const envelope = eventEnvelope(event);
+        apply(envelope, (routed) => last.set(keyOf(envelope), routed));
       }
       for (const envelope of last.values()) deps.route(envelope);
       if (isLastPage(page.length, deps.pageSize) || cursor === null || cursor <= from) return;
@@ -215,7 +229,10 @@ export function openChannel(deps: ChannelDeps): Channel {
       return;
     }
     const last = new Map<string, Envelope>();
-    for (const event of recent) last.set(entityOf(event.kind), eventEnvelope(event));
+    for (const event of recent) {
+      const envelope = eventEnvelope(event);
+      last.set(keyOf(envelope), envelope);
+    }
     for (const envelope of last.values()) deps.route(envelope);
   };
 
