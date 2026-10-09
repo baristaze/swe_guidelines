@@ -2,6 +2,7 @@ from datetime import datetime
 from uuid import UUID
 
 from acme.om.exceptions import TenantMismatch
+from acme.om.leases.rules import stands_in
 from acme.om.leases.storage import LeasesStorageInterface, ResourceLandingInterface
 from acme.om.leases.types.lease import Grant, Lease, LeaseStatus
 from acme.om.leases.types.request import (
@@ -346,16 +347,17 @@ class LeasesStorageMemoryImpl(MemoryStorageBase, LeasesStorageInterface, Resourc
         for org_id, lease in self._rows_across_tenants(self._leases):
             if lease.status is LeaseStatus.ACTIVE and lease.expires_at <= lapsed_before:
                 due.add(org_id)
-        waiting_kinds: set[tuple[UUID, ResourceKind]] = set()
+        waiting: dict[UUID, list[LeaseRequest]] = {}
         for org_id, request in self._rows_across_tenants(self._requests):
             if request.status is not RequestStatus.WAITING:
                 continue
-            waiting_kinds.add((org_id, request.kind))
+            waiting.setdefault(org_id, []).append(request)
             if request.wait_until is not None and request.wait_until <= now:
                 due.add(org_id)
         for org_id, resource in self._rows_across_tenants(self._resources):
+            # Free, with a request in its own line, as the Postgres impl reads it.
             free = resource.lease_id is None and resource.available and resource.retired_at is None
-            if free and (org_id, resource.kind) in waiting_kinds:
+            if free and any(stands_in(request, resource) for request in waiting.get(org_id, ())):
                 due.add(org_id)
         return sorted(due)[:limit]
 

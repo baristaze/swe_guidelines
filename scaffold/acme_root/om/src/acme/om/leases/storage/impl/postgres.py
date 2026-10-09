@@ -2,7 +2,18 @@ from datetime import datetime
 from typing import Any, cast
 from uuid import UUID
 
-from sqlalchemy import CursorResult, Insert, Update, exists, func, select, union, update
+from sqlalchemy import (
+    CursorResult,
+    Insert,
+    Update,
+    and_,
+    exists,
+    func,
+    or_,
+    select,
+    union,
+    update,
+)
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -465,16 +476,28 @@ class LeasesStoragePostgresImpl(PgStorageBase, LeasesStorageInterface):
         overdue = select(LeaseRequests.org_id).where(
             LeaseRequests.status == WAITING, LeaseRequests.wait_until <= now
         )
-        waiting = exists().where(
+        # A free resource with a request in its line: one that names it, or a
+        # selector whose labels are all among its own. A waiter in another
+        # line of the kind does not make it due, or an org would stay due
+        # for as long as that line's resource is held, and enough such orgs
+        # would keep every other out of the batch.
+        in_line = exists().where(
             LeaseRequests.org_id == Resources.org_id,
             LeaseRequests.kind == Resources.kind,
             LeaseRequests.status == WAITING,
+            or_(
+                LeaseRequests.resource_id == Resources.id,
+                and_(
+                    LeaseRequests.resource_id.is_(None),
+                    Resources.labels.contains(LeaseRequests.labels),
+                ),
+            ),
         )
         free = select(Resources.org_id).where(
             Resources.lease_id.is_(None),
             Resources.available.is_(True),
             Resources.retired_at.is_(None),
-            waiting,
+            in_line,
         )
         stmt = union(lapsed, overdue, free).limit(limit)
         # Every tenant's, so the system scope, spelled here.

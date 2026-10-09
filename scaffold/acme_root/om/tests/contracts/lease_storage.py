@@ -518,13 +518,25 @@ class LeaseStorageContract:
             (),
         )
         await self.a_request(storage, overdue_org, make_request(named, waited=timedelta(hours=2)))
-        await self.a_resource(storage, free_org)
-        await self.a_request(storage, free_org, make_request(labels=()))
+        await self.a_resource(storage, free_org, ("cold", "north"))
+        await self.a_request(storage, free_org, make_request(labels=("cold",)))
         await self.a_resource(storage, idle_org)
+        # A free resource whose kind has waiters in other lines only: one
+        # names a held resource, and one needs a label it lacks.
+        elsewhere_org = new_id()
+        taken = await self.a_resource(storage, elsewhere_org)
+        assert await storage.grant(
+            elsewhere_org,
+            grant_of(taken, await self.a_request(storage, elsewhere_org, make_request(taken))),
+            (),
+        )
+        await self.a_request(storage, elsewhere_org, make_request(taken))
+        await self.a_resource(storage, elsewhere_org, ("cold",))
+        await self.a_request(storage, elsewhere_org, make_request(labels=("dry",)))
         now = utcnow()
         due = set(await storage.read_due_orgs(now, now - timedelta(seconds=30), 10_000))
         assert {lapsed_org, overdue_org, free_org} <= due
-        assert idle_org not in due
+        assert idle_org not in due and elsewhere_org not in due
 
     async def test_the_purge_takes_what_settled_and_keeps_what_runs(
         self, storage: LeasesStorageInterface
