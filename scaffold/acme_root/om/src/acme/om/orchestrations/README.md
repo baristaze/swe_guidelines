@@ -14,7 +14,8 @@ This is one of the kinds of thing [Acme is made of](../../../../README.md).
   product replaces it with its own kinds.
 - **Status**: running, parked, succeeded, or failed.
 - **Park reason**: why a parked record waits, and so what wakes it. The
-  core has one, `provider_unavailable`.
+  core has two: `provider_unavailable`, and `resource`, for a record in
+  line for a [lease](../leases/README.md).
 - **Fail reason**: why a record ended unfinished: a bound of its input,
   or `defect`, a step that still failed on its last attempt.
 - **Period**: for a record kept per period, such as a day, the org, the
@@ -31,7 +32,8 @@ This is one of the kinds of thing [Acme is made of](../../../../README.md).
   made, in the step's own commit.
 - **Wake.** A parked record runs again from its cursor when the reason
   clears (a `WAKE_PARKED` work item wakes every record of the org
-  parked for it, a couple of seconds apart), or when a person resumes it.
+  parked for it, a couple of seconds apart, or the one record it names
+  when the reason was that record's alone), or when a person resumes it.
 - **Succeed** after the last step, or **fail** on a bound.
 - **Sweep.** A settled record goes thirty days later. A parked or a
   running one is kept.
