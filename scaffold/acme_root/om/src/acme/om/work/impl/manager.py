@@ -30,6 +30,7 @@ from acme.om.work.types.work_item import (
     WORK_PAYLOADS,
     WORK_ROW_PREFIX,
     ScheduledPayload,
+    WakeParkedPayload,
     WorkItem,
     WorkKind,
     WorkStatus,
@@ -62,10 +63,11 @@ def caused_by(rctx: RequestContext, item: WorkItem) -> RequestContext:
 
 def not_before(kind: WorkKind, payload: object) -> datetime | None:
     """When work of this kind may run, read off its payload: the payload's
-    `not_before` for a scheduled kind, None for any other. A payload that
-    does not parse answers None here; `_land` refuses it with the reason."""
+    `not_before` for a scheduled kind and for a wake that names a time, None
+    for any other. A payload that does not parse answers None here; `_land`
+    refuses it with the reason."""
     shape = WORK_PAYLOADS[kind]
-    if not issubclass(shape, ScheduledPayload):
+    if not issubclass(shape, ScheduledPayload | WakeParkedPayload):
         return None
     try:
         return shape.model_validate(payload).not_before
@@ -126,7 +128,8 @@ class WorkManagerImpl(WorkManagerInterface):
         names the request that made the write: the row is the whole handoff,
         so nothing here is minted afresh. The lane is the
         default one; a row carries no routing of its own. A kind whose payload
-        is a `ScheduledPayload` waits in the queue until its `not_before`."""
+        is a `ScheduledPayload`, and a wake that names a time, waits in the
+        queue until its `not_before`."""
         kind = row.kind.removeprefix(WORK_ROW_PREFIX)
         if kind not in {k.value for k in WorkKind}:
             raise ValidationFailed(f"outbox row {row.id} asks for unknown work {row.kind}")

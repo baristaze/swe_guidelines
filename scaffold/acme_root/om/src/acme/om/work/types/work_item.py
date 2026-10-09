@@ -107,10 +107,13 @@ class WakeParkedPayload(Platform):
     the org. Every record parked for it is resumed when the item runs, or
     the one `record_id` names, when the reason was that record's alone (a
     grant, or its request's end without one, clears `resource` for the
-    record it was for)."""
+    record it was for). A park that knows when its reason may clear (a
+    provider marked out until a retry time) asks for its record's wake then:
+    the item waits in the queue until `not_before`."""
 
     reason: ParkReason
     record_id: UUID | None = None
+    not_before: datetime | None = None
 
 
 class DeleteAccountPayload(Platform):

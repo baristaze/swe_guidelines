@@ -18,6 +18,7 @@ from acme.om.orchestrations.rules import (
     stagger,
     with_row_errors,
 )
+from acme.om.orchestrations.steps import step_rows
 from acme.om.orchestrations.types.orchestration import (
     FailReason,
     Orchestration,
@@ -28,6 +29,8 @@ from acme.om.orchestrations.types.orchestration import (
 )
 from acme.om.root import Managers, build_managers
 from acme.om.storage.impl.memory import StorageMemoryImpl
+from acme.om.work.impl.manager import not_before
+from acme.om.work.types.work_item import WakeParkedPayload, WorkKind, work_row_kind
 
 APP = AppContext(type=AppType.PORTAL, version="portal@test")
 
@@ -186,6 +189,32 @@ async def test_wake_resumes_only_the_records_parked_for_the_reason(world: World)
     assert (await orchestrations.get(ctx, parked.id)).status is OrchestrationStatus.RUNNING
     assert (await orchestrations.get(ctx, running.id)).version == running.version
     assert await orchestrations.wake(ctx, ParkReason.PROVIDER_UNAVAILABLE) == 0
+
+
+async def test_a_park_until_an_outages_retry_time_lands_its_own_wake_then(
+    world: World,
+) -> None:
+    """A step that reads a provider's outage parks on `provider_unavailable`,
+    and the park lands the wake of its own record, which waits in the queue
+    until the outage's retry time."""
+    ctx = await world.org()
+    record = await world.managers.orchestrations.start(ctx, a_record())
+    parked = advanced(
+        record, utcnow(), record.created_by, cursor=0, total=3,
+        park=ParkReason.PROVIDER_UNAVAILABLE,
+    )  # fmt: skip
+    retry_at = utcnow() + timedelta(minutes=5)
+    _, wake = step_rows(ctx, parked, wake_at=retry_at)
+    assert wake.kind == work_row_kind(WorkKind.WAKE_PARKED)
+    assert WakeParkedPayload.model_validate(dict(wake.payload)) == WakeParkedPayload(
+        reason=ParkReason.PROVIDER_UNAVAILABLE, record_id=record.id, not_before=retry_at
+    )
+    assert not_before(WorkKind.WAKE_PARKED, wake.payload) == retry_at
+    # A park that names no time lands its hint alone, and a wake that names
+    # none runs at once.
+    assert len(step_rows(ctx, parked)) == 1
+    at_once = WakeParkedPayload(reason=ParkReason.PROVIDER_UNAVAILABLE)
+    assert not_before(WorkKind.WAKE_PARKED, at_once.model_dump(mode="json")) is None
 
 
 async def test_fail_is_conditioned_on_the_version_it_read(world: World) -> None:
