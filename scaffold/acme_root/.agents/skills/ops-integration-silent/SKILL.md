@@ -58,7 +58,16 @@ is `acme-webhooks`, with `acme-webhooks-dead`.
 
 1. In the cloud, check the profile as Role and credential states,
    before any other command, and compute the window as epoch seconds:
-   `--since` back from now. Locally there is no profile to check.
+   `--since` back from now. Locally there is no profile to check; ask
+   which processes run in a container:
+
+   ```bash
+   docker compose -f deployment/local/docker-compose.yml -f deployment/local/docker-compose.full.yml \
+     ps --services --status running
+   ```
+
+   An `api` or a `maintenance` this does not list runs on the host, and
+   its log is read as the end of step 3 says.
 2. The route: what it answered, by status, over the window. Every
    request writes one access line, `POST <route> <status> <ms>`, which
    holds no body. Locally:
@@ -139,10 +148,11 @@ is `acme-webhooks`, with `acme-webhooks-dead`.
      --query-string 'fields @timestamp, request_id, message, exception | filter message like /deliver|worker lacks/ | sort @timestamp desc | limit 50'
    ```
 
-   When the processes run outside containers (`scripts/dev.sh`, which
-   logs to its terminal and writes no file), read the file each was
-   started with by the same patterns of steps 2 and 3, and write "not
-   read" when there is none.
+   A process step 1 does not list runs outside its container
+   (`scripts/dev.sh`, which logs to its terminal and writes no file):
+   its container's log is empty whatever it did, so read the file it
+   was started with by the same patterns of steps 2 and 3, and write
+   "not read" when there is none, never "none in the window".
 4. The queue and its dead letters, as they stand now: the deliveries
    waiting, the ones a receive holds, and the ones that failed every
    receive. Locally, ElasticMQ's own API inside its container:
@@ -169,9 +179,10 @@ is `acme-webhooks`, with `acme-webhooks-dead`.
    `ApproximateNumberOfMessagesNotVisible` the in-flight one.
 
    Each read of steps 2 to 4 is made once. One that answers nothing is
-   "none in the window", never read again with a wider window; one that
-   answers an error, or nothing a reader can parse, is "not read",
-   naming it.
+   "none in the window", never read again with a wider window; locally,
+   only when step 1 lists its process, since a log of a process it does
+   not list is read as the end of step 3 says. One that answers an
+   error, or nothing a reader can parse, is "not read", naming it.
 5. Find where the deliveries stop. Read the rows top to bottom, and
    report every row whose condition holds, in this order, each with the
    counts that decided it:
