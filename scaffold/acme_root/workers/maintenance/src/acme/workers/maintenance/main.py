@@ -57,6 +57,7 @@ def loop_options(settings: MaintenanceSettings, lane: str | None = None) -> Loop
     return LoopOptions(
         worker_id=settings.worker_id,
         lane=lane or settings.worker_lane,
+        tenant_cap=settings.worker_tenant_cap or None,
         capacity=settings.worker_capacity,
         lease=timedelta(seconds=settings.worker_lease_seconds),
         heartbeat_interval=timedelta(seconds=settings.worker_heartbeat_seconds),

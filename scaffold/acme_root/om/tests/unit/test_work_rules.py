@@ -7,6 +7,7 @@ from contracts.work_storage import make_item
 from acme.om.work.rules import (
     attempts_after_claim,
     attempts_after_hand_back,
+    is_at_cap,
     is_exhausted,
     retry_delay,
     stagger_delay,
@@ -39,6 +40,13 @@ def test_a_claim_spends_an_attempt_and_a_hand_back_refunds_it() -> None:
     assert attempts_after_hand_back(attempts_after_claim(0)) == 0
     assert attempts_after_hand_back(attempts_after_claim(4)) == 4
     assert attempts_after_hand_back(0) == 0
+
+
+def test_a_tenant_is_at_its_cap_once_it_holds_the_cap() -> None:
+    assert not is_at_cap(0, 1)
+    assert is_at_cap(1, 1)
+    assert not is_at_cap(2, 3)
+    assert is_at_cap(4, 3)
 
 
 def test_stagger_grows_with_position_from_zero() -> None:

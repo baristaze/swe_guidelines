@@ -62,13 +62,24 @@ class WorkStorageInterface(ABC):
 
     @abstractmethod
     async def claim_next(
-        self, lane: str, kinds: Sequence[WorkKind], worker_id: str, lease: timedelta
+        self,
+        lane: str,
+        kinds: Sequence[WorkKind],
+        worker_id: str,
+        lease: timedelta,
+        tenant_cap: int | None = None,
     ) -> tuple[UUID, WorkItem] | None:
         """Cross-tenant claim, one statement: the row on the lane that has been
         ready longest (the earliest `available_at`, then the lowest id),
         skipping locked ones, stamped with the claim, a freshly minted claim
         token, and the lease. The claim is the platform's write, so it signs
-        `updated_by` with EMPTY_UUID."""
+        `updated_by` with EMPTY_UUID.
+
+        With `tenant_cap`, the same statement passes over every tenant that
+        already holds that many items claimed on the lane under a live lease
+        (`rules.is_at_cap`): their items stay as they are, unwritten, and the
+        row taken is the oldest of a tenant under its cap. None counts
+        nothing, and the statement is the one without a cap."""
         ...
 
     @abstractmethod

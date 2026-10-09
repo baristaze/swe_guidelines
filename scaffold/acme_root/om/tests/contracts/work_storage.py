@@ -137,6 +137,40 @@ class WorkStorageContract:
             assert claimed is not None and claimed[1].id == expected
         assert await storage.claim_next(lane, [WorkKind.NOOP], "w1", LEASE) is None
 
+    async def test_a_tenant_at_its_cap_is_passed_over_and_its_items_are_not_written(
+        self, storage: WorkStorageInterface, lane: str
+    ) -> None:
+        """A lane's cap counts what one tenant holds claimed on that lane under a
+        live lease: not another lane's, nor a lease that has run out, nor
+        another tenant's. The claim passes over a tenant at its cap in the same
+        statement and leaves its items as they were; no cap counts nothing."""
+        org, other = new_id(), new_id()
+        elsewhere = make_item(lane=lane + "-other", available_in=timedelta(seconds=-7))
+        lapsed = make_item(lane=lane, available_in=timedelta(seconds=-6))
+        running = make_item(lane=lane, available_in=timedelta(seconds=-5))
+        waiting = make_item(lane=lane, available_in=timedelta(seconds=-4))
+        theirs = make_item(lane=lane, available_in=timedelta(seconds=-3))
+        last = make_item(lane=lane, available_in=timedelta(seconds=-2))
+        for item in (elsewhere, lapsed, running, waiting, last):
+            await storage.create_item(org, item)
+        await storage.create_item(other, theirs)
+
+        async def claim(cap: int | None, lease: timedelta = LEASE) -> UUID | None:
+            claimed = await storage.claim_next(lane, [WorkKind.NOOP], "w1", lease, cap)
+            return None if claimed is None else claimed[1].id
+
+        assert await storage.claim_next(lane + "-other", [WorkKind.NOOP], "w1", LEASE)
+        assert await claim(1, timedelta(seconds=-1)) == lapsed.id
+        assert await claim(1) == running.id
+        assert await claim(1) == theirs.id, "the tenant at its cap is passed over"
+        assert await storage.read_item(org, waiting.id) == waiting, "and its item is not written"
+        assert await claim(1) is None
+        # Two slots: the claim on the other lane, the lapsed lease, and the
+        # other tenant's claim hold none of them.
+        assert await claim(2) == waiting.id
+        assert await claim(2) is None
+        assert await claim(None) == last.id
+
     async def test_requeue_stale_reaches_every_tenant_conditional_and_staggered(
         self, storage: WorkStorageInterface, lane: str
     ) -> None:

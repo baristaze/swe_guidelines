@@ -4,6 +4,10 @@ from pathlib import Path
 from uuid import UUID
 
 import pytest
+from contracts.work_cap import (
+    a_burst_drains_as_fast_as_the_worker_runs_at_a_cap_of_two,
+    a_second_item_is_passed_over_at_a_cap_of_one,
+)
 from contracts.work_storage import make_item
 
 from acme.infra.impl.local import InfraLocalImpl
@@ -720,6 +724,24 @@ async def test_a_claim_in_a_deleted_org_fails_the_item_and_moves_on(
     monkeypatch.setattr(managers.work, "_options", WorkOptions(retention=timedelta(0)))
     await asyncio.sleep(0.001)
     assert await managers.work.purge_items() == 1
+
+
+async def test_a_tenant_at_a_cap_of_one_is_passed_over_while_another_tenants_item_is_claimed(
+    managers: Managers, storage: StorageMemoryImpl, ctx: TenantContext
+) -> None:
+    bob = await second_tenant(managers)
+    await a_second_item_is_passed_over_at_a_cap_of_one(
+        managers, storage.get_work_storage(), ctx, bob
+    )
+
+
+async def test_a_burst_at_a_cap_of_two_drains_as_fast_as_the_worker_runs(
+    managers: Managers, storage: StorageMemoryImpl, ctx: TenantContext
+) -> None:
+    bob = await second_tenant(managers)
+    await a_burst_drains_as_fast_as_the_worker_runs_at_a_cap_of_two(
+        managers, storage.get_work_storage(), ctx, bob
+    )
 
 
 async def test_every_write_after_the_enqueue_is_the_platforms(

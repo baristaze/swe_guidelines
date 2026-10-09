@@ -1,3 +1,4 @@
+from collections import Counter
 from collections.abc import Sequence
 from datetime import datetime, timedelta
 from uuid import UUID
@@ -5,7 +6,7 @@ from uuid import UUID
 from acme.om.base import EMPTY_UUID, new_id, utcnow
 from acme.om.exceptions import TenantMismatch
 from acme.om.storage.impl.memory_base import MemoryStorageBase, MemoryTable
-from acme.om.work.rules import attempts_after_claim, is_exhausted, stagger_delay
+from acme.om.work.rules import attempts_after_claim, is_at_cap, is_exhausted, stagger_delay
 from acme.om.work.storage import InsertOutcome, WorkStorageInterface
 from acme.om.work.types.work_item import WorkItem, WorkKind, WorkStatus
 
@@ -51,7 +52,12 @@ class WorkStorageMemoryImpl(MemoryStorageBase, WorkStorageInterface):
             return item
 
     async def claim_next(
-        self, lane: str, kinds: Sequence[WorkKind], worker_id: str, lease: timedelta
+        self,
+        lane: str,
+        kinds: Sequence[WorkKind],
+        worker_id: str,
+        lease: timedelta,
+        tenant_cap: int | None = None,
     ) -> tuple[UUID, WorkItem] | None:
         now = utcnow()
         async with self._lock:
@@ -63,6 +69,18 @@ class WorkStorageMemoryImpl(MemoryStorageBase, WorkStorageInterface):
                 and item.kind in kinds
                 and item.available_at <= now
             ]
+            if tenant_cap is not None:
+                # The tenants' claimed items on the lane under a live lease, as
+                # the Postgres claim counts them in the same statement.
+                held = Counter(
+                    holder
+                    for holder, other in self._rows_across_tenants(self._items)
+                    if other.lane == lane
+                    and other.status is WorkStatus.CLAIMED
+                    and other.lease_expires_at is not None
+                    and other.lease_expires_at > now
+                )
+                ready = [pair for pair in ready if not is_at_cap(held[pair[0]], tenant_cap)]
             if not ready:
                 return None
             # The item ready longest goes first, as the Postgres claim orders it.

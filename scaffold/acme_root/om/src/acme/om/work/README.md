@@ -27,7 +27,9 @@ kinds of thing [Acme is made of](../../../../README.md).
 - **Claim.** A worker takes the item on its lane ready longest, in one
   statement, with a claim token and the context the job runs under: the
   org, the service role, and the person who asked. An item of a deleted
-  org fails in the same call.
+  org fails in the same call. On a lane with a cap, the claim passes
+  over an org that already holds that many items claimed and takes the
+  next org's; the passed-over items wait where they are, untouched.
 - **Complete, fail, defer, release, or extend the lease.** A failure is
   retried with a growing delay until the attempts are spent.
 - **Park.** A handler that must wait (a provider out of reach) hands the
@@ -47,6 +49,10 @@ kinds of thing [Acme is made of](../../../../README.md).
 - **The lease.** A claim holds an item for a lease, and the worker
   renews it while the job runs. Every transition is conditional on the
   claim token, so a worker that lost its item changes nothing.
+- **One org cannot hold every worker.** A lane that orgs share can cap
+  how many items one org holds claimed on it. An org at its cap spends
+  no attempt waiting, and its next item runs as soon as one of its
+  running items ends.
 - **Enqueueing twice leaves one item.** The same id or the same producer
   key returns the item as stored.
 - **At least once.** Every handler changes nothing the second time.

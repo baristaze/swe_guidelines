@@ -206,9 +206,10 @@ class WorkManagerImpl(WorkManagerInterface):
         kinds: Sequence[WorkKind],
         worker_id: str,
         lease: timedelta,
+        tenant_cap: int | None = None,
     ) -> tuple[TenantContext, WorkItem] | None:
         while True:
-            found = await self._storage.claim_next(lane, kinds, worker_id, lease)
+            found = await self._storage.claim_next(lane, kinds, worker_id, lease, tenant_cap)
             if found is None:
                 return None
             org_id, item = found

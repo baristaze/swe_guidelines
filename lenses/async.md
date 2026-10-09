@@ -913,3 +913,28 @@ never ends; a sweep that reads every org under one context; settled
 rows kept past their retention.
 
 **Severity.** medium
+
+## ASY-38 A tenant's cap on a shared lane is held at the claim
+
+**Principle.** A lane that tenants share can cap how many items one
+tenant holds claimed on it, so one tenant cannot hold every worker. The
+claim's one statement takes the oldest available item whose tenant
+holds fewer items than the cap claimed under a live lease. A tenant at
+its cap is passed over, and its items stay unwritten and spend no
+attempt. A lane with no cap counts nothing.
+
+**Source.** Worker Roles, The Work Queue; Scalability by Design.
+
+**Look for.** What `claim` does with `tenant_cap`; the clause the claim's
+statement adds in both storage impls, and what it counts; whether a
+passed-over item is written; whether a claim with no cap counts.
+
+**Violation.** A cap checked at enqueue, so the work runs later past
+it; an over-cap item claimed and handed back with a delay, so a freed
+slot stays empty until the delay passes and a claim walks the tenant's
+backlog; a count that ignores the lease, so a lost worker holds a slot
+for good; a count on every claim of a lane with no cap.
+
+**Severity.** medium
+
+**Shape.** `scaffold/acme_root/om/src/acme/om/work/storage/impl/postgres.py`

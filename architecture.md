@@ -1774,6 +1774,25 @@ locked, and stamps a claim token and a lease in one statement.
 Completion marks it done, requeues it with a growing delay, or fails it
 as a dead letter when attempts run out.
 
+A lane that tenants share can cap how many items one tenant holds
+claimed on it, so one tenant cannot hold every worker. The claim holds
+the cap in its one statement: it takes the oldest available item whose
+tenant holds fewer items than the cap claimed under a live lease. A
+tenant at its cap is passed over. Its items wait where they are,
+unwritten, and spend no attempt, and the first claim after one of its
+items ends takes the next. A lane with no cap counts nothing. A tenant
+whose work still starves its neighbours gets a lane of its own.
+
+<!-- agents-only
+- A worker passes its lane's cap to `claim` as `tenant_cap`, and None,
+  the default, sets none. The claim's statement leaves out the tenants
+  that hold the cap on the lane (`rules.is_at_cap`), counted once per
+  statement over the claim's index; with no cap it is the statement
+  without that clause. Two claims that commit at once can each miss the
+  other, so a tenant can run past its cap by the claims of that moment,
+  until one of its items ends.
+-->
+
 Every write after the enqueue is the platform's, signed `EMPTY_UUID`.
 `created_by` is the person who asked, so the claim rebuilds their
 principal under the role reserved for services, and the run names the
@@ -2708,8 +2727,10 @@ ends it. A tenant hot enough to serialize on its gapless `seq` gets an
 engine of its own through a routing key under its role: the first
 change that is not a deployment change, and one that does not lift the
 tenant's single sequence, which would take more than one stream per
-tenant. A tenant whose bulk work starves its neighbours gets a lane,
-and a role whose pool runs out gets a pooler.
+tenant. A tenant that would hold every worker of a shared lane meets
+the lane's cap at the claim. One whose bulk work starves its neighbours
+anyway gets a lane of its own, and a role whose pool runs out gets a
+pooler.
 
 ## Resilience by Design
 
