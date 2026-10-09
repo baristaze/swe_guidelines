@@ -170,6 +170,8 @@ REQUEST_TRANSITIONS: frozenset[tuple[str, str]] = frozenset(
         ("TenancyManagerInterface", "resume"),
         ("TenancyManagerInterface", "redeem_ticket"),
         ("TenancyManagerInterface", "service_context"),
+        # An integration acting for the member its provider vouches for.
+        ("TenancyManagerInterface", "member_context"),
         ("TenancyManagerInterface", "service_contexts"),
         ("TenancyManagerInterface", "grant_operator"),
         ("TenancyManagerInterface", "disable_operator"),
