@@ -64,7 +64,7 @@ says what to adopt first and what can wait.
 ## Run the checker
 
 ```bash
-uvx --python "$(cat .python-version)" --from "git+https://github.com/baristaze/swe_guidelines@v0.56.0#subdirectory=checkers" arch-check
+uvx --python "$(cat .python-version)" --from "git+https://github.com/baristaze/swe_guidelines@v0.57.0#subdirectory=checkers" arch-check
 ```
 
 It exits non-zero on a finding, and `--format json` prints one JSON
