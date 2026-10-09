@@ -1,8 +1,10 @@
 """The read cache over each backend: the memory impl, and Valkey over the
 compose stack's, through the configured infra root a process builds."""
 
+import asyncio
 from collections.abc import AsyncIterator
-from datetime import timedelta
+from contextlib import asynccontextmanager
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from pydantic import BaseModel, TypeAdapter
@@ -17,6 +19,7 @@ from acme.infra.impl.settings import InfraSettings
 from acme.infra.impl.valkey import ValkeyConnection
 
 TTL = timedelta(seconds=30)
+MONDAY = datetime(2026, 10, 5, tzinfo=UTC)
 
 
 class Product(BaseModel):
@@ -39,11 +42,26 @@ class Source:
         return self.value
 
 
-@pytest.fixture(params=["memory", pytest.param("valkey", marks=pytest.mark.integration)])
-async def cache(request: pytest.FixtureRequest) -> AsyncIterator[CacheInterface]:
-    if request.param == "memory":
-        yield CacheMemoryImpl(CacheScope.NETWORK_RESPONSE)
-        return
+class Clock:
+    """The time the read cache and the memory cache see, set by the test.
+    Valkey keeps its own, so on Valkey it moves the read cache's window alone."""
+
+    def __init__(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        self.now = MONDAY
+        monkeypatch.setattr("acme.infra.cache.read.utcnow", lambda: self.now)
+        monkeypatch.setattr("acme.infra.cache.memory.utcnow", lambda: self.now)
+
+    def window(self) -> int:
+        return (self.now - datetime(1970, 1, 1, tzinfo=UTC)) // GENERATION_WINDOW
+
+
+@pytest.fixture
+def clock(monkeypatch: pytest.MonkeyPatch) -> Clock:
+    return Clock(monkeypatch)
+
+
+@asynccontextmanager
+async def valkey_cache() -> AsyncIterator[CacheInterface]:
     settings = InfraSettings.model_validate(
         {
             "environment": "local",
@@ -57,6 +75,15 @@ async def cache(request: pytest.FixtureRequest) -> AsyncIterator[CacheInterface]
         yield root.get_cache(CacheScope.NETWORK_RESPONSE)
     finally:
         await root.close()
+
+
+@pytest.fixture(params=["memory", pytest.param("valkey", marks=pytest.mark.integration)])
+async def cache(request: pytest.FixtureRequest) -> AsyncIterator[CacheInterface]:
+    if request.param == "memory":
+        yield CacheMemoryImpl(CacheScope.NETWORK_RESPONSE)
+        return
+    async with valkey_cache() as cache:
+        yield cache
 
 
 async def test_a_bump_makes_the_next_read_miss(cache: CacheInterface) -> None:
@@ -94,25 +121,79 @@ async def test_one_tenants_bump_leaves_another_tenants_entry(cache: CacheInterfa
     assert (a.loads, b.loads) == (2, 2)
 
 
-async def test_an_entry_this_build_cannot_read_is_a_miss(cache: CacheInterface) -> None:
+@pytest.mark.parametrize(
+    "turn",
+    [MONDAY + timedelta(days=1), MONDAY + timedelta(days=1, hours=8)],
+    ids=["the-day-ends", "a-day-after-the-first-bump"],
+)
+async def test_a_bump_just_after_the_windows_turn_makes_the_next_read_miss(
+    cache: CacheInterface, clock: Clock, turn: datetime
+) -> None:
+    """The first bump is Monday at 08:00, and a read a minute before the turn
+    caches the value. A write a minute after it commits and bumps, and the
+    next read is the source's, at the day's end and a day after the first
+    bump, where the counter's own window ends."""
+    reads = ReadCache(cache, PRODUCT, timedelta(hours=1))
+    org = new_id()
+    source = Source(Product(sku="mug", price_cents=900))
+    clock.now = MONDAY + timedelta(hours=8)
+    await reads.bump(org)
+    clock.now = turn - timedelta(minutes=1)
+    assert await reads.read(org, "product:mug", source) == Product(sku="mug", price_cents=900)
+    clock.now = turn + timedelta(minutes=1)
+    source.value = Product(sku="mug", price_cents=1200)  # the write commits
+    await reads.bump(org)
+    clock.now = turn + timedelta(minutes=2)
+    assert await reads.read(org, "product:mug", source) == Product(sku="mug", price_cents=1200)
+    assert source.loads == 2
+
+
+@pytest.mark.integration
+async def test_a_counter_valkey_expires_brings_back_no_number_over_a_live_entry(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Valkey ends a counter's own window by its expiry, which no fake clock
+    moves, so this runs on a two-second window and waits it out. An entry is
+    cached just before the first bump's counter expires and lives past it,
+    and the bump after it still makes the next read miss."""
+    monkeypatch.setattr("acme.infra.cache.read.GENERATION_WINDOW", timedelta(seconds=2))
+    async with valkey_cache() as cache:
+        reads = ReadCache(cache, PRODUCT, timedelta(seconds=1))
+        org = new_id()
+        source = Source(Product(sku="mug", price_cents=900))
+        await reads.bump(org)
+        await asyncio.sleep(1.8)
+        assert await reads.read(org, "product:mug", source) == Product(sku="mug", price_cents=900)
+        await asyncio.sleep(0.3)
+        source.value = Product(sku="mug", price_cents=1200)  # the write commits
+        await reads.bump(org)
+        assert await reads.read(org, "product:mug", source) == Product(sku="mug", price_cents=1200)
+        assert source.loads == 2
+
+
+async def test_an_entry_this_build_cannot_read_is_a_miss(
+    cache: CacheInterface, clock: Clock
+) -> None:
     reads = ReadCache(cache, PRODUCT, TTL)
     org = new_id()
-    await cache.put(org, "product:mug:0", b'{"sku": "mug"}', TTL)
+    await cache.put(org, f"product:mug:{clock.window()}:0", b'{"sku": "mug"}', TTL)
     source = Source(Product(sku="mug", price_cents=900))
     assert await reads.read(org, "product:mug", source) == source.value
     assert await reads.read(org, "product:mug", source) == source.value
     assert source.loads == 1
 
 
-async def test_a_generation_that_is_no_count_reads_through(cache: CacheInterface) -> None:
+async def test_a_generation_that_is_no_count_reads_through(
+    cache: CacheInterface, clock: Clock
+) -> None:
     reads = ReadCache(cache, PRODUCT, TTL)
     org = new_id()
-    await cache.put(org, GENERATION, b"not a count", TTL)
+    await cache.put(org, f"{GENERATION}:{clock.window()}", b"not a count", TTL)
     source = Source(Product(sku="mug", price_cents=900))
     assert await reads.read(org, "product:mug", source) == source.value
     assert await reads.read(org, "product:mug", source) == source.value
     assert source.loads == 2
-    assert await cache.get(org, "product:mug:0") is None
+    assert await cache.get(org, f"product:mug:{clock.window()}:0") is None
 
 
 async def test_an_unreachable_cache_reads_through() -> None:
