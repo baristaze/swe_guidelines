@@ -25,6 +25,10 @@ class MaintenanceSettings(StorageSettings, InfraSettings, IntegrationsSettings):
     metrics_port: int = 9464
     worker_id: str = Field(default_factory=default_worker_id)
     worker_lane: str = "default"
+    # The most items one tenant holds claimed on the lane, so one tenant
+    # cannot hold every worker of a lane tenants share. 0 sets no cap, and
+    # the claim counts nothing.
+    worker_tenant_cap: int = Field(default=0, ge=0)
     # Every one of these is a count or a duration the loop divides or waits
     # on, so zero is not a smaller setting but a broken one: a lease of zero
     # cancels each item as `lease_lost` the moment it is claimed, a heartbeat

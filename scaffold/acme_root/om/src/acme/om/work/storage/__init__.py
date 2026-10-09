@@ -72,6 +72,15 @@ class WorkStorageInterface(ABC):
         ...
 
     @abstractmethod
+    async def count_claimed_ahead(self, org_id: UUID, item: WorkItem, now: datetime) -> int:
+        """How many of the tenant's other items on the item's lane are claimed
+        under a lease still live at `now` and come before it in the claim
+        order: an earlier `available_at`, or the same one and a lower id. A
+        lane's cap counts these, so of two items claimed together the earlier
+        fits and the later waits, and neither waits on the other forever."""
+        ...
+
+    @abstractmethod
     async def requeue_stale(
         self, now: datetime, stagger: timedelta, limit: int
     ) -> list[tuple[UUID, WorkItem]]:

@@ -23,7 +23,7 @@ from acme.om.exceptions import (
 from acme.om.outbox.types.row import OutboxRow
 from acme.om.tenancy import TenancyManagerInterface
 from acme.om.work.manager import WorkManagerInterface
-from acme.om.work.rules import attempts_after_hand_back, is_exhausted, retry_delay
+from acme.om.work.rules import attempts_after_hand_back, is_exhausted, is_over_cap, retry_delay
 from acme.om.work.storage import InsertOutcome, WorkStorageInterface
 from acme.om.work.types.work_item import (
     WORK_ENQUEUE_PERMISSIONS,
@@ -45,6 +45,11 @@ class WorkOptions(Platform):
     base_retry_delay: timedelta = timedelta(seconds=30)
     max_retry_delay: timedelta = timedelta(minutes=15)
     stale_stagger: timedelta = timedelta(seconds=5)
+    # How long an item over its tenant's cap on a lane waits before the lane
+    # offers it again: long enough that a full tenant's backlog costs a claim,
+    # a count, and a hand-back per item per delay, short enough that a freed
+    # slot is taken soon.
+    over_cap_delay: timedelta = timedelta(seconds=30)
     retention: timedelta = timedelta(days=30)  # a done or failed item is purged after this
     purge_batch: int = 1000  # items one purge statement deletes at most
 
@@ -184,12 +189,20 @@ class WorkManagerImpl(WorkManagerInterface):
         kinds: Sequence[WorkKind],
         worker_id: str,
         lease: timedelta,
+        tenant_cap: int | None = None,
     ) -> tuple[TenantContext, WorkItem] | None:
         while True:
             found = await self._storage.claim_next(lane, kinds, worker_id, lease)
             if found is None:
                 return None
             org_id, item = found
+            if tenant_cap is not None:
+                ahead = await self._storage.count_claimed_ahead(org_id, item, utcnow())
+                if is_over_cap(ahead, tenant_cap):
+                    # Back before any context is built: the next item may be
+                    # another tenant's, and this one waits for a slot of its own.
+                    await self._hand_back_over_cap(org_id, item, ahead)
+                    continue
             try:
                 ctx = await self._tenancy.service_context(
                     caused_by(rctx, item), org_id, item.created_by
@@ -367,6 +380,39 @@ class WorkManagerImpl(WorkManagerInterface):
         if written is None:
             raise LeaseLost(f"work item {item.id} was taken from {item.claimed_by} mid-write")
         return written
+
+    async def _hand_back_over_cap(self, org_id: UUID, item: WorkItem, ahead: int) -> None:
+        """Hands a claimed item back to its lane for the over-cap delay,
+        conditionally on the claim just written, as the system user: its
+        tenant holds its cap on the lane ahead of it. The attempt the claim
+        spent is refunded, as every hand-back refunds it, so waiting for a
+        slot never brings an item closer to a dead letter. The log line and
+        the counter are its record."""
+        assert item.claim_token is not None
+        now = utcnow()
+        back = item.model_copy(
+            update={
+                "status": WorkStatus.QUEUED,
+                "available_at": now + self._options.over_cap_delay,
+                "claimed_by": None,
+                "claim_token": None,
+                "lease_expires_at": None,
+                "attempts": attempts_after_hand_back(item.attempts),
+                "updated_at": now,
+                "updated_by": EMPTY_UUID,
+            }
+        )
+        if await self._storage.write_item_if_held(org_id, item.claim_token, back) is None:
+            return  # taken from under this claim meanwhile; whoever holds it settles it
+        OUTCOMES.labels(subsystem="work", outcome="over_cap").inc()
+        log.info(
+            "work item %s (%s) in org %s waits: %d of the org's items run ahead of it on lane %s",
+            item.id,
+            item.kind.value,
+            org_id,
+            ahead,
+            item.lane,
+        )
 
     async def _fail_orphan(self, org_id: UUID, item: WorkItem, reason: str) -> None:
         """Fails a claimed item whose tenant is gone, conditionally on the claim

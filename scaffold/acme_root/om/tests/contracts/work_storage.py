@@ -18,6 +18,7 @@ LEASE = timedelta(seconds=30)
 
 CROSS_TENANT_CASES: frozenset[str] = frozenset(
     {
+        "count_claimed_ahead",
         "create_item",
         "read_item",
         "read_item_by_key",
@@ -136,6 +137,36 @@ class WorkStorageContract:
             claimed = await storage.claim_next(lane, [WorkKind.NOOP], "w1", LEASE)
             assert claimed is not None and claimed[1].id == expected
         assert await storage.claim_next(lane, [WorkKind.NOOP], "w1", LEASE) is None
+
+    async def test_the_claims_ahead_are_the_tenants_own_on_the_lane_under_a_live_lease(
+        self, storage: WorkStorageInterface, lane: str
+    ) -> None:
+        """A lane's cap counts what its tenant holds claimed before the item
+        in the claim order: not the item itself, nor what comes after it, nor
+        another lane's, nor a lease that has run out, nor another tenant's."""
+        org, other = new_id(), new_id()
+        first = make_item(lane=lane, available_in=timedelta(seconds=-3))
+        second = make_item(lane=lane, available_in=timedelta(seconds=-2))
+        third = make_item(lane=lane, available_in=timedelta(seconds=-1))
+        elsewhere = make_item(lane=lane + "-other", available_in=timedelta(seconds=-4))
+        theirs = make_item(lane=lane, available_in=timedelta(seconds=-5))
+        for item in (first, second, third):
+            await storage.create_item(org, item)
+        await storage.create_item(org, elsewhere)
+        await storage.create_item(other, theirs)
+        claimed = [await storage.claim_next(lane, [WorkKind.NOOP], "w1", LEASE) for _ in range(3)]
+        assert [c[1].id for c in claimed if c is not None] == [theirs.id, first.id, second.id]
+        assert await storage.claim_next(lane + "-other", [WorkKind.NOOP], "w1", LEASE)
+        now = utcnow()
+        assert await storage.count_claimed_ahead(org, first, now) == 0
+        assert await storage.count_claimed_ahead(org, second, now) == 1
+        assert await storage.count_claimed_ahead(org, third, now) == 2, "queued, behind two"
+        # Each tenant counts its own: the other one holds the one it claimed,
+        # and a tenant that holds none finds none of this tenant's.
+        assert await storage.count_claimed_ahead(other, third, now) == 1
+        assert await storage.count_claimed_ahead(new_id(), third, now) == 0
+        # A lease that has run out holds no slot.
+        assert await storage.count_claimed_ahead(org, third, now + LEASE * 2) == 0
 
     async def test_requeue_stale_reaches_every_tenant_conditional_and_staggered(
         self, storage: WorkStorageInterface, lane: str

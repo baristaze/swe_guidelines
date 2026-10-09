@@ -49,6 +49,7 @@ class WorkManagerInterface(ABC):
         kinds: Sequence[WorkKind],
         worker_id: str,
         lease: timedelta,
+        tenant_cap: int | None = None,
     ) -> tuple[TenantContext, WorkItem] | None:
         """Platform-internal: claims the oldest available item on the lane and rebuilds the
         enqueuer's principal under the service role, refining the request stage the
@@ -58,7 +59,14 @@ class WorkManagerInterface(ABC):
         request that caused it. An item
         whose tenant is gone cannot be run and cannot be retried into existence:
         it is failed in the same call, with the reason, and the claim moves on
-        to the next item, so no row stays claimed with nobody to settle it."""
+        to the next item, so no row stays claimed with nobody to settle it.
+
+        `tenant_cap` is the lane's cap on the items one tenant holds claimed
+        on it; None sets none, and the claim counts nothing. A claimed item
+        whose tenant already holds that many claimed ahead of it on the lane
+        goes back to the lane after the options' delay, with no attempt
+        spent, and the claim moves on to the next item, so one tenant cannot
+        hold every worker of a lane it shares."""
         ...
 
     @abstractmethod

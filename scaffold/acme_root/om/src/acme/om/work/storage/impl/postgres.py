@@ -2,7 +2,17 @@ from collections.abc import Sequence
 from datetime import datetime, timedelta
 from uuid import UUID
 
-from sqlalchemy import DateTime, Interval, case, func, literal, literal_column, select, update
+from sqlalchemy import (
+    DateTime,
+    Interval,
+    case,
+    func,
+    literal,
+    literal_column,
+    select,
+    tuple_,
+    update,
+)
 from sqlalchemy.sql import Select
 
 from acme.om.base import EMPTY_UUID, new_id, utcnow
@@ -119,6 +129,21 @@ class WorkStoragePostgresImpl(PgStorageBase, WorkStorageInterface):
             claimed = (row.org_id, to_model(row, WorkItem))
             await session.commit()
             return claimed
+
+    async def count_claimed_ahead(self, org_id: UUID, item: WorkItem, now: datetime) -> int:
+        # The claim's index leads with the lane and the status, then the claim
+        # order, so this reads the lane's claimed items ahead of the item and
+        # no more: a lane holds as many as its workers run.
+        stmt = select(func.count()).where(
+            WorkItems.org_id == org_id,
+            WorkItems.lane == item.lane,
+            WorkItems.status == WorkStatus.CLAIMED.value,
+            WorkItems.lease_expires_at > now,
+            tuple_(WorkItems.available_at, WorkItems.id)
+            < tuple_(literal(item.available_at), literal(item.id)),
+        )
+        async with self._session_for(stmt, org_id=org_id) as session:
+            return (await session.execute(stmt)).scalar_one()
 
     async def requeue_stale(
         self, now: datetime, stagger: timedelta, limit: int

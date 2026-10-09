@@ -71,6 +71,7 @@ LOCAL_DEFAULT_SERVES_THE_CLOUD = {
     "metrics_port": "9464, the port the service module tells the sidecar to scrape",
     "worker_id": "maintenance-<hostname>-<pid>, the key the loop heartbeats under",
     "worker_lane": "the default lane is the one lane",
+    "worker_tenant_cap": "no cap until a lane's tenants crowd each other",
     "worker_capacity": "the local default is the tuning",
     "worker_lease_seconds": "the local default is the tuning",
     "worker_heartbeat_seconds": "the local default is the tuning",
@@ -226,6 +227,17 @@ def test_the_worker_hands_each_retention_to_its_manager(tmp_path: Path) -> None:
     assert (options.purge_batch, options.sweep_budget) == (7, timedelta(seconds=20))
     assert options.outbox_retention == timedelta(days=8)
     assert options.tally_interval == timedelta(minutes=5)
+
+
+def test_the_tenant_cap_is_the_lanes_and_0_sets_none() -> None:
+    """The cap travels with the lane the worker claims from. 0 sets no cap,
+    so the claim counts nothing and behaves as it does without one."""
+    base = {"_env_file": None, "environment": "test", "worker_id": "maintenance-test"}
+    assert loop_options(MaintenanceSettings.model_validate(base)).tenant_cap is None
+    capped = MaintenanceSettings.model_validate({**base, "worker_tenant_cap": 2})
+    assert (loop_options(capped).tenant_cap, loop_options(capped, "bulk").tenant_cap) == (2, 2)
+    with pytest.raises(ValidationError):
+        MaintenanceSettings.model_validate({**base, "worker_tenant_cap": -1})
 
 
 def test_the_event_retention_keeps_ninety_days_and_0_turns_it_off() -> None:

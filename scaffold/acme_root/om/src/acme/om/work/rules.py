@@ -1,9 +1,9 @@
 """Pure rules of the work namespace: the retry curve, the exhaustion test,
-and the attempt and stagger arithmetic. Values in, values out; no clock, no
-storage, no settings. The manager and both storage impls call these; the
-relational impl spells the exhaustion test and the claim's attempt count in
-SQL where one statement must decide, and each such place names the rule
-it mirrors."""
+the cap on a lane, and the attempt and stagger arithmetic. Values in, values
+out; no clock, no storage, no settings. The manager and both storage impls
+call these; the relational impl spells the exhaustion test and the claim's
+attempt count in SQL where one statement must decide, and each such place
+names the rule it mirrors."""
 
 from datetime import timedelta
 
@@ -33,6 +33,12 @@ def attempts_after_claim(attempts: int) -> int:
 def attempts_after_hand_back(attempts: int) -> int:
     """A hand-back (defer, release) refunds the attempt the claim spent."""
     return max(0, attempts - 1)
+
+
+def is_over_cap(ahead: int, cap: int) -> bool:
+    """True when a claimed item goes back to its lane: its tenant already
+    holds `cap` items claimed ahead of it there."""
+    return ahead >= cap
 
 
 def stagger_delay(position: int, stagger: timedelta) -> timedelta:

@@ -81,6 +81,18 @@ class WorkStorageMemoryImpl(MemoryStorageBase, WorkStorageInterface):
             self._items[item.id] = (org_id, claimed)
             return org_id, claimed
 
+    async def count_claimed_ahead(self, org_id: UUID, item: WorkItem, now: datetime) -> int:
+        async with self._lock:
+            return sum(
+                1
+                for other in self._rows(self._items, org_id)
+                if other.lane == item.lane
+                and other.status is WorkStatus.CLAIMED
+                and other.lease_expires_at is not None
+                and other.lease_expires_at > now
+                and (other.available_at, other.id) < (item.available_at, item.id)
+            )
+
     async def requeue_stale(
         self, now: datetime, stagger: timedelta, limit: int
     ) -> list[tuple[UUID, WorkItem]]:
