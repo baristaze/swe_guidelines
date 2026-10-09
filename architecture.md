@@ -1941,10 +1941,29 @@ Server state lives in TanStack Query, with one key factory per domain;
 client state, what only the UI knows, in Zustand. A push writes into the
 query cache: a hint reads the one entity it names and places it, a read
 that finds nothing removes it, and a collection is read again only where
-placement cannot decide. A late answer never overwrites a newer version.
+placement cannot decide. A hint that names a version the cache already
+holds reads nothing. Hints that arrive together are read together: an
+entity named twice is read once, and a burst past a bound reads its
+collections once instead. A late answer never overwrites a newer
+version.
 
 > **Principle:** Zustand for client state, TanStack Query for server
 > state. Realtime writes into the query cache.
+
+<!-- agents-only
+- The portal's reader is `apps/portal/src/realtime/hints.ts`. It knows
+  no entity: an entity hands it its read of one record, its placement,
+  and its ledger of versions (`queries/ledger.ts`), as
+  `queries/userCache.ts` does for a user, whose push it reads.
+- A window closes `HINT_WINDOW_MS` after its last new entity, or
+  `HINT_WINDOW_MAX_MS` after its first. Past `HINT_BURST` entities it
+  reads the collections instead.
+- An entity without a version orders its answers by when each read was
+  issued. A query being read while an entity is placed has it placed
+  again once that read lands.
+- A page read back from the stream routes the last push of each record
+  a reader reads, and the last push of each other entity.
+-->
 
 ### Views, View-Models, Models
 
