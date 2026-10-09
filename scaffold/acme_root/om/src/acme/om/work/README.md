@@ -15,7 +15,9 @@ kinds of thing [Acme is made of](../../../../README.md).
   frees, and `DELETE_ACCOUNT` and `DELETE_ORG` for the identity
   provider's side of a deletion. A kind whose payload names a time
   waits until then.
-- **Lane**: a routing name. A worker serves one lane.
+- **Lane**: a routing name. A worker serves one lane. A kind can have a
+  lane of its own, such as a long-held kind kept apart from short ones;
+  any other kind runs on the default lane.
 - **Handler**: the code that does one kind. It is idempotent, because
   an item may run twice.
 
@@ -23,7 +25,7 @@ kinds of thing [Acme is made of](../../../../README.md).
 
 - **Enqueue**, by a person's request or by the outbox relay when a
   write asked for work. The item starts queued, with no attempts and no
-  claim.
+  claim. The relay puts it on its kind's lane.
 - **Claim.** A worker takes the item on its lane ready longest, in one
   statement, with a claim token and the context the job runs under: the
   org, the service role, and the person who asked. An item of a deleted
@@ -68,5 +70,7 @@ A write that starts work lands a `work.<kind>` outbox row beside its
 own, and the relay enqueues the item under the row's id; a namespace
 never enqueues across a role itself. A new kind adds its name to
 `WorkKind`, its payload to `WORK_PAYLOADS`, its permission to
-`WORK_ENQUEUE_PERMISSIONS`, and its handler to the worker. A handler
+`WORK_ENQUEUE_PERMISSIONS`, and its handler to the worker. A kind that
+runs on a lane of its own adds the lane to `WORK_LANES`, which the relay
+reads through `relayed_lane`, and a worker serves that lane. A handler
 raises `WorkParked` to wait and `WorkRefused` to fail for good.

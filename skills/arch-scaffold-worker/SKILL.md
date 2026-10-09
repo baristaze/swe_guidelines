@@ -25,11 +25,12 @@ missing. `<Kind>` is the kind in CamelCase. When `<worker-name>` is a
 worker the tree has (`maintenance` in a copy), the kind joins it.
 Otherwise the skill creates the worker first.
 
-A kind that needs its own capacity is first the maintenance image
-deployed again on a lane of its own (`<NAME>_WORKER_LANE`, or
-`serve --lane`), a deployment change and no code. Create a worker when
-the kind needs code or a dependency the maintenance worker should not
-carry.
+A kind that needs its own capacity (`--lane <name>`) is first its lane
+in `WORK_LANES`, which the relay lands its items on, and the maintenance
+image deployed again on that lane (`<NAME>_WORKER_LANE`, or
+`serve --lane`): one line of code and a deployment change. Create a
+worker when the kind needs code or a dependency the maintenance worker
+should not carry.
 
 ## Created
 
@@ -44,7 +45,7 @@ carry.
 
 | File | Change |
 |------|--------|
-| `om/src/<name>/om/work/types/work_item.py` | the kind in `WorkKind`, its payload in `WORK_PAYLOADS`, its permission in `WORK_ENQUEUE_PERMISSIONS` |
+| `om/src/<name>/om/work/types/work_item.py` | the kind in `WorkKind`, its payload in `WORK_PAYLOADS`, its permission in `WORK_ENQUEUE_PERMISSIONS`, and with `--lane` its lane in `WORK_LANES` |
 | `om/src/<name>/om/work/README.md` | the kind, in the product's language |
 | the worker's `main.py` | the handler in `handlers` of `build_loop` |
 | the producing manager's impl | the write that starts the work lands a row of kind `work_row_kind(WorkKind.<KIND>)` beside its own |
@@ -71,7 +72,11 @@ carry.
 4. A producer never enqueues from a manager. Its write carries the
    work row in the same storage call, and the relay enqueues the item
    under the row's id.
-5. A new worker sets its capacity against the pool it opens for the
+5. With `--lane`, the kind's lane is a line in `WORK_LANES`, never an
+   edit of the relay. A worker of its own takes its lane's default from
+   `relayed_lane(WorkKind.<KIND>)`, never a copy of the name, so the
+   relay and the worker cannot disagree.
+6. A new worker sets its capacity against the pool it opens for the
    roles it touches (`<NAME>_DATABASE_POOL_SIZE`), never apart from it.
    Add its member and run `uv sync` before the fast gate.
 
