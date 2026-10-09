@@ -24,6 +24,7 @@ INFRA_INTERFACE_MODULES = frozenset(
         "acme.infra.observability",
         "acme.infra.trust",
         "acme.infra.cache",
+        "acme.infra.cache.read",
         "acme.infra.buckets",
         "acme.infra.topics",
         "acme.infra.queues",
@@ -32,7 +33,10 @@ INFRA_INTERFACE_MODULES = frozenset(
     }
 )
 """A capability's interface is its package; every module beneath it, and
-everything under `acme.infra.impl`, is an impl."""
+everything under `acme.infra.impl`, is an impl. The read cache is the one
+module beneath a package that is not: a typed reader over the cache's
+interface, with no impl behind it to choose, which a manager takes through
+its constructor (ADR 0095)."""
 
 
 def package_root(name: str) -> Path:
@@ -94,3 +98,4 @@ def test_the_scan_sees_the_whole_tree() -> None:
     assert is_infra_impl("acme.infra.impl.local")
     assert is_infra_impl("acme.infra.topics.dispatch")
     assert not is_infra_impl("acme.infra.topics")
+    assert not is_infra_impl("acme.infra.cache.read")
