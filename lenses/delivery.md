@@ -346,8 +346,10 @@ or component state; what a hint and a successful write cost in reads.
 **Violation.** Server data copied into a store and kept in sync by
 hand; query keys spelled inline in several places; a realtime handler
 that sets component state or calls a component callback; a third state
-library; a router that invalidates whole collections on every hint, or
-a mutation that re-reads collections its own answer already covers.
+library; a router that invalidates whole collections on every hint; a
+hint read again for each push that names it, or for a version the cache
+already holds; a late answer placed over a newer version; or a mutation
+that re-reads collections its own answer already covers.
 
 **Severity.** medium
 

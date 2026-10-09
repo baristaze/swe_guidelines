@@ -222,6 +222,11 @@ async def list_users(
     return await tenancy.get_users(ctx, cursor, limit)
 
 
+@router.get("/users/{user_id}", response_model=UserView)
+async def get_user(ctx: Ctx, tenancy: TenancyService, user_id: UUID) -> UserView:
+    return await tenancy.get_user(ctx, user_id)
+
+
 @router.get("/memberships", response_model=MembershipPageView)
 async def list_memberships(
     ctx: Ctx, tenancy: TenancyService, cursor: str | None = None, limit: int = LIMIT_DEFAULT

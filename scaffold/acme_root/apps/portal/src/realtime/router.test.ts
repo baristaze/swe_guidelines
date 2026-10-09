@@ -2,7 +2,8 @@ import { QueryClient, type QueryKey } from "@tanstack/react-query";
 import { describe, expect, it } from "vitest";
 import { keys } from "../queries/keys";
 import { entityOf, parseEnvelope } from "./envelopes";
-import { isKeptFresh, PUSHED_ENTITIES, routeEnvelope } from "./router";
+import type { Hints } from "./hints";
+import { isKeptFresh, PUSHED_ENTITIES, replayKey, routeEnvelope } from "./router";
 
 function recording() {
   const queryClient = new QueryClient();
@@ -105,6 +106,29 @@ describe("routeEnvelope", () => {
     expect(seen).toEqual([keys.users.all, keys.me]);
   });
 
+  it("hands a push about an entity with a reader to that reader, with its version, and invalidates nothing", () => {
+    const { queryClient, seen } = recording();
+    const hinted: [string, number | undefined][] = [];
+    const reader: Hints = { hint: (id, version) => hinted.push([id, version]), stop: () => undefined };
+    expect(routeEnvelope(queryClient, pushOf("tenancy.user.updated", { version: 4 }), { user: reader })).toEqual({
+      invalidated: [],
+      hinted: "user",
+    });
+    expect(routeEnvelope(queryClient, pushOf("tenancy.user.deleted"), { user: reader })).toEqual({
+      invalidated: [],
+      hinted: "user",
+    });
+    expect(hinted).toEqual([
+      ["x", 4],
+      ["x", undefined],
+    ]);
+    expect(seen).toEqual([]);
+    // Every other entity is routed as before.
+    expect(routeEnvelope(queryClient, pushOf("tenancy.api_key.created"), { user: reader })).toEqual({
+      invalidated: [keys.apiKeys.all],
+    });
+  });
+
   it("invalidates nothing for a revoked session or an orchestration, which no query reads", () => {
     // This session's own revocation arrives as a 4401 close, not as a push.
     for (const kind of ["tenancy.session.revoked", "orchestrations.orchestration.updated"]) {
@@ -153,5 +177,21 @@ describe("isKeptFresh", () => {
     expect(isKeptFresh(keys.memberships.list(200))).toBe(true);
     expect(isKeptFresh(keys.files.usage)).toBe(true);
     expect(isKeptFresh(keys.identity)).toBe(false);
+  });
+});
+
+describe("replayKey", () => {
+  it("keeps one push per record of an entity with a reader, and one per entity otherwise", () => {
+    const reader: Hints = { hint: () => undefined, stop: () => undefined };
+    const of = (kind: string, target: string) => {
+      const envelope = pushOf(kind, { target_id: target });
+      if (envelope.type !== "event") throw new Error("not a push");
+      return envelope;
+    };
+    const readers = { user: reader };
+    expect(replayKey(of("tenancy.user.updated", "a"), readers)).not.toBe(replayKey(of("tenancy.user.deleted", "b"), readers));
+    expect(replayKey(of("tenancy.user.updated", "a"), readers)).toBe(replayKey(of("tenancy.user.deleted", "a"), readers));
+    expect(replayKey(of("tenancy.api_key.created", "a"), readers)).toBe(replayKey(of("tenancy.api_key.deleted", "b"), readers));
+    expect(replayKey(of("tenancy.user.updated", "a"))).toBe(replayKey(of("tenancy.user.updated", "b")));
   });
 });

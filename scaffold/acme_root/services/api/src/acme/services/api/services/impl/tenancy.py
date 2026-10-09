@@ -208,6 +208,9 @@ class TenancyServiceImpl(TenancyServiceInterface):
             next_cursor=encode_cursor("users", page.items[-1].id) if page.has_more else None,
         )
 
+    async def get_user(self, ctx: TenantContext, user_id: UUID) -> UserView:
+        return UserView.model_validate(await self._tenancy.members.get_user(ctx, user_id))
+
     async def get_memberships(
         self, ctx: TenantContext, cursor: str | None, limit: int
     ) -> MembershipPageView:
