@@ -116,8 +116,29 @@ class Standing(Platform):
     estimate_seconds: float | None = None
 
 
+class Place(Platform):
+    """A waiting request's place and estimate, as its `Standing` answers
+    them."""
+
+    request_id: UUID
+    place: int | None = None
+    estimate_seconds: float | None = None
+
+
 class Line(Platform):
-    """A resource and the requests in its line, first first."""
+    """A resource and the requests in its line, first first, with each one's
+    place and estimate in the same order, replayed from the one read the
+    line makes."""
 
     resource: Resource
     requests: tuple[LeaseRequest, ...]
+    places: tuple[Place, ...] = ()
+
+
+class LeaseEntry(Platform):
+    """One lease of a history, with the request it answered: who asked, for
+    what, and with which payload. None when the purge took the request
+    first, which only a lease renewed past the retention outlives."""
+
+    lease: Lease
+    request: LeaseRequest | None = None

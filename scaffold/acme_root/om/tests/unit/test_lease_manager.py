@@ -3,8 +3,11 @@ manager's line, grant, renewal, release, revocation, sweep, and waiters.
 The races of two connections are the Postgres suite's; here each guard is
 the conditional write a caller that arrives second is refused by."""
 
+from collections import Counter
+from collections.abc import Awaitable, Callable
 from datetime import datetime, timedelta
 from pathlib import Path
+from typing import Any, cast
 from uuid import UUID
 
 import pytest
@@ -14,6 +17,11 @@ from contracts.lease_job import (
     a_job_that_waited_past_its_window_starts_inside_the_margin,
     a_resource_with_as_many_labels_as_a_real_one_is_matched,
     the_jobs_worker_keeps_the_lease_and_no_one_else_does,
+)
+from contracts.lease_resource import (
+    an_owners_update_grants_the_requests_its_labels_now_match,
+    an_update_that_takes_a_resource_out_of_service_lands_in_the_owners_commit,
+    the_history_lists_each_lease_with_its_request_and_no_tenant_reads_another,
 )
 
 from acme.infra.impl.local import InfraLocalImpl
@@ -32,7 +40,7 @@ from acme.om.leases.hooks import ResourceKindInterface
 from acme.om.leases.impl.kinds import NoopResourceKindImpl, OrchestrationWaiterImpl
 from acme.om.leases.impl.manager import LeasesManagerImpl, LeasesOptions
 from acme.om.leases.rules import measured_hold, place_of, rank_at, replay, stands_in
-from acme.om.leases.storage import ResourceLandingInterface
+from acme.om.leases.storage import LeasesStorageInterface, ResourceLandingInterface
 from acme.om.leases.types.lease import JobClaim, Lease, LeaseStatus
 from acme.om.leases.types.request import (
     EndReason,
@@ -40,7 +48,7 @@ from acme.om.leases.types.request import (
     RequestStatus,
     WaiterKind,
 )
-from acme.om.leases.types.resource import Resource, ResourceKind
+from acme.om.leases.types.resource import Resource, ResourceKind, ResourceUpdate
 from acme.om.orchestrations.rules import advanced
 from acme.om.orchestrations.types.orchestration import (
     FailReason,
@@ -170,6 +178,26 @@ class Refusing(ResourceKindInterface):
         return ()
 
 
+class Counted:
+    """The leases storage, with a count of each read the manager makes."""
+
+    def __init__(self, inner: LeasesStorageInterface) -> None:
+        self._inner = inner
+        self.reads: Counter[str] = Counter()
+
+    def __getattr__(self, name: str) -> Any:
+        found = getattr(self._inner, name)
+        if not name.startswith("read_"):
+            return found
+        read = cast(Callable[..., Awaitable[Any]], found)
+
+        async def counted(*args: Any, **kwargs: Any) -> Any:
+            self.reads[name] += 1
+            return await read(*args, **kwargs)
+
+        return counted
+
+
 class World:
     def __init__(
         self,
@@ -181,8 +209,9 @@ class World:
         self.managers: Managers = build_managers(self.storage, InfraLocalImpl(tmp_path))
         self.now = utcnow()
         self.margin = MARGIN
+        self.counted = Counted(self.storage.get_lease_storage())
         self.leases = LeasesManagerImpl(
-            self.storage.get_lease_storage(),
+            cast(LeasesStorageInterface, self.counted),
             self.managers.tenancy,
             self.managers.outbox,
             options or LeasesOptions(margin=MARGIN),
@@ -230,6 +259,19 @@ class World:
     async def resource(self, ctx: TenantContext, *labels: str) -> Resource:
         return await self.leases.register(ctx, a_resource(labels))
 
+    async def land_update(
+        self, ctx: TenantContext, resource: Resource, change: ResourceUpdate, *, commits: bool
+    ) -> None:
+        """The owner's memory storage lands the update under its own lock, in
+        the write of its row; a write that fails lands neither."""
+        if not commits:
+            return
+        landing = self.storage.get_lease_storage()
+        assert isinstance(landing, ResourceLandingInterface)
+        landing.land_update(
+            ctx.org_id, resource.kind, resource.ref_id, change, self.now, ctx.user_id
+        )
+
     def later(self, by: timedelta) -> datetime:
         self.now += by
         return self.now
@@ -268,6 +310,22 @@ async def test_a_resource_with_as_many_labels_as_a_real_one_is_matched(
     job_world: World,
 ) -> None:
     await a_resource_with_as_many_labels_as_a_real_one_is_matched(job_world)
+
+
+async def test_an_owners_update_grants_the_requests_its_labels_now_match(world: World) -> None:
+    await an_owners_update_grants_the_requests_its_labels_now_match(world)
+
+
+async def test_an_update_that_takes_a_resource_out_of_service_lands_in_the_owners_commit(
+    world: World,
+) -> None:
+    await an_update_that_takes_a_resource_out_of_service_lands_in_the_owners_commit(world)
+
+
+async def test_the_history_lists_each_lease_with_its_request_and_no_tenant_reads_another(
+    world: World,
+) -> None:
+    await the_history_lists_each_lease_with_its_request_and_no_tenant_reads_another(world)
 
 
 async def test_a_resource_registers_once_per_kind_and_row(world: World) -> None:
@@ -736,3 +794,119 @@ async def test_purge_tenant_reads_nothing_of_a_live_tenant(world: World) -> None
     owner = await world.owner()
     await world.resource(owner)
     assert await world.leases.purge_tenant(owner) == 0
+
+
+# The owner's resource, the kind's check at the ask, and the reads.
+
+
+async def test_a_resource_registered_is_offered_at_once_to_a_selector_it_matches(
+    world: World,
+) -> None:
+    owner = await world.owner()
+    waits = await world.leases.ask(owner, an_ask(labels=("cold",)))
+    assert waits.lease is None
+    dock = await world.resource(owner, "cold")
+    granted = await world.leases.get_request(owner, waits.request.id)
+    assert granted.lease is not None and granted.lease.resource_id == dock.id
+
+
+class Staffed(NoopResourceKindImpl):
+    """A kind that checks an ask: only an admin or the owner asks, and only
+    for a resource that offers `staffed`, by its id or a selector's labels.
+    It keeps what it was asked."""
+
+    def __init__(self) -> None:
+        self.asked: list[tuple[UUID, LeaseRequest, Resource | None]] = []
+
+    async def check_ask(
+        self, ctx: TenantContext, request: LeaseRequest, resource: Resource | None
+    ) -> None:
+        self.asked.append((ctx.user_id, request, resource))
+        if ctx.role not in (Role.OWNER, Role.ADMIN):
+            raise NotAuthorized(f"a {ctx.role.value} asks for no {request.kind.value} resource")
+        offers = resource.labels if resource is not None else request.labels or ()
+        if "staffed" not in offers:
+            raise ValidationFailed("a resource is asked for only where it is staffed")
+
+
+async def test_a_kinds_check_refuses_an_ask_before_it_waits(tmp_path: Path) -> None:
+    """The kind sees the asker's context, the request as it would land, and
+    the resource it names. A member is refused for who asks, and an ask for
+    a resource with no `staffed` for what it asks; neither waits in any
+    line. The owner's ask for a staffed one is granted, and a kind without
+    the check takes the member's ask as before."""
+    kind = Staffed()
+    world = World(tmp_path, kind=kind)
+    owner = await world.owner()
+    mia = await world.member("mia")
+    staffed, bare = await world.resource(owner, "staffed"), await world.resource(owner)
+    refused = an_ask(staffed)
+    with pytest.raises(NotAuthorized):
+        await world.leases.ask(mia, refused)
+    unstaffed = an_ask(bare)
+    with pytest.raises(ValidationFailed):
+        await world.leases.ask(owner, unstaffed)
+    with pytest.raises(ValidationFailed):
+        await world.leases.ask(owner, an_ask(labels=("cold",)))
+    for ask in (refused, unstaffed):
+        with pytest.raises(NotFound):
+            await world.leases.get_request(owner, ask.id)
+    assert (await world.leases.line(owner, staffed.id)).requests == ()
+    asked_by, request, named = kind.asked[0]
+    assert (asked_by, request.created_by, named) == (mia.user_id, mia.user_id, staffed)
+    assert request.status is RequestStatus.WAITING and request.wait_until is not None
+    assert kind.asked[2][2] is None, "a selector names no resource"
+
+    granted = await world.leases.ask(owner, an_ask(staffed))
+    assert granted.lease is not None
+    plain = World(tmp_path)
+    plain_owner = await plain.owner()
+    dock = await plain.resource(plain_owner)
+    asked = await plain.leases.ask(await plain.member("mia"), an_ask(dock))
+    assert asked.lease is not None
+
+
+async def test_a_line_answers_each_place_and_estimate_from_one_read(world: World) -> None:
+    """Every request in the line has its place and estimate, the same as its
+    standing answers, and the line reads the storage as often for eight of
+    them as for three."""
+    owner = await world.owner()
+    dock, spare = await world.resource(owner, "cold"), await world.resource(owner, "cold")
+    for resource in (dock, spare):
+        assert (await world.leases.ask(owner, an_ask(resource))).lease is not None
+
+    async def line_of(count: int) -> tuple[int, list[tuple[int | None, float | None]]]:
+        for index in range(count):
+            ask = an_ask(dock) if index % 3 == 0 else an_ask(labels=("cold",))
+            await world.leases.ask(owner, ask)
+        world.counted.reads.clear()
+        line = await world.leases.line(owner, dock.id)
+        reads = sum(world.counted.reads.values())
+        assert [p.request_id for p in line.places] == [r.id for r in line.requests]
+        answered = [(p.place, p.estimate_seconds) for p in line.places]
+        standings = [await world.leases.get_request(owner, r.id) for r in line.requests]
+        assert answered == [(s.place, s.estimate_seconds) for s in standings]
+        return reads, answered
+
+    short, first = await line_of(3)
+    long, then = await line_of(5)
+    assert len(first) == 3 and len(then) == 8
+    assert short == long == 3, "the resource, its kind's resources, and the waiting"
+    assert all(place is not None and wait is not None for place, wait in then)
+
+
+async def test_a_history_page_is_one_read_whatever_its_length(tmp_path: Path) -> None:
+    world = World(tmp_path, options=LeasesOptions(margin=MARGIN, history_limit=4))
+    owner = await world.owner()
+    dock = await world.resource(owner)
+    for _ in range(6):
+        standing = await world.leases.ask(owner, an_ask(dock))
+        assert standing.lease is not None
+        world.later(timedelta(seconds=1))
+        await world.leases.release(owner, standing.lease.id)
+    world.counted.reads.clear()
+    page = await world.leases.list_leases(owner, dock.id, limit=50)
+    assert len(page) == 4, "the manager's bound"
+    assert all(e.request is not None and e.request.lease_id == e.lease.id for e in page)
+    assert world.counted.reads == Counter({"read_leases": 1})
+    assert len(await world.leases.list_leases(owner, limit=0)) == 1

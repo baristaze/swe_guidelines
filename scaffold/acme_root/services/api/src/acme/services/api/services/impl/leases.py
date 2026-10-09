@@ -7,14 +7,17 @@ from acme.om.context import TenantContext
 from acme.om.exceptions import ValidationFailed
 from acme.om.leases import LeasesManagerInterface
 from acme.om.leases.types.lease import Lease
-from acme.om.leases.types.request import LeaseRequest, Standing
+from acme.om.leases.types.request import LeaseEntry, LeaseRequest, Standing
 from acme.om.leases.types.resource import Resource
 from acme.services.api.services.leases import LeasesServiceInterface
+from acme.services.api.types.common import clamp_limit
 from acme.services.api.types.leases import (
     AskRequest,
+    LeaseEntryView,
     LeaseRequestView,
     LeaseView,
     LineView,
+    PlaceView,
     RenewRequest,
     ReorderRequest,
     ResourceView,
@@ -35,6 +38,13 @@ def resource_view(resource: Resource) -> ResourceView:
 
 def request_view(request: LeaseRequest) -> LeaseRequestView:
     return LeaseRequestView.model_validate(request)
+
+
+def entry_view(entry: LeaseEntry) -> LeaseEntryView:
+    return LeaseEntryView(
+        lease=lease_view(entry.lease),
+        request=None if entry.request is None else request_view(entry.request),
+    )
 
 
 def standing_view(standing: Standing) -> StandingView:
@@ -88,10 +98,17 @@ class LeasesServiceImpl(LeasesServiceInterface):
         return LineView(
             resource=resource_view(line.resource),
             requests=[request_view(r) for r in line.requests],
+            places=[PlaceView.model_validate(p) for p in line.places],
         )
 
     async def get_lease(self, ctx: TenantContext, lease_id: UUID) -> LeaseView:
         return lease_view(await self._leases.get_lease(ctx, lease_id))
+
+    async def list_leases(
+        self, ctx: TenantContext, resource_id: UUID | None, limit: int
+    ) -> list[LeaseEntryView]:
+        entries = await self._leases.list_leases(ctx, resource_id, clamp_limit(limit))
+        return [entry_view(e) for e in entries]
 
     async def renew(
         self, ctx: TenantContext, lease_id: UUID, body: RenewRequest | None

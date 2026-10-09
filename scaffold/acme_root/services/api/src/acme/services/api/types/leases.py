@@ -1,5 +1,6 @@
 """The wire's leases: a resource and its anchor, a lease with the seconds it
-has left, a request with its place and estimate, and a resource's line. A
+has left, a request with its place and estimate, a resource's line, and a
+history of leases, each with the request it answered. A
 lease's time travels as a duration as well as an instant: the holder's
 clock is not the server's, so it counts the seconds from when it asked."""
 
@@ -82,11 +83,30 @@ class StandingView(View):
     estimate_seconds: float | None
 
 
+class PlaceView(View):
+    """A waiting request's place (1 is next in some line it stands in) and
+    the estimate of its wait in seconds, as its standing answers them."""
+
+    request_id: UUID
+    place: int | None
+    estimate_seconds: float | None
+
+
 class LineView(View):
-    """A resource and the requests in its line, first first."""
+    """A resource and the requests in its line, first first, with each one's
+    place and estimate in the same order."""
 
     resource: ResourceView
     requests: list[LeaseRequestView]
+    places: list[PlaceView]
+
+
+class LeaseEntryView(View):
+    """One lease of a history, with the request it answered; none when the
+    request was purged first."""
+
+    lease: LeaseView
+    request: LeaseRequestView | None
 
 
 class AskRequest(RequestBody):

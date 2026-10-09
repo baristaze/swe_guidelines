@@ -8,21 +8,44 @@ from datetime import datetime
 from uuid import UUID
 
 from acme.om.leases.types.lease import Grant, Lease, LeaseStatus
-from acme.om.leases.types.request import EndReason, LeaseRequest, RequestStatus, WaiterKind
-from acme.om.leases.types.resource import Resource, ResourceKind
+from acme.om.leases.types.request import (
+    EndReason,
+    LeaseEntry,
+    LeaseRequest,
+    RequestStatus,
+    WaiterKind,
+)
+from acme.om.leases.types.resource import Resource, ResourceKind, ResourceUpdate
 from acme.om.orchestrations.types.orchestration import Step
 from acme.om.outbox.types.row import OutboxRow
 
 
 class ResourceLandingInterface(ABC):
-    """What another namespace's memory storage needs to register or retire a
-    resource in the commit of its own row, the twin of the statements the
-    Postgres impls share (`leases.storage.impl.postgres.register_statement`
+    """What another namespace's memory storage needs to register, update, or
+    retire a resource in the commit of its own row, the twin of the
+    statements the Postgres impls share
+    (`leases.storage.impl.postgres.register_statement`, `update_statement`,
     and `retire_statement`)."""
 
     @abstractmethod
     def land_resource(self, org_id: UUID, resource: Resource) -> None:
         """Registers the resource, unless its kind and row have one already."""
+        ...
+
+    @abstractmethod
+    def land_update(
+        self,
+        org_id: UUID,
+        kind: ResourceKind,
+        ref_id: UUID,
+        change: ResourceUpdate,
+        at: datetime,
+        actor: UUID,
+    ) -> None:
+        """Updates the live resource of the kind for the row: its labels, its
+        bound, and its availability when the update names it. Its lease and
+        its anchor stay as they are. The line is offered it by the manager
+        after the commit (`offer`), or at the next sweep."""
         ...
 
     @abstractmethod
@@ -77,6 +100,21 @@ class LeasesStorageInterface(ABC):
     ) -> Resource | None:
         """Sets whether a live resource may be granted; None when there is no
         live resource by the id."""
+        ...
+
+    @abstractmethod
+    async def update_resource(
+        self,
+        org_id: UUID,
+        resource_id: UUID,
+        change: ResourceUpdate,
+        at: datetime,
+        actor: UUID,
+        outbox_rows: tuple[OutboxRow, ...],
+    ) -> Resource | None:
+        """The owner's update of a live resource, under the anchor's lock, with
+        its rows in one commit; its lease and its anchor stay as they are.
+        None when there is no live resource by the id."""
         ...
 
     @abstractmethod
@@ -184,12 +222,22 @@ class LeasesStorageInterface(ABC):
         the lease, the anchor's next token and holder, the request's answer,
         and the rows, in one commit, only while the anchor holds
         `expected_token` and no lease, the resource is live and available,
-        and the request still waits. None, with nothing landed, otherwise.
+        and the request still waits and still fits the resource as its row
+        stands (`grant_fits`). None, with nothing landed, otherwise.
         The unique index over a resource's active leases is the second fence."""
         ...
 
     @abstractmethod
     async def read_lease(self, org_id: UUID, lease_id: UUID) -> Lease | None: ...
+
+    @abstractmethod
+    async def read_leases(
+        self, org_id: UUID, resource_id: UUID | None, limit: int
+    ) -> list[LeaseEntry]:
+        """The org's leases, or one resource's, newest first (by their grant,
+        then their id), whatever their status, each with the request it
+        answered, in one read."""
+        ...
 
     @abstractmethod
     async def read_lapsed(self, org_id: UUID, lapsed_before: datetime, limit: int) -> list[Lease]:

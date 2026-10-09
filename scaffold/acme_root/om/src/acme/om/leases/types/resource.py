@@ -11,7 +11,7 @@ from uuid import UUID
 
 from pydantic import Field, StringConstraints
 
-from acme.om.base import Identifiable, Trackable
+from acme.om.base import Identifiable, Platform, Trackable
 
 Label = Annotated[
     str, StringConstraints(min_length=1, max_length=200, pattern=r"^[^\x00-\x1f\x7f]+$")
@@ -42,8 +42,10 @@ class Resource(Identifiable, Trackable):
         "held_until",
         "mean_hold_seconds",
     )
-    """The kind, the row, the labels, and the bound are the owner's at the
-    registration; the rest moves only through the manager's transitions."""
+    """The kind and the row are the owner's at the registration, and the
+    labels and the bound at the registration and at each update of its row
+    (`ResourceUpdate`), which may name its availability too; the rest moves
+    only through the manager's transitions."""
 
     kind: ResourceKind
     # The row it stands for, in the namespace that owns the kind. One
@@ -63,3 +65,15 @@ class Resource(Identifiable, Trackable):
     # How long a lease of it is held, measured as each one ends; the wait
     # estimate replays its line from it.
     mean_hold_seconds: float | None = None
+
+
+class ResourceUpdate(Platform):
+    """An owner's update of its resource, landed with its own row: what the
+    resource offers now, its bound on one lease, and, when it names it,
+    whether it is in service. A lease it holds keeps its term, and the new
+    bound holds from its next renewal; a request its labels no longer match
+    leaves its line, and one they now match joins it."""
+
+    labels: tuple[Label, ...] = Field(default=(), max_length=MAX_LABELS)
+    max_term_seconds: int = Field(default=300, ge=1, le=MAX_TERM_SECONDS)
+    available: bool | None = None  # None keeps it as it is

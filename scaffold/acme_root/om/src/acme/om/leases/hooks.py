@@ -1,8 +1,8 @@
 """The hooks a kind registers, as a work kind registers its handler. A
 resource kind says what a grant of it starts and whether a request may still
-be granted; a waiter kind says whether a waiter still waits and what wakes
-it. The root hands the manager one impl per kind, and a kind with none is
-refused at the ask."""
+be granted, and it may check an ask before it waits; a waiter kind says
+whether a waiter still waits and what wakes it. The root hands the manager
+one impl per kind, and a kind with none is refused at the ask."""
 
 from abc import ABC, abstractmethod
 from uuid import UUID
@@ -15,6 +15,19 @@ from acme.om.outbox.types.row import OutboxRow
 
 
 class ResourceKindInterface(ABC):
+    async def check_ask(
+        self, ctx: TenantContext, request: LeaseRequest, resource: Resource | None
+    ) -> None:
+        """Asked at the ask, under the asker's context, once its payload has
+        its kind's shape and before anything lands: whether this asker may
+        ask (its role, its credential), and whether what it asks fits (its
+        payload, and the labels of the resource it names, or None for a
+        selector). It refuses by raising `NotAuthorized` or
+        `ValidationFailed`, and the request never waits. An ask asked again
+        by its key is checked again. A kind that checks nothing keeps this,
+        which accepts every ask."""
+        return None
+
     @abstractmethod
     async def may_grant(
         self, ctx: TenantContext, resource: Resource, request: LeaseRequest
