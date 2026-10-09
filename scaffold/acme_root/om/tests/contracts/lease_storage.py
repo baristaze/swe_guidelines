@@ -54,6 +54,7 @@ CROSS_TENANT_CASES: frozenset[str] = frozenset(
         "renew_lease",
         "retire_resource",
         "settle_request",
+        "start_lease",
         "write_availability",
     }
 )
@@ -465,6 +466,7 @@ class LeaseStorageContract:
         assert await storage.read_lease(other, held.id) is None
         assert await storage.read_lapsed(other, at + timedelta(days=1), 10) == []
         assert await storage.renew_lease(other, held.id, at, at + TERM, new_id()) is None
+        assert await storage.start_lease(other, held.id, at, at, at + TERM, new_id()) is None
         ended = await storage.end_lease(other, held.id, LeaseStatus.REVOKED, at, new_id(), 1.0, ())
         assert ended is None
         assert await storage.read_lease(org, held.id) == held
@@ -487,6 +489,41 @@ class LeaseStorageContract:
         # Past its expiry by the server's clock, a lease is not renewed.
         late = renewed.expires_at + timedelta(seconds=1)
         assert await storage.renew_lease(org, lease.id, late, late + TERM, new_id()) is None
+
+    async def test_a_start_lands_once_until_the_lease_lapses_past_the_margin(
+        self, storage: LeasesStorageInterface
+    ) -> None:
+        org = new_id()
+        resource = await self.a_resource(storage, org)
+        request = await self.a_request(storage, org, make_request(resource))
+        lease = await storage.grant(org, grant_of(resource, request), ())
+        assert lease is not None and lease.started_at is None
+        # Past its expiry, but not by the margin: the job still starts.
+        late = lease.expires_at + timedelta(seconds=5)
+        lapsed_before = late - timedelta(seconds=30)
+        started = await storage.start_lease(
+            org, lease.id, late, lapsed_before, late + TERM, new_id()
+        )
+        assert started is not None and started.started_at == late
+        assert started.expires_at == late + TERM
+        anchor = await storage.read_resource(org, resource.id)
+        assert anchor is not None and anchor.held_until == late + TERM
+        # Once started, a second start lands nothing.
+        again = await storage.start_lease(
+            org, lease.id, late, lapsed_before, late + TERM * 2, new_id()
+        )
+        assert again is None
+        # A lease past its expiry and the margin does not start.
+        spare = await self.a_resource(storage, org)
+        other = await self.a_request(storage, org, make_request(spare))
+        lapsing = await storage.grant(org, grant_of(spare, other), ())
+        assert lapsing is not None
+        past = lapsing.expires_at + timedelta(seconds=31)
+        refused = await storage.start_lease(
+            org, lapsing.id, past, past - timedelta(seconds=30), past + TERM, new_id()
+        )
+        assert refused is None
+        assert await storage.read_lease(org, lapsing.id) == lapsing
 
     async def test_an_end_frees_the_anchor_and_keeps_its_token(
         self, storage: LeasesStorageInterface

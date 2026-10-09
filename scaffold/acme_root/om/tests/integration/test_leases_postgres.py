@@ -12,6 +12,13 @@ from pathlib import Path
 from uuid import UUID
 
 import pytest
+from contracts.lease_job import (
+    StartsAJob,
+    a_job_that_misses_its_window_lets_the_lease_lapse,
+    a_job_that_waited_past_its_window_starts_inside_the_margin,
+    a_resource_with_as_many_labels_as_a_real_one_is_matched,
+    the_jobs_worker_keeps_the_lease_and_no_one_else_does,
+)
 
 from acme.infra.impl.local import InfraLocalImpl
 from acme.om.base import new_id, utcnow
@@ -24,6 +31,7 @@ from acme.om.context import (
     TenantContext,
     build_context,
 )
+from acme.om.leases.hooks import ResourceKindInterface
 from acme.om.leases.impl.kinds import NoopResourceKindImpl, OrchestrationWaiterImpl
 from acme.om.leases.impl.manager import LeasesManagerImpl, LeasesOptions
 from acme.om.leases.types.lease import Lease, LeaseStatus
@@ -67,10 +75,17 @@ class World:
     """The managers over Postgres, and a leases manager on the case's clock.
     The sweep visits every due org, since other cases leave theirs."""
 
-    def __init__(self, storage: StoragePostgresImpl, tmp_path: Path) -> None:
+    def __init__(
+        self,
+        storage: StoragePostgresImpl,
+        tmp_path: Path,
+        kind: ResourceKindInterface | None = None,
+    ) -> None:
         self.storage = storage
         self.managers: Managers = build_managers(storage, InfraLocalImpl(tmp_path))
         self.now = utcnow()
+        self.margin = MARGIN
+        self.kind = kind or NoopResourceKindImpl()
         self.leases = self.leases_of(sweep_orgs=100_000)
         self.slug = f"ajax-{new_id().hex[-8:]}"
 
@@ -80,10 +95,11 @@ class World:
             self.managers.tenancy,
             self.managers.outbox,
             LeasesOptions(margin=MARGIN, sweep_orgs=sweep_orgs),
-            kinds={ResourceKind.NOOP: NoopResourceKindImpl()},
+            kinds={ResourceKind.NOOP: self.kind},
             waiters={
                 WaiterKind.ORCHESTRATION: OrchestrationWaiterImpl(self.managers.orchestrations)
             },
+            work=self.managers.work,
             clock=lambda: self.now,
         )
 
@@ -137,6 +153,9 @@ class World:
         self.now += by
         return self.now
 
+    def clock(self) -> datetime:
+        return self.now
+
     async def drain(self, kind: WorkKind) -> list[tuple[UUID, UUID, dict[str, object]]]:
         """Claims every queued item of the kind, so no later case meets one:
         each one's tenant, its target, and its payload."""
@@ -153,6 +172,33 @@ class World:
 @pytest.fixture
 def world(storage: StoragePostgresImpl, tmp_path: Path) -> World:
     return World(storage, tmp_path)
+
+
+@pytest.fixture
+def job_world(storage: StoragePostgresImpl, tmp_path: Path) -> World:
+    """A world whose grants start a job, which its worker keeps the lease
+    through."""
+    return World(storage, tmp_path, StartsAJob())
+
+
+async def test_the_jobs_worker_keeps_the_lease_and_no_one_else_does(job_world: World) -> None:
+    await the_jobs_worker_keeps_the_lease_and_no_one_else_does(job_world)
+
+
+async def test_a_job_that_waited_past_its_window_starts_inside_the_margin(
+    job_world: World,
+) -> None:
+    await a_job_that_waited_past_its_window_starts_inside_the_margin(job_world)
+
+
+async def test_a_job_that_misses_its_window_lets_the_lease_lapse(job_world: World) -> None:
+    await a_job_that_misses_its_window_lets_the_lease_lapse(job_world)
+
+
+async def test_a_resource_with_as_many_labels_as_a_real_one_is_matched(
+    job_world: World,
+) -> None:
+    await a_resource_with_as_many_labels_as_a_real_one_is_matched(job_world)
 
 
 def an_ask(

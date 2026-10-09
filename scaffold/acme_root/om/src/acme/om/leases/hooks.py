@@ -29,8 +29,11 @@ class ResourceKindInterface(ABC):
         self, ctx: TenantContext, resource: Resource, request: LeaseRequest, lease: Lease
     ) -> tuple[OutboxRow, ...]:
         """What a grant starts: the rows it lands in the grant's own commit,
-        a `work.<kind>` row among them for a job to enqueue. A kind keeps
-        per-lease facts of its own in its own table, keyed by the lease's id."""
+        a `work.<kind>` row among them for a job to enqueue. That row is the
+        lease's job, so a grant starts one at most: the worker that claims
+        its item acts for the holder, and the row carries the lease's id and
+        token for it. A kind keeps per-lease facts of its own in its own
+        table, keyed by the lease's id."""
         ...
 
 

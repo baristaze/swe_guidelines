@@ -10,6 +10,7 @@ from acme.services.api.types.leases import (
     LeaseRequestView,
     LeaseView,
     LineView,
+    RenewRequest,
     ReorderRequest,
     StandingView,
 )
@@ -40,7 +41,9 @@ class LeasesServiceInterface(ABC):
     async def get_lease(self, ctx: TenantContext, lease_id: UUID) -> LeaseView: ...
 
     @abstractmethod
-    async def renew(self, ctx: TenantContext, lease_id: UUID) -> LeaseView: ...
+    async def renew(
+        self, ctx: TenantContext, lease_id: UUID, body: RenewRequest | None
+    ) -> LeaseView: ...
 
     @abstractmethod
     async def release(self, ctx: TenantContext, lease_id: UUID) -> LeaseView: ...

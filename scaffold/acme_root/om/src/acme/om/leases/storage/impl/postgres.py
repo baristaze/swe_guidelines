@@ -432,6 +432,42 @@ class LeasesStoragePostgresImpl(PgStorageBase, LeasesStorageInterface):
             _stamp(anchor, now, actor)
             return await self._commit(session, org_id, row, ())
 
+    async def start_lease(
+        self,
+        org_id: UUID,
+        lease_id: UUID,
+        now: datetime,
+        lapsed_before: datetime,
+        expires_at: datetime,
+        actor: UUID,
+    ) -> Lease | None:
+        async with self._session_for(Leases, org_id=org_id) as session:
+            anchor = await self._anchor_of(session, org_id, lease_id)
+            if anchor is None or anchor.lease_id != lease_id or anchor.retired_at is not None:
+                await session.rollback()
+                return None
+            stmt = (
+                select(Leases)
+                .where(
+                    Leases.org_id == org_id,
+                    Leases.id == lease_id,
+                    Leases.status == ACTIVE,
+                    Leases.started_at.is_(None),
+                    Leases.expires_at > lapsed_before,
+                )
+                .with_for_update()
+            )
+            row = (await session.execute(stmt)).scalar_one_or_none()
+            if row is None:
+                await session.rollback()
+                return None
+            row.started_at = now
+            row.expires_at = expires_at
+            _stamp(row, now, actor)
+            anchor.held_until = expires_at
+            _stamp(anchor, now, actor)
+            return await self._commit(session, org_id, row, ())
+
     async def end_lease(
         self,
         org_id: UUID,

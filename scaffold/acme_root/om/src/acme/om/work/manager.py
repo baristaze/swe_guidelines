@@ -111,6 +111,14 @@ class WorkManagerInterface(ABC):
         ...
 
     @abstractmethod
+    async def holds(self, ctx: TenantContext, idempotency_key: UUID, claim_token: UUID) -> bool:
+        """Whether the tenant's item under this key is claimed under this
+        token now: the fence every write to the item conditions on, read for
+        a record that lets the worker running its item act on it, such as a
+        lease whose job the item is. Reads only."""
+        ...
+
+    @abstractmethod
     async def requeue_stale(self, rctx: RequestContext, limit: int) -> int:
         """Platform-internal: the sweep, across tenants, like the claim: returns
         up to `limit` items whose lease expired to the queue, or fails them

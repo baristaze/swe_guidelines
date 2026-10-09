@@ -65,6 +65,7 @@ class LeaseRequests(IdentifiableMixin, TrackableMixin, Base):
     waiter_kind: Mapped[str | None]
     waiter_id: Mapped[UUID | None]
     term_seconds: Mapped[int]
+    start_seconds: Mapped[int | None]
     wait_seconds: Mapped[int]
     wait_until: Mapped[datetime]
     rank: Mapped[float]

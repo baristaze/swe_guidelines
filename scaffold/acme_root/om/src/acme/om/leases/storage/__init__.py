@@ -206,6 +206,23 @@ class LeasesStorageInterface(ABC):
         ...
 
     @abstractmethod
+    async def start_lease(
+        self,
+        org_id: UUID,
+        lease_id: UUID,
+        now: datetime,
+        lapsed_before: datetime,
+        expires_at: datetime,
+        actor: UUID,
+    ) -> Lease | None:
+        """Starts an active lease's job at `now`, and moves its expiry, and
+        the anchor's, to `expires_at`, while its job has not started, it has
+        not expired by `lapsed_before` (the clock less the margin), and it
+        holds a live resource; None otherwise. A job that waited in its lane
+        to the end of its window starts here, where a renewal is refused."""
+        ...
+
+    @abstractmethod
     async def end_lease(
         self,
         org_id: UUID,

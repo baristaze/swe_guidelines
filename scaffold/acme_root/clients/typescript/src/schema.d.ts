@@ -691,7 +691,8 @@ export interface paths {
         put?: never;
         /**
          * Renew
-         * @description Its holder's: the lease runs its term again from now.
+         * @description Its holder's: the lease runs the seconds the body names from now, or
+         *     its term again, within the resource's bound.
          */
         post: operations["renew_v1_leases__lease_id__renew_post"];
         delete?: never;
@@ -1196,7 +1197,9 @@ export interface components {
          * @description An ask for a lease: one resource by its id, or a selector, the labels
          *     a resource of `kind` must offer. `payload` is in the shape the kind
          *     fixes; the term is bounded by the resource's, and the ask expires in line
-         *     after `wait_seconds`.
+         *     after `wait_seconds`. When the grant starts a job, `start_seconds` is the
+         *     window the job has to start in, bounded the same way; none gives it the
+         *     term.
          */
         AskRequest: {
             kind: components["schemas"]["ResourceKind"];
@@ -1208,6 +1211,8 @@ export interface components {
             };
             /** Resource Id */
             resource_id?: string | null;
+            /** Start Seconds */
+            start_seconds?: number | null;
             /**
              * Term Seconds
              * @default 60
@@ -1716,6 +1721,8 @@ export interface components {
             rank: number;
             /** Resource Id */
             resource_id: string | null;
+            /** Start Seconds */
+            start_seconds: number | null;
             status: components["schemas"]["RequestStatus"];
             /** Term Seconds */
             term_seconds: number;
@@ -1735,6 +1742,8 @@ export interface components {
          * @description One grant: the holder acts on the resource under `fencing_token` until
          *     it has used `expires_in_seconds`, counted from when it asked. The token is
          *     no secret: it is the number the resource's own side refuses to go below.
+         *     A grant that started a job shows when the job started, and until then
+         *     expires at the end of the window the job has to start in.
          */
         LeaseView: {
             /**
@@ -1773,6 +1782,8 @@ export interface components {
              * Format: uuid
              */
             resource_id: string;
+            /** Started At */
+            started_at: string | null;
             status: components["schemas"]["LeaseStatus"];
             /** Term Seconds */
             term_seconds: number;
@@ -2107,6 +2118,15 @@ export interface components {
             purpose: components["schemas"]["FilePurpose"];
             /** Size Bytes */
             size_bytes: number;
+        };
+        /**
+         * RenewRequest
+         * @description A renewal: the lease runs `seconds` from now, within the resource's
+         *     bound, or its term again when it names none.
+         */
+        RenewRequest: {
+            /** Seconds */
+            seconds?: number | null;
         };
         /**
          * ReorderRequest
@@ -4089,7 +4109,11 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["RenewRequest"] | null;
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {

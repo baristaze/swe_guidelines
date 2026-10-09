@@ -178,6 +178,7 @@ def build_managers(
         leases_options or LeasesOptions(),
         kinds={ResourceKind.NOOP: NoopResourceKindImpl()},
         waiters={WaiterKind.ORCHESTRATION: OrchestrationWaiterImpl(orchestrations)},
+        work=work,
     )
     idempotency = IdempotencyManagerImpl(
         storage.get_idempotency_storage(), idempotency_options or IdempotencyOptions()

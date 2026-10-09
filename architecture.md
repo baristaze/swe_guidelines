@@ -1889,20 +1889,37 @@ is the first such thing; until a kind registers, the code sits unused.
 
 A **resource** is one row per leasable thing. It stands for a row of
 another namespace by a registered kind and that row's id, unique with
-the org. It carries labels, its bound on one lease, its availability,
-and the **anchor**: the highest token granted on it, the lease that
-holds it, and until when. The namespace that owns the row registers the
-resource in the same commit, and retires it with the row.
+the org. It carries labels, free text that says what it offers, its
+bound on one lease, its availability, and the **anchor**: the highest
+token granted on it, the lease that holds it, and until when. The
+namespace that owns the row registers the resource in the same commit,
+and retires it with the row.
 
 A **lease** is one grant of one resource to one principal, under a
-fencing token one above the anchor's. Its holder renews it within the
-bound and releases it. It ends when a manager revokes it, or once its
-expiry and a skew margin have passed, so a holder whose clock runs slow
-has stopped before the resource goes on. Whatever acts on the resource
-for a holder presents the token. A fence on the resource's own side
-keeps the highest token it has seen: it refuses a lower one, and stops
-and resets the resource before it admits a higher one
+fencing token one above the anchor's. Its holder renews it, for a length
+it names or for its term again, within the bound, and releases it. It
+ends when a manager revokes it, or once its expiry and a skew margin
+have passed, so a holder whose clock runs slow has stopped before the
+resource goes on. Whatever acts on the resource for a holder presents
+the token. A fence on the resource's own side keeps the highest token it
+has seen: it refuses a lower one, and stops and resets the resource
+before it admits a higher one
 ([`leases.py`](scaffold/acme_root/clients/python/src/acme/client/leases.py)).
+
+A holder whose work runs through a [worker](#shape-of-a-worker) asks
+for a lease whose grant starts a **job**: a [work
+item](#the-work-queue) the grant writes in its own commit, carrying the
+lease's id and token. The worker that claims the job acts for the
+holder, who may be gone by then: it starts the lease, renews it, and
+ends it. It presents the lease's token and the item's claim token, so
+once the queue takes the item back, the old claim is refused. The
+holder keeps its own right to release, and no one else gains one. The
+grant gives the job a window to start in, and the lease runs to the
+window's end. From the job's start, the lease runs its full term. A
+job that waited in its lane still starts while the lease holds the
+resource, up to the skew margin past the window's end, since nothing
+has acted under the lease yet. A job that misses its window lets the
+lease lapse.
 
 A **request** waits in line. It names one resource, or a selector: a
 kind and the labels it needs. One rank order serves every line of a
@@ -1957,6 +1974,22 @@ purges what settled.
 - The client's `Fence` keeps the highest token per resource; its
   `LeaseClock` counts on a monotonic clock from the send of the ask or
   the renewal, never from the answer.
+- A grant's job is the one `work.<kind>` row among the kind's
+  `grant_rows`, and a grant starts one at most. The lease keeps the
+  row's id as `job_key`, the key the relay gives the item. The worker
+  presents a `JobClaim`, and the manager reads it live through the work
+  manager's `holds`, the fence every write to the item conditions on.
+  The job's acts are the manager's alone: a worker reaches the manager
+  in process, so no route carries a claim token.
+- A request's `start_seconds` is its job's window, `term_seconds` its
+  term; both, and a renewal's length, stay within the resource's
+  `max_term_seconds`, at most seven days. `start` lands under the
+  anchor's lock while the lease is active, not started, and its expiry
+  is after the clock less the margin; a renewal needs an expiry after
+  the clock. A started lease is answered as it is.
+- A `Label` is free text of 1 to 200 characters with no control
+  character, matched as written, and a resource offers up to
+  `MAX_LABELS`, 160.
 -->
 
 ### Implementation Options

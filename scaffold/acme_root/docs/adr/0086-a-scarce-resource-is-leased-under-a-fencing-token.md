@@ -57,7 +57,8 @@ records how Acme holds it.
 - **Kinds and waiters register as work kinds do** (The Work Queue). A
   resource kind is a `ResourceKind` with its ask's shape in
   `ASK_PAYLOADS` and a `ResourceKindInterface`: `may_grant`, read just
-  before a grant, and `grant_rows`, what the grant starts. A waiter is a
+  before a grant, and `grant_rows`, what the grant starts, with one job
+  at most. A waiter is a
   `WaiterKind` with a `WaiterInterface`: `still_waits`, `wake_rows`,
   `end_rows`, and `revoke_rows`. A no from either hook cancels the request, and the
   next is offered. The core's kind is `noop`, and its waiter is the
@@ -79,7 +80,9 @@ records how Acme holds it.
 - **The permissions are the core's.** An ask, a renewal, a release,
   and a cancel of one's own take `WRITE`; the reads take `READ`; a
   revocation, a reorder, and a cancel of another's take
-  `MANAGE_MEMBERS`. A renewal and a release are the holder's alone.
+  `MANAGE_MEMBERS`. A renewal and a release are the holder's, or the
+  worker's whose claim on the lease's job still holds
+  ([ADR 0094](0094-a-lease-is-kept-by-the-worker-that-runs-its-job.md)).
 - **The client holds the holder's side.** `LeaseClock` counts the
   lease on a monotonic clock from the send and renews at half of what
   is left; `Fence` keeps the highest token per resource and runs the
