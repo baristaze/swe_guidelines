@@ -172,6 +172,7 @@ here and leaves the relay as it is."""
 
 def relayed_lane(kind: WorkKind) -> str:
     """The lane the relay lands an item of this kind on: its own in
-    `WORK_LANES`, else the default one. A worker that serves a kind on a lane
-    of its own reads its lane here too, so the two cannot disagree."""
+    `WORK_LANES`, else the default one. A worker of the kind's own reads its
+    lane here too, so the two cannot disagree; a replica of a worker that
+    serves many kinds is deployed on the lane this returns."""
     return WORK_LANES.get(kind, "default")

@@ -26,9 +26,10 @@ that only the queue reads.
   runs on the default lane.
 - **The relay and the worker read the same function.**
   `relayed_lane(kind)` reads the registry. The relay lands each relayed
-  item on it, and its wake names that lane. A worker that serves a kind
-  on its own lane takes its lane from it, never from a copy of the
-  name.
+  item on it, and its wake names that lane. A worker of the kind's own
+  takes its lane from it, never from a copy of the name. A replica of a
+  worker that serves many kinds, such as the maintenance worker, takes
+  the lane from its deployment, spelled as the registry spells it.
 - **A direct create keeps its caller's lane.** `enqueue` takes the item
   as its caller built it, lane included; a caller that wants the kind's
   lane reads `relayed_lane`.

@@ -377,15 +377,17 @@ an `available_at`, its claim (`claimed_by` for an operator,
 shapes are fixed per kind by `WORK_PAYLOADS`. The lane is the routing:
 one table serves a shared pool and any dedicated lane. A relayed item
 lands on its kind's lane: `WORK_LANES` names a kind's own lane, the
-relay and any worker that serves the kind read it through
-`relayed_lane`, and a kind it does not name lands on the default lane.
+relay and a worker of the kind's own read it through `relayed_lane`, a
+replica of a worker that serves many kinds takes the lane from its
+deployment as the registry spells it, and a kind it does not name lands
+on the default lane.
 
 **Source.** Worker Roles, The Work Queue.
 
 **Look for.** The work item type and its fields; `WORK_PAYLOADS`; the
 table and its unique index on `(org_id, idempotency_key)`; how routing
 is expressed; the lane the relay gives a relayed item, and where a
-worker that serves a kind on its own lane reads that lane.
+worker that serves a kind on its own lane gets that lane.
 
 **Violation.** A row with no lease, no claim token, or no attempt
 count; a payload with no shape fixed for its kind; no unique index on
@@ -394,9 +396,9 @@ the `lane` string would do; a unique index on the key alone, so a key
 another tenant holds answers `KEY_EXISTS` and the read-back under this
 tenant finds nothing; a relay that lands a kind's items on a lane other
 than its own, so they wait where no worker claims them or count against
-the tenant cap of a lane of short items; a kind's lane spelled in its
-worker apart from `WORK_LANES`, so the two can drift; a relay edited
-for one kind instead of a line in the registry.
+the tenant cap of a lane of short items; a worker of a kind's own that
+spells the kind's lane apart from `WORK_LANES`, so the two can drift; a
+relay edited for one kind instead of a line in the registry.
 
 **Severity.** medium
 

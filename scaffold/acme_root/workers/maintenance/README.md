@@ -29,7 +29,8 @@ Add the kind, its payload, and the permission that asks for it in
 two to each other. A long-running kind is an `OrchestrationKind` whose step
 is mapped in `build_loop`. A kind that runs on a lane of its own adds the
 lane to `WORK_LANES`, and a replica of this worker serves that lane,
-started with `serve --lane` or `ACME_WORKER_LANE`.
+started with `serve --lane` or `ACME_WORKER_LANE` set to the lane as
+`WORK_LANES` spells it.
 
 ## Adding a chore
 
