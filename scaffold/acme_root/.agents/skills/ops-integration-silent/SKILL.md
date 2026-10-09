@@ -1,7 +1,7 @@
 ---
 name: ops-integration-silent
 description: "Say why an integration went silent, in one environment, with a read-only credential: count what its inbound webhook route answered, read what the worker made of each delivery and the lines it logged, and read the webhooks queue and its dead letters, then report where the deliveries stop, why, and what to do next. Every read goes through the signals' own APIs (CloudWatch and SQS in the cloud; the compose stack's logs, Prometheus, and ElasticMQ locally). Never a delivery's body, never a tenant's rows, never a write."
-allowed-tools: Read, Bash(aws:*), Bash(curl:*), Bash(docker compose:*), Bash(jq:*), Bash(sleep:*)
+allowed-tools: Read, Bash(aws:*), Bash(curl:*), Bash(date:*), Bash(docker compose:*), Bash(jq:*), Bash(sleep:*)
 ---
 
 # ops-integration-silent
@@ -203,11 +203,11 @@ is `acme-webhooks`, with `acme-webhooks-dead`.
    | Where | Condition | Why | Next |
    |---|---|---|---|
    | Never arrives | The route answered nothing in the window | The provider stopped sending, or sends to another address; its own dashboard says which | the provider's endpoint and its state, by a person |
-   | Refused at the route | `400` answers | The signature, its timestamp, or the body did not check out, and nothing was queued. Most or all of them refused: the signing secret differs between the provider and the environment. A few among `2xx`: a replay past the three-minute window, or a delivery the provider did not sign | every one or most: the route's signing secret (the identity provider's is `ACME_WORKOS_WEBHOOK_SECRET`, as `docs/runbooks/providers/workos.md` sets it), by a person; a few: nothing |
+   | Refused at the route | `400` answers | The signature, its timestamp, or the body did not check out, and nothing was queued. More than half of the route's answers: the signing secret differs between the provider and the environment. Half or fewer: a replay past the three-minute window, or a delivery the provider did not sign | more than half: the route's signing secret (the identity provider's is `ACME_WORKOS_WEBHOOK_SECRET`, as `docs/runbooks/providers/workos.md` sets it), by a person; half or fewer: nothing |
    | Refused at the route | `503` or another `5xx` | The route could not check a delivery or could not queue it, and its `on POST <route>:` line gives the reason, such as no signing secret, no provider configured, or the queue refusing the send. A local stack with no provider configured answers `503` by design | `ops-investigate` over the same window |
    | Waits on the queue | `2xx` answers, the queue's visible count above 0, and few or no worker outcomes, or `receive_failed` | The worker is not running, or cannot reach the queue | `ops-investigate` over the same window |
-   | Fails in the worker | `failed` or `unknown_provider`, or dead letters above 0 | The worker received the delivery and could not apply it: the exception under its `failed on receive` line names what refused it. `unknown_provider` is a provider this worker does not know, such as a worker older than the API. A dead letter is a delivery that failed every receive | `ops-investigate --request-id <the request id of the last failed receive>` |
-   | Dropped by the worker | `unowned` or `malformed` | The delivery names an org this environment does not hold, or is not a delivery: another environment's organizations delivering here, or an org deleted | every one: the provider's endpoint, by a person; a few: nothing |
+   | Fails in the worker | `failed` or `unknown_provider`, or dead letters above 0 | The worker received the delivery and could not apply it: the exception under its `failed on receive` line names what refused it. `unknown_provider` is a provider this worker does not know, such as a worker older than the API. A dead letter is a delivery that failed every receive | `ops-investigate --request-id <id>`, the last failed receive's request id, or for an `unknown_provider` line, that line's own; a dead letter with no failed receive in the window: `ops-investigate` with no request id, saying the window holds no receive of it |
+   | Dropped by the worker | `unowned` or `malformed` | The delivery names an org this environment does not hold, or is not a delivery: another environment's organizations delivering here, or an org deleted | more than half of the worker's outcomes: the provider's endpoint, by a person; half or fewer: nothing |
 
    When no row holds and the worker counts `applied` or `duplicate`,
    the deliveries reach their orgs: the silence is past this
