@@ -9,13 +9,14 @@ burst takes every worker of the lane until the burst drains, and its
 neighbours wait behind it. A lane of its own fixes a tenant whose bulk
 work is steady, but a burst should not need a deployment. The
 guideline's "The Work Queue" lets a lane cap the items one tenant holds
-claimed on it, checked at the claim, and this records how Acme holds
-it.
+claimed on it, held at the claim, and this records how Acme holds it.
 
 A cap checked at enqueue holds nothing: the work waits and runs later,
-past the cap. A count of every item the tenant holds claimed fails
-too: two items claimed at once each count the other, both go back, and
-both come back together.
+past the cap. A claim that takes an over-cap item and hands it back
+with a delay holds the cap, but a freed slot then stays empty until the
+delay passes, so a burst drains at about the cap per delay with the
+workers idle, and one claim walks the tenant's whole ready backlog, a
+write per item.
 
 ## Decision
 
@@ -23,35 +24,29 @@ both come back together.
   `tenant_cap`, the most items one tenant holds claimed on the lane.
   The maintenance worker sets it with its lane, from
   `ACME_WORKER_TENANT_CAP`, and 0, the default, sets none. A claim with
-  no cap counts nothing, so a lane without one runs as it did.
-- **The count is of the items ahead.** After the claim's statement,
-  `count_claimed_ahead` counts the tenant's items on the lane that are
-  claimed under a live lease and come earlier in the claim's order:
-  an earlier `available_at`, or the same one and a lower id. It reads
-  the claim's index, which leads with the lane and the status, so no
-  migration is needed.
-- **An item over the cap goes back with a delay and keeps its
-  attempt.** Its claim is written over, conditionally on its token, as
-  the platform's write: queued, available after
-  `WorkOptions.over_cap_delay` (30 seconds), and the claim's attempt
-  refunded. The claim moves on to the next item, which may be another
-  tenant's. A counter, `work`/`over_cap`, and a log line record it.
-- **The check comes before the context.** An item that goes back costs
-  no read of the tenant's membership.
+  no cap counts nothing: its statement is the one without a cap.
+- **The claim's one statement passes over a tenant at its cap.** The
+  candidate the claim locks leaves out every tenant that holds the cap
+  on the lane under a live lease (`rules.is_at_cap`). That set is one
+  count per tenant, made once per statement over the claim's index,
+  which leads with the lane and the status, so no migration is needed.
+  The memory impl counts the same rows.
+- **A passed-over item is not written.** It keeps its place, its
+  `available_at`, and its attempts, and the first claim after one of its
+  tenant's items ends takes it.
 
 ## Consequences
 
-- Of two items of one tenant claimed at once, the earlier runs. Two
-  claims that commit together can still each miss the other, so a
-  tenant can run one item past its cap until either ends. Holding that
-  moment would take a lock on every claim; the excess is one item and
-  short.
+- A burst on a capped lane drains as fast as its workers run, the cap's
+  worth at a time, and a neighbour's item is claimed while the tenant
+  is at its cap.
 - A worker that lost its lease stops counting once the lease runs out,
   so a slot it held frees at the next claim.
-- A tenant over its cap pays a claim, a count, and a hand-back for each
-  ready item, once per delay. A tenant whose ready backlog is large and
-  steady gets a lane of its own instead.
-- A handed-back item comes back behind every item of its tenant that
-  runs, since its new `available_at` is later than theirs.
+- Two claims that commit together can each miss the other, so a tenant
+  can run past its cap by the claims of that moment, until one of its
+  items ends. Holding that moment would take a lock on every claim.
+- A claim on a capped lane reads past the ready items of the tenants at
+  their cap in the index, one comparison each, and writes none. A
+  tenant whose ready backlog is large and steady gets a lane of its own.
 - A worker that claims from several lanes passes each lane's cap with
   its lane, and a tenant's own lane can have no cap.

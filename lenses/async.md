@@ -914,28 +914,27 @@ rows kept past their retention.
 
 **Severity.** medium
 
-## ASY-38 A tenant's cap on a shared lane is checked at the claim
+## ASY-38 A tenant's cap on a shared lane is held at the claim
 
 **Principle.** A lane that tenants share can cap how many items one
 tenant holds claimed on it, so one tenant cannot hold every worker. The
-claim counts the tenant's items claimed ahead of the item, earlier in
-the claim's order under a lease still live. When the count reaches the
-cap, the item goes back to its lane with a delay and spends no attempt,
-and the claim moves on to the next item. A lane with no cap counts
-nothing.
+claim's one statement takes the oldest available item whose tenant
+holds fewer items than the cap claimed under a live lease. A tenant at
+its cap is passed over, and its items stay unwritten and spend no
+attempt. A lane with no cap counts nothing.
 
 **Source.** Worker Roles, The Work Queue; Scalability by Design.
 
-**Look for.** What `claim` does with `tenant_cap`; the conditions of
-`count_claimed_ahead` in both storage impls; the attempts and the
-`available_at` the hand-back writes; whether a claim with no cap counts.
+**Look for.** What `claim` does with `tenant_cap`; the clause the claim's
+statement adds in both storage impls, and what it counts; whether a
+passed-over item is written; whether a claim with no cap counts.
 
 **Violation.** A cap checked at enqueue, so the work runs later past
-it; a count of every claimed item, so two claimed at once both go back
-and return together; a count that ignores the lease, so a lost worker
-holds a slot for good; a hand-back that spends an attempt or has no
-delay; a count on every claim of a lane with no cap.
+it; an over-cap item claimed and handed back with a delay, so a freed
+slot stays empty until the delay passes and a claim walks the tenant's
+backlog; a count that ignores the lease, so a lost worker holds a slot
+for good; a count on every claim of a lane with no cap.
 
 **Severity.** medium
 
-**Shape.** `scaffold/acme_root/om/src/acme/om/work/impl/manager.py`
+**Shape.** `scaffold/acme_root/om/src/acme/om/work/storage/impl/postgres.py`

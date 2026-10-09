@@ -1757,22 +1757,22 @@ Completion marks it done, requeues it with a growing delay, or fails it
 as a dead letter when attempts run out.
 
 A lane that tenants share can cap how many items one tenant holds
-claimed on it, so one tenant cannot hold every worker. The claim checks
-the cap. It counts the tenant's items claimed ahead of this one: earlier
-in the claim's order, under a lease still live. When the count reaches
-the cap, the item goes back to its lane with a delay. It spends no
-attempt, and the claim moves on to the next item, which may be another
-tenant's. Counting only the items ahead means that of two items claimed
-at once, the earlier runs, and neither waits on the other forever. A
-lane with no cap counts nothing. A tenant whose work still starves its
-neighbours gets a lane of its own.
+claimed on it, so one tenant cannot hold every worker. The claim holds
+the cap in its one statement: it takes the oldest available item whose
+tenant holds fewer items than the cap claimed under a live lease. A
+tenant at its cap is passed over. Its items wait where they are,
+unwritten, and spend no attempt, and the first claim after one of its
+items ends takes the next. A lane with no cap counts nothing. A tenant
+whose work still starves its neighbours gets a lane of its own.
 
 <!-- agents-only
 - A worker passes its lane's cap to `claim` as `tenant_cap`, and None,
-  the default, sets none. `count_claimed_ahead` reads the claim's index,
-  and the item waits `WorkOptions.over_cap_delay` with the claim's
-  attempt refunded. Two claims that commit at once can each miss the
-  other, so a tenant can run one item past its cap until either ends.
+  the default, sets none. The claim's statement leaves out the tenants
+  that hold the cap on the lane (`rules.is_at_cap`), counted once per
+  statement over the claim's index; with no cap it is the statement
+  without that clause. Two claims that commit at once can each miss the
+  other, so a tenant can run past its cap by the claims of that moment,
+  until one of its items ends.
 -->
 
 Every write after the enqueue is the platform's, signed `EMPTY_UUID`.
