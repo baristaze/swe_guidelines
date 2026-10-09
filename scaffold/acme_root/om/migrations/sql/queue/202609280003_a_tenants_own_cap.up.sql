@@ -16,17 +16,25 @@ CREATE TABLE queue.tenant_caps (
 );
 CREATE UNIQUE INDEX uq_tenant_caps_org_id_lane ON queue.tenant_caps (org_id, lane);
 
--- The queue's fence, as on the work items: one policy per login (ADR 0044).
--- The runtime login reaches the tenant the transaction names, which is how
--- an operator's write reaches the one tenant it names; the system login
--- reaches every tenant under the system scope, which is how the claim
--- reads the caps of the lane it claims from.
+-- The second fence, as on every tenant table (ADR 0016): the transaction's
+-- own tenant, or the system scope to the system login alone. An operator's
+-- write reaches the one tenant it names; the claim reads the caps of the
+-- lane it claims from under the system scope.
 
 ALTER TABLE queue.tenant_caps ENABLE ROW LEVEL SECURITY;
 ALTER TABLE queue.tenant_caps FORCE ROW LEVEL SECURITY;
-CREATE POLICY tenant_fence ON queue.tenant_caps FOR ALL TO acme_runtime
-    USING (org_id = NULLIF(current_setting('app.org_id', true), '')::uuid)
-    WITH CHECK (org_id = NULLIF(current_setting('app.org_id', true), '')::uuid);
-CREATE POLICY system_fence ON queue.tenant_caps FOR ALL TO acme_system
-    USING (current_setting('app.org_id', true) = '00000000-0000-0000-0000-000000000000')
-    WITH CHECK (current_setting('app.org_id', true) = '00000000-0000-0000-0000-000000000000');
+CREATE POLICY tenant_fence ON queue.tenant_caps
+    USING (
+        org_id = NULLIF(current_setting('app.org_id', true), '')::uuid
+        OR (
+            current_setting('app.org_id', true) = '00000000-0000-0000-0000-000000000000'
+            AND current_user = 'acme_system'
+        )
+    )
+    WITH CHECK (
+        org_id = NULLIF(current_setting('app.org_id', true), '')::uuid
+        OR (
+            current_setting('app.org_id', true) = '00000000-0000-0000-0000-000000000000'
+            AND current_user = 'acme_system'
+        )
+    );

@@ -20,12 +20,14 @@ and this records how Acme holds it.
   holds one lane and one cap, from 1 to 10,000, and a unique index
   keeps one row per tenant and lane. It sits beside the work items, so
   the claim reads it in its own statement.
-- **The caps are fenced as the queue is**, one policy per login
-  ([ADR 0044](0044-the-queue-is-fenced-by-one-policy-per-login.md)). The
-  runtime login reaches the tenant its transaction names, so an
-  operator's write reaches only the tenant it names. The system login
-  reaches every tenant under the system scope, so the claim reads the
-  caps of its lane.
+- **The caps are fenced by one policy, as every tenant table is**
+  ([ADR 0016](0016-row-level-security-is-the-second-fence.md)): the
+  transaction's own tenant, or the system scope to the system login
+  alone. An operator's write reaches only the tenant it names, and the
+  claim reads the caps of its lane under the system scope. The split
+  by login the work items take
+  ([ADR 0044](0044-the-queue-is-fenced-by-one-policy-per-login.md))
+  waits on a measurement that shows one policy plans the join badly.
 - **An operator sets it, with no deployment.** The work operator
   manager sets a cap or writes it over, and clears it, with the write
   permission, and reads it with the read permission, at

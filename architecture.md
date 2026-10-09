@@ -1791,10 +1791,10 @@ its own.
 - A worker passes its lane's cap to `claim` as `tenant_cap`, and None,
   the default, sets none. A tenant's own cap is a `TenantCap` row
   ([`tenant_cap.py`](scaffold/acme_root/om/src/acme/om/work/types/tenant_cap.py)),
-  one per tenant and lane, in the `queue` role under the queue's fence:
-  the runtime login reaches the tenant it names, and the system login
-  every tenant. The work operator manager sets and clears it with
-  `OperatorPermission.WRITE`, and reads it with `READ`, at
+  one per tenant and lane, in the `queue` role under the one policy
+  every tenant table has: the transaction's tenant, or the system scope
+  on the system login alone. The work operator manager sets and clears
+  it with `OperatorPermission.WRITE`, and reads it with `READ`, at
   `/v1/admin/orgs/{org_id}/work/lanes/{lane}/cap`. No row leaves the
   claim as it was.
 - The claim's statement leaves out the tenants that hold their cap on

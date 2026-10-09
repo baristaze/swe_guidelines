@@ -426,13 +426,14 @@ async def _cap_orgs(session: AsyncSession, org_id: UUID | None) -> set[UUID]:
     return set((await session.execute(text("SELECT org_id FROM queue.tenant_caps"))).scalars())
 
 
-async def test_a_tenants_cap_is_fenced_as_the_queue_is_and_the_claim_reads_it(
+async def test_a_tenants_cap_is_fenced_by_one_policy_and_the_claim_reads_it(
     pg_sessions: Sessions,
 ) -> None:
-    """Ann's cap is fenced by login, as the work items are (ADR 0044): under
-    Bob's context it reads as nothing, and a write that names her is refused
-    or meets no row. The claim's statement reads it on the system login under
-    the system scope, so her second item is passed over there."""
+    """Ann's cap is fenced by the one policy every tenant table has: under
+    Bob's context it reads as nothing on either login, and a write that names
+    her is refused or meets no row. The system scope reaches it on the system
+    login alone, which is how the claim's statement reads it, so her second
+    item is passed over there."""
     work = WorkStoragePostgresImpl(pg_sessions)
     ann, bob = new_id(), new_id()
     lane = f"fence-{new_id().hex[-12:]}"
@@ -447,7 +448,7 @@ async def test_a_tenants_cap_is_fenced_as_the_queue_is_and_the_claim_reads_it(
     async with system() as session:
         assert ann in await _cap_orgs(session, EMPTY_UUID)
     async with system() as session:
-        assert await _cap_orgs(session, ann) == set()
+        assert await _cap_orgs(session, bob) == set()
     assert await work.read_tenant_cap(bob, lane) is None
     # Under Bob's context, a write over Ann's row meets none, and a row that
     # names her is refused.

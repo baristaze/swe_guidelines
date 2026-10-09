@@ -1,5 +1,5 @@
-"""A tenant's own cap on a lane: one row per tenant and lane, with the
-fence of each login.
+"""A tenant's own cap on a lane: one row per tenant and lane, under the
+one policy every tenant table has.
 
 Revision ID: 202609280003
 Revises: 202609280002
