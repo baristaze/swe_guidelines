@@ -10,7 +10,7 @@ interface alone, and infra imports nothing from the object model.
 
 | Capability | What it promises | Locally | In the cloud |
 |------------|------------------|---------|--------------|
-| Cache | Named scopes, so unrelated consumers never share a key; one atomic windowed counter for rate limits; fails open | In-process, or Valkey | Valkey (ElastiCache) |
+| Cache | Named scopes, so unrelated consumers never share a key; one atomic windowed counter for rate limits and generations; a read cache under the tenant's generation; fails open | In-process, or Valkey | Valkey (ElastiCache) |
 | Buckets | Blobs under the tenant's prefix (`user-file-uploads`, `exports`): put, get, exists, list, delete, a presigned download, and a presigned form upload bounded by type and size | A folder, or MinIO | S3, one private versioned bucket each |
 | Topics | Wake-ups and live updates (`work_available`, `entity_changed`), best effort; a publish answers whether the bus took it | In-process, or Valkey pub/sub | Valkey pub/sub |
 | Queues | Work whose producer is outside the platform: `webhooks`, what a provider sends; at least once, so the consumer is idempotent | In-process, or ElasticMQ | SQS, with a dead-letter queue |
@@ -49,5 +49,9 @@ environment refuses them at boot.
 A manager receives the interfaces it needs from the root at boot and
 passes the org's id on every tenant call, so keys, prefixes, and
 secrets of one org never meet another's. `EMPTY_UUID` names the
-platform's own. A new bucket, queue, topic, or cache scope is one member
-of its enum, and the cloud's resource is Terraform's.
+platform's own. A manager that caches a read does it through
+`ReadCache`, and every write it makes bumps the tenant's generation
+once its transaction commits
+([ADR 0095](../docs/adr/0095-a-read-cache-is-keyed-by-the-tenants-generation.md)).
+A new bucket, queue, topic, or cache scope is one member of its enum,
+and the cloud's resource is Terraform's.

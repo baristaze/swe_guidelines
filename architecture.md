@@ -1233,11 +1233,14 @@ and generations.
 
 A cached read sits below authorization: the manager caches the tenant's
 data and applies the caller's visibility on every call. A read cache is
-a projection with a generation: a write bumps the tenant's generation,
-and older keys expire, with the TTL as a backstop and the bound on
-staleness. A cache fails open, an unreachable backend is a miss, and
-nothing that must be correct lives only in a cache. Caching is a
-manager's decision, never a storage impl's.
+a projection with a generation
+([`ReadCache`](scaffold/acme_root/infra/src/acme/infra/cache/read.py)).
+Its key carries the tenant's generation. A write bumps that generation
+once its transaction commits, never before, so no read caches the old
+value under the new number. Older keys expire, with the TTL as a
+backstop and the bound on staleness. A cache fails open, an unreachable
+backend is a miss, and nothing that must be correct lives only in a
+cache. Caching is a manager's decision, never a storage impl's.
 
 A degraded answer is declared where it is chosen. There are three: this
 cache, the rate limit ([The Gateway](#the-gateway)), and the channel
