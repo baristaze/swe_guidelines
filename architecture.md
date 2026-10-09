@@ -1835,8 +1835,9 @@ A kind registers as a work kind does, with its hooks: what a grant
 starts, and whether a request may still be granted. A **waiter**
 registers the same way. A [long-running
 record](#long-running-orchestrations) parks on the reason `resource`,
-and the grant wakes it with its lease; a waiter that ends leaves every
-line. A kind keeps facts of its own about a lease in its own table,
+and the grant wakes it with its lease. A request that leaves its line
+without one wakes its waiter too, which reads the end; a waiter that
+ends leaves every line. A kind keeps facts of its own about a lease in its own table,
 keyed by the lease's id. The [sweep](#maintenance-without-a-scheduler)
 ends each lease past its expiry and the margin, expires each request
 past its wait, and offers each free resource to its line; retention
@@ -1854,9 +1855,15 @@ purges what settled.
   a `ResourceKindInterface`: `may_grant` reads the asker's standing
   live, and `grant_rows` returns the rows the grant lands. A waiter is
   a `WaiterKind` with a `WaiterInterface`: `still_waits`, `wake_rows`,
-  and `revoke_rows`. An orchestration waits as `ParkReason.RESOURCE`.
+  `end_rows`, and `revoke_rows`. An orchestration waits as
+  `ParkReason.RESOURCE`.
 - The owner lands a resource with its row through `register_statement`
-  and retires it through `retire_statements`.
+  and retires it through `retire_statement`. The owner's commit knows no
+  waiter, so the requests that name a retired resource leave their line
+  through the manager, at once or at the next sweep, each with its
+  waiter's wake.
+- The sweep reads the due orgs in the order of their ids and reads on
+  past a deleted one, so deleted orgs never fill its batch.
 - The client's `Fence` keeps the highest token per resource; its
   `LeaseClock` counts on a monotonic clock from the send of the ask or
   the renewal, never from the answer.

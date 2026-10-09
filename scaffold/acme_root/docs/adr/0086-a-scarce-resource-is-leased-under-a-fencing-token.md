@@ -24,7 +24,9 @@ records how Acme holds it.
   unique by org, `kind`, and `ref_id`. The namespace that owns the row
   lands the resource in the same commit as its row, through
   `register_statement` (`land_resource` in memory), and retires it with
-  the row through `retire_statements` (Shape of an Operation).
+  the row through `retire_statement` (Shape of an Operation). That
+  commit knows no waiter, so the requests that name the resource leave
+  their line through the manager, at once or at the next sweep.
 - **The anchor's row lock decides the grant.** Every write that moves a
   lease or a line locks the resource's row first and the request's
   second, so two writers queue and never deadlock. A grant lands only
@@ -56,19 +58,23 @@ records how Acme holds it.
   resource kind is a `ResourceKind` with its ask's shape in
   `ASK_PAYLOADS` and a `ResourceKindInterface`: `may_grant`, read just
   before a grant, and `grant_rows`, what the grant starts. A waiter is a
-  `WaiterKind` with a `WaiterInterface`: `still_waits`, `wake_rows`, and
-  `revoke_rows`. A no from either hook cancels the request, and the
+  `WaiterKind` with a `WaiterInterface`: `still_waits`, `wake_rows`,
+  `end_rows`, and `revoke_rows`. A no from either hook cancels the request, and the
   next is offered. The core's kind is `noop`, and its waiter is the
   orchestration.
 - **A waiting record parks on `resource`** (Long-Running
   Orchestrations). A step asks with its `Step`, which lands under the
   request's row lock only while the request still waits; a grant that
   came first leaves the record running with its lease. The grant's
-  wake row is a `WAKE_PARKED` item naming the one record.
+  wake row is a `WAKE_PARKED` item naming the one record, and so is the
+  row of an end without a lease: an expiry, a cancel, a refusal, or a
+  retirement. The record's next step asks again and reads the end.
 - **The sweep is a step of the maintenance pass** (Maintenance Without
   a Scheduler). It visits the orgs with something due, as each org's
   service context: it ends each lease past its expiry and the margin,
-  expires each request past its wait, and offers each free resource.
+  expires each request past its wait, takes each request for a retired
+  resource out of its line, and offers each free resource. It reads the
+  due orgs in the order of their ids and reads on past a deleted one.
   The purge takes ended leases and settled requests after 30 days.
 - **The permissions are the core's.** An ask, a renewal, a release,
   and a cancel of one's own take `WRITE`; the reads take `READ`; a

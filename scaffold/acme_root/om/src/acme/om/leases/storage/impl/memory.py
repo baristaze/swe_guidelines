@@ -141,6 +141,11 @@ class LeasesStorageMemoryImpl(MemoryStorageBase, LeasesStorageInterface, Resourc
         ]
         return sorted(found, key=lambda r: (r.wait_until or now, r.id))[:limit]
 
+    async def read_stranded(self, org_id: UUID, limit: int) -> list[LeaseRequest]:
+        retired = {r.id for r in self._rows(self._resources, org_id) if r.retired_at is not None}
+        stranded = [r for r in self._waiting_in(org_id) if r.resource_id in retired]
+        return sorted(stranded, key=lambda r: (r.rank, r.id))[:limit]
+
     async def settle_request(
         self,
         org_id: UUID,
@@ -361,6 +366,11 @@ class LeasesStorageMemoryImpl(MemoryStorageBase, LeasesStorageInterface, Resourc
             free = resource.lease_id is None and resource.available and resource.retired_at is None
             if free and any(stands_in(request, resource) for request in waiting.get(org_id, ())):
                 due.add(org_id)
+            # Retired, with a request that names it.
+            if resource.retired_at is not None and any(
+                request.resource_id == resource.id for request in waiting.get(org_id, ())
+            ):
+                due.add(org_id)
         return sorted(o for o in due if after is None or o > after)[:limit]
 
     async def purge_settled(self, before: datetime, limit: int) -> int:
@@ -424,19 +434,6 @@ class LeasesStorageMemoryImpl(MemoryStorageBase, LeasesStorageInterface, Resourc
                 }
             ),
         )
-        for request in self._waiting_in(org_id):
-            if request.resource_id == resource.id:
-                self._requests[request.id] = (
-                    org_id,
-                    request.model_copy(
-                        update={
-                            "status": RequestStatus.CANCELLED,
-                            "end_reason": EndReason.RETIRED,
-                            "updated_at": at,
-                            "updated_by": actor,
-                        }
-                    ),
-                )
 
     # The shared steps.
 

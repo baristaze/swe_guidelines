@@ -49,6 +49,7 @@ CROSS_TENANT_CASES: frozenset[str] = frozenset(
         "read_resource",
         "read_resource_by_ref",
         "read_resources",
+        "read_stranded",
         "read_waiting",
         "renew_lease",
         "retire_resource",
@@ -189,6 +190,11 @@ class LeaseStorageContract:
         assert await storage.write_availability(other, resource.id, False, at, new_id(), ()) is None
         assert await storage.retire_resource(other, resource.id, at, new_id(), ()) is None
         assert await storage.read_resource(org, resource.id) == resource
+        # Another tenant reads none of this one's stranded requests.
+        named = await self.a_request(storage, org, make_request(resource))
+        assert await storage.retire_resource(org, resource.id, at, new_id(), ())
+        assert await storage.read_stranded(org, 10) == [named]
+        assert await storage.read_stranded(other, 10) == []
 
     async def test_availability_and_retirement_leave_the_free_list(
         self, storage: LeasesStorageInterface
@@ -206,10 +212,17 @@ class LeaseStorageContract:
             kept.id,
             paused.id,
         }
-        # A request that named the retired resource left its line.
-        cancelled = await storage.read_request(org, named.id)
-        assert cancelled is not None and cancelled.status is RequestStatus.CANCELLED
-        assert cancelled.end_reason is EndReason.RETIRED
+        # A request that named the retired resource waits on, stranded, until
+        # the manager takes it out of line with its waiter's wake; the org is
+        # due for the sweep until then.
+        assert await storage.read_stranded(org, 10) == [named]
+        now = utcnow()
+        assert org in await storage.read_due_orgs(now, now - timedelta(seconds=30), 10_000)
+        cancelled = await storage.settle_request(
+            org, named.id, RequestStatus.CANCELLED, EndReason.RETIRED, now, actor, ()
+        )
+        assert cancelled is not None and cancelled.end_reason is EndReason.RETIRED
+        assert await storage.read_stranded(org, 10) == []
         assert await storage.retire_resource(org, retired.id, utcnow(), actor, ()) is None
 
     # Requests.

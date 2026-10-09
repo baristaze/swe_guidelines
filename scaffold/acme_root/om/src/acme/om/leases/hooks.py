@@ -48,6 +48,17 @@ class WaiterInterface(ABC):
         ...
 
     @abstractmethod
+    def end_rows(
+        self, ctx: TenantContext, waiter_id: UUID, request: LeaseRequest
+    ) -> tuple[OutboxRow, ...]:
+        """The rows landed in the commit that takes the waiter's request out
+        of its line without a lease, to wake the waiter: the request carries
+        its end (`expired`, or `cancelled` with its reason), which the waiter
+        reads to fail or to ask again. A waiter that is gone is told
+        nothing."""
+        ...
+
+    @abstractmethod
     def revoke_rows(
         self, ctx: TenantContext, waiter_id: UUID, lease: Lease
     ) -> tuple[OutboxRow, ...]:

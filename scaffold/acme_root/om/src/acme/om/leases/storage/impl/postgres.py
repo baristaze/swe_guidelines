@@ -48,14 +48,15 @@ def register_statement(org_id: UUID, resource: Resource) -> Insert:
     return pg_insert(Resources).values(**values).on_conflict_do_nothing()
 
 
-def retire_statements(
+def retire_statement(
     org_id: UUID, kind: ResourceKind, ref_id: UUID, at: datetime, actor: UUID
-) -> tuple[Update, Update]:
-    """The retirement as two companion statements, in the transaction that
-    retires the owner's row: the resource first, which takes the anchor's lock,
-    then the requests waiting for it by name, cancelled as `retired`. Its
-    lease runs on until it ends, and is never renewed."""
-    retired = (
+) -> Update:
+    """The retirement as a companion statement, in the transaction that
+    retires the owner's row; it takes the anchor's lock. Its lease runs on
+    until it ends, and is never renewed. The requests that name it wait on
+    until the manager takes them out of line, each with its waiter's wake,
+    which the owner's commit knows nothing of."""
+    return (
         update(Resources)
         .where(
             Resources.org_id == org_id,
@@ -65,24 +66,6 @@ def retire_statements(
         )
         .values(retired_at=at, available=False, updated_at=at, updated_by=actor)
     )
-    named = select(Resources.id).where(
-        Resources.org_id == org_id, Resources.kind == kind.value, Resources.ref_id == ref_id
-    )
-    cancelled = (
-        update(LeaseRequests)
-        .where(
-            LeaseRequests.org_id == org_id,
-            LeaseRequests.status == WAITING,
-            LeaseRequests.resource_id.in_(named.scalar_subquery()),
-        )
-        .values(
-            status=RequestStatus.CANCELLED.value,
-            end_reason=EndReason.RETIRED.value,
-            updated_at=at,
-            updated_by=actor,
-        )
-    )
-    return retired, cancelled
 
 
 def _land(session: AsyncSession, org_id: UUID, outbox_rows: tuple[OutboxRow, ...]) -> None:
@@ -183,11 +166,9 @@ class LeasesStoragePostgresImpl(PgStorageBase, LeasesStorageInterface):
             if anchor is None or anchor.retired_at is not None:
                 await session.rollback()
                 return None
-            retired, cancelled = retire_statements(
-                org_id, ResourceKind(anchor.kind), anchor.ref_id, at, actor
+            await session.execute(
+                retire_statement(org_id, ResourceKind(anchor.kind), anchor.ref_id, at, actor)
             )
-            await session.execute(retired)
-            await session.execute(cancelled)
             _land(session, org_id, outbox_rows)
             await session.commit()
         return await self.read_resource(org_id, resource_id)
@@ -262,6 +243,22 @@ class LeasesStoragePostgresImpl(PgStorageBase, LeasesStorageInterface):
                 LeaseRequests.wait_until <= now,
             )
             .order_by(LeaseRequests.wait_until)
+            .limit(limit)
+        )
+        return await self._all(stmt, org_id, LeaseRequest)
+
+    async def read_stranded(self, org_id: UUID, limit: int) -> list[LeaseRequest]:
+        retired = select(Resources.id).where(
+            Resources.org_id == org_id, Resources.retired_at.is_not(None)
+        )
+        stmt = (
+            select(LeaseRequests)
+            .where(
+                LeaseRequests.org_id == org_id,
+                LeaseRequests.status == WAITING,
+                LeaseRequests.resource_id.in_(retired.scalar_subquery()),
+            )
+            .order_by(LeaseRequests.rank, LeaseRequests.id)
             .limit(limit)
         )
         return await self._all(stmt, org_id, LeaseRequest)
@@ -501,7 +498,18 @@ class LeasesStoragePostgresImpl(PgStorageBase, LeasesStorageInterface):
             Resources.retired_at.is_(None),
             in_line,
         )
-        due = union(lapsed, overdue, free).subquery()
+        stranded = (
+            select(LeaseRequests.org_id)
+            .join(
+                Resources,
+                and_(
+                    Resources.org_id == LeaseRequests.org_id,
+                    Resources.id == LeaseRequests.resource_id,
+                ),
+            )
+            .where(LeaseRequests.status == WAITING, Resources.retired_at.is_not(None))
+        )
+        due = union(lapsed, overdue, free, stranded).subquery()
         stmt = select(due.c.org_id).order_by(due.c.org_id).limit(limit)
         if after is not None:
             stmt = stmt.where(due.c.org_id > after)

@@ -44,7 +44,8 @@ class LeasesManagerInterface(ABC):
     @abstractmethod
     async def retire(self, ctx: TenantContext, resource_id: UUID) -> Resource:
         """Retires a resource with its owner's row: the requests that name it
-        are cancelled as `retired`, and its lease is never renewed."""
+        leave their line as `retired`, each waking its waiter, and its lease
+        is never renewed."""
         ...
 
     # The line.

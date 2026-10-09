@@ -152,6 +152,7 @@ class LeasesManagerImpl(LeasesManagerInterface):
             stored = await self._resource(ctx, resource_id)
             return stored  # retired already
         await self._relay.relay_all(ctx.org_id, rows)
+        await self._cancel_stranded(ctx)
         return retired
 
     # The line.
@@ -488,7 +489,8 @@ class LeasesManagerImpl(LeasesManagerInterface):
         status: RequestStatus,
         reason: EndReason | None,
     ) -> LeaseRequest | None:
-        rows = (outbox_row(ctx, REQUEST_UPDATED, request.id, {}),)
+        ended = request.model_copy(update={"status": status, "end_reason": reason})
+        rows = (outbox_row(ctx, REQUEST_UPDATED, request.id, {}), *self._end_rows(ctx, ended))
         settled = await self._storage.settle_request(
             ctx.org_id, request.id, status, reason, self._clock(), ctx.user_id, rows
         )
@@ -498,10 +500,31 @@ class LeasesManagerImpl(LeasesManagerInterface):
             OUTCOMES.labels(subsystem="leases", outcome=f"request_{outcome}").inc()
         return settled
 
+    def _end_rows(self, ctx: TenantContext, request: LeaseRequest) -> tuple[OutboxRow, ...]:
+        """The rows that wake a request's waiter when the request leaves its
+        line without a lease; a waiter that is gone is told nothing."""
+        if request.waiter_kind is None or request.waiter_id is None:
+            return ()
+        if request.end_reason is EndReason.WAITER_GONE:
+            return ()
+        waiter = self._waiters.get(request.waiter_kind)
+        return () if waiter is None else waiter.end_rows(ctx, request.waiter_id, request)
+
+    async def _cancel_stranded(self, ctx: TenantContext) -> int:
+        """Takes the requests that name a retired resource out of their line
+        as `retired`, each in its own commit with its waiter's wake. The
+        retirement lands with its owner's row, which knows no waiter."""
+        cancelled = 0
+        for request in await self._storage.read_stranded(ctx.org_id, self._options.sweep_batch):
+            if await self._settle(ctx, request, RequestStatus.CANCELLED, EndReason.RETIRED):
+                cancelled += 1
+        return cancelled
+
     async def _sweep_org(self, ctx: TenantContext) -> int:
         """One org's pass: the lapsed leases end, the overdue requests expire,
-        and every free resource with a line is offered to it, which also
-        mends an offer a crash cut short."""
+        the requests for a retired resource leave their line, and every free
+        resource with a line is offered to it, which also mends an offer a
+        crash cut short."""
         ended = 0
         lapsed_before = self._clock() - self._options.margin
         for lease in await self._storage.read_lapsed(
@@ -514,6 +537,7 @@ class LeasesManagerImpl(LeasesManagerInterface):
         ):
             if await self._settle(ctx, request, RequestStatus.EXPIRED, None):
                 ended += 1
+        ended += await self._cancel_stranded(ctx)
         free = await self._storage.read_free(ctx.org_id, self._options.resource_limit)
         lines: dict[ResourceKind, list[LeaseRequest]] = {}
         for resource in free:

@@ -25,6 +25,7 @@ from acme.om.leases.hooks import ResourceKindInterface
 from acme.om.leases.impl.kinds import NoopResourceKindImpl, OrchestrationWaiterImpl
 from acme.om.leases.impl.manager import LeasesManagerImpl, LeasesOptions
 from acme.om.leases.rules import measured_hold, place_of, rank_at, replay, stands_in
+from acme.om.leases.storage import ResourceLandingInterface
 from acme.om.leases.types.lease import Lease, LeaseStatus
 from acme.om.leases.types.request import (
     EndReason,
@@ -514,6 +515,78 @@ async def test_a_parked_record_is_woken_with_its_lease_when_the_resource_frees(
     assert (await world.managers.orchestrations.get(owner, record.id)).status is (
         OrchestrationStatus.RUNNING
     )
+
+
+async def woken(world: World, *records: Orchestration) -> None:
+    """Runs the queued wakes as the WAKE_PARKED handler does, and checks
+    they name exactly these records."""
+    named: list[UUID | None] = []
+    for _ in range(len(records) + 1):
+        claimed = await world.managers.work.claim(
+            world.rctx(), "default", [WorkKind.WAKE_PARKED], "test", timedelta(seconds=30)
+        )
+        if claimed is None:
+            break
+        ctx, item = claimed
+        payload = WakeParkedPayload.model_validate(dict(item.payload))
+        assert payload.reason is ParkReason.RESOURCE
+        named.append(payload.record_id)
+        assert await world.managers.orchestrations.wake(ctx, payload.reason, payload.record_id)
+    assert sorted(map(str, named)) == sorted(str(r.id) for r in records)
+
+
+async def test_a_parked_record_whose_request_expires_is_woken_and_reads_its_end(
+    world: World,
+) -> None:
+    owner = await world.owner()
+    ann = await world.member("ann")
+    dock = await world.resource(owner)
+    await world.leases.ask(ann, an_ask(dock))
+    record = await a_running_record(world, owner)
+    ask = an_ask(dock, wait_seconds=60, waiter=record.id)
+    assert (await world.leases.ask(owner, ask, park_of(record))).lease is None
+    world.later(timedelta(seconds=61))
+    assert await world.leases.sweep(world.rctx()) == 1
+    # The expiry landed the record's wake in its own commit.
+    await woken(world, record)
+    running = await world.managers.orchestrations.get(owner, record.id)
+    assert running.status is OrchestrationStatus.RUNNING
+    # Its next step asks again by its key and reads the end, and stays running.
+    again = await world.leases.ask(owner, ask, park_of(running))
+    assert again.lease is None and again.request.status is RequestStatus.EXPIRED
+    assert (await world.managers.orchestrations.get(owner, record.id)).status is (
+        OrchestrationStatus.RUNNING
+    )
+
+
+async def test_a_parked_record_whose_resource_is_retired_is_woken(world: World) -> None:
+    """Retired by the manager, or with its owner's row, which knows no
+    waiter: the request leaves its line as `retired` with its waiter's
+    wake, at once or at the next sweep."""
+    owner = await world.owner()
+    ann = await world.member("ann")
+    asks: list[LeaseRequest] = []
+    records: list[Orchestration] = []
+    docks = [await world.resource(owner), await world.resource(owner)]
+    for dock in docks:
+        await world.leases.ask(ann, an_ask(dock))
+        record = await a_running_record(world, owner)
+        asks.append(an_ask(dock, waiter=record.id))
+        await world.leases.ask(owner, asks[-1], park_of(record))
+        records.append(record)
+    await world.leases.retire(owner, docks[0].id)
+    await woken(world, records[0])
+    landing = world.storage.get_lease_storage()
+    assert isinstance(landing, ResourceLandingInterface)
+    landing.land_retirement(
+        owner.org_id, ResourceKind.NOOP, docks[1].ref_id, world.now, owner.user_id
+    )
+    assert await world.leases.sweep(world.rctx()) == 1
+    await woken(world, records[1])
+    for ask in asks:
+        ended = await world.leases.get_request(owner, ask.id)
+        assert ended.request.status is RequestStatus.CANCELLED
+        assert ended.request.end_reason is EndReason.RETIRED
 
 
 async def test_a_request_whose_waiter_stopped_waiting_is_cancelled_never_granted(

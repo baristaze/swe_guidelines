@@ -837,7 +837,8 @@ at once; a second request for an ask's key.
 **Principle.** Just before a grant, the waiter says whether it still
 waits and the kind whether the request may still be granted. A no
 cancels the request, and the next in line is asked. The rows that wake
-the waiter land in the grant's commit. A record waits by parking on
+the waiter land in the grant's commit, and in the commit of any end of
+its request without a lease. A record waits by parking on
 `ParkReason.RESOURCE`, landed under the request's lock only while the
 request still waits, and a waiter that ends leaves every line.
 
@@ -845,11 +846,13 @@ request still waits, and a waiter that ends leaves every line.
 Long-Running Orchestrations.
 
 **Look for.** The calls to `still_waits` and `may_grant` before a
-grant; `wake_rows` among the grant's rows; how a park lands beside an
-ask; what a waiter's end does to its requests.
+grant; `wake_rows` among the grant's rows, and `end_rows` among the
+rows of an expiry, a cancel, a refusal, or a retirement; how a park
+lands beside an ask; what a waiter's end does to its requests.
 
 **Violation.** A grant that asks no waiter, so a lease goes to no one;
-a wake sent after the commit, or not at all; a park landed apart from
+a wake sent after the commit, or not at all; a request that ends
+without a lease and leaves its waiter asleep; a park landed apart from
 the request's lock, so a grant between the read and the park leaves the
 record asleep; a waiter's end that leaves its requests in line.
 
@@ -883,9 +886,10 @@ with no hooks.
 **Principle.** A grant is a side effect of a resource freeing: a
 release, an expiry, a revocation, or its availability back offers the
 resource to its line at once. The sweep ends each lease past its expiry
-and the margin, expires each request past its wait, and offers each
-free resource, each org under its own service context; retention
-purges ended leases and settled requests.
+and the margin, expires each request past its wait, takes each request
+for a retired resource out of its line, and offers each free resource,
+each org under its own service context; retention purges ended leases
+and settled requests.
 
 **Source.** Worker Roles, Leases on a Resource; Maintenance Without a
 Scheduler.
@@ -896,7 +900,9 @@ and its retention.
 
 **Violation.** A release that frees a resource and offers it to no one,
 so its line waits for the sweep; a sweep with no leases step, so a
-lapsed lease holds its resource for good; a sweep that reads every org
-under one context; settled rows kept past their retention.
+lapsed lease holds its resource for good; a sweep whose batch fills
+with orgs it skips, such as deleted ones, so a live org's lapsed lease
+never ends; a sweep that reads every org under one context; settled
+rows kept past their retention.
 
 **Severity.** medium

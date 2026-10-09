@@ -18,7 +18,7 @@ class ResourceLandingInterface(ABC):
     """What another namespace's memory storage needs to register or retire a
     resource in the commit of its own row, the twin of the statements the
     Postgres impls share (`leases.storage.impl.postgres.register_statement`
-    and `retire_statements`)."""
+    and `retire_statement`)."""
 
     @abstractmethod
     def land_resource(self, org_id: UUID, resource: Resource) -> None:
@@ -29,8 +29,9 @@ class ResourceLandingInterface(ABC):
     def land_retirement(
         self, org_id: UUID, kind: ResourceKind, ref_id: UUID, at: datetime, actor: UUID
     ) -> None:
-        """Retires the kind's resource for the row, and cancels the requests
-        waiting for it by name as `retired`."""
+        """Retires the kind's resource for the row. The requests that name it
+        wait on until the manager takes them out of line (`read_stranded`),
+        each with its waiter's wake, which this commit knows nothing of."""
         ...
 
 
@@ -87,9 +88,10 @@ class LeasesStorageInterface(ABC):
         actor: UUID,
         outbox_rows: tuple[OutboxRow, ...],
     ) -> Resource | None:
-        """Retires a live resource, and cancels the requests waiting for it by
-        name as `retired`, in one commit. Its lease runs on until it ends, and
-        is never renewed. None when there is no live resource by the id."""
+        """Retires a live resource. Its lease runs on until it ends, and is
+        never renewed; the requests that name it wait on until the manager
+        takes them out of line (`read_stranded`). None when there is no live
+        resource by the id."""
         ...
 
     # Requests.
@@ -117,6 +119,11 @@ class LeasesStorageInterface(ABC):
     @abstractmethod
     async def read_overdue(self, org_id: UUID, now: datetime, limit: int) -> list[LeaseRequest]:
         """The org's waiting requests past their wait, oldest first."""
+        ...
+
+    @abstractmethod
+    async def read_stranded(self, org_id: UUID, limit: int) -> list[LeaseRequest]:
+        """At most `limit` waiting requests that name a retired resource."""
         ...
 
     @abstractmethod
@@ -224,7 +231,8 @@ class LeasesStorageInterface(ABC):
     ) -> list[UUID]:
         """Cross-tenant, for the sweep, in the system scope: the orgs with
         something due: a lease lapsed before `lapsed_before`, a request past
-        its wait, or a free resource with a request in its line. In the
+        its wait or naming a retired resource, or a free resource with a
+        request in its line. In the
         order of their ids, after `after` when it is given, so the sweep
         reads past an org it skips."""
         ...

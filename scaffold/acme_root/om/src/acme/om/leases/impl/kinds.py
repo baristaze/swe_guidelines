@@ -33,9 +33,11 @@ class NoopResourceKindImpl(ResourceKindInterface):
 
 class OrchestrationWaiterImpl(WaiterInterface):
     """A long-running record waits on its request parked on `resource`. It
-    waits while it has not settled; the grant wakes it, and its next step
-    asks again by its key and finds its lease. A revocation tells it
-    nothing: its next renewal is refused, and its step stops there."""
+    waits while it has not settled. The grant wakes it, and so does its
+    request's end without a lease; its next step asks again by its key and
+    finds its lease, or the request's end, and fails or asks anew. A
+    revocation tells it nothing: its next renewal is refused, and its step
+    stops there."""
 
     def __init__(self, orchestrations: OrchestrationsManagerInterface) -> None:
         self._orchestrations = orchestrations
@@ -48,6 +50,21 @@ class OrchestrationWaiterImpl(WaiterInterface):
         return not is_settled(record)
 
     def wake_rows(self, ctx: TenantContext, waiter_id: UUID, lease: Lease) -> tuple[OutboxRow, ...]:
+        return self._wake(ctx, waiter_id)
+
+    def end_rows(
+        self, ctx: TenantContext, waiter_id: UUID, request: LeaseRequest
+    ) -> tuple[OutboxRow, ...]:
+        return self._wake(ctx, waiter_id)
+
+    def revoke_rows(
+        self, ctx: TenantContext, waiter_id: UUID, lease: Lease
+    ) -> tuple[OutboxRow, ...]:
+        return ()
+
+    @staticmethod
+    def _wake(ctx: TenantContext, waiter_id: UUID) -> tuple[OutboxRow, ...]:
+        """A `WAKE_PARKED` item naming the one record."""
         payload = WakeParkedPayload(reason=ParkReason.RESOURCE, record_id=waiter_id)
         return (
             outbox_row(
@@ -57,8 +74,3 @@ class OrchestrationWaiterImpl(WaiterInterface):
                 payload.model_dump(mode="json"),
             ),
         )
-
-    def revoke_rows(
-        self, ctx: TenantContext, waiter_id: UUID, lease: Lease
-    ) -> tuple[OutboxRow, ...]:
-        return ()

@@ -27,7 +27,7 @@ from acme.om.context import (
 from acme.om.leases.impl.kinds import NoopResourceKindImpl, OrchestrationWaiterImpl
 from acme.om.leases.impl.manager import LeasesManagerImpl, LeasesOptions
 from acme.om.leases.types.lease import Lease, LeaseStatus
-from acme.om.leases.types.request import LeaseRequest, WaiterKind
+from acme.om.leases.types.request import LeaseRequest, RequestStatus, WaiterKind
 from acme.om.leases.types.resource import Resource, ResourceKind
 from acme.om.orchestrations.rules import advanced
 from acme.om.orchestrations.types.orchestration import (
@@ -156,7 +156,11 @@ def world(storage: StoragePostgresImpl, tmp_path: Path) -> World:
 
 
 def an_ask(
-    resource: Resource, *, term_seconds: int = 60, waiter: UUID | None = None
+    resource: Resource,
+    *,
+    term_seconds: int = 60,
+    wait_seconds: int = 3600,
+    waiter: UUID | None = None,
 ) -> LeaseRequest:
     now = utcnow()
     return LeaseRequest(
@@ -171,6 +175,7 @@ def an_ask(
         waiter_kind=None if waiter is None else WaiterKind.ORCHESTRATION,
         waiter_id=waiter,
         term_seconds=term_seconds,
+        wait_seconds=wait_seconds,
     )
 
 
@@ -278,5 +283,56 @@ async def test_a_parked_record_is_woken_with_its_lease_when_the_resource_frees(
     again = await world.leases.ask(owner, ask)
     assert again.lease is not None and again.lease.holder_id == owner.user_id
     assert again.lease.token == held.lease.token + 1
+    steps = await world.drain(WorkKind.ORCHESTRATION)
+    assert {target for org_id, target, _ in steps if org_id == owner.org_id} == {record.id}
+
+
+async def test_a_parked_record_whose_request_expires_is_woken_and_reads_its_end(
+    world: World,
+) -> None:
+    owner = await world.owner()
+    ann = await world.member("ann")
+    dock = await world.dock(owner)
+    assert (await world.leases.ask(ann, an_ask(dock))).lease is not None
+    now = utcnow()
+    record = await world.managers.orchestrations.start(
+        owner,
+        Orchestration(
+            id=new_id(),
+            created_at=now,
+            updated_at=now,
+            created_by=owner.user_id,
+            updated_by=owner.user_id,
+            kind=OrchestrationKind.NOOP,
+            input={"steps": 2},
+        ),
+    )
+    parked_at = advanced(
+        record, utcnow(), owner.user_id, cursor=record.cursor, total=None,
+        park=ParkReason.RESOURCE,
+    )  # fmt: skip
+    ask = an_ask(dock, wait_seconds=60, waiter=record.id)
+    waits = await world.leases.ask(
+        owner, ask, Step(record=parked_at, expected_version=record.version)
+    )
+    assert waits.lease is None
+
+    world.later(timedelta(seconds=61))
+    await world.leases.sweep(world.rctx())
+    # The expiry landed the record's wake in its own commit, and the relay
+    # queued it.
+    wakes = [
+        (org_id, WakeParkedPayload.model_validate(payload))
+        for org_id, _, payload in await world.drain(WorkKind.WAKE_PARKED)
+    ]
+    ours = [payload for org_id, payload in wakes if org_id == owner.org_id]
+    assert [(p.reason, p.record_id) for p in ours] == [(ParkReason.RESOURCE, record.id)]
+    assert await world.managers.orchestrations.wake(owner, ours[0].reason, ours[0].record_id) == 1
+    assert (await world.managers.orchestrations.get(owner, record.id)).status is (
+        OrchestrationStatus.RUNNING
+    )
+    # Its next step asks again by its key and reads the end.
+    again = await world.leases.ask(owner, ask)
+    assert again.lease is None and again.request.status is RequestStatus.EXPIRED
     steps = await world.drain(WorkKind.ORCHESTRATION)
     assert {target for org_id, target, _ in steps if org_id == owner.org_id} == {record.id}

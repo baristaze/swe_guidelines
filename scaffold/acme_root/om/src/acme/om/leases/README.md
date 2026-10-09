@@ -30,8 +30,8 @@ kinds of thing [Acme is made of](../../../../README.md).
 ## What can happen
 
 - **Register** a resource with its owner's row, in the same commit, and
-  **retire** it with that row: the requests that name it are cancelled,
-  and its lease is never renewed.
+  **retire** it with that row: the requests that name it leave their
+  line as `retired`, and its lease is never renewed.
 - **Ask.** A request joins the end of the line, and every free resource
   it may take is offered at once. A direct ask is granted only when no
   one waits in front of it. An ask asked again by its key answers its
@@ -74,9 +74,9 @@ A product adds a kind to `ResourceKind` and the shape of its ask to
 `ASK_PAYLOADS`, and registers a `ResourceKindInterface` impl for it at
 the root. Its owner writes the resource with its own row through
 `register_statement` (or `land_resource` in memory), and retires it
-through `retire_statements`. A thing that waits adds a `WaiterKind`
+through `retire_statement`. A thing that waits adds a `WaiterKind`
 with a `WaiterInterface` impl. An orchestration waits as the core's
 waiter: its step asks with `park`, and parks on `resource` until the
-grant wakes it. Per-lease facts of a product's own live in its own
+grant wakes it, or its request's end without a lease does. Per-lease facts of a product's own live in its own
 table, keyed by the lease's id
 ([ADR 0086](../../../../../docs/adr/0086-a-scarce-resource-is-leased-under-a-fencing-token.md)).
