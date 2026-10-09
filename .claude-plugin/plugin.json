@@ -1,6 +1,6 @@
 {
   "name": "swe-guidelines",
-  "version": "0.58.0",
+  "version": "0.59.0",
   "description": "Software Design and Architecture Guidelines with lens-based review skills and scaffolding skills for Python services and TypeScript or Python clients",
   "author": {
     "name": "Baris Taze",

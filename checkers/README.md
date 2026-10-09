@@ -16,7 +16,7 @@ and nothing else, so it runs in any CI.
 A project pins the guideline release it follows:
 
 ```bash
-uvx --python 3.14 --from "git+https://github.com/baristaze/swe_guidelines@v0.58.0#subdirectory=checkers" arch-check
+uvx --python 3.14 --from "git+https://github.com/baristaze/swe_guidelines@v0.59.0#subdirectory=checkers" arch-check
 ```
 
 `--python` names the Python the project pins in `.python-version`. On
