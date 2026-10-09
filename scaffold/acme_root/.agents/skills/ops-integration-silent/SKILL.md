@@ -18,9 +18,11 @@ the worker fails it, or the worker drops it. This skill reads each
 place and says which one holds the deliveries, and why.
 
 The integration the tree holds is the identity provider's, at
-`/webhooks/identity`. An integration the tree adds reads the same way,
-by its route: its deliveries share the `webhooks` queue, the worker's
-counts, and the dead letters, and the worker's lines name the provider.
+`/webhooks/identity`. An integration the tree adds has its own route,
+and only the route's reads, step 2's, are its own: the worker's counter
+carries only the subsystem and the outcome, its failure and drop lines
+name no provider, and every integration shares the `webhooks` queue and
+its dead letters.
 
 Read `../_shared/ops-preamble.md`, a path from this skill's folder,
 before the first step: the profiles and the account check are there.
@@ -185,7 +187,10 @@ is `acme-webhooks`, with `acme-webhooks-dead`.
    error, or nothing a reader can parse, is "not read", naming it.
 5. Find where the deliveries stop. Read the rows top to bottom, and
    report every row whose condition holds, in this order, each with the
-   counts that decided it:
+   counts that decided it. When the tree holds an integration besides
+   the identity provider's, "Fails in the worker" and "Dropped by the
+   worker" are reported as the queue's, not the route's, unless one of
+   the worker's lines names the provider:
 
    | Where | Condition | Why | Next |
    |---|---|---|---|
