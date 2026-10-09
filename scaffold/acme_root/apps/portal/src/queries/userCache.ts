@@ -8,7 +8,9 @@
 // A query being read while a member is placed may answer with what it read
 // before the change, and a page read is added to the pages as they were when
 // it started. So the member is placed again once that read lands, as the
-// newest answer heard of it then.
+// newest answer heard of it then. A query keeps its key across a switch of
+// org, so when the session ends, every answer heard and every query watched
+// goes with it.
 import type { InfiniteData, Query, QueryClient, QueryKey } from "@tanstack/react-query";
 import { ApiError, type MeView, type UserPageView, type UserView } from "@acme/client";
 import type { HintEffects } from "../realtime/hints";
@@ -127,6 +129,12 @@ export function userHintEffects(
     readCollections() {
       void queryClient.invalidateQueries({ queryKey: keys.users.all });
       void queryClient.invalidateQueries({ queryKey: keys.me, exact: true });
+    },
+    stop() {
+      unsubscribe?.();
+      unsubscribe = null;
+      pending.clear();
+      heard.clear();
     },
   };
 }

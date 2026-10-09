@@ -41,14 +41,17 @@ export interface HintEffects<T> {
   /** Reads every collection the entity is shown in again, once: for a burst,
    * or a read that failed for a reason that leaves the record's place unknown. */
   readCollections(): void;
+  /** Lets go of every answer heard and every query watched, once the reader
+   * stops, so none is written into a cache read under the next session. */
+  stop(): void;
 }
 
 export interface Hints {
   /** Notes a push about one record, with the version its change wrote when
    * the push names one. */
   hint(id: string, version?: number): void;
-  /** Ends the reader: a window still open is dropped, and an answer still on
-   * its way is not placed. */
+  /** Ends the reader: a window still open is dropped, an answer still on its
+   * way is not placed, and the effects let go of what they hold. */
   stop(): void;
 }
 
@@ -114,6 +117,7 @@ export function createHints<T>(effects: HintEffects<T>): Hints {
       stopped = true;
       close();
       gathered = new Map();
+      effects.stop();
     },
   };
 }

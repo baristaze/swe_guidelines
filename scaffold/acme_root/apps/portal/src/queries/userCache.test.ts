@@ -195,3 +195,36 @@ describe("a push about a user", () => {
     readers.user.stop();
   });
 });
+
+describe("a switch of org", () => {
+  const listRead = (queryClient: QueryClient, queryFn: () => Promise<UserPageView>) =>
+    queryClient.fetchInfiniteQuery({
+      queryKey: LIST,
+      initialPageParam: null as string | null,
+      getNextPageParam: (last: UserPageView) => last.next_cursor,
+      queryFn,
+    });
+
+  // The list read under the old org is in flight when a push places one of
+  // its members; the read then fails, or the switch abandons it. The new org's
+  // list is read under the same key.
+  it.each([
+    ["failed", () => Promise.reject(new Error("offline"))],
+    ["abandoned", () => new Promise<UserPageView>(() => {})],
+  ])("shows none of the old org's members in the new org's list when the read under the old one %s", async (_, queryFn) => {
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const effects = userHintEffects(queryClient, () => Promise.reject(new Error("not read here")));
+    const reader = createHints(effects);
+    void listRead(queryClient, queryFn).catch(() => undefined);
+    effects.place(user("b", "Old org's member"), effects.stamp());
+    await new Promise((settled) => setTimeout(settled, 0));
+
+    // The session ends: its reader stops, and the cache of the old org goes.
+    reader.stop();
+    queryClient.clear();
+
+    await listRead(queryClient, () => Promise.resolve({ items: [user("x")], next_cursor: null }));
+    expect(idsOf(queryClient.getQueryData<Pages>(LIST))).toEqual([["x"]]);
+    queryClient.clear();
+  });
+});

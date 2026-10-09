@@ -17,6 +17,7 @@ function fakes(held: Record<string, number> = {}) {
   const placed: { item: Item; since: number }[] = [];
   const removed: { id: string; since: number }[] = [];
   let collectionReads = 0;
+  let stops = 0;
   let clock = 0;
   let failing: unknown = null;
   const effects: HintEffects<Item> = {
@@ -32,6 +33,7 @@ function fakes(held: Record<string, number> = {}) {
     place: (item, since) => placed.push({ item, since }),
     remove: (id, since) => removed.push({ id, since }),
     readCollections: () => (collectionReads += 1),
+    stop: () => (stops += 1),
   };
   return {
     effects,
@@ -40,6 +42,7 @@ function fakes(held: Record<string, number> = {}) {
     placed,
     removed,
     collectionReads: () => collectionReads,
+    stops: () => stops,
     failWith: (cause: unknown) => (failing = cause),
   };
 }
@@ -201,7 +204,7 @@ describe("the reads a client makes", () => {
 });
 
 describe("stop", () => {
-  it("drops the open window and places no answer still on its way", async () => {
+  it("drops the open window, places no answer still on its way, and lets the effects go", async () => {
     const f = fakes();
     f.server.set("a", { id: "a", version: 1 });
     hints = createHints(f.effects);
@@ -209,6 +212,7 @@ describe("stop", () => {
     hints.stop();
     await settle();
     expect(f.reads).toEqual([]);
+    expect(f.stops()).toBe(1);
 
     let answer!: (item: Item) => void;
     const slow = fakes();
