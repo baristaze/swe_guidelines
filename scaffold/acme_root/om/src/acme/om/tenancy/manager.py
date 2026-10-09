@@ -229,8 +229,11 @@ class TenancyManagerInterface(ABC):
         None when no identity holds the address, when nobody has proven it,
         and when its person is not a live member of the org: the integration
         acts as nobody. The caller is an integration's handler alone, with
-        `org_id` from the integration its token found and `email` from the
-        payload its provider signed, never an address a person typed."""
+        `org_id` from the integration its token found and `email` one its
+        provider vouches is the acting person's own: verified and carried as
+        the actor's in the payload it signed, or read from the provider by the
+        actor id that payload carries. An address the actor typed at the
+        provider, such as a message's sender, is never one, signed or not."""
         ...
 
     @abstractmethod

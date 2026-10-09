@@ -70,8 +70,9 @@ plane. This is one of the kinds of thing
 - **Events carry ids.** A change about a person names ids, never an
   email or a name, so erasing the person erases them.
 - **An integration acts as a proven member, or as nobody.** It names a
-  person by the address its provider signed, and that address counts
-  once the person's sign-in through the identity provider has proven it
+  person by an address its provider vouches is theirs, never one they
+  typed there, and that address counts once the person's sign-in
+  through the identity provider has proven it
   ([ADR 0090](../../../../../docs/adr/0090-an-integration-acts-as-the-member-its-proven-address-names.md)).
 
 ## How another namespace composes it

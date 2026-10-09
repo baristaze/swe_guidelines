@@ -6,7 +6,8 @@
 
 An integration brings in what a person does at a provider the org
 connected: a request they write there, which a signed delivery carries
-here and which names them by their address. The work it asks for is
+here and which names them, by their address or by their id at the
+provider. The work it asks for is
 the person's, so it runs under their authority in the org. The
 integration has to turn the address into that person, with no
 credential of theirs.
@@ -44,11 +45,16 @@ of the org, or removed is no failed credential: the provider's
 signature held. The handler gets none, acts as nobody in the org, and
 may answer the person at the provider.
 
-**The caller is an integration's handler alone.** It takes the org from
-the integration its token found, and the address from the payload its
-provider signed, after the signature check. An address a person typed,
-one read from a stored row, or one from a request's body never reaches
-the call.
+**The caller is an integration's handler alone, with an address its
+provider vouches for.** It takes the org from the integration its token
+found, after the signature check. It takes an address the provider
+vouches is the acting person's own: one the provider verified and
+carried as the actor's in the payload it signed, or one the handler
+reads from the provider by the actor id that payload carries. The
+signature proves the delivery, not what the actor wrote in it, so an
+address the actor typed at the provider, such as a message's sender or
+a commit's author, is never one, even in a signed payload. Neither is
+one read from a stored row or one from a request's body.
 
 ## Consequences
 

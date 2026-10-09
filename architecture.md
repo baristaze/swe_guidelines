@@ -832,10 +832,14 @@ An integration that acts for a person produces a stage too.
 the live member whose address it names, found by the address's digest,
 with the member's own role and the credential kind `INTERNAL`. The
 address counts only once the person's sign-in through the identity
-provider proved it, and only an integration's handler passes one, taken
-from the payload its provider signed. A person who is no member, a
-removed member, or an unproven address gets none, and the call acts as
-nobody.
+provider proved it. Only an integration's handler passes one, and only
+an address its provider vouches is the acting person's own: one the
+provider verified and carried as the actor's in the payload it signed,
+or one the handler read from the provider by the actor id that payload
+carries. An address the actor typed at the provider, such as a
+message's sender or a commit's author, is never one, signed or not. A
+person who is no member, a removed member, or an unproven address gets
+none, and the call acts as nobody.
 
 ## The Storage Layer
 
