@@ -561,6 +561,23 @@ unavailable exception where the interface raises, and a miss over a
 cache, whose failure is a miss. It declines to pay the timeout, never to
 keep the contract.
 
+A breaker protects only the process that holds it, and every other
+process pays the same timeouts before its own opens. Processes that call
+one provider share what they learn of it through the outage signal
+([`outages/`](scaffold/acme_root/infra/src/acme/infra/outages/)). A mark
+names the provider and the credential, the org that holds it and the
+secret's name, never its value, and carries a time to retry. A caller
+marks the pair when its calls fail together, reads it before it calls,
+and clears it when a call succeeds. One process takes the null signal,
+which never marks, since its breaker holds what its calls learned.
+Processes on a shared cache share one signal there, and it fails open as
+the cache does: a cache that cannot answer is a pair with no mark. A
+step that reads a mark does not call. It parks its record on
+`provider_unavailable` until the retry time. Every park on one mark
+lands the same wake for then, which resumes the org's parked records
+staggered
+([Long-Running Orchestrations](#long-running-orchestrations)).
+
 ### Injectability
 
 `core`
@@ -1180,8 +1197,8 @@ storage, in its constructor.
 - Every capability is an interface with swappable impls, and a caller
   does not know which it holds.
 - The OM imports infra interfaces. Infra imports nothing from the OM.
-- Tenancy is a keying concern. Cache, buckets, secrets, and flags take
-  `org_id` first, and topic payloads carry it.
+- Tenancy is a keying concern. Cache, buckets, secrets, flags, and the
+  outage signal take `org_id` first, and topic payloads carry it.
 - Cross-tenant reference data uses `EMPTY_UUID` as its `org_id`, which
   infra knows by value, without importing the OM.
 - A handle arrives through a constructor, wired by the app container at
@@ -1692,7 +1709,8 @@ where the row says
 ([`orchestrations/`](scaffold/acme_root/om/src/acme/om/orchestrations/)).
 A record succeeds, fails, or **parks**: stops with a reason and, where
 known, a time to resume, keeping everything achieved. The event that
-clears the reason, a sweep, or a person wakes it.
+clears the reason, the time its park named, a sweep, or a person wakes
+it.
 
 > **Principle:** A guard parks, a bound fails. A safety check leaves
 > the work resumable; only a real limit terminates it.

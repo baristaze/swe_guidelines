@@ -39,7 +39,7 @@ class OrchestrationsOptions(Platform):
     max_limit: int = 50
     # The steps one wake resumes start this far apart.
     stagger: timedelta = timedelta(seconds=2)
-    wake_batch: int = 50  # records one wake resumes per org
+    wake_batch: int = 50  # records one read of a wake takes; it reads until one is short
     retention: timedelta = timedelta(days=30)  # a settled record is purged after this
     purge_batch: int = 1000  # records one purge statement deletes at most
 
@@ -136,9 +136,7 @@ class OrchestrationsManagerImpl(OrchestrationsManagerInterface):
     ) -> int:
         ctx.require(Permission.WRITE)
         now = self._clock()
-        if record_id is None:
-            waiting = await self._storage.read_parked(ctx.org_id, reason, self._options.wake_batch)
-        else:
+        if record_id is not None:
             record = await self._storage.read_orchestration(ctx.org_id, record_id)
             waiting = (
                 [record]
@@ -147,7 +145,20 @@ class OrchestrationsManagerImpl(OrchestrationsManagerInterface):
                 and record.park_reason is reason
                 else []
             )
-        return await self._resume_all(ctx, waiting, now)
+            return await self._resume_all(ctx, waiting, now)
+        # Every record parked for the reason, a batch at a time, each read
+        # after the last record of the one before: a record that parks again
+        # while the wake runs is not read twice, and the staggers go on
+        # across the batches.
+        batch_size = self._options.wake_batch
+        woken, read, after = 0, 0, None
+        while True:
+            batch = await self._storage.read_parked(ctx.org_id, reason, batch_size, after)
+            woken += await self._resume_all(ctx, batch, now, first=read)
+            read += len(batch)
+            if len(batch) < batch_size:
+                return woken
+            after = batch[-1].id
 
     async def fail(
         self,
@@ -185,13 +196,14 @@ class OrchestrationsManagerImpl(OrchestrationsManagerInterface):
         return await self._storage.purge_tenant(ctx.org_id, self._options.purge_batch)
 
     async def _resume_all(
-        self, ctx: TenantContext, records: list[Orchestration], now: datetime
+        self, ctx: TenantContext, records: list[Orchestration], now: datetime, first: int = 0
     ) -> int:
         """Each record's next step starts a stagger after the one before it,
-        so the records one event wakes do not all start at once. A record
-        another writer moved meanwhile is left to it."""
+        so the records one event wakes do not all start at once; `first` is
+        the position of the first of them in the wake. A record another
+        writer moved meanwhile is left to it."""
         resumed_count = 0
-        for position, record in enumerate(records):
+        for position, record in enumerate(records, start=first):
             try:
                 await self._resume(ctx, record, now, now + stagger(position, self._options.stagger))
             except PreconditionFailed:

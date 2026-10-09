@@ -8,7 +8,7 @@ from pydantic import ValidationError
 
 from acme.infra.observability import OUTCOMES
 from acme.infra.topics import EntityChangedPayload, Topics, TopicsInterface, WorkAvailablePayload
-from acme.om.base import EMPTY_UUID, Platform, new_id, utcnow
+from acme.om.base import EMPTY_UUID, Platform, derived_id, new_id, utcnow
 from acme.om.context import Permission, RequestContext, TenantContext
 from acme.om.events import EventsManagerInterface
 from acme.om.events.manager import audit_event
@@ -30,6 +30,7 @@ from acme.om.work.types.work_item import (
     WORK_PAYLOADS,
     WORK_ROW_PREFIX,
     ScheduledPayload,
+    WakeParkedPayload,
     WorkItem,
     WorkKind,
     WorkStatus,
@@ -62,15 +63,35 @@ def caused_by(rctx: RequestContext, item: WorkItem) -> RequestContext:
 
 def not_before(kind: WorkKind, payload: object) -> datetime | None:
     """When work of this kind may run, read off its payload: the payload's
-    `not_before` for a scheduled kind, None for any other. A payload that
-    does not parse answers None here; `_land` refuses it with the reason."""
+    `not_before` for a scheduled kind and for a wake that names a time, None
+    for any other. A payload that does not parse answers None here; `_land`
+    refuses it with the reason."""
     shape = WORK_PAYLOADS[kind]
-    if not issubclass(shape, ScheduledPayload):
+    if not issubclass(shape, ScheduledPayload | WakeParkedPayload):
         return None
     try:
         return shape.model_validate(payload).not_before
     except ValidationError:
         return None
+
+
+def relayed_key(kind: WorkKind, row: OutboxRow, now: datetime) -> UUID:
+    """The idempotency key of the item a relayed row lands: the row's id, the
+    same on every run of the relay, so a retry creates nothing twice. A wake
+    of the org's records parked for one reason, at a time still to come, is
+    keyed by the org, the reason, and the time instead: the parks that read
+    one mark land one item, which resumes them staggered. A row whose time
+    has passed keeps its own key and runs at once, since the item its time
+    named may have run before its record parked."""
+    if kind is not WorkKind.WAKE_PARKED:
+        return row.id
+    try:
+        wake = WakeParkedPayload.model_validate(row.payload)
+    except ValidationError:
+        return row.id  # `_land` refuses it with the reason
+    if wake.record_id is not None or wake.not_before is None or wake.not_before <= now:
+        return row.id
+    return derived_id(row.org_id, wake.not_before, f"{kind.value}:{wake.reason.value}")
 
 
 class WorkManagerImpl(WorkManagerInterface):
@@ -121,12 +142,13 @@ class WorkManagerImpl(WorkManagerInterface):
         second outbox row of that write, which landed in the same statement as
         the entity's. No context, since the relay runs without a principal: the
         actor comes from the row, and so does the idempotency key, which is the
-        row's id and the same on every run of the relay. The request that
+        same on every run of the relay (`relayed_key`). The request that
         caused the work and its trace context come from the row too, which
         names the request that made the write: the row is the whole handoff,
         so nothing here is minted afresh. The lane is the
         default one; a row carries no routing of its own. A kind whose payload
-        is a `ScheduledPayload` waits in the queue until its `not_before`."""
+        is a `ScheduledPayload`, and a wake that names a time, waits in the
+        queue until its `not_before`."""
         kind = row.kind.removeprefix(WORK_ROW_PREFIX)
         if kind not in {k.value for k in WorkKind}:
             raise ValidationFailed(f"outbox row {row.id} asks for unknown work {row.kind}")
@@ -142,7 +164,7 @@ class WorkManagerImpl(WorkManagerInterface):
                 updated_by=EMPTY_UUID,  # the machinery, from here on
                 kind=WorkKind(kind),
                 target_id=row.target_id,
-                idempotency_key=row.id,
+                idempotency_key=relayed_key(WorkKind(kind), row, now),
                 request_id=row.request_id,  # the request that made the write
                 traceparent=row.traceparent,  # its trace context, for the run's link
                 payload=row.payload,

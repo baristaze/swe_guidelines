@@ -7,6 +7,7 @@ from abc import ABC, abstractmethod
 from acme.infra.buckets import BucketsInterface
 from acme.infra.cache import CacheInterface, CacheScope
 from acme.infra.flags import FlagsInterface
+from acme.infra.outages import OutageSignalInterface
 from acme.infra.queues import QueuesInterface
 from acme.infra.secrets import SecretsInterface
 from acme.infra.topics import TopicsInterface
@@ -30,6 +31,12 @@ class InfraInterface(ABC):
 
     @abstractmethod
     def get_flags(self) -> FlagsInterface: ...
+
+    @abstractmethod
+    def get_outages(self) -> OutageSignalInterface:
+        """The outage signal: on the shared cache where processes share one,
+        and the null impl in a process that keeps its cache to itself."""
+        ...
 
     @abstractmethod
     def describe(self) -> list[str]:

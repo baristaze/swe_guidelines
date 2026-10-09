@@ -104,7 +104,7 @@ class OrchestrationsStoragePostgresImpl(PgStorageBase, OrchestrationsStorageInte
             return [to_model(row, Orchestration) for row in (await session.execute(stmt)).scalars()]
 
     async def read_parked(
-        self, org_id: UUID, reason: ParkReason, limit: int
+        self, org_id: UUID, reason: ParkReason, limit: int, after: UUID | None = None
     ) -> list[Orchestration]:
         stmt = (
             select(Orchestrations)
@@ -116,6 +116,8 @@ class OrchestrationsStoragePostgresImpl(PgStorageBase, OrchestrationsStorageInte
             .order_by(Orchestrations.id)
             .limit(limit)
         )
+        if after is not None:
+            stmt = stmt.where(Orchestrations.id > after)
         async with self._session_for(stmt, org_id=org_id) as session:
             return [to_model(row, Orchestration) for row in (await session.execute(stmt)).scalars()]
 

@@ -40,9 +40,17 @@ from acme.workers.maintenance.orchestrations import (
     OrchestrationHandlerImpl,
     WakeParkedHandlerImpl,
 )
+from acme.workers.maintenance.providers import ProviderCalls
 from acme.workers.maintenance.settings import MaintenanceSettings
 
 log = logging.getLogger(__name__)
+
+IDENTITY = "identity"
+"""The identity provider, by the name its deliveries are queued under."""
+
+IDENTITY_CREDENTIAL = "ACME_WORKOS_API_KEY"
+"""The secret the worker's calls to it are made with: the platform's own, by
+its name."""
 
 
 def loop_options(settings: MaintenanceSettings, lane: str | None = None) -> LoopOptions:
@@ -74,6 +82,9 @@ def unstaged(purge: Callable[[], Awaitable[int]]) -> AcrossStep:
 
 def build_loop(container: WorkerContainer, lane: str | None = None) -> WorkerLoop:
     managers = container.managers
+    # Every call to the identity provider reads, marks, and clears its outage
+    # on the signal every worker shares.
+    identity_calls = ProviderCalls(container.infra.get_outages(), IDENTITY, IDENTITY_CREDENTIAL)
     return WorkerLoop(
         work=managers.work,
         outbox=managers.outbox,
@@ -125,10 +136,10 @@ def build_loop(container: WorkerContainer, lane: str | None = None) -> WorkerLoo
             ),
             WorkKind.WAKE_PARKED: WakeParkedHandlerImpl(managers.orchestrations),
             WorkKind.DELETE_ACCOUNT: DeleteAccountHandlerImpl(
-                managers.tenancy, container.identity_provider
+                managers.tenancy, container.identity_provider, identity_calls
             ),
             WorkKind.DELETE_ORG: DeleteOrgHandlerImpl(
-                managers.tenancy, container.identity_provider
+                managers.tenancy, container.identity_provider, identity_calls
             ),
         },
         topics=container.infra.get_topics(),

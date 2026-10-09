@@ -78,6 +78,7 @@ async def test_local_environment_builds_local_impls(tmp_path: Path) -> None:
     assert infra.get_cache(CacheScope.RATE_LIMIT) is infra.get_cache(CacheScope.RATE_LIMIT)
     assert infra.describe() == [
         *(f"cache[{scope.value}]=memory" for scope in CacheScope),
+        "outages=none",
         "topics=memory",
         f"buckets=local({tmp_path / 'buckets'})",
         "queues=memory",
@@ -92,6 +93,7 @@ def test_cloud_backends_are_constructed_without_connecting(tmp_path: Path) -> No
     infra = InfraConfiguredImpl(local_settings(tmp_path, **CLOUD_BACKENDS))
     assert infra.describe() == [
         *(f"cache[{scope.value}]=valkey+breaker(3/30s)" for scope in CacheScope),
+        "outages=shared(cache[outage]=valkey+breaker(3/30s))",
         "topics=valkey+breaker(3/30s)",
         "buckets=s3(us-east-1)",
         "queues=sqs(us-east-1)",
