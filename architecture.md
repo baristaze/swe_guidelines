@@ -561,6 +561,22 @@ unavailable exception where the interface raises, and a miss over a
 cache, whose failure is a miss. It declines to pay the timeout, never to
 keep the contract.
 
+A breaker protects only the process that holds it, and every other
+process pays the same timeouts before its own opens. Processes that call
+one provider share what they learn of it through the outage signal
+([`outages/`](scaffold/acme_root/infra/src/acme/infra/outages/)). A mark
+names the provider and the credential, the org that holds it and the
+secret's name, never its value, and carries a time to retry. A caller
+marks the pair when its calls fail together, reads it before it calls,
+and clears it when a call succeeds. One process takes the null signal,
+which never marks, since its breaker holds what its calls learned.
+Processes on a shared cache share one signal there, and it fails open as
+the cache does: a cache that cannot answer is a pair with no mark. A
+step that reads a mark does not call. It parks its record on
+`provider_unavailable` until the retry time, and the park lands its
+record's wake for then
+([Long-Running Orchestrations](#long-running-orchestrations)).
+
 ### Injectability
 
 `core`
@@ -1678,7 +1694,8 @@ where the row says
 ([`orchestrations/`](scaffold/acme_root/om/src/acme/om/orchestrations/)).
 A record succeeds, fails, or **parks**: stops with a reason and, where
 known, a time to resume, keeping everything achieved. The event that
-clears the reason, a sweep, or a person wakes it.
+clears the reason, the time its park named, a sweep, or a person wakes
+it.
 
 > **Principle:** A guard parks, a bound fails. A safety check leaves
 > the work resumable; only a real limit terminates it.
