@@ -23,8 +23,10 @@ write per item.
 - **The cap is the lane's, and the worker passes it.** `claim` takes
   `tenant_cap`, the most items one tenant holds claimed on the lane.
   The maintenance worker sets it with its lane, from
-  `ACME_WORKER_TENANT_CAP`, and 0, the default, sets none. A claim with
-  no cap counts nothing: its statement is the one without a cap.
+  `ACME_WORKER_TENANT_CAP`, and 0, the default, sets none. A tenant's
+  own cap on the lane takes the lane's place for that tenant, and a
+  claim with no lane cap counts only the tenants that have one
+  ([ADR 0093](0093-a-tenants-own-cap-holds-in-place-of-the-lanes.md)).
 - **The claim's one statement passes over a tenant at its cap.** The
   candidate the claim locks leaves out every tenant that holds the cap
   on the lane under a live lease (`rules.is_at_cap`). That set is one

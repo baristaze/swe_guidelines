@@ -917,24 +917,33 @@ rows kept past their retention.
 ## ASY-38 A tenant's cap on a shared lane is held at the claim
 
 **Principle.** A lane that tenants share can cap how many items one
-tenant holds claimed on it, so one tenant cannot hold every worker. The
-claim's one statement takes the oldest available item whose tenant
-holds fewer items than the cap claimed under a live lease. A tenant at
-its cap is passed over, and its items stay unwritten and spend no
-attempt. A lane with no cap counts nothing.
+tenant holds claimed on it, so one tenant cannot hold every worker. A
+tenant's own cap on a lane, one row per tenant and lane in the `queue`
+role that an operator sets, holds for that tenant in place of the
+lane's, on a lane with a cap or without one. The claim's one statement
+takes the oldest available item whose tenant holds fewer items than its
+cap claimed under a live lease. A tenant at its cap is passed over, and
+its items stay unwritten and spend no attempt. A tenant with neither
+cap is never passed over.
 
 **Source.** Worker Roles, The Work Queue; Scalability by Design.
 
 **Look for.** What `claim` does with `tenant_cap`; the clause the claim's
-statement adds in both storage impls, and what it counts; whether a
-passed-over item is written; whether a claim with no cap counts.
+statement adds in both storage impls, what it counts, and how it joins
+the tenants' own caps; whether a passed-over item is written; which
+tenants a claim with no lane cap counts; the fence on the caps' table,
+and the permission the operator's write and read each require.
 
 **Violation.** A cap checked at enqueue, so the work runs later past
 it; an over-cap item claimed and handed back with a delay, so a freed
 slot stays empty until the delay passes and a claim walks the tenant's
 backlog; a count that ignores the lease, so a lost worker holds a slot
-for good; a count on every claim of a lane with no cap.
+for good; a tenant's own cap read in a statement of its own before the
+claim, or once per tenant; on a lane with no cap, a tenant with no cap
+of its own counted; a tenant's cap row another tenant can read or
+write.
 
 **Severity.** medium
 
-**Shape.** `scaffold/acme_root/om/src/acme/om/work/storage/impl/postgres.py`
+**Shape.** `scaffold/acme_root/om/src/acme/om/work/storage/impl/postgres.py`,
+`scaffold/acme_root/om/src/acme/om/work/impl/operator.py`
