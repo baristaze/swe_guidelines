@@ -5,48 +5,56 @@ included, stay on its GitHub release. Releases are tagged
 `vMAJOR.MINOR.PATCH`; see `CONTRIBUTING.md` for what bumps which
 number.
 
-## 0.53.0 (2026-10-08)
+## 0.54.0 (2026-10-09)
 
-A feature flag is an infra capability behind `FlagsInterface`, its
-provider chosen at boot and apart from the identity provider, and a
-client reads its session's flags as one snapshot from its own API.
-Minor, with one reversal: DEL-22 no longer calls a wrapper around a
-flag SDK a violation; a vendor's flag SDK outside the infra flags
-package is one.
+A thing that serves one holder at a time gets a lease, under a fencing
+token that only grows, and whoever waits for it gets a line: an
+optional guideline section, its lenses, and the scaffold's `leases`
+namespace. Minor.
+
+### Fixed
+
+- OPS-20's Look for lists the routes the scaffold's traffic session
+  calls: a sign-in, one socket, a read of the person, a list of the
+  members, a write, a key made under an idempotency key and revoked, a
+  read of the stream, its own change seen on the socket, and a
+  sign-out. It no longer names a completion or a reopen, which the
+  scaffold has no route for.
 
 ### Added
 
-- `FlagsInterface` in infra, through `InfraInterface.get_flags()`.
-  `evaluate(org_id, user_id)` answers every flag declared in code for
-  one audience: a user's rule over an org's, over the provider's
-  default, over the code's. A flag the provider does not know, or a
-  provider that fails, reads its default.
-- `ACME_FLAGS_BACKEND`: `memory` for tests and the local stack, which a
-  deployed environment refuses; `launchdarkly`, through OpenFeature,
-  refused without its key; or `none`, where every flag reads its
-  default. The LaunchDarkly key is a process secret, and its runbook's
-  go-live turns each flag's targeting on, serving the code's default.
-  ADR 0085 records the decision.
-- The scaffold's one flag, `media-uploads`: `create_file` refuses a new
-  upload with `403 feature_off` where it is off.
-- `GET /v1/flags`: the session's flags marked for clients, with an
-  `ETag`, and `304` when nothing changed.
-- The portal reads that snapshot once the tenant exchange is done, and
-  again on focus and every five minutes; a switch drops it with the old
-  tenant's caches. `useFlag` reads one flag, off until the snapshot
-  arrives, and the Storage card says when new uploads are paused.
-- The guideline's Infrastructure, Feature Flags, and Client App
-  Architecture, Flags in the Client.
-- DEL-52: a browser app depends on no flag vendor's SDK, which
-  arch-check decides from each app's `package.json`.
+- The guideline's Leases on a Resource, `optional`. A resource is one
+  row per leasable thing, and its anchor holds the highest token
+  granted. A lease is one grant to one principal, under a token one
+  above the anchor's; it ends on its release, its revocation, or once
+  its expiry and a skew margin have passed. A request waits in one rank
+  order per tenant, for one resource or for a kind and the labels it
+  needs. A grant goes to the head of the line under the anchor's row
+  lock, once the waiter says it still waits and the kind says it may
+  still be granted. ADR 0086 records the decision.
+- ASY-32 to ASY-37: a grant is decided under the anchor's lock; a token
+  only grows, and a lease ends past the skew margin; one rank order
+  serves every line, and a request gets one lease; no grant goes to a
+  waiter that no longer waits; a resource kind registers its hooks, and
+  a lease holds no product fact; a freed resource goes to its line, and
+  the sweep catches the rest.
+- The scaffold's `leases` namespace: the `resources`, `leases`, and
+  `lease_requests` tables on the `core` chain, both storages, the
+  manager with its `ResourceKind` and `WaiterKind` hooks, and
+  `/v1/leases`: ask for, read, cancel, and reorder a request, read a
+  resource's line, and read, renew, release, and revoke a lease. Until
+  a kind registers, the code sits unused.
+- The Python client's `LeaseClock`, which counts a lease's time on a
+  monotonic clock from the send, and its `Fence`, which keeps the
+  highest token per resource.
 
 ### Changed
 
-- DEL-22, reversed: product variation stays a modelled entity, and a
-  release toggle or a kill switch is a flag behind `FlagsInterface`. A
-  vendor's flag SDK or OpenFeature imported outside the infra flags
-  package is the violation, which arch-check decides. DEL-20 no longer
-  cites a flag SDK as one used directly.
-- NET-20 allows a poll of what no push names, such as the flags
-  snapshot.
-- `arch-scaffold-app` says what a new browser app writes for flags.
+- A long-running record parks on the reason `resource` while it waits
+  in line, and the grant, or its request's end without one, wakes it.
+  `WAKE_PARKED` may name one record (`record_id`); one that names none
+  wakes every record parked for its reason. ADR 0039 says so.
+- The maintenance worker's pass ends each lease past its expiry and the
+  skew margin, expires each request past its wait, and offers each free
+  resource to its line.
+- `arch-review-async` covers leases.
