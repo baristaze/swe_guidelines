@@ -69,14 +69,21 @@ plane. This is one of the kinds of thing
   of another org is answered as one that never existed.
 - **Events carry ids.** A change about a person names ids, never an
   email or a name, so erasing the person erases them.
+- **An integration acts as a proven member, or as nobody.** It names a
+  person by an address its provider vouches is theirs, never one they
+  typed there, and that address counts once the person's sign-in
+  through the identity provider has proven it
+  ([ADR 0090](../../../../../docs/adr/0090-an-integration-acts-as-the-member-its-proven-address-names.md)).
 
 ## How another namespace composes it
 
 Tenancy mints the context every other manager takes. A request's
 credential becomes a `TenantContext` through `authenticate`, and a claimed
 work item's through `service_context`, on the service role with the
-person who asked as its attribution. A manager checks what it needs
-with `ctx.require(permission)`, and never reads tenancy's tables.
+person who asked as its attribution. An integration's call that acts
+for a person gets theirs through `member_context`, with their own role.
+A manager checks what it needs with `ctx.require(permission)`, and
+never reads tenancy's tables.
 
 The tenancy manager keeps those transitions, the seeding, the grant
 job, and the sweep. Its other duties are delegates, each an interface

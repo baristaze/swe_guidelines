@@ -1,5 +1,6 @@
 """Signing in through the identity provider, the local sign-in, invitations,
-and single sign-on, over the memory storage and the provider's twin."""
+single sign-on, and the member an integration acts as by the address a
+sign-in proved, over the memory storage and the provider's twin."""
 
 from collections import Counter
 from datetime import timedelta
@@ -19,6 +20,7 @@ from acme.om.base import new_id, utcnow
 from acme.om.context import (
     AppContext,
     AppType,
+    CredentialKind,
     IdentityContext,
     RequestContext,
     Role,
@@ -47,7 +49,7 @@ from acme.om.outbox.storage.impl.memory import OutboxStorageMemoryImpl
 from acme.om.root import build_tenancy
 from acme.om.tenancy import TenancyManagerInterface
 from acme.om.tenancy.impl.manager import TenancyOptions
-from acme.om.tenancy.rules import email_digest, pkce_challenge
+from acme.om.tenancy.rules import email_digest, permissions_of, pkce_challenge
 from acme.om.tenancy.storage.impl.memory import TenancyStorageMemoryImpl
 from acme.om.tenancy.types.invitation import InvitationState
 from acme.om.tenancy.types.issued import IssuedLogin
@@ -271,6 +273,43 @@ async def test_an_unverified_address_or_the_platforms_is_refused(
         code = twin.issue_code("smoke@platform.acme.invalid")
         await manager.sign_in.sign_in_with_code(request(), code)
     assert await storage.count_orgs() == 0
+
+
+async def test_an_integration_acts_only_as_a_live_member_whose_address_is_proven(
+    manager: TenancyManagerInterface,
+    twin: IdentityProviderTwinImpl,
+) -> None:
+    """The context an integration's call acts under: the member's own role,
+    found by the address in any case, and nobody for an address no sign-in
+    proved, a person of another org, a removed member, or an unknown one."""
+    owner, org = await manager.bootstrap(request(), "Ajax", "ajax", "ann@example.test", "Ann")
+    _, bob, _ = await manager.add_member(request(), "ajax", "bob@example.test", "Bob", Role.MEMBER)
+    await manager.add_member(request(), "ajax", "dee@example.test", "Dee", Role.ADMIN)
+    _, beta = await manager.bootstrap(request(), "Beta", "beta", "cy@example.test", "Cy")
+    for email in ("ann@example.test", "bob@example.test", "cy@example.test"):
+        await manager.sign_in.sign_in_with_code(request(), twin.issue_code(email))
+
+    ann = await manager.member_context(request(), org.id, "Ann@Example.TEST")
+    assert ann is not None and ann.user_id == owner.user_id and ann.org_id == org.id
+    assert ann.role is Role.OWNER and ann.security.permissions == permissions_of(Role.OWNER)
+    assert ann.credential_kind is CredentialKind.INTERNAL
+    found = await manager.member_context(request(), org.id, "bob@example.test")
+    assert found is not None and found.user_id == bob.id
+    assert found.role is Role.MEMBER and found.security.permissions == permissions_of(Role.MEMBER)
+
+    # Dee is a member, but the seeding typed her address and no sign-in proved it.
+    assert await manager.member_context(request(), org.id, "dee@example.test") is None
+    await manager.sign_in.sign_in_with_code(request(), twin.issue_code("dee@example.test"))
+    dee = await manager.member_context(request(), org.id, "dee@example.test")
+    assert dee is not None and dee.role is Role.ADMIN
+
+    # Cy is proven, and a member of Beta, not of Ajax.
+    assert await manager.member_context(request(), org.id, "cy@example.test") is None
+    assert await manager.member_context(request(), beta.id, "cy@example.test") is not None
+    assert await manager.member_context(request(), org.id, "nobody@example.test") is None
+
+    await manager.members.remove_member(owner, bob.id)
+    assert await manager.member_context(request(), org.id, "bob@example.test") is None
 
 
 async def test_a_spent_code_is_refused(

@@ -215,6 +215,28 @@ class TenancyManagerInterface(ABC):
         ...
 
     @abstractmethod
+    async def member_context(
+        self, rctx: RequestContext, org_id: UUID, email: str
+    ) -> TenantContext | None:
+        """Platform-internal: the context an integration's call acts under when
+        it acts for a person. The live member of `org_id` whose identity holds
+        `email`, found by the address's digest, with their own role, its
+        permissions, and their teams, on the credential kind `INTERNAL`.
+        Only a proven address counts: one the identity provider verified when
+        the person signed in through it. An address the seeding, the operator
+        plane, or the local sign-in typed proves nobody until then.
+
+        None when no identity holds the address, when nobody has proven it,
+        and when its person is not a live member of the org: the integration
+        acts as nobody. The caller is an integration's handler alone, with
+        `org_id` from the integration its token found and `email` one its
+        provider vouches is the acting person's own: verified and carried as
+        the actor's in the payload it signed, or read from the provider by the
+        actor id that payload carries. An address the actor typed at the
+        provider, such as a message's sender, is never one, signed or not."""
+        ...
+
+    @abstractmethod
     async def service_contexts(self, rctx: RequestContext) -> list[TenantContext]:
         """Platform-internal: one service context per tenant, deleted ones
         included, for sweeps, with one for the system scope (`EMPTY_UUID` as the
