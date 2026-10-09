@@ -804,23 +804,33 @@ second commit; a write that locks the request before the anchor.
 
 ## ASY-33 A token only grows, and a lease ends past the skew margin
 
-**Principle.** Each grant takes one above the anchor's token, and no
-end lowers it. A lease ends once its expiry and the skew margin have
-passed, so a holder whose clock runs slow has stopped first, and a
-renewal past the expiry is refused. A fence on the resource's own side
-keeps the highest token it has seen: it refuses a lower one, and stops
-and resets the resource before it admits a higher one.
+**Principle.** Each grant takes one above the anchor's token, and no end
+lowers it. A lease ends once its expiry and the skew margin have passed,
+so a holder whose clock runs slow has stopped first, and a renewal past
+the expiry is refused. A renewal runs the length it names, or the term,
+within the bound. Only the holder, or the worker whose claim on the
+lease's job still holds, renews or releases a lease. A job's start runs
+the full term, and lands until the job's window and the margin have
+passed. A fence on the resource's side refuses a token below the
+highest it has seen, and stops and resets the resource before it admits
+a higher one.
 
 **Source.** Worker Roles, Leases on a Resource.
 
 **Look for.** The token a grant writes and what an end does to the
 anchor; the bound the sweep and a grant use for a lapsed lease; the
-renewal's condition; the client's `Fence` and `LeaseClock`.
+renewal's and the start's conditions and lengths; whom `renew`,
+`start`, and `release` admit, and how a `JobClaim` is read; the
+client's `Fence` and `LeaseClock`.
 
 **Violation.** A token reused or reset; a lease ended at its expiry
-without the margin; a renewal that revives a lapsed lease; a fence
-that admits a lower token, or keeps a higher one whose reset raised; a
-holder's clock counted from the answer instead of the send.
+without the margin; a renewal that revives a lapsed lease; a renewal
+past the bound; a lease renewed or ended by a principal that is
+neither its holder nor the worker holding its job's claim; a claim read
+once and trusted after the queue took the item back; a start refused
+inside the margin, or admitted past it; a fence that admits a lower
+token, or keeps a higher one whose reset raised; a holder's clock
+counted from the answer instead of the send.
 
 **Severity.** high
 
@@ -881,19 +891,22 @@ record asleep; a waiter's end that leaves its requests in line.
 registered kind and that row's id. Its owner lands it in the commit of
 its own row and retires it with that row. A kind registers the shape of
 its ask and its hooks as a work kind registers its handler, and the ask
-validates its payload against the shape. A kind keeps facts of its own
-about a lease in its own table, keyed by the lease's id.
+validates its payload against the shape. What a grant starts holds one
+job at most, a work item the lease names by its key. A kind keeps facts
+of its own about a lease in its own table, keyed by the lease's id.
 
 **Source.** Worker Roles, Leases on a Resource.
 
 **Look for.** `ResourceKind`, `ASK_PAYLOADS`, and the
-`ResourceKindInterface` impls the root registers; where an owner
+`ResourceKindInterface` impls the root registers; the work rows
+`grant_rows` returns and the `job_key` a grant keeps; where an owner
 registers and retires its resources; the columns of the `resources` and
 `leases` tables.
 
 **Violation.** A resource registered in a commit after its owner's row,
 or left live after the row is gone; an ask's payload stored unchecked;
-a product's column on a lease or a resource; an ask accepted for a kind
+a grant that starts two jobs, or a job its lease does not name; a
+product's column on a lease or a resource; an ask accepted for a kind
 with no hooks.
 
 **Severity.** medium

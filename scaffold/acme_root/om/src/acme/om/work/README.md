@@ -57,7 +57,9 @@ kinds of thing [Acme is made of](../../../../README.md).
 
 - **The lease.** A claim holds an item for a lease, and the worker
   renews it while the job runs. Every transition is conditional on the
-  claim token, so a worker that lost its item changes nothing.
+  claim token, so a worker that lost its item changes nothing. A record
+  that lets the worker running its item act on it, as a lease whose job
+  the item is, reads the same fence through `holds`.
 - **One org cannot hold every worker.** A lane that orgs share can cap
   how many items one org holds claimed on it, and an org's own cap there
   takes the lane's place for that org. An org at its cap spends no
