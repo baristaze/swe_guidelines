@@ -42,6 +42,7 @@ from acme.om.tenancy.impl.shared import (
     create_session,
     mint_token,
     new_operator_token,
+    principal_in,
 )
 from acme.om.tenancy.manager import TenancyManagerInterface
 from acme.om.tenancy.members import TenancyMembersManagerInterface
@@ -534,6 +535,31 @@ class TenancyManagerImpl(TenancyManagerInterface):
             role=Role.SERVICE,
             permissions=permissions_of(Role.SERVICE),
             credential_kind=CredentialKind.INTERNAL,
+        )
+
+    async def member_context(
+        self, rctx: RequestContext, org_id: UUID, email: str
+    ) -> TenantContext | None:
+        # The digest folds the address, so every spelling finds one person.
+        identity = await self._storage.read_identity_by_email_digest(email_digest(email))
+        # The provider links a person once it has verified their address; a
+        # person it never linked holds an address someone typed for them.
+        if identity is None or identity.subject is None:
+            return None
+        try:
+            org, user, membership = await principal_in(
+                self._storage, org_id, identity.id, self._options.max_orgs_per_identity
+            )
+        except NotAuthorized:
+            return None
+        return build_context(
+            rctx,
+            user_id=user.id,
+            org_id=org.id,
+            role=membership.role,
+            permissions=permissions_of(membership.role),
+            credential_kind=CredentialKind.INTERNAL,
+            teams=membership.teams,
         )
 
     async def _every_org(self) -> list[Org]:

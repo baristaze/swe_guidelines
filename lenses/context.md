@@ -400,8 +400,9 @@ base of every payload; the rest is judged.
 ## CTX-16 Principal-less operations take the request stage and return a stage
 
 **Principle.** The operations that exist before a principal does (a
-sign-up, a sign-in, a claim, a sweep, a webhook token) take the request
-stage and produce the stage the work runs under; a test names each.
+sign-up, a sign-in, a claim, a sweep, a webhook token, an integration
+acting for a person) take the request stage and produce the stage the
+work runs under; a test names each.
 The outbox relay and its two handoffs, the event append and the work
 enqueue, take `(org_id, row)` instead: the row carries tenant, actor,
 request id.
@@ -413,7 +414,8 @@ Stages; Worker Roles, The Work Queue.
 stage; what they return (the identity stage, a `TenantContext`, or one
 service context per live tenant); their docstrings, which document
 them as transitions; the test that enumerates them; any method with no
-context at all, and whether the relay runs again from the sweep.
+context at all, and whether the relay runs again from the sweep. Every
+caller of `member_context`, and where the address it passes comes from.
 
 **Violation.** A request-stage method that performs tenant work
 directly instead of returning a stage (a sign-up creating the tenant it
@@ -422,7 +424,14 @@ enumerating test does not name; a method with no context that performs
 a tenant operation, where bookkeeping with no principal (the relay and
 its two handoffs, the expiry of a lease) is declared as such on its
 interface; a transition whose return type is neither a stage nor a list
-of stages.
+of stages, where only `member_context` answers none. A call of
+`member_context` outside an integration's handler, or with an address
+its provider does not vouch is the acting person's own: it vouches for
+one it verified and carried as the actor's in the payload it signed, or
+one the handler reads from it by the actor id that payload carries. An
+address the actor typed at the provider (a message's sender, a commit's
+author) is never one, even inside a signed payload; neither is one read
+from a stored row or from a request's body.
 
 **Severity.** high
 
