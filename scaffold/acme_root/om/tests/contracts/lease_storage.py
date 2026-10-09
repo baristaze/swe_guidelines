@@ -410,6 +410,8 @@ class LeaseStorageContract:
             storage.grant(org, grant_of(before, second), ()),
         )
         assert len(run.admitted) == 1, run.summary()
+        winner = run.admitted[0]
+        assert winner is not None
         anchor = await storage.read_resource(org, resource.id)
         assert anchor is not None and anchor.token == before.token + 1
         active = [
@@ -417,7 +419,7 @@ class LeaseStorageContract:
             for lease in (await storage.read_lapsed(org, utcnow() + timedelta(days=1), 10))
             if lease.resource_id == resource.id
         ]
-        assert [lease.id for lease in active] == [run.admitted[0].id]
+        assert [lease.id for lease in active] == [winner.id]
         assert active[0].token == before.token + 1
 
     async def test_one_request_standing_in_two_lines_is_granted_once(

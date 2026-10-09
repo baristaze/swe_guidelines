@@ -26,6 +26,9 @@ from acme.client.types import (
     IssuedSessionView,
     IssuedTicketView,
     IssuedUploadView,
+    LeaseRequestView,
+    LeaseView,
+    LineView,
     MembershipChoicePageView,
     MembershipChoiceView,
     MeView,
@@ -40,6 +43,7 @@ from acme.client.types import (
     SignedOutView,
     SignInStartView,
     SsoLinkView,
+    StandingView,
     StorageUsageView,
     UserPageView,
     UserView,
@@ -539,6 +543,79 @@ class ApiClient:
             cursor = page.next_cursor
             if cursor is None:
                 return users
+
+    # Leases: a resource's line, and the holder's lease. The holder's own
+    # side, its clock and its fence, is `acme.client.leases`.
+
+    async def ask_lease(
+        self,
+        *,
+        kind: str = "noop",
+        resource_id: UUID | None = None,
+        labels: list[str] | None = None,
+        payload: dict[str, Any] | None = None,
+        term_seconds: int = 60,
+        wait_seconds: int = 3600,
+        idempotency_key: str | None = None,
+    ) -> StandingView:
+        """Joins the line for one resource, or for any of `kind` with every
+        label; granted at once only when no one waits in front. Always under
+        an idempotency key, so a retry joins no line twice."""
+        body: dict[str, Any] = {
+            "kind": kind,
+            "payload": payload or {},
+            "term_seconds": term_seconds,
+            "wait_seconds": wait_seconds,
+        }
+        if resource_id is not None:
+            body["resource_id"] = str(resource_id)
+        if labels is not None:
+            body["labels"] = labels
+        asked = await self.request(
+            "POST",
+            "/v1/leases/requests",
+            json=body,
+            idempotency_key=idempotency_key or str(uuid4()),
+        )
+        return StandingView.model_validate(asked)
+
+    async def lease_standing(self, request_id: UUID) -> StandingView:
+        """Where a request stands now: its lease, or its place and estimate."""
+        standing = await self.request("GET", f"/v1/leases/requests/{request_id}")
+        return StandingView.model_validate(standing)
+
+    async def cancel_lease_request(self, request_id: UUID) -> LeaseRequestView:
+        cancelled = await self.request("POST", f"/v1/leases/requests/{request_id}/cancel")
+        return LeaseRequestView.model_validate(cancelled)
+
+    async def reorder_lease_request(
+        self, request_id: UUID, before_id: UUID | None = None
+    ) -> LeaseRequestView:
+        """A manager's: the request moves in front of `before_id`, or to the end."""
+        body = {"before_id": None if before_id is None else str(before_id)}
+        moved = await self.request("POST", f"/v1/leases/requests/{request_id}/reorder", json=body)
+        return LeaseRequestView.model_validate(moved)
+
+    async def resource_line(self, resource_id: UUID) -> LineView:
+        line = await self.request("GET", f"/v1/leases/resources/{resource_id}/line")
+        return LineView.model_validate(line)
+
+    async def lease(self, lease_id: UUID) -> LeaseView:
+        return LeaseView.model_validate(await self.request("GET", f"/v1/leases/{lease_id}"))
+
+    async def renew_lease(self, lease_id: UUID) -> LeaseView:
+        """The holder's: the lease runs its term again. A `lease_ended` refusal
+        means the lease is gone, and the holder stops."""
+        return LeaseView.model_validate(await self.request("POST", f"/v1/leases/{lease_id}/renew"))
+
+    async def release_lease(self, lease_id: UUID) -> LeaseView:
+        released = await self.request("POST", f"/v1/leases/{lease_id}/release")
+        return LeaseView.model_validate(released)
+
+    async def revoke_lease(self, lease_id: UUID) -> LeaseView:
+        """A manager's: the lease ends and the resource goes to its line."""
+        revoked = await self.request("POST", f"/v1/leases/{lease_id}/revoke")
+        return LeaseView.model_validate(revoked)
 
     # Media: the org's files, as references to objects in the store
 

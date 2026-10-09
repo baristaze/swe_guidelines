@@ -6,10 +6,10 @@ from acme.om.events import EventsManagerInterface
 from acme.om.events.storage import EventStorageInterface
 from acme.om.idempotency import IdempotencyManagerInterface
 from acme.om.idempotency.storage import IdempotencyStorageInterface
-from acme.om.media import MediaManagerInterface
-from acme.om.media.storage import MediaStorageInterface
 from acme.om.leases import LeasesManagerInterface
 from acme.om.leases.storage import LeasesStorageInterface
+from acme.om.media import MediaManagerInterface
+from acme.om.media.storage import MediaStorageInterface
 from acme.om.orchestrations import OrchestrationsManagerInterface
 from acme.om.orchestrations.storage import OrchestrationsStorageInterface
 from acme.om.outbox import OutboxRelayInterface

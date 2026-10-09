@@ -23,6 +23,14 @@ class TtlDays(RootModel[int]):
     root: Annotated[int, Field(ge=1, le=90, title='Ttl Days')]
 
 
+class Label(RootModel[str]):
+    root: Annotated[str, Field(max_length=64, min_length=1, pattern='^[a-z0-9:_.-]+$')]
+
+
+class Labels(RootModel[list[Label]]):
+    root: Annotated[list[Label], Field(max_length=32, title='Labels')]
+
+
 class ConfirmTotpRequest(BaseModel):
     """
     The first code from the authenticator, which confirms the secret.
@@ -153,6 +161,16 @@ class DeviceTokenRequest(BaseModel):
     device_code: Annotated[str, Field(max_length=500, min_length=1, title='Device Code')]
 
 
+class EndReason(StrEnum):
+    """
+    Why a request left its line without a lease.
+    """
+    asked = 'asked'
+    waiter_gone = 'waiter_gone'
+    refused = 'refused'
+    retired = 'retired'
+
+
 class EventView(BaseModel):
     """
     One record of the tenant's append-only stream, paged by `after_seq`.
@@ -250,6 +268,32 @@ class IssuedTotpSecretView(BaseModel):
     authenticator app reads. A replay carries none.
     """
     otpauth_uri: Annotated[str | None, Field(title='Otpauth Uri')]
+
+
+class LeaseStatus(StrEnum):
+    active = 'active'
+    released = 'released'
+    expired = 'expired'
+    revoked = 'revoked'
+
+
+class LeaseView(BaseModel):
+    """
+    One grant: the holder acts on the resource under `fencing_token` until
+    it has used `expires_in_seconds`, counted from when it asked. The token is
+    no secret: it is the number the resource's own side refuses to go below.
+    """
+    created_at: Annotated[AwareDatetime, Field(title='Created At')]
+    ended_at: Annotated[AwareDatetime | None, Field(title='Ended At')]
+    expires_at: Annotated[AwareDatetime, Field(title='Expires At')]
+    expires_in_seconds: Annotated[float, Field(title='Expires In Seconds')]
+    fencing_token: Annotated[int, Field(title='Fencing Token')]
+    holder_id: Annotated[UUID, Field(title='Holder Id')]
+    id: Annotated[UUID, Field(title='Id')]
+    request_id: Annotated[UUID, Field(title='Request Id')]
+    resource_id: Annotated[UUID, Field(title='Resource Id')]
+    status: LeaseStatus
+    term_seconds: Annotated[int, Field(title='Term Seconds')]
 
 
 class LogoutRequest(BaseModel):
@@ -376,6 +420,49 @@ class PurposeUsageView(BaseModel):
     pending_size_bytes: Annotated[int, Field(title='Pending Size Bytes')]
     purpose: FilePurpose
     size_bytes: Annotated[int, Field(title='Size Bytes')]
+
+
+class ReorderRequest(BaseModel):
+    """
+    Moves a waiting request in front of `before_id`, or to the end.
+    """
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    before_id: Annotated[UUID | None, Field(title='Before Id')] = None
+
+
+class RequestStatus(StrEnum):
+    waiting = 'waiting'
+    granted = 'granted'
+    cancelled = 'cancelled'
+    expired = 'expired'
+
+
+class ResourceKind(StrEnum):
+    """
+    A product adds its kinds here, each with the shape of what its ask
+    carries (`ASK_PAYLOADS`) and its hooks (`ResourceKindInterface`).
+    """
+    noop = 'noop'
+
+
+class ResourceView(BaseModel):
+    """
+    A resource and its anchor: the highest token granted on it, and the
+    lease that holds it until when.
+    """
+    available: Annotated[bool, Field(title='Available')]
+    created_at: Annotated[AwareDatetime, Field(title='Created At')]
+    fencing_token: Annotated[int, Field(title='Fencing Token')]
+    held_until: Annotated[AwareDatetime | None, Field(title='Held Until')]
+    id: Annotated[UUID, Field(title='Id')]
+    kind: ResourceKind
+    labels: Annotated[list[str], Field(title='Labels')]
+    lease_id: Annotated[UUID | None, Field(title='Lease Id')]
+    max_term_seconds: Annotated[int, Field(title='Max Term Seconds')]
+    ref_id: Annotated[UUID, Field(title='Ref Id')]
+    retired_at: Annotated[AwareDatetime | None, Field(title='Retired At')]
 
 
 class Role(StrEnum):
@@ -595,6 +682,14 @@ class ValidationError(BaseModel):
     type: Annotated[str, Field(title='Error Type')]
 
 
+class WaiterKind(StrEnum):
+    """
+    What waits on a request, so a grant wakes it. A product adds its own,
+    each with a `WaiterInterface`.
+    """
+    orchestration = 'orchestration'
+
+
 class WorkKind(StrEnum):
     NOOP = 'NOOP'
     ORCHESTRATION = 'ORCHESTRATION'
@@ -641,6 +736,24 @@ class ApiKeyView(BaseModel):
     name: Annotated[str, Field(title='Name')]
     role: Role
     user_id: Annotated[UUID, Field(title='User Id')]
+
+
+class AskRequest(BaseModel):
+    """
+    An ask for a lease: one resource by its id, or a selector, the labels
+    a resource of `kind` must offer. `payload` is in the shape the kind
+    fixes; the term is bounded by the resource's, and the ask expires in line
+    after `wait_seconds`.
+    """
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    kind: ResourceKind
+    labels: Annotated[Labels | None, Field(title='Labels')] = None
+    payload: Annotated[dict[str, Any] | None, Field(title='Payload')] = None
+    resource_id: Annotated[UUID | None, Field(title='Resource Id')] = None
+    term_seconds: Annotated[int | None, Field(ge=1, le=86400, title='Term Seconds')] = 60
+    wait_seconds: Annotated[int | None, Field(ge=1, le=604800, title='Wait Seconds')] = 3600
 
 
 class FilePageView(BaseModel):
@@ -749,6 +862,31 @@ class LastOwnerDetail(BaseModel):
     orgs: Annotated[list[OwnedOrgRef], Field(title='Orgs')]
 
 
+class LeaseRequestView(BaseModel):
+    created_at: Annotated[AwareDatetime, Field(title='Created At')]
+    created_by: Annotated[UUID, Field(title='Created By')]
+    end_reason: EndReason | None
+    id: Annotated[UUID, Field(title='Id')]
+    kind: ResourceKind
+    labels: Annotated[list[str] | None, Field(title='Labels')]
+    lease_id: Annotated[UUID | None, Field(title='Lease Id')]
+    rank: Annotated[float, Field(title='Rank')]
+    resource_id: Annotated[UUID | None, Field(title='Resource Id')]
+    status: RequestStatus
+    term_seconds: Annotated[int, Field(title='Term Seconds')]
+    wait_until: Annotated[AwareDatetime | None, Field(title='Wait Until')]
+    waiter_id: Annotated[UUID | None, Field(title='Waiter Id')]
+    waiter_kind: WaiterKind | None
+
+
+class LineView(BaseModel):
+    """
+    A resource and the requests in its line, first first.
+    """
+    requests: Annotated[list[LeaseRequestView], Field(title='Requests')]
+    resource: ResourceView
+
+
 class MeView(BaseModel):
     app: Annotated[str, Field(title='App')]
     org: OrgView
@@ -826,6 +964,18 @@ class OrgPageView(BaseModel):
     """
     items: Annotated[list[OrgView], Field(title='Items')]
     next_cursor: Annotated[str | None, Field(title='Next Cursor')]
+
+
+class StandingView(BaseModel):
+    """
+    Where a request stands: its lease once granted, or its place (1 is
+    next in some line it stands in) and an estimate of its wait in seconds,
+    while it waits.
+    """
+    estimate_seconds: Annotated[float | None, Field(title='Estimate Seconds')]
+    lease: LeaseView | None
+    place: Annotated[int | None, Field(title='Place')]
+    request: LeaseRequestView
 
 
 class UserPageView(BaseModel):

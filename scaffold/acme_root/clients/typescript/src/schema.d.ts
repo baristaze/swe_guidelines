@@ -515,6 +515,179 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/leases/requests": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Ask
+         * @description Joins the line, last; granted at once only when no one waits in front.
+         *     A replay answers the standing the first call saw: read the request for
+         *     where it stands now.
+         */
+        post: operations["ask_v1_leases_requests_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/leases/requests/{request_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Request */
+        get: operations["get_request_v1_leases_requests__request_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/leases/requests/{request_id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Cancel
+         * @description Its asker's, or a manager's.
+         */
+        post: operations["cancel_v1_leases_requests__request_id__cancel_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/leases/requests/{request_id}/reorder": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reorder
+         * @description A manager's: the request moves in front of `before_id`, or to the end.
+         */
+        post: operations["reorder_v1_leases_requests__request_id__reorder_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/leases/resources/{resource_id}/line": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Line */
+        get: operations["line_v1_leases_resources__resource_id__line_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/leases/{lease_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Lease */
+        get: operations["get_lease_v1_leases__lease_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/leases/{lease_id}/release": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Release
+         * @description Its holder's: the resource goes to its line.
+         */
+        post: operations["release_v1_leases__lease_id__release_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/leases/{lease_id}/renew": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Renew
+         * @description Its holder's: the lease runs its term again from now.
+         */
+        post: operations["renew_v1_leases__lease_id__renew_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/leases/{lease_id}/revoke": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Revoke
+         * @description A manager's: the lease ends and the resource goes to its line.
+         */
+        post: operations["revoke_v1_leases__lease_id__revoke_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/me": {
         parameters: {
             query?: never;
@@ -970,6 +1143,34 @@ export interface components {
             user_id: string;
         };
         /**
+         * AskRequest
+         * @description An ask for a lease: one resource by its id, or a selector, the labels
+         *     a resource of `kind` must offer. `payload` is in the shape the kind
+         *     fixes; the term is bounded by the resource's, and the ask expires in line
+         *     after `wait_seconds`.
+         */
+        AskRequest: {
+            kind: components["schemas"]["ResourceKind"];
+            /** Labels */
+            labels?: string[] | null;
+            /** Payload */
+            payload?: {
+                [key: string]: unknown;
+            };
+            /** Resource Id */
+            resource_id?: string | null;
+            /**
+             * Term Seconds
+             * @default 60
+             */
+            term_seconds: number;
+            /**
+             * Wait Seconds
+             * @default 3600
+             */
+            wait_seconds: number;
+        };
+        /**
          * ConfirmTotpRequest
          * @description The first code from the authenticator, which confirms the secret.
          */
@@ -1089,6 +1290,12 @@ export interface components {
             /** Device Code */
             device_code: string;
         };
+        /**
+         * EndReason
+         * @description Why a request left its line without a lease.
+         * @enum {string}
+         */
+        EndReason: "asked" | "waiter_gone" | "refused" | "retired";
         /** ErrorBody */
         ErrorBody: {
             /** Code */
@@ -1433,6 +1640,103 @@ export interface components {
             /** Orgs */
             orgs: components["schemas"]["OwnedOrgRef"][];
         };
+        /** LeaseRequestView */
+        LeaseRequestView: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Created By
+             * Format: uuid
+             */
+            created_by: string;
+            end_reason: components["schemas"]["EndReason"] | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            kind: components["schemas"]["ResourceKind"];
+            /** Labels */
+            labels: string[] | null;
+            /** Lease Id */
+            lease_id: string | null;
+            /** Rank */
+            rank: number;
+            /** Resource Id */
+            resource_id: string | null;
+            status: components["schemas"]["RequestStatus"];
+            /** Term Seconds */
+            term_seconds: number;
+            /** Wait Until */
+            wait_until: string | null;
+            /** Waiter Id */
+            waiter_id: string | null;
+            waiter_kind: components["schemas"]["WaiterKind"] | null;
+        };
+        /**
+         * LeaseStatus
+         * @enum {string}
+         */
+        LeaseStatus: "active" | "released" | "expired" | "revoked";
+        /**
+         * LeaseView
+         * @description One grant: the holder acts on the resource under `fencing_token` until
+         *     it has used `expires_in_seconds`, counted from when it asked. The token is
+         *     no secret: it is the number the resource's own side refuses to go below.
+         */
+        LeaseView: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Ended At */
+            ended_at: string | null;
+            /**
+             * Expires At
+             * Format: date-time
+             */
+            expires_at: string;
+            /** Expires In Seconds */
+            expires_in_seconds: number;
+            /** Fencing Token */
+            fencing_token: number;
+            /**
+             * Holder Id
+             * Format: uuid
+             */
+            holder_id: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Request Id
+             * Format: uuid
+             */
+            request_id: string;
+            /**
+             * Resource Id
+             * Format: uuid
+             */
+            resource_id: string;
+            status: components["schemas"]["LeaseStatus"];
+            /** Term Seconds */
+            term_seconds: number;
+        };
+        /**
+         * LineView
+         * @description A resource and the requests in its line, first first.
+         */
+        LineView: {
+            /** Requests */
+            requests: components["schemas"]["LeaseRequestView"][];
+            resource: components["schemas"]["ResourceView"];
+        };
         /**
          * LogoutRequest
          * @description Where the identity provider sends the browser once it has ended its own
@@ -1756,6 +2060,63 @@ export interface components {
             size_bytes: number;
         };
         /**
+         * ReorderRequest
+         * @description Moves a waiting request in front of `before_id`, or to the end.
+         */
+        ReorderRequest: {
+            /** Before Id */
+            before_id?: string | null;
+        };
+        /**
+         * RequestStatus
+         * @enum {string}
+         */
+        RequestStatus: "waiting" | "granted" | "cancelled" | "expired";
+        /**
+         * ResourceKind
+         * @description A product adds its kinds here, each with the shape of what its ask
+         *     carries (`ASK_PAYLOADS`) and its hooks (`ResourceKindInterface`).
+         * @enum {string}
+         */
+        ResourceKind: "noop";
+        /**
+         * ResourceView
+         * @description A resource and its anchor: the highest token granted on it, and the
+         *     lease that holds it until when.
+         */
+        ResourceView: {
+            /** Available */
+            available: boolean;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Fencing Token */
+            fencing_token: number;
+            /** Held Until */
+            held_until: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            kind: components["schemas"]["ResourceKind"];
+            /** Labels */
+            labels: string[];
+            /** Lease Id */
+            lease_id: string | null;
+            /** Max Term Seconds */
+            max_term_seconds: number;
+            /**
+             * Ref Id
+             * Format: uuid
+             */
+            ref_id: string;
+            /** Retired At */
+            retired_at: string | null;
+        };
+        /**
          * Role
          * @enum {string}
          */
@@ -1902,6 +2263,20 @@ export interface components {
             url: string;
         };
         /**
+         * StandingView
+         * @description Where a request stands: its lease once granted, or its place (1 is
+         *     next in some line it stands in) and an estimate of its wait in seconds,
+         *     while it waits.
+         */
+        StandingView: {
+            /** Estimate Seconds */
+            estimate_seconds: number | null;
+            lease: components["schemas"]["LeaseView"] | null;
+            /** Place */
+            place: number | null;
+            request: components["schemas"]["LeaseRequestView"];
+        };
+        /**
          * StartUploadRequest
          * @description An upload to start: the file's name as the uploader had it, its type,
          *     and its size in bytes. The type must be one the purpose accepts and match
@@ -2030,6 +2405,13 @@ export interface components {
             /** Error Type */
             type: string;
         };
+        /**
+         * WaiterKind
+         * @description What waits on a request, so a grant wakes it. A product adds its own,
+         *     each with a `WaiterInterface`.
+         * @enum {string}
+         */
+        WaiterKind: "orchestration";
         /**
          * WorkKind
          * @enum {string}
@@ -3230,6 +3612,355 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["InvitationView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    ask_v1_leases_requests_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "x-app"?: string | null;
+                "x-app-version"?: string | null;
+                "idempotency-key"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AskRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StandingView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_request_v1_leases_requests__request_id__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "x-app"?: string | null;
+                "x-app-version"?: string | null;
+            };
+            path: {
+                request_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StandingView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cancel_v1_leases_requests__request_id__cancel_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "x-app"?: string | null;
+                "x-app-version"?: string | null;
+            };
+            path: {
+                request_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LeaseRequestView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reorder_v1_leases_requests__request_id__reorder_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "x-app"?: string | null;
+                "x-app-version"?: string | null;
+            };
+            path: {
+                request_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReorderRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LeaseRequestView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    line_v1_leases_resources__resource_id__line_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "x-app"?: string | null;
+                "x-app-version"?: string | null;
+            };
+            path: {
+                resource_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LineView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_lease_v1_leases__lease_id__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "x-app"?: string | null;
+                "x-app-version"?: string | null;
+            };
+            path: {
+                lease_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LeaseView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    release_v1_leases__lease_id__release_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "x-app"?: string | null;
+                "x-app-version"?: string | null;
+            };
+            path: {
+                lease_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LeaseView"];
+                };
+            };
+            /** @description lease_ended: the lease no longer runs */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    renew_v1_leases__lease_id__renew_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "x-app"?: string | null;
+                "x-app-version"?: string | null;
+            };
+            path: {
+                lease_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LeaseView"];
+                };
+            };
+            /** @description lease_ended: the lease no longer runs */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    revoke_v1_leases__lease_id__revoke_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "x-app"?: string | null;
+                "x-app-version"?: string | null;
+            };
+            path: {
+                lease_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LeaseView"];
+                };
+            };
+            /** @description lease_ended: the lease no longer runs */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
             /** @description Validation Error */
