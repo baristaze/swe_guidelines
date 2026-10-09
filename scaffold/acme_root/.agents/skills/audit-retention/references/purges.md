@@ -84,6 +84,7 @@ Across tenants, once a pass:
 | idempotency | `purge_records` | finished or released records; markers an abandoned attempt still holds | `idempotency_retention_hours`, 24; an attempt older than ten pending leases of two minutes |
 | events | `trim` | each living org's events older than the retention, moving its floor in the same statement | `event_retention_days`, 90; 0 keeps every event |
 | orchestrations | `purge_settled` | settled records | the options' `retention`, 30 days |
+| leases | `purge_settled` | ended leases; settled requests; retired resources no lease holds | the options' `retention`, 30 days |
 | media | `read_purgeable`, then `purge_files_across_tenants` | a deleted file's object and row; an upload never confirmed | `media_retention_days`, 1; `media_pending_expiry_hours`, 24 |
 | outbox | `purge_done` | relayed rows, and rows that failed for good, in two statements | `outbox_retention_days`, 8 |
 | work | `purge_items` | done and failed items | `work_retention_days`, 30 |
@@ -92,8 +93,8 @@ Per tenant, for an org deleted past `tenancy_retention_days` (a
 personal org goes at the next pass): `purge_tenant` of media (every
 file, the object first), tenancy (users, memberships, API keys,
 sessions, socket tickets, invitations), events (the stream, then its
-cursor), and orchestrations. The org row stays, marked purged, as the
-record.
+cursor), orchestrations, and leases (resources, leases, requests). The
+org row stays, marked purged, as the record.
 
 No purge reaches `core.orgs`, `core.identities` (erased with the
 person's account), `activity.event_cursors` beyond a purged tenant's,

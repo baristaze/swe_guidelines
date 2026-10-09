@@ -1,6 +1,6 @@
 ---
 name: arch-review-async
-description: "Architecture review through the Async lenses: infra, queues, workers, park vs fail. For a change in this area, or as one leg of arch-review-full."
+description: "Architecture review through the Async lenses: infra, queues, workers, leases, park vs fail. For a change in this area, or as one leg of arch-review-full."
 allowed-tools: Read, Grep, Glob, Bash(git diff:*), Bash(git show:*), Bash(git log:*), Bash(git status:*), Bash(git rev-parse:*), Bash(git merge-base:*), Bash(git symbolic-ref:*), Bash(git ls-files:*)
 ---
 
@@ -14,7 +14,7 @@ lens needs its source read in full. A path that starts with `../` is
 read from this skill's folder as `realpath` resolves it. If either file
 is missing, stop and say the installation is incomplete.
 
-This pass covers Infrastructure, Worker Roles, The Network Layer (Idempotency on the Consumer Side, Long-Running Orchestrations), Telemetry (Correlation Across a Handoff): infra, queues, workers, park vs fail.
+This pass covers Infrastructure, Worker Roles, The Network Layer (Idempotency on the Consumer Side, Long-Running Orchestrations), Telemetry (Correlation Across a Handoff): infra, queues, workers, leases, park vs fail.
 
 ## Input
 

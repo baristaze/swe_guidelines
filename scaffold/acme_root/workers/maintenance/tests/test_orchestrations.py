@@ -1,6 +1,7 @@
 """Long-running records in the worker, over the `noop` kind: a record started,
 its steps claimed and run from the queue until it succeeds, a step whose
-guard parks it and the wake-up that resumes it, a step that errors retried by
+guard parks it and the wake-up that resumes it, a step that waits in line for
+a resource and the grant that wakes it with its lease, a step that errors retried by
 the queue from its cursor and failed as a defect on its last attempt, and a
 step for a record that no longer runs doing nothing."""
 
@@ -11,8 +12,11 @@ from pathlib import Path
 import pytest
 from worker_support import build_container, make_item, request, sign_in, start_noop
 
-from acme.om.base import utcnow
+from acme.om.base import derived_id, new_id, utcnow
 from acme.om.context import TenantContext
+from acme.om.leases.types.lease import Lease
+from acme.om.leases.types.request import LeaseRequest, WaiterKind
+from acme.om.leases.types.resource import Resource, ResourceKind
 from acme.om.orchestrations.rules import advanced
 from acme.om.orchestrations.steps import step_rows
 from acme.om.orchestrations.types.orchestration import (
@@ -21,6 +25,7 @@ from acme.om.orchestrations.types.orchestration import (
     OrchestrationKind,
     OrchestrationStatus,
     ParkReason,
+    Step,
 )
 from acme.om.work.types.handler import WorkHandlerInterface
 from acme.om.work.types.work_item import WakeParkedPayload, WorkItem, WorkKind
@@ -130,6 +135,86 @@ async def test_a_guard_parks_the_record_and_the_wake_up_resumes_it(tmp_path: Pat
         2,
         None,
     )
+
+
+class Leasing:
+    """A step that needs a resource: it asks for a lease by a key its record
+    derives, parks on `resource` in the same call while it waits, and steps
+    once it holds one. Woken, it asks again by the key and finds its lease."""
+
+    def __init__(self, container: WorkerContainer, resource: Resource) -> None:
+        self.container = container
+        self.resource = resource
+        self.held: list[Lease] = []
+
+    async def __call__(self, ctx: TenantContext, record: Orchestration) -> Orchestration:
+        now = utcnow()
+        ask = LeaseRequest(
+            id=new_id(),
+            created_at=now,
+            updated_at=now,
+            created_by=ctx.user_id,
+            updated_by=ctx.user_id,
+            idempotency_key=derived_id(record.id, record.created_at, "resource"),
+            kind=ResourceKind.NOOP,
+            resource_id=self.resource.id,
+            waiter_kind=WaiterKind.ORCHESTRATION,
+            waiter_id=record.id,
+        )
+        parked = advanced(
+            record, now, ctx.user_id, cursor=record.cursor, total=record.total,
+            park=ParkReason.RESOURCE,
+        )  # fmt: skip
+        park = Step(record=parked, expected_version=record.version)
+        standing = await self.container.managers.leases.ask(ctx, ask, park)
+        if standing.lease is None:
+            return parked
+        self.held.append(standing.lease)
+        return await self.container.managers.orchestrations.step_noop(ctx, record)
+
+
+async def test_a_record_waits_in_line_and_the_grant_wakes_it_with_its_lease(
+    tmp_path: Path,
+) -> None:
+    container = build_container(tmp_path)
+    ctx = await sign_in(container)
+    leases = container.managers.leases
+    now = utcnow()
+    dock = await leases.register(
+        ctx,
+        Resource(
+            id=new_id(), created_at=now, updated_at=now, created_by=ctx.user_id,
+            updated_by=ctx.user_id, kind=ResourceKind.NOOP, ref_id=new_id(),
+        ),
+    )  # fmt: skip
+    first = await leases.ask(
+        ctx,
+        LeaseRequest(
+            id=new_id(), created_at=now, updated_at=now, created_by=ctx.user_id,
+            updated_by=ctx.user_id, idempotency_key=new_id(), kind=ResourceKind.NOOP,
+            resource_id=dock.id,
+        ),
+    )  # fmt: skip
+    assert first.lease is not None
+    started = await start_noop(container, ctx, 2)
+    leasing = Leasing(container, dock)
+    handlers = {
+        **handlers_of(container),
+        WorkKind.ORCHESTRATION: OrchestrationHandlerImpl(
+            container.managers.orchestrations, {OrchestrationKind.NOOP: leasing}
+        ),
+    }
+    assert len(await drain(container, handlers)) == 1, "a record in line asks for no step"
+    parked = await container.managers.orchestrations.get(ctx, started.id)
+    assert (parked.status, parked.park_reason) == (OrchestrationStatus.PARKED, ParkReason.RESOURCE)
+    # The resource frees: the grant wakes the record it was for, and its
+    # steps run to the end under the lease it finds by its key.
+    await leases.release(ctx, first.lease.id)
+    ran = await drain(container, handlers)
+    assert [item.kind for item in ran] == [WorkKind.WAKE_PARKED, *[WorkKind.ORCHESTRATION] * 2]
+    done = await container.managers.orchestrations.get(ctx, started.id)
+    assert done.status is OrchestrationStatus.SUCCEEDED
+    assert {lease.token for lease in leasing.held} == {first.lease.token + 1}
 
 
 class Flaky:

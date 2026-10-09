@@ -13,6 +13,7 @@ from acme.integrations.impl.configured import IntegrationsConfiguredImpl, Integr
 from acme.integrations.root import IntegrationsInterface
 from acme.om.events.impl.manager import EventsOptions
 from acme.om.idempotency.impl.manager import IdempotencyOptions
+from acme.om.leases.impl.manager import LeasesOptions
 from acme.om.media.impl.manager import MediaOptions
 from acme.om.orchestrations.impl.manager import OrchestrationsOptions
 from acme.om.root import Managers, build_managers
@@ -27,6 +28,10 @@ log = logging.getLogger(__name__)
 MEDIA_PURGE_BATCH = 100
 """Files one media purge erases. Each is an object deleted from the store, one
 request apiece, before its row, so the batch is smaller than the rows'."""
+
+LEASE_SWEEP_BATCH = LeasesOptions().sweep_batch
+"""Leases and requests one org's lease sweep ends; a sweep that ends as many
+or more may have left some due."""
 
 
 def events_options(settings: MaintenanceSettings) -> EventsOptions:
@@ -71,6 +76,7 @@ def worker_managers(
             retention=timedelta(days=settings.work_retention_days), purge_batch=batch
         ),
         orchestrations_options=OrchestrationsOptions(purge_batch=batch),
+        leases_options=LeasesOptions(purge_batch=batch),
     )
 
 

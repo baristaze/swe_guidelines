@@ -12,8 +12,10 @@ side, started in `main.py`.
   once in the org it names. A message that can never apply is dropped; any
   other failure comes back.
 - **The sweep** (`loop.py`) runs on a timer, within a budget. It requeues
-  expired leases, relays the outbox, purges every row past its retention
-  (`settings.py`), counts the platform's size, and logs the queue's gauges.
+  expired leases, relays the outbox, ends each resource's lease past its
+  expiry and the skew margin and offers the resource to its line, purges
+  every row past its retention (`settings.py`), counts the platform's
+  size, and logs the queue's gauges.
 
 `serve` runs the three; `health` asks the running process's `/healthz`.
 

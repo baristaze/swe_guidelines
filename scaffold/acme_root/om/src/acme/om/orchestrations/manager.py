@@ -57,10 +57,14 @@ class OrchestrationsManagerInterface(ABC):
         ...
 
     @abstractmethod
-    async def wake(self, ctx: TenantContext, reason: ParkReason) -> int:
+    async def wake(
+        self, ctx: TenantContext, reason: ParkReason, record_id: UUID | None = None
+    ) -> int:
         """The event's wake: every record of the org parked for `reason`
         resumes, staggered; returns how many. What cleared the reason asks
-        for it (a provider that answers again clears `provider_unavailable`)."""
+        for it (a provider that answers again clears `provider_unavailable`).
+        With `record_id`, only that record, when it is parked for `reason`: a
+        grant clears `resource` for the one record it was for."""
         ...
 
     @abstractmethod

@@ -104,9 +104,13 @@ class OrchestrationPayload(ScheduledPayload):
 class WakeParkedPayload(Platform):
     """The reason the org's parked records waited for is gone (a provider
     that answers again clears `provider_unavailable`); the item's target is
-    the org. Every record parked for it is resumed when the item runs."""
+    the org. Every record parked for it is resumed when the item runs, or
+    the one `record_id` names, when the reason was that record's alone (a
+    grant, or its request's end without one, clears `resource` for the
+    record it was for)."""
 
     reason: ParkReason
+    record_id: UUID | None = None
 
 
 class DeleteAccountPayload(Platform):

@@ -88,6 +88,14 @@ app, and `main.py` is the `acme-api` command: `serve`, `migrate`,
   `/v1/media/files/{file_id}`, `.../upload`, `.../content`,
   `.../confirm`, `.../download`, `/v1/media/usage`)
 - **Events.** The org's diary after a sequence number. (`/v1/events`)
+- **Leases.** Ask for a resource, by its id or by a selector, under an
+  idempotency key; read where the request stands, its place and its
+  estimate, or its lease; cancel it; read a resource's line; renew and
+  release a lease as its holder. A manager reorders a request and
+  revokes a lease. (`/v1/leases/requests`,
+  `/v1/leases/requests/{request_id}`, `.../cancel`, `.../reorder`,
+  `/v1/leases/resources/{resource_id}/line`, `/v1/leases/{lease_id}`,
+  `.../renew`, `.../release`, `.../revoke`, ADR 0086)
 - **The identity provider's deliveries.** Outside `/v1`, since their
   shape is the provider's. No credential: the route checks the provider's
   signature over the body and its timestamp, and queues the delivery for

@@ -168,6 +168,69 @@
         "title": "ApiKeyView",
         "type": "object"
       },
+      "AskRequest": {
+        "additionalProperties": false,
+        "description": "An ask for a lease: one resource by its id, or a selector, the labels\na resource of `kind` must offer. `payload` is in the shape the kind\nfixes; the term is bounded by the resource's, and the ask expires in line\nafter `wait_seconds`.",
+        "properties": {
+          "kind": {
+            "$ref": "#/components/schemas/ResourceKind"
+          },
+          "labels": {
+            "anyOf": [
+              {
+                "items": {
+                  "maxLength": 64,
+                  "minLength": 1,
+                  "pattern": "^[a-z0-9:_.-]+$",
+                  "type": "string"
+                },
+                "maxItems": 32,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Labels"
+          },
+          "payload": {
+            "additionalProperties": true,
+            "title": "Payload",
+            "type": "object"
+          },
+          "resource_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resource Id"
+          },
+          "term_seconds": {
+            "default": 60,
+            "maximum": 86400.0,
+            "minimum": 1.0,
+            "title": "Term Seconds",
+            "type": "integer"
+          },
+          "wait_seconds": {
+            "default": 3600,
+            "maximum": 604800.0,
+            "minimum": 1.0,
+            "title": "Wait Seconds",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "kind"
+        ],
+        "title": "AskRequest",
+        "type": "object"
+      },
       "ConfirmTotpRequest": {
         "additionalProperties": false,
         "description": "The first code from the authenticator, which confirms the secret.",
@@ -403,6 +466,17 @@
         ],
         "title": "DeviceTokenRequest",
         "type": "object"
+      },
+      "EndReason": {
+        "description": "Why a request left its line without a lease.",
+        "enum": [
+          "asked",
+          "waiter_gone",
+          "refused",
+          "retired"
+        ],
+        "title": "EndReason",
+        "type": "string"
       },
       "ErrorBody": {
         "properties": {
@@ -1063,6 +1137,247 @@
         "title": "LastOwnerDetail",
         "type": "object"
       },
+      "LeaseRequestView": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "created_by": {
+            "format": "uuid",
+            "title": "Created By",
+            "type": "string"
+          },
+          "end_reason": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EndReason"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/ResourceKind"
+          },
+          "labels": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Labels"
+          },
+          "lease_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lease Id"
+          },
+          "rank": {
+            "title": "Rank",
+            "type": "number"
+          },
+          "resource_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resource Id"
+          },
+          "status": {
+            "$ref": "#/components/schemas/RequestStatus"
+          },
+          "term_seconds": {
+            "title": "Term Seconds",
+            "type": "integer"
+          },
+          "wait_until": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Wait Until"
+          },
+          "waiter_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Waiter Id"
+          },
+          "waiter_kind": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/WaiterKind"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "resource_id",
+          "labels",
+          "waiter_kind",
+          "waiter_id",
+          "term_seconds",
+          "wait_until",
+          "rank",
+          "status",
+          "end_reason",
+          "lease_id",
+          "created_at",
+          "created_by"
+        ],
+        "title": "LeaseRequestView",
+        "type": "object"
+      },
+      "LeaseStatus": {
+        "enum": [
+          "active",
+          "released",
+          "expired",
+          "revoked"
+        ],
+        "title": "LeaseStatus",
+        "type": "string"
+      },
+      "LeaseView": {
+        "description": "One grant: the holder acts on the resource under `fencing_token` until\nit has used `expires_in_seconds`, counted from when it asked. The token is\nno secret: it is the number the resource's own side refuses to go below.",
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "ended_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ended At"
+          },
+          "expires_at": {
+            "format": "date-time",
+            "title": "Expires At",
+            "type": "string"
+          },
+          "expires_in_seconds": {
+            "title": "Expires In Seconds",
+            "type": "number"
+          },
+          "fencing_token": {
+            "title": "Fencing Token",
+            "type": "integer"
+          },
+          "holder_id": {
+            "format": "uuid",
+            "title": "Holder Id",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "request_id": {
+            "format": "uuid",
+            "title": "Request Id",
+            "type": "string"
+          },
+          "resource_id": {
+            "format": "uuid",
+            "title": "Resource Id",
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/LeaseStatus"
+          },
+          "term_seconds": {
+            "title": "Term Seconds",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "resource_id",
+          "request_id",
+          "holder_id",
+          "fencing_token",
+          "term_seconds",
+          "expires_at",
+          "expires_in_seconds",
+          "status",
+          "ended_at",
+          "created_at"
+        ],
+        "title": "LeaseView",
+        "type": "object"
+      },
+      "LineView": {
+        "description": "A resource and the requests in its line, first first.",
+        "properties": {
+          "requests": {
+            "items": {
+              "$ref": "#/components/schemas/LeaseRequestView"
+            },
+            "title": "Requests",
+            "type": "array"
+          },
+          "resource": {
+            "$ref": "#/components/schemas/ResourceView"
+          }
+        },
+        "required": [
+          "resource",
+          "requests"
+        ],
+        "title": "LineView",
+        "type": "object"
+      },
       "LogoutRequest": {
         "additionalProperties": false,
         "description": "Where the identity provider sends the browser once it has ended its own\nsession: this environment's portal page for it, and nothing else. Left\nout, the provider sends it to its default sign-out address.",
@@ -1685,6 +2000,137 @@
         "title": "PurposeUsageView",
         "type": "object"
       },
+      "ReorderRequest": {
+        "additionalProperties": false,
+        "description": "Moves a waiting request in front of `before_id`, or to the end.",
+        "properties": {
+          "before_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Before Id"
+          }
+        },
+        "title": "ReorderRequest",
+        "type": "object"
+      },
+      "RequestStatus": {
+        "enum": [
+          "waiting",
+          "granted",
+          "cancelled",
+          "expired"
+        ],
+        "title": "RequestStatus",
+        "type": "string"
+      },
+      "ResourceKind": {
+        "description": "A product adds its kinds here, each with the shape of what its ask\ncarries (`ASK_PAYLOADS`) and its hooks (`ResourceKindInterface`).",
+        "enum": [
+          "noop"
+        ],
+        "title": "ResourceKind",
+        "type": "string"
+      },
+      "ResourceView": {
+        "description": "A resource and its anchor: the highest token granted on it, and the\nlease that holds it until when.",
+        "properties": {
+          "available": {
+            "title": "Available",
+            "type": "boolean"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "fencing_token": {
+            "title": "Fencing Token",
+            "type": "integer"
+          },
+          "held_until": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Held Until"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/ResourceKind"
+          },
+          "labels": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Labels",
+            "type": "array"
+          },
+          "lease_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lease Id"
+          },
+          "max_term_seconds": {
+            "title": "Max Term Seconds",
+            "type": "integer"
+          },
+          "ref_id": {
+            "format": "uuid",
+            "title": "Ref Id",
+            "type": "string"
+          },
+          "retired_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Retired At"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "ref_id",
+          "labels",
+          "max_term_seconds",
+          "available",
+          "retired_at",
+          "fencing_token",
+          "lease_id",
+          "held_until",
+          "created_at"
+        ],
+        "title": "ResourceView",
+        "type": "object"
+      },
       "Role": {
         "enum": [
           "owner",
@@ -1946,6 +2392,54 @@
           "url"
         ],
         "title": "SsoLinkView",
+        "type": "object"
+      },
+      "StandingView": {
+        "description": "Where a request stands: its lease once granted, or its place (1 is\nnext in some line it stands in) and an estimate of its wait in seconds,\nwhile it waits.",
+        "properties": {
+          "estimate_seconds": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Estimate Seconds"
+          },
+          "lease": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LeaseView"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "place": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Place"
+          },
+          "request": {
+            "$ref": "#/components/schemas/LeaseRequestView"
+          }
+        },
+        "required": [
+          "request",
+          "lease",
+          "place",
+          "estimate_seconds"
+        ],
+        "title": "StandingView",
         "type": "object"
       },
       "StartUploadRequest": {
@@ -2212,6 +2706,14 @@
         ],
         "title": "ValidationError",
         "type": "object"
+      },
+      "WaiterKind": {
+        "description": "What waits on a request, so a grant wakes it. A product adds its own,\neach with a `WaiterInterface`.",
+        "enum": [
+          "orchestration"
+        ],
+        "title": "WaiterKind",
+        "type": "string"
       },
       "WorkKind": {
         "enum": [
@@ -5375,6 +5877,889 @@
         "summary": "Resend Invitation",
         "tags": [
           "tenancy"
+        ]
+      }
+    },
+    "/v1/leases/requests": {
+      "post": {
+        "description": "Joins the line, last; granted at once only when no one waits in front.\nA replay answers the standing the first call saw: read the request for\nwhere it stands now.",
+        "operationId": "ask_v1_leases_requests_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-app",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-App"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-app-version",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-App-Version"
+            }
+          },
+          {
+            "in": "header",
+            "name": "idempotency-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 255,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AskRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StandingView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Ask",
+        "tags": [
+          "leases"
+        ]
+      }
+    },
+    "/v1/leases/requests/{request_id}": {
+      "get": {
+        "operationId": "get_request_v1_leases_requests__request_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "request_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Request Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-app",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-App"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-app-version",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-App-Version"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StandingView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Request",
+        "tags": [
+          "leases"
+        ]
+      }
+    },
+    "/v1/leases/requests/{request_id}/cancel": {
+      "post": {
+        "description": "Its asker's, or a manager's.",
+        "operationId": "cancel_v1_leases_requests__request_id__cancel_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "request_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Request Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-app",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-App"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-app-version",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-App-Version"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LeaseRequestView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Cancel",
+        "tags": [
+          "leases"
+        ]
+      }
+    },
+    "/v1/leases/requests/{request_id}/reorder": {
+      "post": {
+        "description": "A manager's: the request moves in front of `before_id`, or to the end.",
+        "operationId": "reorder_v1_leases_requests__request_id__reorder_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "request_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Request Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-app",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-App"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-app-version",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-App-Version"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReorderRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LeaseRequestView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Reorder",
+        "tags": [
+          "leases"
+        ]
+      }
+    },
+    "/v1/leases/resources/{resource_id}/line": {
+      "get": {
+        "operationId": "line_v1_leases_resources__resource_id__line_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "resource_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Resource Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-app",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-App"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-app-version",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-App-Version"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LineView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Line",
+        "tags": [
+          "leases"
+        ]
+      }
+    },
+    "/v1/leases/{lease_id}": {
+      "get": {
+        "operationId": "get_lease_v1_leases__lease_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "lease_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Lease Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-app",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-App"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-app-version",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-App-Version"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LeaseView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Lease",
+        "tags": [
+          "leases"
+        ]
+      }
+    },
+    "/v1/leases/{lease_id}/release": {
+      "post": {
+        "description": "Its holder's: the resource goes to its line.",
+        "operationId": "release_v1_leases__lease_id__release_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "lease_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Lease Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-app",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-App"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-app-version",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-App-Version"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LeaseView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "lease_ended: the lease no longer runs"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Release",
+        "tags": [
+          "leases"
+        ]
+      }
+    },
+    "/v1/leases/{lease_id}/renew": {
+      "post": {
+        "description": "Its holder's: the lease runs its term again from now.",
+        "operationId": "renew_v1_leases__lease_id__renew_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "lease_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Lease Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-app",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-App"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-app-version",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-App-Version"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LeaseView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "lease_ended: the lease no longer runs"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Renew",
+        "tags": [
+          "leases"
+        ]
+      }
+    },
+    "/v1/leases/{lease_id}/revoke": {
+      "post": {
+        "description": "A manager's: the lease ends and the resource goes to its line.",
+        "operationId": "revoke_v1_leases__lease_id__revoke_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "lease_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Lease Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-app",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-App"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-app-version",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-App-Version"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LeaseView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "lease_ended: the lease no longer runs"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Revoke",
+        "tags": [
+          "leases"
         ]
       }
     },

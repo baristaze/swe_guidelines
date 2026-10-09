@@ -104,8 +104,9 @@ class OrchestrationHandlerImpl(WorkHandlerInterface):
 
 class WakeParkedHandlerImpl(WorkHandlerInterface):
     """The reason the org's records parked for is gone: every one of them
-    resumes, staggered, and its next step asks its guard again. Idempotent:
-    a record already running is not parked, and is not touched."""
+    resumes, staggered, or the one record the item names, and its next step
+    asks its guard again. Idempotent: a record already running is not
+    parked, and is not touched."""
 
     REQUIRES: ClassVar[tuple[Permission, ...]] = (Permission.WRITE,)
     """`wake` writes."""
@@ -114,6 +115,6 @@ class WakeParkedHandlerImpl(WorkHandlerInterface):
         self._orchestrations = orchestrations
 
     async def handle(self, ctx: TenantContext, item: WorkItem) -> None:
-        reason = WakeParkedPayload.model_validate(dict(item.payload)).reason
-        woken = await self._orchestrations.wake(ctx, reason)
-        log.info("woke %d records parked for %s in org %s", woken, reason.value, ctx.org_id)
+        payload = WakeParkedPayload.model_validate(dict(item.payload))
+        woken = await self._orchestrations.wake(ctx, payload.reason, payload.record_id)
+        log.info("woke %d records parked for %s in org %s", woken, payload.reason.value, ctx.org_id)

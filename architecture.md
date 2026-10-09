@@ -176,6 +176,7 @@ These are the invariants. Each links the section that states it.
   - [Shape of a Worker](#shape-of-a-worker)
   - [Shutdown](#shutdown)
   - [Maintenance Without a Scheduler](#maintenance-without-a-scheduler)
+  - [Leases on a Resource](#leases-on-a-resource)
   - [Implementation Options](#implementation-options)
 - [Apps](#apps)
   - [Apps as Products](#apps-as-products)
@@ -1785,6 +1786,88 @@ expired leases, resume parked records, open the next period of a record
 kept per period, relay what a crash left, and purge what is past
 retention. It is idempotent and serialized by the database, so it needs
 no leader, lock, or scheduler. Resumes are staggered.
+
+### Leases on a Resource
+
+`optional`
+
+Some things serve one holder at a time: a loading dock, a label
+printer. Work that needs one cannot carry it as it carries its own row,
+so the thing gets a lease, and whoever waits for it gets a line
+([`leases/`](scaffold/acme_root/om/src/acme/om/leases/)). The trigger
+is the first such thing; until a kind registers, the code sits unused.
+
+A **resource** is one row per leasable thing. It stands for a row of
+another namespace by a registered kind and that row's id, unique with
+the org. It carries labels, its bound on one lease, its availability,
+and the **anchor**: the highest token granted on it, the lease that
+holds it, and until when. The namespace that owns the row registers the
+resource in the same commit, and retires it with the row.
+
+A **lease** is one grant of one resource to one principal, under a
+fencing token one above the anchor's. Its holder renews it within the
+bound and releases it. It ends when a manager revokes it, or once its
+expiry and a skew margin have passed, so a holder whose clock runs slow
+has stopped before the resource goes on. Whatever acts on the resource
+for a holder presents the token. A fence on the resource's own side
+keeps the highest token it has seen: it refuses a lower one, and stops
+and resets the resource before it admits a higher one
+([`leases.py`](scaffold/acme_root/clients/python/src/acme/client/leases.py)).
+
+A **request** waits in line. It names one resource, or a selector: a
+kind and the labels it needs. One rank order serves every line of a
+tenant, so a selector request stands in each line it matches with one
+place, and a manager's reorder moves one request between two
+neighbours. A request answers its place, and an estimate of its wait
+replayed from each resource's measured holds. An ask is idempotent by
+its [key](#idempotency), and a direct ask never passes anyone waiting.
+
+A grant is a side effect of a resource freeing: a release, an expiry, a
+revocation, or its availability back. It goes to the head of the line,
+decided under the anchor's row lock, for a request still waiting. The
+lease, the anchor, the request's answer, and what the grant starts land
+in one commit, as rows and their outbox rows. A unique index over a
+resource's active leases is a second fence. Before it grants, it asks
+the waiter whether it still waits, and the kind whether the request may
+still be granted; a no cancels the request, and the next is asked.
+
+A kind registers as a work kind does, with its hooks: what a grant
+starts, and whether a request may still be granted. A **waiter**
+registers the same way. A [long-running
+record](#long-running-orchestrations) parks on the reason `resource`,
+and the grant wakes it with its lease. A request that leaves its line
+without one wakes its waiter too, which reads the end; a waiter that
+ends leaves every line. A kind keeps facts of its own about a lease in its own table,
+keyed by the lease's id. The [sweep](#maintenance-without-a-scheduler)
+ends each lease past its expiry and the margin, expires each request
+past its wait, and offers each free resource to its line; retention
+purges what settled.
+
+> **Principle:** One holder at a time, under a token that only grows.
+> The row lock and the index fence the grant, and the token fences
+> every act after it.
+
+<!-- agents-only
+- The anchor's row is locked first and the request's second, in every
+  write that moves a lease or a line, so two writers queue and never
+  deadlock. `grant` lands only while the anchor holds `expected_token`.
+- A kind is a `ResourceKind` with its ask's shape in `ASK_PAYLOADS` and
+  a `ResourceKindInterface`: `may_grant` reads the asker's standing
+  live, and `grant_rows` returns the rows the grant lands. A waiter is
+  a `WaiterKind` with a `WaiterInterface`: `still_waits`, `wake_rows`,
+  `end_rows`, and `revoke_rows`. An orchestration waits as
+  `ParkReason.RESOURCE`.
+- The owner lands a resource with its row through `register_statement`
+  and retires it through `retire_statement`. The owner's commit knows no
+  waiter, so the requests that name a retired resource leave their line
+  through the manager, at once or at the next sweep, each with its
+  waiter's wake.
+- The sweep reads the due orgs in the order of their ids and reads on
+  past a deleted one, so deleted orgs never fill its batch.
+- The client's `Fence` keeps the highest token per resource; its
+  `LeaseClock` counts on a monotonic clock from the send of the ask or
+  the renewal, never from the answer.
+-->
 
 ### Implementation Options
 

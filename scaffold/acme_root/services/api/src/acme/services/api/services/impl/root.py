@@ -10,6 +10,7 @@ from acme.services.api.services import (
     AdminServiceInterface,
     EventsServiceInterface,
     FlagsServiceInterface,
+    LeasesServiceInterface,
     MediaServiceInterface,
     RealtimeServiceInterface,
     ServicesInterface,
@@ -19,6 +20,7 @@ from acme.services.api.services import (
 from acme.services.api.services.impl.admin import AdminServiceImpl
 from acme.services.api.services.impl.events import EventsServiceImpl
 from acme.services.api.services.impl.flags import FlagsServiceImpl
+from acme.services.api.services.impl.leases import LeasesServiceImpl
 from acme.services.api.services.impl.media import MediaServiceImpl
 from acme.services.api.services.impl.realtime import RealtimeServiceImpl
 from acme.services.api.services.impl.tenancy import TenancyServiceImpl
@@ -35,6 +37,7 @@ class ServicesImpl(ServicesInterface):
         flags: FlagsServiceInterface,
         realtime: RealtimeServiceInterface,
         webhooks: WebhooksServiceInterface,
+        leases: LeasesServiceInterface,
     ) -> None:
         self._tenancy = tenancy
         self._admin = admin
@@ -43,6 +46,7 @@ class ServicesImpl(ServicesInterface):
         self._flags = flags
         self._realtime = realtime
         self._webhooks = webhooks
+        self._leases = leases
 
     def get_tenancy_service(self) -> TenancyServiceInterface:
         return self._tenancy
@@ -65,6 +69,9 @@ class ServicesImpl(ServicesInterface):
     def get_webhooks_service(self) -> WebhooksServiceInterface:
         return self._webhooks
 
+    def get_lease_service(self) -> LeasesServiceInterface:
+        return self._leases
+
 
 def build_services(
     managers: Managers,
@@ -84,4 +91,5 @@ def build_services(
             managers.tenancy, managers.events, infra.get_topics(), head_max_age
         ),
         webhooks=WebhooksServiceImpl(integrations.get_identity_provider(), infra.get_queues()),
+        leases=LeasesServiceImpl(managers.leases),
     )
