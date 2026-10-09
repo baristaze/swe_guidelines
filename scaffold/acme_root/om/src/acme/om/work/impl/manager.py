@@ -2,13 +2,13 @@ import logging
 from collections.abc import Sequence
 from datetime import datetime, timedelta
 from typing import Any
-from uuid import UUID, uuid5
+from uuid import UUID
 
 from pydantic import ValidationError
 
 from acme.infra.observability import OUTCOMES
 from acme.infra.topics import EntityChangedPayload, Topics, TopicsInterface, WorkAvailablePayload
-from acme.om.base import EMPTY_UUID, Platform, new_id, utcnow
+from acme.om.base import EMPTY_UUID, Platform, derived_id, new_id, utcnow
 from acme.om.context import Permission, RequestContext, TenantContext
 from acme.om.events import EventsManagerInterface
 from acme.om.events.manager import audit_event
@@ -91,7 +91,7 @@ def relayed_key(kind: WorkKind, row: OutboxRow, now: datetime) -> UUID:
         return row.id  # `_land` refuses it with the reason
     if wake.record_id is not None or wake.not_before is None or wake.not_before <= now:
         return row.id
-    return uuid5(row.org_id, f"{kind.value}:{wake.reason.value}:{wake.not_before.isoformat()}")
+    return derived_id(row.org_id, wake.not_before, f"{kind.value}:{wake.reason.value}")
 
 
 class WorkManagerImpl(WorkManagerInterface):

@@ -221,6 +221,7 @@ async def test_the_parks_on_one_mark_land_one_wake_that_resumes_them_staggered(
 
     monkeypatch.setattr(storage, "write_orchestration", writes)
     retry_at = utcnow() + timedelta(minutes=5)
+    parks: list[Orchestration] = []
     for _ in range(3):
         record = await orchestrations.start(ctx, a_record())
         parked = advanced(
@@ -230,6 +231,7 @@ async def test_the_parks_on_one_mark_land_one_wake_that_resumes_them_staggered(
         await storage.write_orchestration(
             ctx.org_id, parked, record.version, step_rows(ctx, parked, wake_at=retry_at)
         )
+        parks.append(parked)
     wake_rows = [r for r in written if r.kind == work_row_kind(WorkKind.WAKE_PARKED)]
     assert len(wake_rows) == 3
     # The relay lands each row: the three parks are one item.
@@ -256,7 +258,7 @@ async def test_the_parks_on_one_mark_land_one_wake_that_resumes_them_staggered(
     assert relayed_key(WorkKind.WAKE_PARKED, wake_rows[0], retry_at) == wake_rows[0].id
     # A park that names no time lands its hint alone, and a wake that names
     # none runs at once.
-    assert len(step_rows(ctx, parked)) == 1
+    assert len(step_rows(ctx, parks[0])) == 1
     at_once = WakeParkedPayload(reason=ParkReason.PROVIDER_UNAVAILABLE)
     assert not_before(WorkKind.WAKE_PARKED, at_once.model_dump(mode="json")) is None
 

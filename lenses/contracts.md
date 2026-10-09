@@ -660,5 +660,4 @@ anyway, or fails its record instead of parking it.
 
 **Severity.** medium
 
-**Shape.** `scaffold/acme_root/infra/src/acme/infra/outages/`,
-`scaffold/acme_root/workers/maintenance/src/acme/workers/maintenance/providers.py`
+**Shape.** `scaffold/acme_root/infra/src/acme/infra/outages/`
