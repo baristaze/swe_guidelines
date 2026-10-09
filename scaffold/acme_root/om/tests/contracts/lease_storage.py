@@ -265,6 +265,30 @@ class LeaseStorageContract:
         assert await storage.retire_resource(org, resource.id, at, actor, ())
         assert await storage.update_resource(org, resource.id, warm, at, actor, ()) is None
 
+    async def test_an_update_keeps_every_field_it_does_not_name(
+        self, storage: LeasesStorageInterface
+    ) -> None:
+        """An update that names only the availability, only the labels, or
+        only the bound changes that field alone: a dock out of service for a
+        repair keeps what it offers and its bound, and comes back with them."""
+        org = new_id()
+        resource = make_resource(("cold", "north"), max_term_seconds=600)
+        assert await storage.create_resource(org, resource, ())
+        at, actor = utcnow(), new_id()
+        steps = [
+            (ResourceUpdate(available=False), (("cold", "north"), 600, False)),
+            (ResourceUpdate(available=True), (("cold", "north"), 600, True)),
+            (ResourceUpdate(labels=("dry",)), (("dry",), 600, True)),
+            (ResourceUpdate(max_term_seconds=120), (("dry",), 120, True)),
+            (ResourceUpdate(labels=()), ((), 120, True)),
+            (ResourceUpdate(), ((), 120, True)),
+        ]
+        for change, expected in steps:
+            updated = await storage.update_resource(org, resource.id, change, at, actor, ())
+            assert updated is not None
+            assert (updated.labels, updated.max_term_seconds, updated.available) == expected, change
+            assert await storage.read_resource(org, resource.id) == updated
+
     # Requests.
 
     async def test_a_request_lands_last_and_an_ask_again_answers_it(

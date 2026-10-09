@@ -124,27 +124,32 @@ async def an_owners_update_grants_the_requests_its_labels_now_match(world: Owner
     await world.land_update(owner, dry, ResourceUpdate(labels=("wet",)), commits=True)
     offered = await world.leases.offer(owner, dry.id)
     assert offered is not None and offered.request_id == wet.request.id
+    relabelled = await world.leases.get_resource(owner, dry.id)
+    assert (relabelled.labels, relabelled.max_term_seconds) == (("wet",), 600), "the bound stays"
 
 
 async def an_update_that_takes_a_resource_out_of_service_lands_in_the_owners_commit(
     world: OwnerWorld,
 ) -> None:
     """The owner takes the dock out of service in the commit of its own row,
-    and a commit that fails takes it out of nothing. Once it is out, Ann's
-    release and the sweep grant Bob nothing; its return in the owner's
-    commit, and the offer after it, grant him the dock."""
+    with an update that names its availability alone, and a commit that
+    fails takes it out of nothing. Once it is out, Ann's release and the
+    sweep grant Bob nothing; its return in the owner's commit, and the offer
+    after it, grant him the dock. It keeps its labels and its bound
+    throughout."""
     owner = await world.owner()
     ann, bob = await world.member("ann"), await world.member("bob")
     dock = await world.leases.register(owner, a_dock(owner, ("cold",)))
     held = await world.leases.ask(ann, an_ask(dock))
     assert held.lease is not None
     waits = await world.leases.ask(bob, an_ask(dock))
-    out = ResourceUpdate(labels=("cold",), max_term_seconds=600, available=False)
+    out = ResourceUpdate(available=False)
 
     await world.land_update(owner, dock, out, commits=False)
     assert (await world.leases.get_resource(owner, dock.id)).available
     await world.land_update(owner, dock, out, commits=True)
-    assert not (await world.leases.get_resource(owner, dock.id)).available
+    paused = await world.leases.get_resource(owner, dock.id)
+    assert (paused.available, paused.labels, paused.max_term_seconds) == (False, ("cold",), 600)
 
     await world.leases.release(ann, held.lease.id)
     await world.leases.sweep(world.rctx())
@@ -152,11 +157,12 @@ async def an_update_that_takes_a_resource_out_of_service_lands_in_the_owners_com
     assert still.lease is None and still.request.status is RequestStatus.WAITING
     assert (await world.leases.get_resource(owner, dock.id)).lease_id is None
 
-    back = out.model_copy(update={"available": True})
-    await world.land_update(owner, dock, back, commits=True)
+    await world.land_update(owner, dock, ResourceUpdate(available=True), commits=True)
     granted = await world.leases.offer(owner, dock.id)
     assert granted is not None and granted.request_id == waits.request.id
     assert granted.token == held.lease.token + 1
+    back = await world.leases.get_resource(owner, dock.id)
+    assert (back.available, back.labels, back.max_term_seconds) == (True, ("cold",), 600)
 
 
 async def the_history_lists_each_lease_with_its_request_and_no_tenant_reads_another(

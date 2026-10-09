@@ -500,14 +500,7 @@ class LeasesStorageMemoryImpl(MemoryStorageBase, LeasesStorageInterface, Resourc
         resource = self._by_ref(org_id, kind, ref_id)
         if resource is None or resource.retired_at is not None:
             return
-        fields: dict[str, object] = {
-            "labels": change.labels,
-            "max_term_seconds": change.max_term_seconds,
-            "updated_at": at,
-            "updated_by": actor,
-        }
-        if change.available is not None:
-            fields["available"] = change.available
+        fields = {**change.named(), "updated_at": at, "updated_by": actor}
         self._resources[resource.id] = (org_id, resource.model_copy(update=fields))
 
     def land_retirement(

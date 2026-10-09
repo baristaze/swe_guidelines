@@ -921,11 +921,12 @@ tenant its read is scoped to.
 
 **Violation.** A resource registered or updated in a commit after its
 owner's row, so the two disagree in between, or left live after the
-row is gone; an ask's payload stored unchecked; a kind's refusal that
-leaves the request in line; a grant that starts two jobs, or a job its
-lease does not name; a product's column on a lease or a resource; an
-ask accepted for a kind with no hooks; a history read under another
-tenant's scope, or one read per lease.
+row is gone; an update that changes a field it does not name; an ask's
+payload stored unchecked; a kind's refusal that leaves the request in
+line; a grant that starts two jobs, or a job its lease does not name; a
+product's column on a lease or a resource; an ask accepted for a kind
+with no hooks; a history read under another tenant's scope, or one read
+per lease.
 
 **Severity.** medium
 

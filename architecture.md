@@ -2007,9 +2007,10 @@ each with the request it answered. A tenant reads only its own.
   `end_rows`, and `revoke_rows`. An orchestration waits as
   `ParkReason.RESOURCE`.
 - The owner lands a resource with its row through `register_statement`,
-  updates it through `update_statement` with a `ResourceUpdate`, and
-  retires it through `retire_statement` (`land_resource`, `land_update`,
-  and `land_retirement` in memory). After the commit that registered or
+  updates it through `update_statement` with a `ResourceUpdate`, which
+  changes the fields it names and keeps the rest, and retires it through
+  `retire_statement` (`land_resource`, `land_update`, and
+  `land_retirement` in memory). After the commit that registered or
   updated it, the owner calls the manager's `offer`; the manager's own
   `register` and `update` offer at once, and the sweep offers what a
   crash left. The owner's commit knows no waiter, so the requests that

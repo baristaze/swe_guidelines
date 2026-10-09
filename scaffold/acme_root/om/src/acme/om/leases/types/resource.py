@@ -69,11 +69,17 @@ class Resource(Identifiable, Trackable):
 
 class ResourceUpdate(Platform):
     """An owner's update of its resource, landed with its own row: what the
-    resource offers now, its bound on one lease, and, when it names it,
-    whether it is in service. A lease it holds keeps its term, and the new
-    bound holds from its next renewal; a request its labels no longer match
+    resource offers now, its bound on one lease, and whether it is in
+    service. Each field it names changes, and each it leaves out (None)
+    stays as it is, so taking a resource out of service names its
+    availability alone. A lease it holds keeps its term, and a new bound
+    holds from its next renewal; a request its labels no longer match
     leaves its line, and one they now match joins it."""
 
-    labels: tuple[Label, ...] = Field(default=(), max_length=MAX_LABELS)
-    max_term_seconds: int = Field(default=300, ge=1, le=MAX_TERM_SECONDS)
-    available: bool | None = None  # None keeps it as it is
+    labels: tuple[Label, ...] | None = Field(default=None, max_length=MAX_LABELS)
+    max_term_seconds: int | None = Field(default=None, ge=1, le=MAX_TERM_SECONDS)
+    available: bool | None = None
+
+    def named(self) -> dict[str, object]:
+        """The fields the update names, as the resource's row takes them."""
+        return self.model_dump(exclude_none=True)

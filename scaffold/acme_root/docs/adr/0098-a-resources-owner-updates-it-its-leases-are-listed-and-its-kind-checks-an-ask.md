@@ -22,10 +22,12 @@ holds them.
 ## Decision
 
 - **The owner updates a resource with its row.** `update_statement`
-  (`land_update` in memory) changes the labels, the bound, and, when the
-  `ResourceUpdate` names it, the availability, in the transaction that
-  writes the owner's row. It takes the anchor's lock, and leaves the
-  lease, the token, and the line as they are. After the commit the
+  (`land_update` in memory) changes each field the `ResourceUpdate`
+  names, of the labels, the bound, and the availability, in the
+  transaction that writes the owner's row, and keeps each it leaves out:
+  a dock out of service for a repair names its availability alone, and
+  keeps what it offers and its bound. It takes the anchor's lock, and
+  leaves the lease, the token, and the line as they are. After the commit the
   owner calls the manager's `offer`, and the sweep offers what a crash
   left. The manager's own `update` writes under the anchor's lock and
   offers at once, as `set_available` does. A lease the resource holds

@@ -64,18 +64,13 @@ def update_statement(
     actor: UUID,
 ) -> Update:
     """The owner's update as a companion statement, in the transaction that
-    writes its own row; it takes the anchor's lock. The labels and the bound
-    change, and the availability when the update names it; the lease, the
-    token, and the line stay. After the commit the owner calls the manager's
+    writes its own row; it takes the anchor's lock. Each field the update
+    names changes, and each it leaves out stays; the lease, the token, and
+    the line stay too. After the commit the owner calls the manager's
     `offer`, and the sweep offers what a crash left."""
-    values: dict[str, Any] = {
-        "labels": list(change.labels),
-        "max_term_seconds": change.max_term_seconds,
-        "updated_at": at,
-        "updated_by": actor,
-    }
-    if change.available is not None:
-        values["available"] = change.available
+    values: dict[str, Any] = {**change.named(), "updated_at": at, "updated_by": actor}
+    if change.labels is not None:
+        values["labels"] = list(change.labels)
     return (
         update(Resources)
         .where(

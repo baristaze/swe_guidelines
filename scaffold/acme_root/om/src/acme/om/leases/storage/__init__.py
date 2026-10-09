@@ -42,10 +42,10 @@ class ResourceLandingInterface(ABC):
         at: datetime,
         actor: UUID,
     ) -> None:
-        """Updates the live resource of the kind for the row: its labels, its
-        bound, and its availability when the update names it. Its lease and
-        its anchor stay as they are. The line is offered it by the manager
-        after the commit (`offer`), or at the next sweep."""
+        """Updates the live resource of the kind for the row: each field the
+        update names, and nothing it leaves out. Its lease and its anchor
+        stay as they are. The line is offered it by the manager after the
+        commit (`offer`), or at the next sweep."""
         ...
 
     @abstractmethod

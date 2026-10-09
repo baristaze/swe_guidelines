@@ -34,12 +34,12 @@ kinds of thing [Acme is made of](../../../../README.md).
 ## What can happen
 
 - **Register** a resource with its owner's row, in the same commit,
-  **update** its labels, its bound, and its availability with that row,
-  and **retire** it with that row: the requests that name it leave
-  their line as `retired`, and its lease is never renewed. After a
-  registration or an update, the resource is offered to its line. A
-  lease it holds keeps its term, and a new bound holds from its next
-  renewal.
+  **update** its labels, its bound, or its availability with that row,
+  each it names and nothing it leaves out, and **retire** it with that
+  row: the requests that name it leave their line as `retired`, and its
+  lease is never renewed. After a registration or an update, the
+  resource is offered to its line. A lease it holds keeps its term, and
+  a new bound holds from its next renewal.
 - **Ask.** A request joins the end of the line, and every free resource
   it may take is offered at once. A direct ask is granted only when no
   one waits in front of it. An ask asked again by its key answers its

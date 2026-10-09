@@ -37,13 +37,13 @@ class LeasesManagerInterface(ABC):
     async def update(
         self, ctx: TenantContext, resource_id: UUID, change: ResourceUpdate
     ) -> Resource:
-        """The owner's update: the labels and the bound, and the availability
-        when it names one, under the anchor's lock; then the resource is
-        offered to its line, so a waiting request its labels now match is
-        granted and one they no longer match is not. A lease it holds keeps
-        its term, and the new bound holds from its next renewal. An owner that
-        writes its row in the same commit uses the storage's companion
-        statement instead, and calls `offer` after it."""
+        """The owner's update: each field it names, of the labels, the bound,
+        and the availability, under the anchor's lock, and nothing it leaves
+        out; then the resource is offered to its line, so a waiting request
+        its labels now match is granted and one they no longer match is not.
+        A lease it holds keeps its term, and a new bound holds from its next
+        renewal. An owner that writes its row in the same commit uses the
+        storage's companion statement instead, and calls `offer` after it."""
         ...
 
     @abstractmethod
