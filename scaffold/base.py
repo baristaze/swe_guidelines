@@ -2,9 +2,9 @@
 """Commit the scaffold at a ref of its source onto a repository's `scaffold`
 branch: under a copy's name, or unchanged for a layer.
 
-    python3 scaffold/base.py v0.57.0
+    python3 scaffold/base.py v0.58.0
     python3 scaffold/base.py <commit> --repo ~/code/pressroom --name pressroom
-    python3 scaffold/base.py v0.57.0 --layer --repo ~/code/<layer>
+    python3 scaffold/base.py v0.58.0 --layer --repo ~/code/<layer>
     python3 scaffold/base.py <ref> --source https://github.com/<owner>/<layer>
 
 A copy of the scaffold keeps its base in git. Its `scaffold` branch holds the
