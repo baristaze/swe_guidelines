@@ -91,6 +91,12 @@ export function useUsers() {
   };
 }
 
+/** One member by its id: the read a push about a user leads to
+ * (`userCache.ts`). */
+export function fetchUser(id: string): Promise<UserView> {
+  return api.get<UserView>(`/v1/users/${encodeURIComponent(id)}`);
+}
+
 /** Every membership of the org, page after page, as the member list is read:
  * the role beside each member in Settings. Read whole, like the users, so a
  * member on a later page still shows their role. */
