@@ -38,6 +38,7 @@ READERS = [
     "ops-cloud-deployment-create",
     "ops-cloud-deployment-nuke",
     "ops-infra-as-code",
+    "ops-integration-silent",
     "ops-investigate",
     "ops-root-cause",
     "ops-simulate-traffic",
@@ -65,7 +66,13 @@ SOURCED = re.compile(
     r"(?:^[ \t]*|[;&|(][ \t]*)(?:\.|source)[ \t]+((?:[~/$]|\.{1,2}/)[^\s;&|)]*)", re.MULTILINE
 )
 # The skills that read an environment under the investigate profile.
-INVESTIGATORS = [*TOKEN_HOLDERS, "ops-infra-as-code", "audit-deploy-time", "audit-retention"]
+INVESTIGATORS = [
+    *TOKEN_HOLDERS,
+    "ops-infra-as-code",
+    "ops-integration-silent",
+    "audit-deploy-time",
+    "audit-retention",
+]
 # The skills that run under an account's administrator.
 ADMINISTRATORS = ["ops-cloud-deployment-create", "ops-cloud-deployment-nuke"]
 # The audits: read-only analyses that write a report and propose tickets.
@@ -573,6 +580,13 @@ COUNT_BOUNDS = {
         "A session follows at most 2 hops of Next.",
         "never more than 10 polls of a query",
     ],
+    "ops-integration-silent": [
+        "Poll `get-query-results` at most 10 times for one query, each poll after `sleep 5`",
+        'as "not read: the query did not finish in 10 polls"',
+        "Step 3's query is polled the same way.",
+        "A run follows at most 2 hops of Next",
+        "never more than 10 polls of a query",
+    ],
     "stress-test-run": ["A session follows at most 2 hops of Next."],
     "ops-cloud-deployment-create": ["Its Next is the person's to run, never the session's"],
     "stress-test-create-or-update": ["Its Next is the person's to run, never the session's"],
@@ -586,7 +600,7 @@ COUNT_BOUNDS = {
 # The skills whose report's Next a person runs: no session follows it.
 PERSONS_NEXT = ["ops-cloud-deployment-create", "stress-test-create-or-update", "docs-compact"]
 # The skills that wait between two reads with `sleep`.
-SLEEPERS = ["ops-investigate", "ops-root-cause", "ops-watch"]
+SLEEPERS = ["ops-integration-silent", "ops-investigate", "ops-root-cause", "ops-watch"]
 
 
 @pytest.mark.parametrize(
@@ -887,7 +901,7 @@ def test_the_fold_reads_the_commit_staging_deployed_as_the_release_does() -> Non
 # carry, the exporter's own `OTelLib` among them, and its Terraform test holds
 # them there. So a skill's schema is one of the dashboard's.
 DASHBOARD = ROOT / "deployment" / "terraform" / "modules" / "dashboard"
-METRIC_READERS = ["ops-investigate", "ops-watch"]
+METRIC_READERS = ["ops-integration-silent", "ops-investigate", "ops-watch"]
 SEARCH_SCHEMA = re.compile(r"SEARCH\(\W*?(\{[^}]*\})")
 
 

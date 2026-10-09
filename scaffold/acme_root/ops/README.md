@@ -53,6 +53,7 @@ row names.
 | `ops-investigate` | Investigator | The environment's state now: the dashboard, the alarms, the recent errors. |
 | `ops-watch` | Investigator | What changed since the last look. |
 | `ops-root-cause` | Supporter | Why a request or an org's problem happened, across every signal and the operator plane. |
+| `ops-integration-silent` | Investigator | Where an integration's deliveries stop, and why: its route, the queue, and the dead letters. |
 | `ops-infra-as-code` | Investigator | What a Terraform change would do: a read-only plan. |
 | `ops-cloud-deployment-create` | Administrator | Bring up an environment's account, then its first deploy. |
 | `ops-cloud-deployment-nuke` | Administrator | Tear an environment down, and report what is left. |

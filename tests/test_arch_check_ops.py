@@ -25,8 +25,8 @@ def test_ops_11_the_thirteen_skills_pass(tmp_path):
     assert found(tmp_path, "OPS-11", skills()) == (0, [])
 
 
-def test_ops_11_the_optional_audits_are_not_required_and_are_accepted(tmp_path):
-    optional = ("audit-credential-lifetimes", "audit-provider-calls")
+def test_ops_11_the_optional_skills_are_not_required_and_are_accepted(tmp_path):
+    optional = ("ops-integration-silent", "audit-credential-lifetimes", "audit-provider-calls", "docs-compact")
     assert not set(optional) & set(SKILLS)
     extra = {f".agents/skills/{n}/SKILL.md": f"---\nname: {n}\n---\n" for n in optional}
     assert found(tmp_path, "OPS-11", skills() | extra) == (0, [])
