@@ -117,7 +117,7 @@ export function openChannel(deps: ChannelDeps): Channel {
   };
 
   // Hands notices over unless the channel stopped: a switch of tenant and a
-  // sign-out stop it, so nothing the old session read is told in the new one.
+  // sign-out stop it, so nothing read before the stop is told after it.
   const announce = (notices: EventEnvelope[]) => {
     if (!stopped && notices.length > 0) deps.announce?.(notices);
   };

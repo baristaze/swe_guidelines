@@ -580,7 +580,7 @@ describe("a notice", () => {
     await flush();
     newSocket.receive(hello(40));
     await flush();
-    // The old tenant's page lands in the new tenant's session.
+    // The old tenant's next page lands after the switch.
     resolvePage([accepted(3), event(4)]);
     await flush();
     newSocket.receive(eventEnvelope(accepted(41)));
