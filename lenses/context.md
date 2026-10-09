@@ -135,11 +135,11 @@ Principal; The Network Layer, The Gateway.
 the worker loop, the bootstrap command); the transitions on the tenancy
 manager (a sign-in or a live session into the identity stage, a
 credential into `TenantContext`, the operator admission into
-`OperatorContext`, and one service context per live tenant for a sweep),
-what each takes (the stage below and the evidence) and returns (the
-stage above, or a refusal); the operations that ask a transition, the
-worker's claim among them; every other place a stage object is
-constructed.
+`OperatorContext`, one service context per tenant for a sweep, and the
+one of them a purge across tenants acts in), what each takes (the
+stage below and the evidence) and returns (the stage above, or a
+refusal); the operations that ask a transition, the worker's claim
+among them; every other place a stage object is constructed.
 
 **Violation.** A manager, storage impl, or test helper used in
 production code that builds a stage; a router that assembles a context
@@ -412,7 +412,7 @@ Stages; Worker Roles, The Work Queue.
 
 **Look for.** Manager methods whose first parameter is the request
 stage; what they return (the identity stage, a `TenantContext`, or one
-service context per live tenant); their docstrings, which document
+service context per tenant); their docstrings, which document
 them as transitions; the test that enumerates them; any method with no
 context at all, and whether the relay runs again from the sweep. Every
 caller of `member_context`, and where the address it passes comes from.
@@ -424,7 +424,8 @@ enumerating test does not name; a method with no context that performs
 a tenant operation, where bookkeeping with no principal (the relay and
 its two handoffs, the expiry of a lease) is declared as such on its
 interface; a transition whose return type is neither a stage nor a list
-of stages, where only `member_context` answers none. A call of
+of stages, where only `member_context` and `sweep_context` answer
+none. A call of
 `member_context` outside an integration's handler, or with an address
 its provider does not vouch is the acting person's own: it vouches for
 one it verified and carried as the actor's in the payload it signed, or
@@ -440,9 +441,12 @@ from a stored row or from a request's body.
 **Principle.** When a worker claims a work item, it rebuilds the
 enqueuer's principal from the item's `created_by` under a service role.
 A sweep that performs a tenant operation holds one service context per
-live tenant from the tenancy manager, minted for the tenant, not a
-member: the tenant, the service role, and the system user `EMPTY_UUID`
-as its user id.
+tenant from the tenancy manager, minted for the tenant, not a member:
+the tenant, the service role, and the system user `EMPTY_UUID` as its
+user id. A deleted tenant keeps its context until a pass marks it
+purged. A purge across tenants that acts in the tenant of a row it found
+takes the context the pass minted, from `sweep_context`, and acts in no
+tenant marked purged.
 
 **Source.** Worker Roles, The Work Queue; The Business Layer, Operations
 Without a Principal.
@@ -451,7 +455,8 @@ Without a Principal.
 and from which tenant;
 each sweep step that purges or requeues with an audit entry, and the
 context it runs under; what the service context carries as its user
-id.
+id. Each purge across tenants that acts in a tenant, and where its
+context comes from.
 
 **Violation.** A worker running every item under one shared machine
 principal so attribution is lost; a worker inventing a context with a
@@ -460,7 +465,10 @@ carried from one item to the next; an item whose tenant is gone run
 under another context; a sweep acting across tenants under one tenant's
 context or with no tenant at all; a service context minted on a member,
 so a tenant whose members have all left is never swept, or costing one
-read per member instead of one per page of tenants.
+read per member instead of one per page of tenants. A purge across
+tenants that acts in a tenant under a context it built itself or under
+another tenant's, that reads the org row again for each row it found
+under the pass's request stage, or that acts in a tenant marked purged.
 
 **Severity.** high
 
