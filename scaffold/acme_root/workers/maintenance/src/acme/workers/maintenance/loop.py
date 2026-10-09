@@ -96,8 +96,8 @@ class LoopOptions(Platform):
     worker_id: str
     lane: str = "default"
     # The most items one tenant holds claimed on the lane, so it cannot hold
-    # every worker of a lane it shares; None sets no cap, and the claim counts
-    # nothing (The Work Queue).
+    # every worker of a lane it shares; None sets no lane cap, and a tenant's
+    # own cap on the lane still holds (The Work Queue).
     tenant_cap: int | None = Field(default=None, gt=0)
     capacity: int = 4
     lease: timedelta = timedelta(seconds=60)

@@ -161,7 +161,8 @@ class WorkStorageContract:
         """A lane's cap counts what one tenant holds claimed on that lane under a
         live lease: not another lane's, nor a lease that has run out, nor
         another tenant's. The claim passes over a tenant at its cap in the same
-        statement and leaves its items as they were; no cap counts nothing."""
+        statement and leaves its items as they were; with no lane cap and no
+        tenant's own cap, the claim counts nothing."""
         org, other = new_id(), new_id()
         elsewhere = make_item(lane=lane + "-other", available_in=timedelta(seconds=-7))
         lapsed = make_item(lane=lane, available_in=timedelta(seconds=-6))
