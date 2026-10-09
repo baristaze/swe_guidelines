@@ -162,3 +162,16 @@ WORK_ENQUEUE_PERMISSIONS: dict[WorkKind, Permission] = {
 the whole run once, so the permission has to be as wide as the run: every
 role that holds it holds every permission the kind's handler calls with,
 which the worker's tests hold each handler to."""
+
+WORK_LANES: dict[WorkKind, str] = {}
+"""The lane of each kind that runs on a lane of its own, such as a long-held
+kind kept off the lane of short items and that lane's tenant cap. A kind it
+does not name runs on the default lane. A layer above adds its own kinds
+here and leaves the relay as it is."""
+
+
+def relayed_lane(kind: WorkKind) -> str:
+    """The lane the relay lands an item of this kind on: its own in
+    `WORK_LANES`, else the default one. A worker that serves a kind on a lane
+    of its own reads its lane here too, so the two cannot disagree."""
+    return WORK_LANES.get(kind, "default")
