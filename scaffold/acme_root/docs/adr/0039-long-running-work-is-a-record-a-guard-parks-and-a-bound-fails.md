@@ -41,13 +41,17 @@ run meets its rows already there.
 
 **A guard parks, a bound fails.** A limit that can clear parks the
 record at its cursor, in the step's own commit, and keeps what it made.
-The one park reason is `provider_unavailable`: a provider a step calls
-did not answer. The work item `WAKE_PARKED` clears a reason: it resumes
-the org's records parked for it, two seconds apart. A person may resume
-a parked record too (`resume`). A woken record is not trusted: its next
-step asks its guard again. A bound of the input fails the record with
-its reason, which a product adds beside `defect`. The park is the
-record's status, never a deferred work item, so only the record says
+A park reason says what wakes it: `provider_unavailable`, a provider a
+step calls did not answer, and `resource`, the record waits in line for
+a lease ([ADR
+0086](0086-a-scarce-resource-is-leased-under-a-fencing-token.md)). The
+work item `WAKE_PARKED` clears a reason: it resumes the org's records
+parked for it, two seconds apart, or the one record it names, when the
+reason was that record's alone. A person may resume a parked record too
+(`resume`). A woken record is not trusted: its next step asks its guard
+again. A bound of the input fails the record with its reason, which a
+product adds beside `defect`. The park is the record's status, never a
+deferred work item, so only the record says
 why it waits.
 
 **Everything else transient is the work queue's retry.** A database or
