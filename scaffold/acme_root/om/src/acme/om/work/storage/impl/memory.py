@@ -6,8 +6,15 @@ from uuid import UUID
 from acme.om.base import EMPTY_UUID, new_id, utcnow
 from acme.om.exceptions import TenantMismatch
 from acme.om.storage.impl.memory_base import MemoryStorageBase, MemoryTable
-from acme.om.work.rules import attempts_after_claim, is_at_cap, is_exhausted, stagger_delay
+from acme.om.work.rules import (
+    attempts_after_claim,
+    cap_for,
+    is_at_cap,
+    is_exhausted,
+    stagger_delay,
+)
 from acme.om.work.storage import InsertOutcome, WorkStorageInterface
+from acme.om.work.types.tenant_cap import TenantCap
 from acme.om.work.types.work_item import WorkItem, WorkKind, WorkStatus
 
 
@@ -15,6 +22,7 @@ class WorkStorageMemoryImpl(MemoryStorageBase, WorkStorageInterface):
     def __init__(self) -> None:
         super().__init__()
         self._items: MemoryTable[WorkItem] = {}
+        self._caps: MemoryTable[TenantCap] = {}
 
     async def create_item(self, org_id: UUID, item: WorkItem) -> InsertOutcome:
         async with self._lock:
@@ -69,9 +77,15 @@ class WorkStorageMemoryImpl(MemoryStorageBase, WorkStorageInterface):
                 and item.kind in kinds
                 and item.available_at <= now
             ]
-            if tenant_cap is not None:
+            own = {
+                holder: row.cap
+                for holder, row in self._rows_across_tenants(self._caps)
+                if row.lane == lane
+            }
+            if tenant_cap is not None or own:
                 # The tenants' claimed items on the lane under a live lease, as
-                # the Postgres claim counts them in the same statement.
+                # the Postgres claim counts them in the same statement, each
+                # held to its own cap there, or the lane's.
                 held = Counter(
                     holder
                     for holder, other in self._rows_across_tenants(self._items)
@@ -80,7 +94,12 @@ class WorkStorageMemoryImpl(MemoryStorageBase, WorkStorageInterface):
                     and other.lease_expires_at is not None
                     and other.lease_expires_at > now
                 )
-                ready = [pair for pair in ready if not is_at_cap(held[pair[0]], tenant_cap)]
+                ready = [
+                    pair
+                    for pair in ready
+                    if (cap := cap_for(own.get(pair[0]), tenant_cap)) is None
+                    or not is_at_cap(held[pair[0]], cap)
+                ]
             if not ready:
                 return None
             # The item ready longest goes first, as the Postgres claim orders it.
@@ -98,6 +117,43 @@ class WorkStorageMemoryImpl(MemoryStorageBase, WorkStorageInterface):
             )
             self._items[item.id] = (org_id, claimed)
             return org_id, claimed
+
+    async def write_tenant_cap(self, org_id: UUID, cap: TenantCap) -> TenantCap:
+        async with self._lock:
+            stored = self._cap_on(org_id, cap.lane)
+            if stored is not None:
+                # The row there keeps its id and its creation, as the
+                # relational upsert keeps them.
+                cap = cap.model_copy(
+                    update={
+                        "id": stored.id,
+                        "created_at": stored.created_at,
+                        "created_by": stored.created_by,
+                    }
+                )
+            self._caps[cap.id] = (org_id, cap)
+            return cap
+
+    async def read_tenant_cap(self, org_id: UUID, lane: str) -> TenantCap | None:
+        async with self._lock:
+            return self._cap_on(org_id, lane)
+
+    async def delete_tenant_cap(self, org_id: UUID, lane: str) -> TenantCap | None:
+        async with self._lock:
+            stored = self._cap_on(org_id, lane)
+            if stored is not None:
+                del self._caps[stored.id]
+            return stored
+
+    async def purge_tenant_caps(self, org_id: UUID, limit: int) -> int:
+        async with self._lock:
+            batch = self._rows(self._caps, org_id)[:limit]
+            for row in batch:
+                del self._caps[row.id]
+            return len(batch)
+
+    def _cap_on(self, org_id: UUID, lane: str) -> TenantCap | None:
+        return next((row for row in self._rows(self._caps, org_id) if row.lane == lane), None)
 
     async def requeue_stale(
         self, now: datetime, stagger: timedelta, limit: int

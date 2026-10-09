@@ -2,7 +2,19 @@ from collections.abc import Sequence
 from datetime import datetime, timedelta
 from uuid import UUID
 
-from sqlalchemy import DateTime, Interval, case, func, literal, literal_column, select, update
+from sqlalchemy import (
+    DateTime,
+    Interval,
+    and_,
+    case,
+    delete,
+    func,
+    literal,
+    literal_column,
+    select,
+    update,
+)
+from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import aliased
 from sqlalchemy.sql import Select
 
@@ -11,7 +23,9 @@ from acme.om.exceptions import TenantMismatch, UniqueKeyTaken
 from acme.om.storage.impl.pg_base import PLAN_WITH_VALUES, PgStorageBase, delete_batch, deleted
 from acme.om.storage.utils.translation import to_model, to_values
 from acme.om.work.storage import InsertOutcome, WorkStorageInterface
+from acme.om.work.storage.tables.tenant_caps import TenantCaps
 from acme.om.work.storage.tables.work_items import WorkItems
+from acme.om.work.types.tenant_cap import TenantCap
 from acme.om.work.types.work_item import WorkItem, WorkKind, WorkStatus
 
 
@@ -95,23 +109,28 @@ class WorkStoragePostgresImpl(PgStorageBase, WorkStorageInterface):
             WorkItems.kind.in_([kind.value for kind in kinds]),
             WorkItems.available_at <= now,
         )
-        if tenant_cap is not None:
-            # rules.is_at_cap, in SQL: the tenants that already hold the cap
-            # on the lane under a live lease, counted once per statement over
-            # the claim's index (a lane holds as many claimed items as its
-            # workers run). Their items are passed over, never written.
-            held = aliased(WorkItems)
-            at_cap = (
-                select(held.org_id)
-                .where(
-                    held.lane == lane,
-                    held.status == WorkStatus.CLAIMED.value,
-                    held.lease_expires_at > now,
-                )
-                .group_by(held.org_id)
-                .having(func.count() >= tenant_cap)
+        # rules.is_at_cap, in SQL: the tenants that already hold their cap on
+        # the lane under a live lease, counted once per statement over the
+        # claim's index (a lane holds as many claimed items as its workers
+        # run), joined to their own caps there. Their items are passed over,
+        # never written.
+        held = aliased(WorkItems)
+        counted = select(held.org_id).where(
+            held.lane == lane,
+            held.status == WorkStatus.CLAIMED.value,
+            held.lease_expires_at > now,
+        )
+        own = and_(TenantCaps.org_id == held.org_id, TenantCaps.lane == lane)
+        if tenant_cap is None:
+            # No lane cap: only a tenant with a cap of its own is counted.
+            at_cap = counted.join(TenantCaps, own).having(func.count() >= TenantCaps.cap)
+        else:
+            # rules.cap_for, in SQL: the tenant's own cap, or the lane's.
+            at_cap = counted.outerjoin(TenantCaps, own).having(
+                func.count() >= func.coalesce(TenantCaps.cap, tenant_cap)
             )
-            ready = ready.where(WorkItems.org_id.not_in(at_cap))
+        at_cap = at_cap.group_by(held.org_id, TenantCaps.cap)
+        ready = ready.where(WorkItems.org_id.not_in(at_cap))
         candidate = (
             # The item ready longest goes first, by the claim's index, so a
             # claim reads the first free row and not the whole ready backlog.
@@ -141,6 +160,46 @@ class WorkStoragePostgresImpl(PgStorageBase, WorkStorageInterface):
             claimed = (row.org_id, to_model(row, WorkItem))
             await session.commit()
             return claimed
+
+    async def write_tenant_cap(self, org_id: UUID, cap: TenantCap) -> TenantCap:
+        stmt = (
+            insert(TenantCaps)
+            .values(org_id=org_id, **to_values(cap, TenantCaps))
+            .on_conflict_do_update(
+                index_elements=[TenantCaps.org_id, TenantCaps.lane],
+                set_={"cap": cap.cap, "updated_at": cap.updated_at, "updated_by": cap.updated_by},
+            )
+            .returning(TenantCaps)
+        )
+        async with self._session_for(stmt, org_id=org_id) as session:
+            written = to_model((await session.execute(stmt)).scalar_one(), TenantCap)
+            await session.commit()
+            return written
+
+    async def read_tenant_cap(self, org_id: UUID, lane: str) -> TenantCap | None:
+        stmt = select(TenantCaps).where(TenantCaps.org_id == org_id, TenantCaps.lane == lane)
+        async with self._session_for(stmt, org_id=org_id) as session:
+            row = (await session.execute(stmt)).scalar_one_or_none()
+            return None if row is None else to_model(row, TenantCap)
+
+    async def delete_tenant_cap(self, org_id: UUID, lane: str) -> TenantCap | None:
+        stmt = (
+            delete(TenantCaps)
+            .where(TenantCaps.org_id == org_id, TenantCaps.lane == lane)
+            .returning(TenantCaps)
+        )
+        async with self._session_for(stmt, org_id=org_id) as session:
+            row = (await session.execute(stmt)).scalar_one_or_none()
+            deleted_cap = None if row is None else to_model(row, TenantCap)
+            await session.commit()
+            return deleted_cap
+
+    async def purge_tenant_caps(self, org_id: UUID, limit: int) -> int:
+        stmt = delete_batch(TenantCaps, TenantCaps.org_id == org_id, limit=limit)
+        async with self._session_for(stmt, org_id=org_id) as session:
+            purged = deleted(await session.execute(stmt))
+            await session.commit()
+            return purged
 
     async def requeue_stale(
         self, now: datetime, stagger: timedelta, limit: int

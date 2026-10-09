@@ -16,6 +16,9 @@ kinds of thing [Acme is made of](../../../../README.md).
   provider's side of a deletion. A kind whose payload names a time
   waits until then.
 - **Lane**: a routing name. A worker serves one lane.
+- **Tenant cap**: an org's own cap on a lane, the most items it holds
+  claimed there at once. It holds for that org in place of the lane's
+  cap, on a lane with a cap or without one.
 - **Handler**: the code that does one kind. It is idempotent, because
   an item may run twice.
 
@@ -27,9 +30,9 @@ kinds of thing [Acme is made of](../../../../README.md).
 - **Claim.** A worker takes the item on its lane ready longest, in one
   statement, with a claim token and the context the job runs under: the
   org, the service role, and the person who asked. An item of a deleted
-  org fails in the same call. On a lane with a cap, the claim passes
-  over an org that already holds that many items claimed and takes the
-  next org's; the passed-over items wait where they are, untouched.
+  org fails in the same call. The claim passes over an org that already
+  holds its cap in items claimed and takes the next org's; the
+  passed-over items wait where they are, untouched.
 - **Complete, fail, defer, release, or extend the lease.** A failure is
   retried with a growing delay until the attempts are spent.
 - **Park.** A handler that must wait (a provider out of reach) hands the
@@ -38,8 +41,12 @@ kinds of thing [Acme is made of](../../../../README.md).
   provider refused the call itself) fails the item at once.
 - **Requeue by an operator.** An operator with `write` sends one failed
   item back with every attempt it had. The org's stream records who did.
+- **Cap an org by an operator.** An operator with `write` sets an org's
+  own cap on a lane, or clears it, and the next claim holds it; one with
+  `read` reads it.
 - **Sweep.** Expired leases go back to the queue, or fail when their
-  attempts are spent. Done and failed items go after thirty days.
+  attempts are spent. Done and failed items go after thirty days, and a
+  deleted org's caps go with the rest of its rows.
 - **Watched.** Each sweep reads the wait of the item ready longest and
   the count failed in the last fifteen minutes, and an alarm fires on a
   wait past ten minutes and on any failure.
@@ -50,9 +57,10 @@ kinds of thing [Acme is made of](../../../../README.md).
   renews it while the job runs. Every transition is conditional on the
   claim token, so a worker that lost its item changes nothing.
 - **One org cannot hold every worker.** A lane that orgs share can cap
-  how many items one org holds claimed on it. An org at its cap spends
-  no attempt waiting, and its next item runs as soon as one of its
-  running items ends.
+  how many items one org holds claimed on it, and an org's own cap there
+  takes the lane's place for that org. An org at its cap spends no
+  attempt waiting, and its next item runs as soon as one of its running
+  items ends. An org with neither cap is never passed over.
 - **Enqueueing twice leaves one item.** The same id or the same producer
   key returns the item as stored.
 - **At least once.** Every handler changes nothing the second time.

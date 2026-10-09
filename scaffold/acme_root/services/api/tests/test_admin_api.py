@@ -1,7 +1,7 @@
 """The operator plane over the live app: which permission each route asks
 for, the reads of one tenant and the trail they leave, the platform's size,
-the two creates under the operator's idempotency record, and the requeue
-of a failed work item."""
+the two creates under the operator's idempotency record, the requeue
+of a failed work item, and an org's own cap on a lane."""
 
 import logging
 from datetime import timedelta
@@ -370,3 +370,41 @@ async def test_a_write_operator_requeues_a_failed_item_once(
     assert trail == [("work.item.failed", str(item_id)), ("work.item.requeued", str(item_id))]
     requeue = next(e for e in events if e["kind"] == "work.item.requeued")
     assert requeue["actor_id"] == me["identity_id"]
+
+
+async def test_a_write_operator_sets_and_clears_an_orgs_own_cap_and_a_reader_reads_it(
+    client: httpx.AsyncClient,
+    container: AppContainer,
+    owner: dict[str, str],
+    reader: dict[str, str],
+    writer: dict[str, str],
+    org_id: str,
+) -> None:
+    path = f"/v1/admin/orgs/{org_id}/work/lanes/bulk/cap"
+    assert (await client.get(path, headers=reader)).status_code == 404
+    refused = await client.put(path, headers=reader, json={"cap": 2})
+    assert refused.status_code == 403 and refused.json()["error"]["code"] == "not_authorized"
+    assert (await client.put(path, headers=owner, json={"cap": 2})).status_code == 401
+    for wrong in ({"cap": 0}, {"cap": 10_001}, {"cap": "two"}, {}):
+        bad = await client.put(path, headers=writer, json=wrong)
+        assert bad.status_code == 422, f"{wrong}: {bad.text}"
+
+    me = (await client.get("/v1/admin/me", headers=writer)).json()
+    set_ = await client.put(path, headers=writer, json={"cap": 2})
+    assert set_.status_code == 200, set_.text
+    assert set_.json()["lane"] == "bulk" and set_.json()["cap"] == 2
+    assert set_.json()["updated_by"] == me["identity_id"]
+    again = await client.put(path, headers=writer, json={"cap": 3})
+    assert again.status_code == 200 and again.json()["cap"] == 3
+    read = await client.get(path, headers=reader)
+    assert read.status_code == 200 and read.json() == again.json()
+    assert (await client.delete(path, headers=reader)).status_code == 403
+
+    cleared = await client.delete(path, headers=writer)
+    assert cleared.status_code == 200 and cleared.json() == again.json()
+    assert (await client.delete(path, headers=writer)).status_code == 404
+    assert (await client.get(path, headers=reader)).status_code == 404
+    unknown = await client.put(
+        f"/v1/admin/orgs/{new_id()}/work/lanes/bulk/cap", headers=writer, json={"cap": 1}
+    )
+    assert unknown.status_code == 404

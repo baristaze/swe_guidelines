@@ -8,14 +8,16 @@ relying on nothing of the fence.
 """
 
 from collections.abc import AsyncIterator
+from datetime import timedelta
+from typing import Any, cast
 from uuid import UUID
 
 import pytest
 from contracts.event_storage import make_event
 from contracts.factories import make_identity, make_user
 from contracts.idempotency_storage import make_record
-from contracts.work_storage import make_item
-from sqlalchemy import text
+from contracts.work_storage import make_cap, make_item
+from sqlalchemy import CursorResult, text
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, create_async_engine
 
@@ -37,6 +39,7 @@ from acme.om.storage.scopes import (
 from acme.om.tenancy.storage.impl.postgres import TenancyStoragePostgresImpl
 from acme.om.tenancy.storage.tables.users import Users
 from acme.om.work.storage.impl.postgres import WorkStoragePostgresImpl
+from acme.om.work.types.work_item import WorkKind
 
 pytestmark = pytest.mark.integration
 
@@ -413,3 +416,63 @@ async def test_the_queue_policy_is_what_refuses_the_other_tenant(
         async with owner.begin() as connection:
             await connection.execute(text("ALTER TABLE queue.work_items ENABLE ROW LEVEL SECURITY"))
     assert await orgs_seen() == {mine}
+
+
+async def _cap_orgs(session: AsyncSession, org_id: UUID | None) -> set[UUID]:
+    """The tenants of the caps a transaction sees, with no tenant predicate
+    of its own: only the policy narrows it."""
+    if org_id is not None:
+        await set_scope(session, org_id, None, None)
+    return set((await session.execute(text("SELECT org_id FROM queue.tenant_caps"))).scalars())
+
+
+async def test_a_tenants_cap_is_fenced_as_the_queue_is_and_the_claim_reads_it(
+    pg_sessions: Sessions,
+) -> None:
+    """Ann's cap is fenced by login, as the work items are (ADR 0044): under
+    Bob's context it reads as nothing, and a write that names her is refused
+    or meets no row. The claim's statement reads it on the system login under
+    the system scope, so her second item is passed over there."""
+    work = WorkStoragePostgresImpl(pg_sessions)
+    ann, bob = new_id(), new_id()
+    lane = f"fence-{new_id().hex[-12:]}"
+    await work.write_tenant_cap(ann, make_cap(lane, 1))
+    runtime, system = pg_sessions[DatabaseRole.QUEUE], pg_sessions.system[DatabaseRole.QUEUE]
+    async with runtime() as session:
+        assert await _cap_orgs(session, bob) == set()
+    async with runtime() as session:
+        assert await _cap_orgs(session, ann) == {ann}
+    async with runtime() as session:
+        assert await _cap_orgs(session, EMPTY_UUID) == set()
+    async with system() as session:
+        assert ann in await _cap_orgs(session, EMPTY_UUID)
+    async with system() as session:
+        assert await _cap_orgs(session, ann) == set()
+    assert await work.read_tenant_cap(bob, lane) is None
+    # Under Bob's context, a write over Ann's row meets none, and a row that
+    # names her is refused.
+    async with runtime() as session:
+        await set_scope(session, bob, None, None)
+        moved = await session.execute(
+            text("UPDATE queue.tenant_caps SET cap = 100 WHERE org_id = :ann"), {"ann": ann}
+        )
+        assert cast(CursorResult[Any], moved).rowcount == 0
+        with pytest.raises(DBAPIError) as refused:
+            await session.execute(
+                text(
+                    "INSERT INTO queue.tenant_caps (id, org_id, created_at, updated_at,"
+                    " created_by, updated_by, lane, cap)"
+                    " VALUES (:id, :ann, now(), now(), :id, :id, :lane, 100)"
+                ),
+                {"id": new_id(), "ann": ann, "lane": lane + "-other"},
+            )
+        assert "row-level security" in str(refused.value)
+    stored = await work.read_tenant_cap(ann, lane)
+    assert stored is not None and stored.cap == 1
+    # The claim, on the queue's system login, reads her cap across tenants.
+    first, second = make_item(lane=lane), make_item(lane=lane)
+    await work.create_item(ann, first)
+    await work.create_item(ann, second)
+    claimed = await work.claim_next(lane, [WorkKind.NOOP], "w1", timedelta(seconds=30))
+    assert claimed is not None and claimed[0] == ann
+    assert await work.claim_next(lane, [WorkKind.NOOP], "w1", timedelta(seconds=30)) is None

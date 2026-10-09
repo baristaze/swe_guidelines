@@ -11,6 +11,7 @@ import pytest
 from acme.om.base import EMPTY_UUID, new_id, utcnow
 from acme.om.exceptions import TenantMismatch
 from acme.om.work.storage import InsertOutcome, WorkStorageInterface
+from acme.om.work.types.tenant_cap import TenantCap
 from acme.om.work.types.work_item import WorkItem, WorkKind, WorkStatus
 from contracts.racing import race
 
@@ -19,10 +20,14 @@ LEASE = timedelta(seconds=30)
 CROSS_TENANT_CASES: frozenset[str] = frozenset(
     {
         "create_item",
+        "delete_tenant_cap",
+        "purge_tenant_caps",
         "read_item",
         "read_item_by_key",
+        "read_tenant_cap",
         "write_item_if_failed",
         "write_item_if_held",
+        "write_tenant_cap",
     }
 )
 """Every method of `WorkStorageInterface` that takes a tenant has a case in
@@ -45,6 +50,19 @@ def make_item(*, lane: str = "default", available_in: timedelta = timedelta(0)) 
         payload={},
         lane=lane,
         available_at=now + available_in,
+    )
+
+
+def make_cap(lane: str, cap: int) -> TenantCap:
+    now = utcnow()
+    return TenantCap(
+        id=new_id(),
+        created_at=now,
+        updated_at=now,
+        created_by=new_id(),
+        updated_by=new_id(),
+        lane=lane,
+        cap=cap,
     )
 
 
@@ -396,6 +414,56 @@ class WorkStorageContract:
         assert await storage.create_item(elsewhere, theirs) is InsertOutcome.INSERTED
         assert await storage.read_item_by_key(org, mine.idempotency_key) == mine
         assert await storage.read_item_by_key(elsewhere, mine.idempotency_key) == theirs
+
+    async def test_a_cap_written_over_keeps_its_row_and_a_delete_answers_it(
+        self, storage: WorkStorageInterface, lane: str
+    ) -> None:
+        """One row per tenant and lane: a second write sets the cap and its
+        last change and keeps the id and the creation; a delete answers the
+        row it took, and a second finds none. A cap on another lane is
+        another row."""
+        org = new_id()
+        first = await storage.write_tenant_cap(org, make_cap(lane, 2))
+        later = make_cap(lane, 5)
+        again = await storage.write_tenant_cap(org, later)
+        assert (again.id, again.created_at, again.created_by) == (
+            first.id,
+            first.created_at,
+            first.created_by,
+        )
+        assert (again.cap, again.updated_at, again.updated_by) == (
+            5,
+            later.updated_at,
+            later.updated_by,
+        )
+        elsewhere = await storage.write_tenant_cap(org, make_cap(lane + "-other", 1))
+        assert await storage.read_tenant_cap(org, lane) == again
+        assert await storage.delete_tenant_cap(org, lane) == again
+        assert await storage.delete_tenant_cap(org, lane) is None
+        assert await storage.read_tenant_cap(org, lane) is None
+        assert await storage.read_tenant_cap(org, lane + "-other") == elsewhere
+
+    async def test_a_tenants_cap_is_its_own(self, storage: WorkStorageInterface, lane: str) -> None:
+        """Another tenant's identifier reads no cap, deletes none, and purges
+        none, and its write lands a row of its own on the same lane."""
+        org, other = new_id(), new_id()
+        mine = await storage.write_tenant_cap(org, make_cap(lane, 2))
+        assert await storage.read_tenant_cap(other, lane) is None
+        assert await storage.delete_tenant_cap(other, lane) is None
+        assert await storage.purge_tenant_caps(other, 10) == 0
+        theirs = await storage.write_tenant_cap(other, make_cap(lane, 7))
+        assert theirs.id != mine.id
+        assert await storage.read_tenant_cap(org, lane) == mine
+
+    async def test_a_tenants_caps_purge_a_batch_at_a_time(
+        self, storage: WorkStorageInterface, lane: str
+    ) -> None:
+        org = new_id()
+        for n in range(3):
+            await storage.write_tenant_cap(org, make_cap(f"{lane}-{n}", 1))
+        assert await storage.purge_tenant_caps(org, 2) == 2
+        assert await storage.purge_tenant_caps(org, 2) == 1
+        assert await storage.purge_tenant_caps(org, 2) == 0
 
     async def test_reads_and_writes_are_tenant_scoped(self, storage: WorkStorageInterface) -> None:
         org_a, org_b = new_id(), new_id()
