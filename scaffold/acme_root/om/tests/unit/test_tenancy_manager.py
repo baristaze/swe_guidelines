@@ -61,6 +61,7 @@ from acme.om.outbox.storage.impl.memory import OutboxStorageMemoryImpl
 from acme.om.outbox.types.row import OutboxRow
 from acme.om.root import build_tenancy
 from acme.om.tenancy import TenancyManagerInterface
+from acme.om.tenancy.impl.creates import MAX_ORGS_PER_IDENTITY, Admission, add_member_to
 from acme.om.tenancy.impl.manager import TenancyOptions
 from acme.om.tenancy.impl.operator import (
     TOTP_ISSUER,
@@ -2139,6 +2140,156 @@ async def test_an_add_member_that_fails_leaves_no_identity_behind(
     with pytest.raises(UniqueKeyTaken):
         await manager.add_member(request(), "ajax", "bob@example.test", "Bob", Role.MEMBER)
     assert await storage.read_identity_by_email_digest(email_digest("bob@example.test")) is None
+
+
+def held_relay(
+    outbox: OutboxStorageMemoryImpl, infra: InfraLocalImpl, rctx: RequestContext
+) -> OutboxRelayImpl:
+    """A relay that holds the request's rows, so what an add landed stays
+    pending in the outbox, where a test reads it."""
+    relay = OutboxRelayImpl(outbox, EventStorageMemoryImpl(), infra.get_topics())
+    relay.hold(rctx.request_id)
+    return relay
+
+
+async def join(
+    storage: TenancyStorageMemoryImpl,
+    relay: OutboxRelayInterface,
+    org: Org,
+    rctx: RequestContext,
+    email: str,
+    admission: Admission,
+    max_orgs: int = MAX_ORGS_PER_IDENTITY,
+) -> tuple[User, bool]:
+    """A person added to the org as a member, past the org's gate."""
+    return await add_member_to(
+        storage,
+        relay,
+        org_id=org.id,
+        user_id=new_id(),
+        email=email,
+        display_name=email.partition("@")[0],
+        role=Role.MEMBER,
+        actor_id=org.created_by,
+        request=rctx,
+        max_orgs=max_orgs,
+        admission=admission,
+    )
+
+
+def counted_row(org: Org, rctx: RequestContext) -> OutboxRow:
+    """A row a gate answers: work that moves a count of the org's members."""
+    return OutboxRow(
+        id=new_id(),
+        created_at=utcnow(),
+        org_id=org.id,
+        kind="work.noop",
+        target_id=org.id,
+        payload={},
+        actor_id=org.created_by,
+        request_id=rctx.request_id,
+        app=rctx.app.type.value,
+    )
+
+
+async def test_a_repeated_add_never_asks_the_gate(
+    manager: TenancyManagerInterface,
+    storage: TenancyStorageMemoryImpl,
+    outbox: OutboxStorageMemoryImpl,
+    infra: InfraLocalImpl,
+) -> None:
+    """A member's admission is asked once the person is known to be new to the
+    org. A repeated add answers the member as stored and asks nothing, so a
+    gate that counts members never counts one twice; a person past their own
+    bound on orgs is refused before it."""
+    _, org = await manager.bootstrap(request(), "Ajax", "ajax", "ann@example.test", "Ann")
+    _, beta = await manager.bootstrap(request(), "Beta", "beta", "cid@example.test", "Cid")
+    asked: list[UUID] = []
+
+    async def gate() -> tuple[OutboxRow, ...]:
+        asked.append(new_id())
+        return ()
+
+    rctx = request()
+    relay = held_relay(outbox, infra, rctx)
+    bob, created = await join(storage, relay, org, rctx, "bob@example.test", gate)
+    assert created and len(asked) == 1
+    again, created = await join(storage, relay, org, rctx, "bob@example.test", gate)
+    assert not created and again == bob
+    _, created = await join(storage, relay, org, rctx, "ann@example.test", gate)
+    assert not created, "the owner is a member already"
+    assert len(asked) == 1, "a member already there is never asked about again"
+    # Bob holds his personal org and Ajax: a bound of two refuses a third.
+    with pytest.raises(MembershipLimitReached):
+        await join(storage, relay, beta, rctx, "bob@example.test", gate, max_orgs=2)
+    assert len(asked) == 1, "a person refused for their own bound is never asked about"
+
+
+async def test_the_gates_rows_land_in_the_adds_commit(
+    manager: TenancyManagerInterface,
+    storage: TenancyStorageMemoryImpl,
+    outbox: OutboxStorageMemoryImpl,
+    infra: InfraLocalImpl,
+) -> None:
+    """The rows a member's admission answers land with the user, the membership,
+    and the row that announces them, in the add's commit."""
+    _, org = await manager.bootstrap(request(), "Ajax", "ajax", "ann@example.test", "Ann")
+    rctx = request()
+
+    async def gate() -> tuple[OutboxRow, ...]:
+        return (counted_row(org, rctx),)
+
+    bob, created = await join(
+        storage, held_relay(outbox, infra, rctx), org, rctx, "bob@example.test", gate
+    )
+    assert created
+    landed = [
+        (r.kind, r.target_id) for r in await claim_all(outbox) if r.request_id == rctx.request_id
+    ]
+    assert sorted(landed) == sorted([("tenancy.user.created", bob.id), ("work.noop", org.id)])
+
+
+async def test_an_add_that_fails_lands_none_of_the_gates_rows(
+    infra: InfraLocalImpl, outbox: OutboxStorageMemoryImpl
+) -> None:
+    """The gate's rows ride the add's commit, or nothing does: an add whose
+    commit fails leaves no row that counts a member who never landed."""
+    storage = DownOnCreateStorage(outbox)
+    manager = make_manager(storage, infra, outbox=outbox)
+    _, org = await manager.bootstrap(request(), "Ajax", "ajax", "ann@example.test", "Ann")
+    rctx = request()
+    asked: list[UUID] = []
+
+    async def gate() -> tuple[OutboxRow, ...]:
+        asked.append(new_id())
+        return (counted_row(org, rctx),)
+
+    with pytest.raises(UniqueKeyTaken):
+        await join(storage, held_relay(outbox, infra, rctx), org, rctx, "bob@example.test", gate)
+    assert len(asked) == 1
+    assert [r for r in await claim_all(outbox) if r.request_id == rctx.request_id] == []
+
+
+async def test_a_gates_refusal_lands_before_the_add(
+    manager: TenancyManagerInterface,
+    storage: TenancyStorageMemoryImpl,
+    outbox: OutboxStorageMemoryImpl,
+    infra: InfraLocalImpl,
+) -> None:
+    """A member's admission refuses by raising, before anything is written: no
+    identity for a person nobody has seen, no user, no membership, no row."""
+    _, org = await manager.bootstrap(request(), "Ajax", "ajax", "ann@example.test", "Ann")
+    rctx = request()
+
+    async def full() -> tuple[OutboxRow, ...]:
+        raise Conflict(f"org {org.id} admits no one more")
+
+    with pytest.raises(Conflict):
+        await join(storage, held_relay(outbox, infra, rctx), org, rctx, "bob@example.test", full)
+    assert await storage.read_identity_by_email_digest(email_digest("bob@example.test")) is None
+    assert [u.id for u in await storage.read_users(org.id, None, limit=10)] == [org.created_by]
+    assert [m.user_id for m in await storage.read_memberships(org.id, limit=10)] == [org.created_by]
+    assert [r for r in await claim_all(outbox) if r.request_id == rctx.request_id] == []
 
 
 class RacedUserStorage(TenancyStorageMemoryImpl):
