@@ -29,7 +29,10 @@ Add the kind, its payload, and the permission that asks for it in
 `acme.om.work`. Write a handler that names the permissions it calls with
 (`REQUIRES`), and add it to `handlers` in `build_loop`; a test holds the
 two to each other. A long-running kind is an `OrchestrationKind` whose step
-is mapped in `build_loop`.
+is mapped in `build_loop`. A kind that runs on a lane of its own adds the
+lane to `WORK_LANES`, and a replica of this worker serves that lane,
+started with `serve --lane` or `ACME_WORKER_LANE` set to the lane as
+`WORK_LANES` spells it.
 
 ## Adding a chore
 

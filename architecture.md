@@ -1806,6 +1806,18 @@ its own.
   the claims of that moment, until one of its items ends.
 -->
 
+A kind can have a lane of its own too, such as a long-held kind kept
+apart from short ones. `WORK_LANES` names the lane of each such kind,
+and `relayed_lane` reads it, for the relay and for a worker of the
+kind's own, so the two never disagree. A replica of a worker that
+serves many kinds takes the lane from its deployment, spelled as the
+registry spells it. An outbox row carries no lane, so the relay lands
+each item on its kind's lane, and the item of a kind the registry does
+not name on the default one. A direct create carries the lane its
+caller sets. A long-held item on a lane of its own counts against no
+cap of the lane of short items. A kind's own lane is a line in the
+registry, never an edit of the relay.
+
 Every write after the enqueue is the platform's, signed `EMPTY_UUID`.
 `created_by` is the person who asked, so the claim rebuilds their
 principal under the role reserved for services, and the run names the
