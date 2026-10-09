@@ -48,8 +48,7 @@ manager that caches a read would build its own reader.
 
 - A cached read is at most a TTL stale, and only when a bump is lost or
   a window starts again.
-- A hit costs two round trips to the cache: the generation and the
-  entry.
+- A hit costs two reads of the cache: the generation and the entry.
 - Every entry a scope holds for a tenant shares one generation, so one
   write orphans them all. Reads that change apart take scopes apart.
 - Every path that writes what a read caches bumps the generation after
