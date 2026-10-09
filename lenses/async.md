@@ -450,10 +450,9 @@ resumes parked records (staggered), rolls periods, relays the outbox,
 and purges done outbox rows, done and failed work items past a
 retention setting (`purge_items(before)`), soft-deleted rows,
 idempotency markers, redeemed or expired socket tickets, and ended
-sessions. A duty that needs a tenant's own context, a chore such as
-rolling a period, runs under that tenant's service context, only in the
-tenants one read across tenants names as due. A pass past its time
-budget takes no new tenant, but always one, and the next pass carries on
+sessions. A chore, a duty per tenant such as rolling a period, runs
+under the tenant's service context, only where one read across tenants
+names it due; a pass past its time budget leaves the next to carry on
 from the last tenant it ran.
 
 **Source.** Worker Roles, Maintenance Without a Scheduler; The Storage
