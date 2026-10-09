@@ -77,15 +77,21 @@ is `acme-webhooks`, with `acme-webhooks-dead`.
    ```bash
    docker compose -f deployment/local/docker-compose.yml -f deployment/local/docker-compose.full.yml \
      logs --no-log-prefix --since <since> api | grep -oE 'POST <route> [0-9]{3}' | sort | uniq -c
+   docker compose -f deployment/local/docker-compose.yml -f deployment/local/docker-compose.full.yml \
+     logs --no-log-prefix --since <since> api | grep -oE '[a-z_]+ on POST <route>: [^"]*' | sort | uniq -c
    ```
 
-   In the cloud, a Logs Insights query of the API's group:
+   In the cloud, two Logs Insights queries of the API's group:
 
    ```bash
    aws logs start-query --profile acme-<env>-investigate \
      --log-group-names /acme/<env>/api \
      --start-time <start> --end-time <end> \
      --query-string 'filter http.route = "<route>" | stats count(*) as answered by http.status'
+   aws logs start-query --profile acme-<env>-investigate \
+     --log-group-names /acme/<env>/api \
+     --start-time <start> --end-time <end> \
+     --query-string 'fields @timestamp, request_id, message | filter @message like "on POST <route>:" | sort @timestamp desc | limit 20'
    aws logs get-query-results --query-id <id> --profile acme-<env>-investigate
    ```
 
@@ -94,8 +100,10 @@ is `acme-webhooks`, with `acme-webhooks-dead`.
    `Scheduled` or `Running` after the tenth, stop polling, and the
    report writes that read as "not read: the query did not finish in
    10 polls", with the query id. Step 3's query is polled the same way.
-   The route refuses without a line of its own: the status is all the
-   log holds of a refusal.
+   A `4xx` refusal has no line of its own: the status is all the log
+   holds of it. A `5xx` writes one, `<code> on POST <route>: <message>`
+   with its exception, at `WARNING` or `ERROR`, and the second command
+   of each block reads it.
 3. The worker: what it made of each delivery. It counts each one as
    `acme_outcomes_total{subsystem="deliveries"}`, by outcome: `applied`
    and `duplicate` (applied now, or before), `unowned` (it names no
@@ -196,7 +204,7 @@ is `acme-webhooks`, with `acme-webhooks-dead`.
    |---|---|---|---|
    | Never arrives | The route answered nothing in the window | The provider stopped sending, or sends to another address; its own dashboard says which | the provider's endpoint and its state, by a person |
    | Refused at the route | `400` answers | The signature, its timestamp, or the body did not check out, and nothing was queued. Most or all of them refused: the signing secret differs between the provider and the environment. A few among `2xx`: a replay past the three-minute window, or a delivery the provider did not sign | every one or most: the route's signing secret (the identity provider's is `ACME_WORKOS_WEBHOOK_SECRET`, as `docs/runbooks/providers/workos.md` sets it), by a person; a few: nothing |
-   | Refused at the route | `503` or another `5xx` | The route could not check a delivery or could not queue it: no signing secret, no provider configured, or the queue refused the send. A local stack with no provider configured answers `503` by design | `ops-investigate` over the same window |
+   | Refused at the route | `503` or another `5xx` | The route could not check a delivery or could not queue it, and its `on POST <route>:` line gives the reason, such as no signing secret, no provider configured, or the queue refusing the send. A local stack with no provider configured answers `503` by design | `ops-investigate` over the same window |
    | Waits on the queue | `2xx` answers, the queue's visible count above 0, and few or no worker outcomes, or `receive_failed` | The worker is not running, or cannot reach the queue | `ops-investigate` over the same window |
    | Fails in the worker | `failed` or `unknown_provider`, or dead letters above 0 | The worker received the delivery and could not apply it: the exception under its `failed on receive` line names what refused it. `unknown_provider` is a provider this worker does not know, such as a worker older than the API. A dead letter is a delivery that failed every receive | `ops-investigate --request-id <the request id of the last failed receive>` |
    | Dropped by the worker | `unowned` or `malformed` | The delivery names an org this environment does not hold, or is not a delivery: another environment's organizations delivering here, or an org deleted | every one: the provider's endpoint, by a person; a few: nothing |
