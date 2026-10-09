@@ -116,8 +116,51 @@ class Standing(Platform):
     estimate_seconds: float | None = None
 
 
+class Place(Platform):
+    """A waiting request's place and estimate, as its `Standing` answers
+    them."""
+
+    request_id: UUID
+    place: int | None = None
+    estimate_seconds: float | None = None
+
+
 class Line(Platform):
-    """A resource and the requests in its line, first first."""
+    """A resource and the requests in its line, first first, with each one's
+    place and estimate in the same order, replayed from the one read the
+    line makes."""
 
     resource: Resource
     requests: tuple[LeaseRequest, ...]
+    places: tuple[Place, ...] = ()
+
+
+class LeaseEntry(Platform):
+    """One lease of a history, with the request it answered: who asked, for
+    what, and with which payload. None when the purge took the request
+    first, which only a lease renewed past the retention outlives."""
+
+    lease: Lease
+    request: LeaseRequest | None = None
+
+
+class HistoryMark(Platform):
+    """Where a page of a history ended: its last lease's grant and id. The
+    next page holds the leases that sort before it, newest first, so a page
+    stays where it is however many leases are granted after it."""
+
+    created_at: datetime
+    lease_id: UUID
+
+    @classmethod
+    def of(cls, lease: Lease) -> Self:
+        return cls(created_at=lease.created_at, lease_id=lease.id)
+
+
+class LeasePage(Platform):
+    """One page of a history, and whether another follows. The manager asks
+    storage for one entry more than the page and keeps it out, so `has_more`
+    is a fact about the rows."""
+
+    items: tuple[LeaseEntry, ...]
+    has_more: bool

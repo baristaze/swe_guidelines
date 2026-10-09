@@ -26,6 +26,7 @@ from acme.client.types import (
     IssuedSessionView,
     IssuedTicketView,
     IssuedUploadView,
+    LeasePageView,
     LeaseRequestView,
     LeaseView,
     LineView,
@@ -601,8 +602,23 @@ class ApiClient:
         return LeaseRequestView.model_validate(moved)
 
     async def resource_line(self, resource_id: UUID) -> LineView:
+        """A resource's line, first first, with each place and estimate."""
         line = await self.request("GET", f"/v1/leases/resources/{resource_id}/line")
         return LineView.model_validate(line)
+
+    async def lease_history(
+        self, resource_id: UUID | None = None, *, cursor: str | None = None, limit: int = LIMIT_MAX
+    ) -> LeasePageView:
+        """One page of the org's leases, or one resource's, newest first,
+        ended ones too, each with the request it answered; `cursor` is the
+        previous page's `next_cursor`."""
+        params: dict[str, Any] = {"limit": limit}
+        if resource_id is not None:
+            params["resource_id"] = str(resource_id)
+        if cursor:
+            params["cursor"] = cursor
+        page = await self.request("GET", "/v1/leases", params=params)
+        return LeasePageView.model_validate(page)
 
     async def lease(self, lease_id: UUID) -> LeaseView:
         return LeaseView.model_validate(await self.request("GET", f"/v1/leases/{lease_id}"))

@@ -2,16 +2,18 @@ from datetime import datetime
 from uuid import UUID
 
 from acme.om.exceptions import TenantMismatch
-from acme.om.leases.rules import stands_in
+from acme.om.leases.rules import grant_fits, stands_in
 from acme.om.leases.storage import LeasesStorageInterface, ResourceLandingInterface
 from acme.om.leases.types.lease import Grant, Lease, LeaseStatus
 from acme.om.leases.types.request import (
     EndReason,
+    HistoryMark,
+    LeaseEntry,
     LeaseRequest,
     RequestStatus,
     WaiterKind,
 )
-from acme.om.leases.types.resource import Resource, ResourceKind
+from acme.om.leases.types.resource import Resource, ResourceKind, ResourceUpdate
 from acme.om.orchestrations.storage import StepLandingInterface
 from acme.om.orchestrations.types.orchestration import Step
 from acme.om.outbox.storage import OutboxLandingInterface
@@ -86,6 +88,23 @@ class LeasesStorageMemoryImpl(MemoryStorageBase, LeasesStorageInterface, Resourc
             )
             self._put(self._resources, org_id, written, outbox_rows)
             return written
+
+    async def update_resource(
+        self,
+        org_id: UUID,
+        resource_id: UUID,
+        change: ResourceUpdate,
+        at: datetime,
+        actor: UUID,
+        outbox_rows: tuple[OutboxRow, ...],
+    ) -> Resource | None:
+        async with self._lock:
+            resource = self._get(self._resources, org_id, resource_id)
+            if resource is None or resource.retired_at is not None:
+                return None
+            self._land(org_id, outbox_rows)
+            self.land_update(org_id, resource.kind, resource.ref_id, change, at, actor)
+            return self._get(self._resources, org_id, resource_id)
 
     async def retire_resource(
         self,
@@ -237,6 +256,7 @@ class LeasesStorageMemoryImpl(MemoryStorageBase, LeasesStorageInterface, Resourc
                 or anchor.retired_at is not None
                 or request is None
                 or request.status is not RequestStatus.WAITING
+                or not grant_fits(request, anchor, lease)
             ):
                 return None
             # The second fence, as the unique indexes are in Postgres.
@@ -276,6 +296,21 @@ class LeasesStorageMemoryImpl(MemoryStorageBase, LeasesStorageInterface, Resourc
 
     async def read_lease(self, org_id: UUID, lease_id: UUID) -> Lease | None:
         return self._get(self._leases, org_id, lease_id)
+
+    async def read_leases(
+        self, org_id: UUID, resource_id: UUID | None, after: HistoryMark | None, limit: int
+    ) -> list[LeaseEntry]:
+        leases = [
+            lease
+            for lease in self._rows(self._leases, org_id)
+            if (resource_id is None or lease.resource_id == resource_id)
+            and (after is None or (lease.created_at, lease.id) < (after.created_at, after.lease_id))
+        ]
+        leases.sort(key=lambda lease: (lease.created_at, lease.id), reverse=True)
+        return [
+            LeaseEntry(lease=lease, request=self._get(self._requests, org_id, lease.request_id))
+            for lease in leases[:limit]
+        ]
 
     async def read_lapsed(self, org_id: UUID, lapsed_before: datetime, limit: int) -> list[Lease]:
         found = [
@@ -454,6 +489,21 @@ class LeasesStorageMemoryImpl(MemoryStorageBase, LeasesStorageInterface, Resourc
     def land_resource(self, org_id: UUID, resource: Resource) -> None:
         if self._by_ref(org_id, resource.kind, resource.ref_id) is None:
             self._resources.setdefault(resource.id, (org_id, resource))
+
+    def land_update(
+        self,
+        org_id: UUID,
+        kind: ResourceKind,
+        ref_id: UUID,
+        change: ResourceUpdate,
+        at: datetime,
+        actor: UUID,
+    ) -> None:
+        resource = self._by_ref(org_id, kind, ref_id)
+        if resource is None or resource.retired_at is not None:
+            return
+        fields = {**change.named(), "updated_at": at, "updated_by": actor}
+        self._resources[resource.id] = (org_id, resource.model_copy(update=fields))
 
     def land_retirement(
         self, org_id: UUID, kind: ResourceKind, ref_id: UUID, at: datetime, actor: UUID

@@ -3,8 +3,9 @@ the case moves. A lease past its expiry holds its resource until the skew
 margin has passed too; then the sweep, which reads the due orgs across
 tenants, ends it and grants the head of the line a greater token. A record
 parked in line is woken with its lease when the resource frees, through the
-work item the grant lands in its own commit. The race of two grants is the
-storage contract's case."""
+work item the grant lands in its own commit. An owner updates its resource
+in a transaction of its own, which lands the update or nothing. The race of
+two grants is the storage contract's case."""
 
 from collections.abc import AsyncIterator
 from datetime import datetime, timedelta
@@ -18,6 +19,11 @@ from contracts.lease_job import (
     a_job_that_waited_past_its_window_starts_inside_the_margin,
     a_resource_with_as_many_labels_as_a_real_one_is_matched,
     the_jobs_worker_keeps_the_lease_and_no_one_else_does,
+)
+from contracts.lease_resource import (
+    an_owners_update_grants_the_requests_its_labels_now_match,
+    an_update_that_takes_a_resource_out_of_service_lands_in_the_owners_commit,
+    the_history_lists_each_lease_with_its_request_and_no_tenant_reads_another,
 )
 
 from acme.infra.impl.local import InfraLocalImpl
@@ -34,9 +40,11 @@ from acme.om.context import (
 from acme.om.leases.hooks import ResourceKindInterface
 from acme.om.leases.impl.kinds import NoopResourceKindImpl, OrchestrationWaiterImpl
 from acme.om.leases.impl.manager import LeasesManagerImpl, LeasesOptions
+from acme.om.leases.storage.impl.postgres import update_statement
+from acme.om.leases.storage.tables.resources import Resources
 from acme.om.leases.types.lease import Lease, LeaseStatus
 from acme.om.leases.types.request import LeaseRequest, RequestStatus, WaiterKind
-from acme.om.leases.types.resource import Resource, ResourceKind
+from acme.om.leases.types.resource import Resource, ResourceKind, ResourceUpdate
 from acme.om.orchestrations.rules import advanced
 from acme.om.orchestrations.types.orchestration import (
     Orchestration,
@@ -46,6 +54,7 @@ from acme.om.orchestrations.types.orchestration import (
     Step,
 )
 from acme.om.root import Managers, build_managers
+from acme.om.storage.impl.pg_base import LoginSessions, PgStorageBase
 from acme.om.storage.impl.postgres import StoragePostgresImpl
 from acme.om.storage.settings import MigrationSettings
 from acme.om.tenancy.rules import ROLE_PERMISSIONS
@@ -71,6 +80,32 @@ async def storage(
     await root.close()
 
 
+class Owner(PgStorageBase):
+    """The storage of a namespace that owns a resource's row: it writes its
+    row and the resource's update in one transaction of its own."""
+
+    async def update(
+        self,
+        ctx: TenantContext,
+        resource: Resource,
+        change: ResourceUpdate,
+        at: datetime,
+        *,
+        commits: bool,
+    ) -> None:
+        async with self._session_for(Resources, org_id=ctx.org_id) as session:
+            await session.execute(
+                update_statement(
+                    ctx.org_id, resource.kind, resource.ref_id, change, at, ctx.user_id
+                )
+            )
+            if not commits:
+                # The owner's own write fails after the statement ran.
+                await session.rollback()
+                return
+            await session.commit()
+
+
 class World:
     """The managers over Postgres, and a leases manager on the case's clock.
     The sweep visits every due org, since other cases leave theirs."""
@@ -80,8 +115,10 @@ class World:
         storage: StoragePostgresImpl,
         tmp_path: Path,
         kind: ResourceKindInterface | None = None,
+        sessions: LoginSessions | None = None,
     ) -> None:
         self.storage = storage
+        self.owner_storage = None if sessions is None else Owner(sessions)
         self.managers: Managers = build_managers(storage, InfraLocalImpl(tmp_path))
         self.now = utcnow()
         self.margin = MARGIN
@@ -153,6 +190,12 @@ class World:
         self.now += by
         return self.now
 
+    async def land_update(
+        self, ctx: TenantContext, resource: Resource, change: ResourceUpdate, *, commits: bool
+    ) -> None:
+        assert self.owner_storage is not None, "a world with the owner's sessions"
+        await self.owner_storage.update(ctx, resource, change, self.now, commits=commits)
+
     def clock(self) -> datetime:
         return self.now
 
@@ -170,8 +213,8 @@ class World:
 
 
 @pytest.fixture
-def world(storage: StoragePostgresImpl, tmp_path: Path) -> World:
-    return World(storage, tmp_path)
+def world(storage: StoragePostgresImpl, tmp_path: Path, pg_sessions: LoginSessions) -> World:
+    return World(storage, tmp_path, sessions=pg_sessions)
 
 
 @pytest.fixture
@@ -199,6 +242,22 @@ async def test_a_resource_with_as_many_labels_as_a_real_one_is_matched(
     job_world: World,
 ) -> None:
     await a_resource_with_as_many_labels_as_a_real_one_is_matched(job_world)
+
+
+async def test_an_owners_update_grants_the_requests_its_labels_now_match(world: World) -> None:
+    await an_owners_update_grants_the_requests_its_labels_now_match(world)
+
+
+async def test_an_update_that_takes_a_resource_out_of_service_lands_in_the_owners_commit(
+    world: World,
+) -> None:
+    await an_update_that_takes_a_resource_out_of_service_lands_in_the_owners_commit(world)
+
+
+async def test_the_history_lists_each_lease_with_its_request_and_no_tenant_reads_another(
+    world: World,
+) -> None:
+    await the_history_lists_each_lease_with_its_request_and_no_tenant_reads_another(world)
 
 
 def an_ask(

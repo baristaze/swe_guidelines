@@ -1,6 +1,6 @@
 """Pure rules of the leases namespace: who stands in which line, whether a
-resource may be granted, the term a grant, a job's start, and a renewal
-run, the rank a reorder gives,
+resource may be granted and whether a grant still fits it, the term a
+grant, a job's start, and a renewal run, the rank a reorder gives,
 the hold a resource measures, and the replay that estimates a wait. Values
 in, values out; no clock, no storage, no settings: the caller passes the
 time."""
@@ -48,6 +48,19 @@ def holds_lapsed(resource: Resource, lapsed_before: datetime) -> bool:
 
 def is_grantable(resource: Resource) -> bool:
     return resource.retired_at is None and resource.available and not is_held(resource)
+
+
+def grant_fits(request: LeaseRequest, resource: Resource, lease: Lease) -> bool:
+    """Whether a grant decided on what was read still fits the resource as
+    its anchor's row stands under the lock: the request still stands in its
+    line, and the lease's term and its window are within the bound. An
+    owner's update that lands between the read and the lock fails it, and
+    the offer after the update grants the line anew."""
+    return (
+        stands_in(request, resource)
+        and lease.term_seconds <= resource.max_term_seconds
+        and lease.expires_at - lease.created_at <= timedelta(seconds=resource.max_term_seconds)
+    )
 
 
 def term_of(request: LeaseRequest, resource: Resource) -> timedelta:
@@ -106,18 +119,22 @@ def line_of(resource: Resource, waiting: Sequence[LeaseRequest]) -> list[LeaseRe
     return [request for request in waiting if stands_in(request, resource)]
 
 
+def places_of(resources: Sequence[Resource], waiting: Sequence[LeaseRequest]) -> dict[UUID, int]:
+    """Each waiting request's place: the best of its places across the lines
+    it stands in, 1 first. A request that stands in no line has none."""
+    places: dict[UUID, int] = {}
+    for resource in resources:
+        for index, ahead in enumerate(line_of(resource, waiting)):
+            places[ahead.id] = min(index + 1, places.get(ahead.id, index + 1))
+    return places
+
+
 def place_of(
     request: LeaseRequest, resources: Sequence[Resource], waiting: Sequence[LeaseRequest]
 ) -> int | None:
     """The request's place: the best of its places across the lines it
     stands in, 1 first. None when it stands in no line."""
-    places = [
-        index + 1
-        for resource in resources
-        for index, ahead in enumerate(line_of(resource, waiting))
-        if ahead.id == request.id
-    ]
-    return min(places) if places else None
+    return places_of(resources, waiting).get(request.id)
 
 
 def replay(
@@ -126,13 +143,10 @@ def replay(
     waiting: Sequence[LeaseRequest],
     now: datetime,
 ) -> float | None:
-    """The estimate of the request's wait, in seconds: the lines replayed in
-    rank order. Each resource that will grant (live and available) frees when
-    its lease expires, or now, and then serves the first request still
-    waiting in its line for its measured hold, or its bound when it has
-    measured none. Only the requests up to this one matter, since a request
-    behind it takes a resource before it only where it does not stand. None
-    when no resource ever reaches it."""
+    """The estimate of the request's wait, in seconds (`replay_all`). Only
+    the requests up to this one matter, since a request behind it takes a
+    resource before it only where it does not stand. None when no resource
+    ever reaches it."""
     pending: list[LeaseRequest] = []
     for ahead in waiting:
         pending.append(ahead)
@@ -140,6 +154,19 @@ def replay(
             break
     else:
         return None
+    return replay_all(resources, pending, now).get(request.id)
+
+
+def replay_all(
+    resources: Sequence[Resource], waiting: Sequence[LeaseRequest], now: datetime
+) -> dict[UUID, float]:
+    """The estimate of each waiting request's wait, in seconds, from one
+    replay of the lines in rank order. Each resource that will grant (live
+    and available) frees when its lease expires, or now, and then serves the
+    first request still waiting in its line for its measured hold, or its
+    bound when it has measured none. A request no resource ever reaches has
+    none."""
+    pending = list(waiting)
     serving = [r for r in resources if r.retired_at is None and r.available]
     heap: list[tuple[datetime, UUID]] = []
     by_id: dict[UUID, Resource] = {}
@@ -149,20 +176,20 @@ def replay(
             free_at = max(now, resource.held_until)
         heapq.heappush(heap, (free_at, resource.id))
         by_id[resource.id] = resource
+    estimates: dict[UUID, float] = {}
     while heap and pending:
         free_at, resource_id = heapq.heappop(heap)
         resource = by_id[resource_id]
         taker = next((p for p in pending if stands_in(p, resource)), None)
         if taker is None:
             continue
-        if taker.id == request.id:
-            return max(0.0, (free_at - now).total_seconds())
+        estimates[taker.id] = max(0.0, (free_at - now).total_seconds())
         pending.remove(taker)
         hold = resource.mean_hold_seconds
         if hold is None:
             hold = float(resource.max_term_seconds)
         heapq.heappush(heap, (free_at + timedelta(seconds=hold), resource_id))
-    return None
+    return estimates
 
 
 def ranked_first(waiting: Sequence[LeaseRequest]) -> list[LeaseRequest]:

@@ -170,7 +170,8 @@ def build_managers(
         orchestrations_options or OrchestrationsOptions(),
     )
     # A product registers its resource kinds and its waiter kinds here, each
-    # with its hooks, as a work kind's handler is registered in the worker.
+    # with its hooks, as a work kind's handler is registered in the worker,
+    # and, for a kind that refuses some asks, its check (`asks`).
     leases = LeasesManagerImpl(
         storage.get_lease_storage(),
         tenancy,

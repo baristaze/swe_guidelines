@@ -11,6 +11,7 @@ from sqlalchemy import (
     func,
     or_,
     select,
+    tuple_,
     union,
     update,
 )
@@ -20,13 +21,21 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from acme.om.base import EMPTY_UUID
 from acme.om.exceptions import TenantMismatch, UniqueKeyTaken
+from acme.om.leases.rules import grant_fits
 from acme.om.leases.storage import LeasesStorageInterface
 from acme.om.leases.storage.tables.lease_requests import LeaseRequests
 from acme.om.leases.storage.tables.leases import Leases
 from acme.om.leases.storage.tables.resources import Resources
 from acme.om.leases.types.lease import Grant, Lease, LeaseStatus
-from acme.om.leases.types.request import EndReason, LeaseRequest, RequestStatus, WaiterKind
-from acme.om.leases.types.resource import Resource, ResourceKind
+from acme.om.leases.types.request import (
+    EndReason,
+    HistoryMark,
+    LeaseEntry,
+    LeaseRequest,
+    RequestStatus,
+    WaiterKind,
+)
+from acme.om.leases.types.resource import Resource, ResourceKind, ResourceUpdate
 from acme.om.orchestrations.storage.impl.postgres import land_step
 from acme.om.orchestrations.types.orchestration import Step
 from acme.om.outbox.storage.tables.outbox_rows import OutboxRows
@@ -46,6 +55,34 @@ def register_statement(org_id: UUID, resource: Resource) -> Insert:
     already leave the stored resource as it is."""
     values = {**to_values(resource, Resources), "org_id": org_id}
     return pg_insert(Resources).values(**values).on_conflict_do_nothing()
+
+
+def update_statement(
+    org_id: UUID,
+    kind: ResourceKind,
+    ref_id: UUID,
+    change: ResourceUpdate,
+    at: datetime,
+    actor: UUID,
+) -> Update:
+    """The owner's update as a companion statement, in the transaction that
+    writes its own row; it takes the anchor's lock. Each field the update
+    names changes, and each it leaves out stays; the lease, the token, and
+    the line stay too. After the commit the owner calls the manager's
+    `offer`, and the sweep offers what a crash left."""
+    values: dict[str, Any] = {**change.named(), "updated_at": at, "updated_by": actor}
+    if change.labels is not None:
+        values["labels"] = list(change.labels)
+    return (
+        update(Resources)
+        .where(
+            Resources.org_id == org_id,
+            Resources.kind == kind.value,
+            Resources.ref_id == ref_id,
+            Resources.retired_at.is_(None),
+        )
+        .values(**values)
+    )
 
 
 def retire_statement(
@@ -152,6 +189,29 @@ class LeasesStoragePostgresImpl(PgStorageBase, LeasesStorageInterface):
             stored = to_model(anchor, Resource)
             await session.commit()
             return stored
+
+    async def update_resource(
+        self,
+        org_id: UUID,
+        resource_id: UUID,
+        change: ResourceUpdate,
+        at: datetime,
+        actor: UUID,
+        outbox_rows: tuple[OutboxRow, ...],
+    ) -> Resource | None:
+        async with self._session_for(Resources, org_id=org_id) as session:
+            anchor = await self._anchor(session, org_id, resource_id)
+            if anchor is None or anchor.retired_at is not None:
+                await session.rollback()
+                return None
+            await session.execute(
+                update_statement(
+                    org_id, ResourceKind(anchor.kind), anchor.ref_id, change, at, actor
+                )
+            )
+            _land(session, org_id, outbox_rows)
+            await session.commit()
+        return await self.read_resource(org_id, resource_id)
 
     async def retire_resource(
         self,
@@ -366,7 +426,9 @@ class LeasesStoragePostgresImpl(PgStorageBase, LeasesStorageInterface):
                 await session.rollback()
                 return None
             request = await self._waiting(session, org_id, lease.request_id)
-            if request is None:
+            if request is None or not grant_fits(
+                to_model(request, LeaseRequest), to_model(anchor, Resource), lease
+            ):
                 await session.rollback()
                 return None
             session.add(to_row(lease, Leases, org_id=org_id))
@@ -390,6 +452,37 @@ class LeasesStoragePostgresImpl(PgStorageBase, LeasesStorageInterface):
     async def read_lease(self, org_id: UUID, lease_id: UUID) -> Lease | None:
         stmt = select(Leases).where(Leases.org_id == org_id, Leases.id == lease_id)
         return await self._one(stmt, org_id, Lease)
+
+    async def read_leases(
+        self, org_id: UUID, resource_id: UUID | None, after: HistoryMark | None, limit: int
+    ) -> list[LeaseEntry]:
+        stmt = (
+            select(Leases, LeaseRequests)
+            .outerjoin(
+                LeaseRequests,
+                and_(
+                    LeaseRequests.org_id == Leases.org_id,
+                    LeaseRequests.id == Leases.request_id,
+                ),
+            )
+            .where(Leases.org_id == org_id)
+            .order_by(Leases.created_at.desc(), Leases.id.desc())
+            .limit(limit)
+        )
+        if resource_id is not None:
+            stmt = stmt.where(Leases.resource_id == resource_id)
+        if after is not None:
+            # The page after the mark, newest first: one range of the index.
+            mark = (after.created_at, after.lease_id)
+            stmt = stmt.where(tuple_(Leases.created_at, Leases.id) < mark)
+        async with self._session_for(stmt, org_id=org_id) as session:
+            return [
+                LeaseEntry(
+                    lease=to_model(lease, Lease),
+                    request=None if request is None else to_model(request, LeaseRequest),
+                )
+                for lease, request in (await session.execute(stmt)).tuples()
+            ]
 
     async def read_lapsed(self, org_id: UUID, lapsed_before: datetime, limit: int) -> list[Lease]:
         stmt = (

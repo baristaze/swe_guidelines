@@ -16,7 +16,7 @@ from acme.om.exceptions import (
     TenantMismatch,
     ValidationFailed,
 )
-from acme.om.leases.hooks import ResourceKindInterface, WaiterInterface
+from acme.om.leases.hooks import AskCheckInterface, ResourceKindInterface, WaiterInterface
 from acme.om.leases.manager import LeasesManagerInterface
 from acme.om.leases.rules import (
     holds_lapsed,
@@ -24,9 +24,11 @@ from acme.om.leases.rules import (
     line_of,
     measured_hold,
     place_of,
+    places_of,
     rank_at,
     renewal_of,
     replay,
+    replay_all,
     stands_in,
     term_of,
     window_of,
@@ -36,13 +38,16 @@ from acme.om.leases.types.lease import Grant, JobClaim, Lease, LeaseStatus
 from acme.om.leases.types.request import (
     ASK_PAYLOADS,
     EndReason,
+    HistoryMark,
+    LeasePage,
     LeaseRequest,
     Line,
+    Place,
     RequestStatus,
     Standing,
     WaiterKind,
 )
-from acme.om.leases.types.resource import Resource, ResourceKind
+from acme.om.leases.types.resource import Resource, ResourceKind, ResourceUpdate
 from acme.om.orchestrations.steps import step_rows
 from acme.om.orchestrations.types.orchestration import Step
 from acme.om.outbox import OutboxRelayInterface
@@ -67,6 +72,7 @@ class LeasesOptions(Platform):
     margin: timedelta = timedelta(seconds=30)
     line_limit: int = 1000  # waiting requests of a kind one offer or estimate reads
     resource_limit: int = 200  # resources of a kind one ask or estimate reads
+    history_limit: int = 200  # the most leases one page of a history answers
     # Heads one offer looks at, cancelling those that may no longer be
     # granted, before it leaves the rest to the next freeing or the sweep.
     offer_tries: int = 20
@@ -87,6 +93,7 @@ class LeasesManagerImpl(LeasesManagerInterface):
         kinds: Mapping[ResourceKind, ResourceKindInterface],
         waiters: Mapping[WaiterKind, WaiterInterface],
         work: WorkManagerInterface,
+        asks: Mapping[ResourceKind, AskCheckInterface] | None = None,
         clock: Callable[[], datetime] = utcnow,
     ) -> None:
         self._storage = storage
@@ -95,6 +102,9 @@ class LeasesManagerImpl(LeasesManagerInterface):
         self._options = options
         self._kinds = kinds
         self._waiters = waiters
+        # The kinds that refuse some asks, each with its check; any other
+        # kind accepts every ask.
+        self._asks = asks or {}
         # The queue a lease's job rides: the worker's claim on it is read
         # there, on the queue's own clock.
         self._work = work
@@ -129,7 +139,27 @@ class LeasesManagerImpl(LeasesManagerInterface):
                 raise TenantMismatch(f"resource {created.id} is not in {ctx.org_id}")
             return stored
         await self._relay.relay_all(ctx.org_id, rows)
+        # A selector already waiting may match it.
+        await self._offer(ctx, created.id)
         return created
+
+    async def update(
+        self, ctx: TenantContext, resource_id: UUID, change: ResourceUpdate
+    ) -> Resource:
+        ctx.require(Permission.WRITE)
+        rows = (outbox_row(ctx, RESOURCE_UPDATED, resource_id, {}),)
+        written = await self._storage.update_resource(
+            ctx.org_id, resource_id, change, self._clock(), ctx.user_id, rows
+        )
+        if written is None:
+            raise NotFound(f"resource {resource_id} not found")
+        await self._relay.relay_all(ctx.org_id, rows)
+        await self._offer(ctx, resource_id)
+        return written
+
+    async def offer(self, ctx: TenantContext, resource_id: UUID) -> Lease | None:
+        ctx.require(Permission.WRITE)
+        return await self._offer(ctx, resource_id)
 
     async def get_resource(self, ctx: TenantContext, resource_id: UUID) -> Resource:
         ctx.require(Permission.READ)
@@ -176,6 +206,7 @@ class LeasesManagerImpl(LeasesManagerInterface):
             raise ValidationFailed(f"a {request.kind.value} ask is not {error}") from None
         if request.waiter_kind is not None and request.waiter_kind not in self._waiters:
             raise ValidationFailed(f"no waiter of kind {request.waiter_kind.value} is registered")
+        named: Resource | None = None
         if request.resource_id is not None:
             named = await self._resource(ctx, request.resource_id)
             if named.retired_at is not None or named.kind is not request.kind:
@@ -194,6 +225,11 @@ class LeasesManagerImpl(LeasesManagerInterface):
                 "lease_id": None,
             }
         )
+        # The kind's own check, under the asker's context: a refusal raises,
+        # and nothing lands.
+        check = self._asks.get(request.kind)
+        if check is not None:
+            await check.check_ask(ctx, asked, named)
         rows = (outbox_row(ctx, REQUEST_CREATED, asked.id, {}),)
         stored, created = await self._storage.create_request(ctx.org_id, asked, rows)
         if created:
@@ -218,12 +254,29 @@ class LeasesManagerImpl(LeasesManagerInterface):
         return await self._standing(ctx, await self._request(ctx, request_id))
 
     async def line(self, ctx: TenantContext, resource_id: UUID) -> Line:
+        """Each place and estimate comes from one replay over the reads the
+        line makes, whatever its length, never a read per request."""
         ctx.require(Permission.READ)
         resource = await self._resource(ctx, resource_id)
+        resources = await self._storage.read_resources(
+            ctx.org_id, resource.kind, self._options.resource_limit
+        )
+        if all(r.id != resource.id for r in resources):
+            resources = [*resources, resource]
         waiting = await self._storage.read_waiting(
             ctx.org_id, resource.kind, self._options.line_limit
         )
-        return Line(resource=resource, requests=tuple(line_of(resource, waiting)))
+        requests = line_of(resource, waiting)
+        places = places_of(resources, waiting)
+        estimates = replay_all(resources, waiting, self._clock())
+        return Line(
+            resource=resource,
+            requests=tuple(requests),
+            places=tuple(
+                Place(request_id=r.id, place=places.get(r.id), estimate_seconds=estimates.get(r.id))
+                for r in requests
+            ),
+        )
 
     async def cancel(self, ctx: TenantContext, request_id: UUID) -> LeaseRequest:
         ctx.require(Permission.WRITE)
@@ -287,6 +340,20 @@ class LeasesManagerImpl(LeasesManagerInterface):
     async def get_lease(self, ctx: TenantContext, lease_id: UUID) -> Lease:
         ctx.require(Permission.READ)
         return await self._lease(ctx, lease_id)
+
+    async def list_leases(
+        self,
+        ctx: TenantContext,
+        resource_id: UUID | None = None,
+        after: HistoryMark | None = None,
+        limit: int = 50,
+    ) -> LeasePage:
+        ctx.require(Permission.READ)
+        bounded = max(1, min(limit, self._options.history_limit))
+        # One entry past the page, kept out of it: `has_more` is then a fact
+        # about the rows, so no lease in retention is left unreachable.
+        rows = await self._storage.read_leases(ctx.org_id, resource_id, after, bounded + 1)
+        return LeasePage(items=tuple(rows[:bounded]), has_more=len(rows) > bounded)
 
     async def renew(
         self,

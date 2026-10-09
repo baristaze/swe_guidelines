@@ -15,11 +15,12 @@ from acme.om.leases.storage import LeasesStorageInterface
 from acme.om.leases.types.lease import Grant, Lease, LeaseStatus
 from acme.om.leases.types.request import (
     EndReason,
+    HistoryMark,
     LeaseRequest,
     RequestStatus,
     WaiterKind,
 )
-from acme.om.leases.types.resource import Resource, ResourceKind
+from acme.om.leases.types.resource import Resource, ResourceKind, ResourceUpdate
 from acme.om.orchestrations.rules import advanced
 from acme.om.orchestrations.storage import OrchestrationsStorageInterface
 from acme.om.orchestrations.types.orchestration import (
@@ -44,6 +45,7 @@ CROSS_TENANT_CASES: frozenset[str] = frozenset(
         "read_free",
         "read_lapsed",
         "read_lease",
+        "read_leases",
         "read_overdue",
         "read_request",
         "read_resource",
@@ -55,6 +57,7 @@ CROSS_TENANT_CASES: frozenset[str] = frozenset(
         "retire_resource",
         "settle_request",
         "start_lease",
+        "update_resource",
         "write_availability",
     }
 )
@@ -189,6 +192,8 @@ class LeaseStorageContract:
         assert await storage.read_free(other, 10) == []
         at = utcnow()
         assert await storage.write_availability(other, resource.id, False, at, new_id(), ()) is None
+        moved = ResourceUpdate(labels=("moved",), max_term_seconds=5, available=False)
+        assert await storage.update_resource(other, resource.id, moved, at, new_id(), ()) is None
         assert await storage.retire_resource(other, resource.id, at, new_id(), ()) is None
         assert await storage.read_resource(org, resource.id) == resource
         # Another tenant reads none of this one's stranded requests.
@@ -225,6 +230,65 @@ class LeaseStorageContract:
         assert cancelled is not None and cancelled.end_reason is EndReason.RETIRED
         assert await storage.read_stranded(org, 10) == []
         assert await storage.retire_resource(org, retired.id, utcnow(), actor, ()) is None
+
+    async def test_an_update_moves_the_labels_and_the_bound_and_keeps_the_lease(
+        self, storage: LeasesStorageInterface
+    ) -> None:
+        """The owner's update, under the anchor's lock: the labels, the bound,
+        and the availability when it names one. The lease that holds the
+        resource, its token, and its expiry stay as they were."""
+        org = new_id()
+        resource = await self.a_resource(storage, org, ("cold",))
+        request = await self.a_request(storage, org, make_request(resource))
+        held = await storage.grant(org, grant_of(resource, request), ())
+        assert held is not None
+        actor, at = new_id(), utcnow()
+        warm = ResourceUpdate(labels=("warm", "north"), max_term_seconds=30)
+        updated = await storage.update_resource(org, resource.id, warm, at, actor, ())
+        assert updated is not None
+        assert (updated.labels, updated.max_term_seconds, updated.available) == (
+            ("warm", "north"),
+            30,
+            True,
+        )
+        assert (updated.token, updated.lease_id, updated.held_until) == (
+            1,
+            held.id,
+            held.expires_at,
+        )
+        assert updated.updated_by == actor
+        assert await storage.read_lease(org, held.id) == held
+        off = warm.model_copy(update={"available": False})
+        paused = await storage.update_resource(org, resource.id, off, at, actor, ())
+        assert paused is not None and not paused.available
+        kept = await storage.update_resource(org, resource.id, warm, at, actor, ())
+        assert kept is not None and not kept.available, "None keeps the availability"
+        assert await storage.retire_resource(org, resource.id, at, actor, ())
+        assert await storage.update_resource(org, resource.id, warm, at, actor, ()) is None
+
+    async def test_an_update_keeps_every_field_it_does_not_name(
+        self, storage: LeasesStorageInterface
+    ) -> None:
+        """An update that names only the availability, only the labels, or
+        only the bound changes that field alone: a dock out of service for a
+        repair keeps what it offers and its bound, and comes back with them."""
+        org = new_id()
+        resource = make_resource(("cold", "north"), max_term_seconds=600)
+        assert await storage.create_resource(org, resource, ())
+        at, actor = utcnow(), new_id()
+        steps = [
+            (ResourceUpdate(available=False), (("cold", "north"), 600, False)),
+            (ResourceUpdate(available=True), (("cold", "north"), 600, True)),
+            (ResourceUpdate(labels=("dry",)), (("dry",), 600, True)),
+            (ResourceUpdate(max_term_seconds=120), (("dry",), 120, True)),
+            (ResourceUpdate(labels=()), ((), 120, True)),
+            (ResourceUpdate(), ((), 120, True)),
+        ]
+        for change, expected in steps:
+            updated = await storage.update_resource(org, resource.id, change, at, actor, ())
+            assert updated is not None
+            assert (updated.labels, updated.max_term_seconds, updated.available) == expected, change
+            assert await storage.read_resource(org, resource.id) == updated
 
     # Requests.
 
@@ -410,6 +474,29 @@ class LeaseStorageContract:
         moved = second.model_copy(update={"resource_id": free.id})
         assert await storage.grant(org, grant_of(free, moved), ()) is None
 
+    async def test_a_grant_is_refused_once_the_resource_no_longer_fits_the_request(
+        self, storage: LeasesStorageInterface
+    ) -> None:
+        """A grant decided on a read of the resource lands nothing once an
+        update moved it under the lock: the labels the request needs are gone,
+        or the bound is below the lease's term. The request waits on."""
+        org = new_id()
+        cold = await self.a_resource(storage, org, ("cold",))
+        selector = await self.a_request(storage, org, make_request(labels=("cold",)))
+        at, actor = utcnow(), new_id()
+        dry = ResourceUpdate(labels=("dry",), max_term_seconds=300)
+        assert await storage.update_resource(org, cold.id, dry, at, actor, ())
+        assert await storage.grant(org, grant_of(cold, selector), ()) is None
+        short = await self.a_resource(storage, org)
+        named = await self.a_request(storage, org, make_request(short))
+        brief = ResourceUpdate(max_term_seconds=int(TERM.total_seconds()) - 1)
+        assert await storage.update_resource(org, short.id, brief, at, actor, ())
+        assert await storage.grant(org, grant_of(short, named), ()) is None
+        for request in (selector, named):
+            waiting = await storage.read_request(org, request.id)
+            assert waiting is not None and waiting.status is RequestStatus.WAITING
+        assert {r.id for r in await storage.read_free(org, 10)} == {cold.id, short.id}
+
     async def test_two_grants_of_one_resource_land_one_lease_one_token_up(
         self, storage: LeasesStorageInterface
     ) -> None:
@@ -470,6 +557,12 @@ class LeaseStorageContract:
         ended = await storage.end_lease(other, held.id, LeaseStatus.REVOKED, at, new_id(), 1.0, ())
         assert ended is None
         assert await storage.read_lease(org, held.id) == held
+        assert await storage.read_leases(other, None, None, 10) == []
+        assert await storage.read_leases(other, resource.id, None, 10) == []
+        mark = HistoryMark(created_at=at + timedelta(days=1), lease_id=held.id)
+        assert await storage.read_leases(other, None, mark, 10) == []
+        of_org = await storage.read_leases(org, resource.id, None, 10)
+        assert [e.lease.id for e in of_org] == [held.id]
         assert await storage.purge_tenant(other, 100) == 0
         assert await storage.read_resource(org, resource.id) is not None
 
@@ -549,6 +642,101 @@ class LeaseStorageContract:
             is None
         )
         assert await storage.renew_lease(org, lease.id, at, at + TERM, new_id()) is None
+
+    async def test_the_leases_list_newest_first_with_their_requests_ended_ones_too(
+        self, storage: LeasesStorageInterface
+    ) -> None:
+        """The org's leases, or one resource's, newest first and bounded,
+        whatever their status, each with the request it answered, from one
+        read."""
+        org = new_id()
+        a, b = await self.a_resource(storage, org), await self.a_resource(storage, org)
+        granted: list[tuple[Lease, LeaseRequest]] = []
+        start = utcnow() - timedelta(minutes=10)
+        for minute, resource in enumerate((a, b, a)):
+            request = await self.a_request(storage, org, make_request(resource))
+            anchor = await storage.read_resource(org, resource.id)
+            assert anchor is not None
+            grant = grant_of(anchor, request)
+            at = start + timedelta(minutes=minute)
+            lease = grant.lease.model_copy(
+                update={"created_at": at, "updated_at": at, "expires_at": at + TERM}
+            )
+            landed = await storage.grant(org, grant.model_copy(update={"lease": lease}), ())
+            assert landed is not None
+            granted.append((landed, request))
+            ended = await storage.end_lease(
+                org, landed.id, LeaseStatus.RELEASED, at, new_id(), 1.0, ()
+            )
+            assert ended is not None
+        # The newest is still held: an active lease lists beside the ended ones.
+        request = await self.a_request(storage, org, make_request(b))
+        anchor = await storage.read_resource(org, b.id)
+        assert anchor is not None
+        held = await storage.grant(org, grant_of(anchor, request), ())
+        assert held is not None
+        granted.append((held, request))
+        newest_first = [lease.id for lease, _ in reversed(granted)]
+        org_wide = await storage.read_leases(org, None, None, 10)
+        assert [e.lease.id for e in org_wide] == newest_first
+        assert [e.lease.status for e in org_wide] == [LeaseStatus.ACTIVE] + 3 * [
+            LeaseStatus.RELEASED
+        ]
+        for entry, (_, request) in zip(org_wide, reversed(granted), strict=True):
+            assert entry.request is not None
+            assert (entry.request.id, entry.request.status) == (
+                request.id,
+                RequestStatus.GRANTED,
+            )
+            assert entry.request.lease_id == entry.lease.id
+        assert [e.lease.id for e in await storage.read_leases(org, None, None, 2)] == newest_first[
+            :2
+        ]
+        of_a = await storage.read_leases(org, a.id, None, 10)
+        assert [e.lease.id for e in of_a] == [granted[2][0].id, granted[0][0].id]
+
+    async def test_a_history_pages_after_its_mark_and_two_grants_at_one_instant_both_list(
+        self, storage: LeasesStorageInterface
+    ) -> None:
+        """Page after page, each after the mark of the last, reaches every
+        lease once, newest first by the grant and then the id: two leases
+        granted at one instant both list, on whichever page the id puts them.
+        A resource's history pages the same way."""
+        org = new_id()
+        a, b = await self.a_resource(storage, org), await self.a_resource(storage, org)
+        start = utcnow() - timedelta(minutes=10)
+        landed: list[Lease] = []
+        for minute, resource in [(0, a), (1, b), (1, a), (2, b), (3, a)]:
+            request = await self.a_request(storage, org, make_request(resource))
+            anchor = await storage.read_resource(org, resource.id)
+            assert anchor is not None
+            grant = grant_of(anchor, request)
+            at = start + timedelta(minutes=minute)
+            lease = grant.lease.model_copy(
+                update={"created_at": at, "updated_at": at, "expires_at": at + TERM}
+            )
+            granted = await storage.grant(org, grant.model_copy(update={"lease": lease}), ())
+            assert granted is not None
+            landed.append(granted)
+            ended = await storage.end_lease(
+                org, granted.id, LeaseStatus.RELEASED, at, new_id(), 1.0, ()
+            )
+            assert ended is not None
+        newest_first = sorted(landed, key=lambda lease: (lease.created_at, lease.id), reverse=True)
+
+        for resource_id, expected in [
+            (None, newest_first),
+            (a.id, [lease for lease in newest_first if lease.resource_id == a.id]),
+        ]:
+            read: list[UUID] = []
+            mark: HistoryMark | None = None
+            while True:
+                page = await storage.read_leases(org, resource_id, mark, 2)
+                read += [entry.lease.id for entry in page]
+                if len(page) < 2:
+                    break
+                mark = HistoryMark.of(page[-1].lease)
+            assert read == [lease.id for lease in expected]
 
     # The sweep.
 

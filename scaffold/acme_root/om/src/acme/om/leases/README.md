@@ -13,8 +13,8 @@ kinds of thing [Acme is made of](../../../../README.md).
   lease, up to seven days; its availability; and the anchor: the
   highest token granted on it, the lease that holds it, and until when.
 - **Kind**: what the resource is, with the shape of what an ask for it
-  carries and its hooks: what a grant starts, and whether a request may
-  still be granted. What a grant starts holds one job at most: a work
+  carries and its hooks: what a grant starts, whether a request may
+  still be granted, and, when it needs one, a check at the ask. What a grant starts holds one job at most: a work
   item that lands in the grant's commit. The core has one kind, `noop`,
   whose grant starts nothing. A product replaces it with its own kinds.
 - **Lease**: one grant of one resource to one principal, under a token
@@ -33,13 +33,18 @@ kinds of thing [Acme is made of](../../../../README.md).
 
 ## What can happen
 
-- **Register** a resource with its owner's row, in the same commit, and
-  **retire** it with that row: the requests that name it leave their
-  line as `retired`, and its lease is never renewed.
+- **Register** a resource with its owner's row, in the same commit,
+  **update** its labels, its bound, or its availability with that row,
+  each it names and nothing it leaves out, and **retire** it with that
+  row: the requests that name it leave their line as `retired`, and its
+  lease is never renewed. After a registration or an update, the
+  resource is offered to its line. A lease it holds keeps its term, and
+  a new bound holds from its next renewal.
 - **Ask.** A request joins the end of the line, and every free resource
   it may take is offered at once. A direct ask is granted only when no
   one waits in front of it. An ask asked again by its key answers its
-  lease or its place.
+  lease or its place. The kind may refuse an ask first, for who asks or
+  for what it asks, and nothing of it lands.
 - **Grant.** A resource that frees goes to the head of its line: on a
   release, a revocation, an expiry, or its availability back.
 - **Renew** and **release**, by the holder, or by the worker that holds
@@ -52,6 +57,9 @@ kinds of thing [Acme is made of](../../../../README.md).
   skew margin have passed; past them, the lease lapses.
 - **Cancel** a request, by its asker or a manager; **reorder** one, and
   **revoke** a lease, by a manager.
+- **Read** a resource's line, each request with its place and estimate,
+  and the history: a resource's leases, or the org's, newest first,
+  ended ones too, each with the request it answered, a page at a time.
 - **Leave.** A waiter that ends leaves every line.
 - **Sweep.** A pass ends each lease past its expiry and the skew
   margin, expires each request past its wait, and offers each free
@@ -62,7 +70,8 @@ kinds of thing [Acme is made of](../../../../README.md).
 
 - **One holder, by two fences.** A grant locks the anchor's row and
   lands only while the anchor still holds the token it read and no live
-  lease. A unique index over a resource's active leases is the second
+  lease, and while the request still fits the resource as its row
+  stands. A unique index over a resource's active leases is the second
   fence.
 - **The job's worker acts for the holder.** It presents the lease's
   token and its claim on the job, which the queue's own fence reads
@@ -86,8 +95,11 @@ kinds of thing [Acme is made of](../../../../README.md).
 
 A product adds a kind to `ResourceKind` and the shape of its ask to
 `ASK_PAYLOADS`, and registers a `ResourceKindInterface` impl for it at
-the root. Its owner writes the resource with its own row through
-`register_statement` (or `land_resource` in memory), and retires it
+the root, and an `AskCheckInterface` impl when the kind refuses some
+asks. Its owner
+writes the resource with its own row through `register_statement` (or
+`land_resource` in memory), updates it through `update_statement` (or
+`land_update`) and offers it after the commit (`offer`), and retires it
 through `retire_statement`. A thing that waits adds a `WaiterKind`
 with a `WaiterInterface` impl. An orchestration waits as the core's
 waiter: its step asks with `park`, and parks on `resource` until the
@@ -98,3 +110,6 @@ A kind whose grant starts a job returns its work row among its grant
 rows, and the job's handler starts the lease, renews it, and releases
 it
 ([ADR 0094](../../../../../docs/adr/0094-a-lease-is-kept-by-the-worker-that-runs-its-job.md)).
+An owner's update, the history, a line's places, and a kind's check at
+the ask are
+[ADR 0098](../../../../../docs/adr/0098-a-resources-owner-updates-it-its-leases-are-listed-and-its-kind-checks-an-ask.md).

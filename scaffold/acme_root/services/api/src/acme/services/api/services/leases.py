@@ -1,5 +1,5 @@
-"""The leases service: what the wire can do with a resource's line and its
-leases, in views."""
+"""The leases service: what the wire can do with a resource's line, its
+leases, and their history, in views."""
 
 from abc import ABC, abstractmethod
 from uuid import UUID
@@ -7,6 +7,7 @@ from uuid import UUID
 from acme.om.context import TenantContext
 from acme.services.api.types.leases import (
     AskRequest,
+    LeasePageView,
     LeaseRequestView,
     LeaseView,
     LineView,
@@ -39,6 +40,15 @@ class LeasesServiceInterface(ABC):
 
     @abstractmethod
     async def get_lease(self, ctx: TenantContext, lease_id: UUID) -> LeaseView: ...
+
+    @abstractmethod
+    async def list_leases(
+        self, ctx: TenantContext, resource_id: UUID | None, cursor: str | None, limit: int
+    ) -> LeasePageView:
+        """One page of the org's leases, or one resource's, newest first,
+        each with the request it answered; `cursor` is the previous page's
+        `next_cursor`."""
+        ...
 
     @abstractmethod
     async def renew(

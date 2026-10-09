@@ -1,17 +1,33 @@
 """Leases over the live app: an ask granted at once and one that waits, the
-line, a renewal for the term or a named length and a release by the holder
-alone, the grant that follows, a manager's reorder and revocation, the
-refusals of a malformed ask, a replayed ask that joins no line twice, and
-the tenant boundary."""
+line with each place and estimate, a renewal for the term or a named length
+and a release by the holder alone, the grant that follows, a manager's
+reorder and revocation, the refusals of a malformed ask and of the kind's
+own check, a replayed ask that joins no line twice, the history, and the
+tenant boundary."""
 
+import base64
+from pathlib import Path
 from typing import Any
 from uuid import UUID, uuid4
 
 import httpx
-from api_support import add_member, seed_request, sign_in_as
+import pytest
+from api_support import (
+    add_member,
+    build_container,
+    client_over,
+    seed_request,
+    sign_in,
+    sign_in_as,
+)
 
+from acme.om import root
 from acme.om.base import EMPTY_UUID, new_id, utcnow
-from acme.om.context import Role
+from acme.om.context import Role, TenantContext
+from acme.om.exceptions import NotAuthorized, ValidationFailed
+from acme.om.leases.hooks import AskCheckInterface
+from acme.om.leases.impl.manager import LeasesManagerImpl
+from acme.om.leases.types.request import LeaseRequest
 from acme.om.leases.types.resource import Resource, ResourceKind
 from acme.services.api.container import AppContainer
 
@@ -67,6 +83,9 @@ async def test_a_lease_is_granted_renewed_released_and_the_line_moves_on(
     line = await client.get(f"/v1/leases/resources/{dock.id}/line", headers=ann)
     assert [r["id"] for r in line.json()["requests"]] == [waits["request"]["id"]]
     assert line.json()["resource"]["lease_id"] == lease["id"]
+    (place,) = line.json()["places"]
+    assert (place["request_id"], place["place"]) == (waits["request"]["id"], 1)
+    assert place["estimate_seconds"] > 0
     lease_id = lease["id"]
     assert (await client.post(f"/v1/leases/{lease_id}/renew", headers=mia)).status_code == 403
     assert (await client.post(f"/v1/leases/{lease_id}/release", headers=mia)).status_code == 403
@@ -139,6 +158,92 @@ async def test_a_malformed_ask_is_refused_and_a_replay_joins_no_line_twice(
     assert again.json()["request"]["id"] == first.json()["request"]["id"]
     line = await client.get(f"/v1/leases/resources/{dock.id}/line", headers=owner)
     assert len(line.json()["requests"]) == 1
+
+
+class OwnersAlone(AskCheckInterface):
+    """A kind's check that takes an ask from the owner alone, and for a
+    resource by its id."""
+
+    async def check_ask(
+        self, ctx: TenantContext, request: LeaseRequest, resource: Resource | None
+    ) -> None:
+        if ctx.role is not Role.OWNER:
+            raise NotAuthorized(f"a {ctx.role.value} asks for no dock")
+        if resource is None:
+            raise ValidationFailed("a dock is asked for by its id")
+
+
+async def test_a_kinds_check_refuses_an_ask_and_the_route_answers_it(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A root that registers the check for its kind: a member's ask is 403,
+    a selector 422, and neither stands in the line. The default root
+    registers none, and takes the member's ask as before."""
+
+    def with_the_check(*args: Any, **kwargs: Any) -> LeasesManagerImpl:
+        return LeasesManagerImpl(*args, **{**kwargs, "asks": {ResourceKind.NOOP: OwnersAlone()}})
+
+    monkeypatch.setattr(root, "LeasesManagerImpl", with_the_check)
+    checked = build_container(tmp_path / "checked")
+    monkeypatch.undo()
+    for container, refuses in ((checked, True), (build_container(tmp_path / "plain"), False)):
+        async with client_over(container) as client:
+            owner = await sign_in(client, container)
+            org_id = await org_of(client, owner)
+            dock = await a_dock(container, org_id)
+            mia = await a_member(client, container, org_id, "mia", Role.MEMBER)
+            asked = await ask(client, mia, resource_id=str(dock.id))
+            if not refuses:
+                assert asked.status_code == 201 and asked.json()["lease"] is not None
+                continue
+            assert asked.status_code == 403, asked.text
+            assert asked.json()["error"]["code"] == "not_authorized"
+            selector = await ask(client, owner, labels=[])
+            assert selector.status_code == 422, selector.text
+            line = await client.get(f"/v1/leases/resources/{dock.id}/line", headers=owner)
+            assert line.json()["requests"] == [] and line.json()["resource"]["lease_id"] is None
+            held = await ask(client, owner, resource_id=str(dock.id))
+            assert held.status_code == 201 and held.json()["lease"] is not None
+
+
+async def test_the_history_lists_newest_first_with_requests_and_no_tenant_reads_another(
+    client: httpx.AsyncClient, container: AppContainer, owner: dict[str, str]
+) -> None:
+    org_id = await org_of(client, owner)
+    dock = await a_dock(container, org_id)
+    ann = await a_member(client, container, org_id, "kai", Role.MEMBER)
+    first = (await ask(client, ann, resource_id=str(dock.id))).json()["lease"]
+    await client.post(f"/v1/leases/{first['id']}/release", headers=ann)
+    second = (await ask(client, ann, resource_id=str(dock.id))).json()["lease"]
+    history = await client.get("/v1/leases", headers=owner, params={"resource_id": str(dock.id)})
+    assert history.status_code == 200, history.text
+    entries = history.json()["items"]
+    assert [e["lease"]["id"] for e in entries] == [second["id"], first["id"]]
+    assert [e["lease"]["status"] for e in entries] == ["active", "released"]
+    assert [e["request"]["lease_id"] for e in entries] == [second["id"], first["id"]]
+    assert history.json()["next_cursor"] is None
+
+    # Page by page, through the cursor each page hands the next.
+    page = (await client.get("/v1/leases", headers=ann, params={"limit": 1})).json()
+    assert [e["lease"]["id"] for e in page["items"]] == [second["id"]]
+    cursor = page["next_cursor"]
+    assert cursor and first["id"] not in cursor, "opaque"
+    rest = await client.get("/v1/leases", headers=ann, params={"limit": 1, "cursor": cursor})
+    assert [e["lease"]["id"] for e in rest.json()["items"]] == [first["id"]]
+    assert rest.json()["next_cursor"] is None
+    for forged in ("not-a-cursor", base64.urlsafe_b64encode(f"files|{uuid4()}".encode()).decode()):
+        refused = await client.get("/v1/leases", headers=ann, params={"cursor": forged})
+        assert refused.status_code == 422, refused.text
+
+    _, other = await container.managers.tenancy.bootstrap(
+        seed_request(), "Other", "other", "eve@other.test", "Eve"
+    )
+    eve = await sign_in_as(client, "eve@other.test", other.id)
+    assert (await client.get("/v1/leases", headers=eve)).json()["items"] == []
+    mine = await client.get("/v1/leases", headers=eve, params={"resource_id": str(dock.id)})
+    assert mine.status_code == 200 and mine.json()["items"] == []
+    theirs = await client.get("/v1/leases", headers=eve, params={"cursor": cursor})
+    assert theirs.status_code == 200 and theirs.json()["items"] == []
 
 
 async def test_another_tenants_leases_answer_as_missing_ones(

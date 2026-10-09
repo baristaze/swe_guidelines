@@ -15,21 +15,50 @@ from uuid import UUID
 
 from acme.om.context import RequestContext, TenantContext
 from acme.om.leases.types.lease import JobClaim, Lease
-from acme.om.leases.types.request import LeaseRequest, Line, Standing, WaiterKind
-from acme.om.leases.types.resource import Resource
+from acme.om.leases.types.request import (
+    HistoryMark,
+    LeasePage,
+    LeaseRequest,
+    Line,
+    Standing,
+    WaiterKind,
+)
+from acme.om.leases.types.resource import Resource, ResourceUpdate
 from acme.om.orchestrations.types.orchestration import Step
 
 
 class LeasesManagerInterface(ABC):
-    # Resources: the kind's owner registers one, sets its availability, and
-    # retires it.
+    # Resources: the kind's owner registers one, updates it, sets its
+    # availability, and retires it.
 
     @abstractmethod
     async def register(self, ctx: TenantContext, resource: Resource) -> Resource:
-        """The create: a resource of a registered kind for the owner's row. A
-        kind and row registered already answer the stored resource. An owner
-        that writes its row in the same commit uses the storage's companion
-        statement instead."""
+        """The create: a resource of a registered kind for the owner's row,
+        offered to its line at once. A kind and row registered already answer
+        the stored resource. An owner that writes its row in the same commit
+        uses the storage's companion statement instead, and calls `offer`
+        after it."""
+        ...
+
+    @abstractmethod
+    async def update(
+        self, ctx: TenantContext, resource_id: UUID, change: ResourceUpdate
+    ) -> Resource:
+        """The owner's update: each field it names, of the labels, the bound,
+        and the availability, under the anchor's lock, and nothing it leaves
+        out; then the resource is offered to its line, so a waiting request
+        its labels now match is granted and one they no longer match is not.
+        A lease it holds keeps its term, and a new bound holds from its next
+        renewal. An owner that writes its row in the same commit uses the
+        storage's companion statement instead, and calls `offer` after it."""
+        ...
+
+    @abstractmethod
+    async def offer(self, ctx: TenantContext, resource_id: UUID) -> Lease | None:
+        """Offers a resource to its line, and answers the lease it granted, if
+        any: what its owner calls after the commit that registered it,
+        updated it, or put it back in service. The sweep offers each free
+        resource too, so a crash before this call only delays a grant."""
         ...
 
     @abstractmethod
@@ -63,7 +92,9 @@ class LeasesManagerInterface(ABC):
         free resource the request may take, so a direct ask is granted at once
         only when no one waits in front of it. An ask asked again by its key
         answers its lease or its place and joins no line twice. The payload
-        must be the shape its kind fixes (`ASK_PAYLOADS`). An orchestration
+        must be the shape its kind fixes (`ASK_PAYLOADS`), and the kind's
+        check, when it registers one, may refuse the ask before anything
+        lands (`AskCheckInterface`). An orchestration
         that waits on the request parks in the same call: `park` is its
         `Step`, landed only while the request still waits, under the lock the
         grant takes, so a grant either finds it parked and wakes it or comes
@@ -77,7 +108,8 @@ class LeasesManagerInterface(ABC):
 
     @abstractmethod
     async def line(self, ctx: TenantContext, resource_id: UUID) -> Line:
-        """A resource and the requests in its line, first first."""
+        """A resource and the requests in its line, first first, each with its
+        place and estimate, replayed from the one read the line makes."""
         ...
 
     @abstractmethod
@@ -104,6 +136,21 @@ class LeasesManagerInterface(ABC):
 
     @abstractmethod
     async def get_lease(self, ctx: TenantContext, lease_id: UUID) -> Lease: ...
+
+    @abstractmethod
+    async def list_leases(
+        self,
+        ctx: TenantContext,
+        resource_id: UUID | None = None,
+        after: HistoryMark | None = None,
+        limit: int = 50,
+    ) -> LeasePage:
+        """The history: the org's leases, or one resource's, newest first,
+        ended ones included, each with the request it answered, in one read;
+        a page of at most `limit`, which the manager clamps, and with `after`,
+        the page after the one that ended there (`HistoryMark.of` its last
+        lease). A resource of another tenant has none here."""
+        ...
 
     @abstractmethod
     async def renew(

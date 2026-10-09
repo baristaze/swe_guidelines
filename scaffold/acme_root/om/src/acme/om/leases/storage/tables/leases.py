@@ -32,6 +32,15 @@ class Leases(IdentifiableMixin, TrackableMixin, Base):
         Index(
             "ix_leases_expires_at_active", "expires_at", postgresql_where=text("status = 'active'")
         ),
+        # The history, newest first: the org's leases, and one resource's.
+        Index("ix_leases_org_id_created_at_id", "org_id", "created_at", "id"),
+        Index(
+            "ix_leases_org_id_resource_id_created_at_id",
+            "org_id",
+            "resource_id",
+            "created_at",
+            "id",
+        ),
         # The ended ones the purge takes, across tenants, by their end.
         Index("ix_leases_ended_at", "ended_at", postgresql_where=text("ended_at IS NOT NULL")),
     )
