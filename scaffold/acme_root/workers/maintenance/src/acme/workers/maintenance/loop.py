@@ -63,7 +63,8 @@ AcrossStep = Callable[[RequestContext], Awaitable[int]]
 """A namespace's purge of its rows past their retention, across tenants in
 the system scope, a batch per statement, under the pass's request stage; it
 returns how many rows went, and a whole batch or more says there may be
-more."""
+more. A namespace's sweep of what is due across tenants takes the same
+shape, and counts the rows it moved."""
 
 TallyStep = Callable[[], Awaitable[object]]
 """The count of the platform's size across every tenant, kept as the tally the

@@ -117,6 +117,4 @@ class WakeParkedHandlerImpl(WorkHandlerInterface):
     async def handle(self, ctx: TenantContext, item: WorkItem) -> None:
         payload = WakeParkedPayload.model_validate(dict(item.payload))
         woken = await self._orchestrations.wake(ctx, payload.reason, payload.record_id)
-        log.info(
-            "woke %d records parked for %s in org %s", woken, payload.reason.value, ctx.org_id
-        )
+        log.info("woke %d records parked for %s in org %s", woken, payload.reason.value, ctx.org_id)
