@@ -274,8 +274,10 @@ skills, one per task that repeats, project-local: the scaffold writes
 them from a shared template with the product's name in, and they read
 the product's own documents. Every skill states its role, the
 credential check, what it reads, what it never does, and the shape of
-its report. Three are optional, `audit-credential-lifetimes`,
-`audit-provider-calls`, and `docs-compact`: a tree may leave them out.
+its report. Four are optional, `ops-integration-silent`,
+`audit-credential-lifetimes`, `audit-provider-calls`, and
+`docs-compact`: a tree may leave them out, and one with no inbound
+webhook leaves out `ops-integration-silent`.
 An audit of calls removes, folds, defers, and caches a call before it
 runs calls in parallel.
 

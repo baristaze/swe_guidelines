@@ -2403,6 +2403,7 @@ standard shares, and `.claude/skills` links to it for Claude Code.
 | `ops-investigate`                | investigator  | what is happening now, and why                  |
 | `ops-watch`                      | investigator  | a live tail of logs and alarms                  |
 | `ops-root-cause`                 | supporter     | why one tenant saw what it saw                  |
+| `ops-integration-silent`         | investigator  | optional: where an integration's deliveries stop, and why |
 | `ops-infra-as-code`              | investigator  | a Terraform change, planned                     |
 | `ops-cloud-deployment-create`    | administrator | an environment, to its first deploy             |
 | `ops-cloud-deployment-nuke`      | administrator | an environment gone, with what remains named    |
@@ -2428,6 +2429,10 @@ before it escalates, and never suppresses one in production.
 
 `docs-compact` rewrites the tree's documents to what holds, and on a
 flag folds each migration chain. It works on a branch it never pushes.
+
+`ops-integration-silent` reads an inbound webhook's route, the queue
+it feeds, and that queue's dead letters, so a tree with no inbound
+webhook leaves it out.
 
 <!-- agents-only
 - An audit's report puts the answer first, then a table with a verdict
