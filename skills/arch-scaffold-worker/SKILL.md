@@ -25,11 +25,13 @@ missing. `<Kind>` is the kind in CamelCase. When `<worker-name>` is a
 worker the tree has (`maintenance` in a copy), the kind joins it.
 Otherwise the skill creates the worker first.
 
-A kind that needs its own capacity is first the maintenance image
-deployed again on a lane of its own (`<NAME>_WORKER_LANE`, or
-`serve --lane`), a deployment change and no code. Create a worker when
-the kind needs code or a dependency the maintenance worker should not
-carry.
+A kind that needs its own capacity (`--lane <name>`) is first its lane
+in `WORK_LANES`, which the relay lands its items on, and a replica of
+the maintenance worker on that lane, which takes it from its deployment
+spelled as `WORK_LANES` spells it (`<NAME>_WORKER_LANE`, or
+`serve --lane`): one line of code and a process in each place the
+worker runs. Create a worker when the kind needs code or a dependency
+the maintenance worker should not carry.
 
 ## Created
 
@@ -44,13 +46,15 @@ carry.
 
 | File | Change |
 |------|--------|
-| `om/src/<name>/om/work/types/work_item.py` | the kind in `WorkKind`, its payload in `WORK_PAYLOADS`, its permission in `WORK_ENQUEUE_PERMISSIONS` |
+| `om/src/<name>/om/work/types/work_item.py` | the kind in `WorkKind`, its payload in `WORK_PAYLOADS`, its permission in `WORK_ENQUEUE_PERMISSIONS`, and with `--lane` its lane in `WORK_LANES` |
 | `om/src/<name>/om/work/README.md` | the kind, in the product's language |
 | the worker's `main.py` | the handler in `handlers` of `build_loop` |
 | the producing manager's impl | the write that starts the work lands a row of kind `work_row_kind(WorkKind.<KIND>)` beside its own |
 | `pyproject.toml` (root), `scripts/dev.sh`, `.env.example` (a new worker) | the member, the process started, and every field of its settings |
 | `deployment/local/docker-compose.full.yml` (a new worker, with `--container`) | the worker as a container |
 | `deployment/terraform/modules/environment/main.tf`, `modules/account/variables.tf`, both deploy workflows (a new worker) | an instance of the service module beside `module "maintenance"`, with no load balancer route; its image in `images`; its image built once by staging and promoted by digest |
+| `scripts/dev.sh`, `deployment/local/docker-compose.full.yml`, `deployment/terraform/modules/environment/main.tf` (`--lane` on a worker the tree has) | a second process of the worker on the lane: in `dev.sh`, `serve --lane <lane>` with a metrics port of its own (`<NAME>_METRICS_PORT`); a second service of its image, and a second instance of its service module beside its own, each with `<NAME>_WORKER_LANE` set to the lane |
+| `infra/tests/test_env_files.py` (a process added to `scripts/dev.sh`) | the count of processes the script starts, in `test_dev_script_takes_the_exported_value_over_dotenv` |
 
 ## Procedure
 
@@ -67,11 +71,28 @@ carry.
    item, never a topic alone.
 3. A long-running kind is an `OrchestrationKind` whose step is mapped in
    `build_loop`, not a handler that loops; it parks or fails as Long-Running
-   Orchestrations states.
+   Orchestrations states. A lane is a work kind's, and every orchestration
+   kind's steps ride `WorkKind.ORCHESTRATION`, so `--lane` gives no one
+   orchestration kind a lane of its own. A long-running kind that needs
+   one is a long-held work kind whose lease its worker renews; one that
+   must stay an orchestration runs on the orchestration lane, and the
+   output says so.
 4. A producer never enqueues from a manager. Its write carries the
    work row in the same storage call, and the relay enqueues the item
    under the row's id.
-5. A new worker sets its capacity against the pool it opens for the
+5. With `--lane`, the kind's lane is a line in `WORK_LANES`, never an
+   edit of the relay. A replica of a worker the tree has takes the lane
+   from its deployment, spelled as `WORK_LANES` spells it. A worker of
+   the kind's own reads its lane through `relayed_lane(WorkKind.<KIND>)`,
+   never a copy of the name, so the relay and the worker cannot
+   disagree. Its lane setting is a field of the worker's own name
+   (`<worker>_lane`, so `<NAME>_<WORKER>_LANE`), never `worker_lane`:
+   `.env.example` sets `<NAME>_WORKER_LANE=default`, and `scripts/dev.sh`
+   exports it to every process it starts. The field defaults to `None`,
+   its line in `.env.example` stays commented, its settings test lists
+   it as one the cloud leaves at its default, and the loop takes
+   `relayed_lane(WorkKind.<KIND>)` while it is unset.
+6. A new worker sets its capacity against the pool it opens for the
    roles it touches (`<NAME>_DATABASE_POOL_SIZE`), never apart from it.
    Add its member and run `uv sync` before the fast gate.
 
