@@ -336,6 +336,9 @@ async def test_members_are_promoted_and_removed_by_a_member_manager(
     org_id = UUID((await client.get("/v1/orgs/current", headers=owner)).json()["id"])
     bob = await add_member(container, org_id, "bob@example.test", Role.VIEWER)
     as_bob = await sign_in_as(client, "bob@example.test", org_id)
+    # A viewer reads another member by its id, as it reads the list.
+    owner_id = (await client.get("/v1/me", headers=owner)).json()["user"]["id"]
+    assert (await client.get(f"/v1/users/{owner_id}", headers=as_bob)).status_code == 200
 
     refused = await client.patch(
         f"/v1/memberships/{bob.id}", headers=as_bob, json={"role": "admin"}
@@ -349,6 +352,10 @@ async def test_members_are_promoted_and_removed_by_a_member_manager(
     assert promoted.status_code == 200, promoted.text
     assert promoted.json()["role"] == "admin"
     assert (await client.get("/v1/me", headers=as_bob)).json()["role"] == "admin"
+    # One member is read by its id: the read a push about it leads to.
+    read = await client.get(f"/v1/users/{bob.id}", headers=owner)
+    assert read.status_code == 200, read.text
+    assert read.json()["email"] == "bob@example.test"
 
     missing = await client.delete(f"/v1/memberships/{uuid4()}", headers=owner)
     assert missing.status_code == 404
@@ -358,6 +365,8 @@ async def test_members_are_promoted_and_removed_by_a_member_manager(
     assert (await client.get("/v1/me", headers=as_bob)).status_code == 401
     users = await client.get("/v1/users", headers=owner)
     assert [u["email"] for u in users.json()["items"]] == [OWNER["email"]]
+    # A removed member is not found, so a push about the removal takes it out.
+    assert (await client.get(f"/v1/users/{bob.id}", headers=owner)).status_code == 404
     # The membership ended with the member: not listed, not changeable.
     memberships = await client.get("/v1/memberships", headers=owner)
     assert str(bob.id) not in [m["user_id"] for m in memberships.json()["items"]]

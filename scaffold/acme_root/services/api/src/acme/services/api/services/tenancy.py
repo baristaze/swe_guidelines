@@ -151,6 +151,12 @@ class TenancyServiceInterface(ABC):
         ...
 
     @abstractmethod
+    async def get_user(self, ctx: TenantContext, user_id: UUID) -> UserView:
+        """One member of the tenant: the authorized read a push about a user
+        leads to. A removed member, or another tenant's, is not found."""
+        ...
+
+    @abstractmethod
     async def get_memberships(
         self, ctx: TenantContext, cursor: str | None, limit: int
     ) -> MembershipPageView:

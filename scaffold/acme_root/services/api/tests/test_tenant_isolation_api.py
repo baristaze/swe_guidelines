@@ -176,6 +176,7 @@ def by_id_routes(other: Tenant) -> list[tuple[str, str, dict[str, Any]]]:
     B's that exists, and a request that passes its validation."""
     stored, pending = other.file_ids[0], other.pending_file_id
     return [
+        ("GET", f"/v1/users/{other.member_id}", {}),
         ("PATCH", f"/v1/memberships/{other.member_id}", {"json": {"role": "admin"}}),
         ("DELETE", f"/v1/memberships/{other.member_id}", {}),
         ("PATCH", f"/v1/memberships/{other.owner_id}", {"json": {"role": "member"}}),
