@@ -12,6 +12,7 @@ from acme.infra.impl.local import InfraLocalImpl
 from acme.om.base import new_id, utcnow
 from acme.om.context import AppContext, AppType, RequestContext, TenantContext
 from acme.om.exceptions import NotFound, PreconditionFailed, ValidationFailed
+from acme.om.orchestrations.impl.manager import OrchestrationsOptions
 from acme.om.orchestrations.rules import (
     ROW_ERRORS_KEPT,
     advanced,
@@ -122,9 +123,11 @@ def test_the_resumes_of_one_wake_are_staggered() -> None:
 
 
 class World:
-    def __init__(self, tmp_path: Path) -> None:
+    def __init__(self, tmp_path: Path, options: OrchestrationsOptions | None = None) -> None:
         self.storage = StorageMemoryImpl()
-        self.managers: Managers = build_managers(self.storage, InfraLocalImpl(tmp_path))
+        self.managers: Managers = build_managers(
+            self.storage, InfraLocalImpl(tmp_path), orchestrations_options=options
+        )
 
     async def org(self) -> TenantContext:
         slug = f"ajax-{new_id().hex[-8:]}"
@@ -261,6 +264,49 @@ async def test_the_parks_on_one_mark_land_one_wake_that_resumes_them_staggered(
     assert len(step_rows(ctx, parks[0])) == 1
     at_once = WakeParkedPayload(reason=ParkReason.PROVIDER_UNAVAILABLE)
     assert not_before(WorkKind.WAKE_PARKED, at_once.model_dump(mode="json")) is None
+
+
+async def test_a_wake_resumes_every_record_parked_for_its_reason_a_batch_at_a_time(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A wake reads the org's records parked for its reason a batch at a time
+    until a batch comes back short: a record past the first batch resumes
+    too, since no other wake may come for it, and the staggers go on across
+    the batches."""
+    batch = 2
+    world = World(tmp_path, OrchestrationsOptions(wake_batch=batch))
+    ctx = await world.org()
+    orchestrations = world.managers.orchestrations
+    storage = world.storage.get_orchestrations_storage()
+    parks: list[Orchestration] = []
+    for _ in range(batch + 1):
+        record = await orchestrations.start(ctx, a_record())
+        parked = advanced(
+            record, utcnow(), record.created_by, cursor=0, total=3,
+            park=ParkReason.PROVIDER_UNAVAILABLE,
+        )  # fmt: skip
+        await storage.write_orchestration(ctx.org_id, parked, record.version, ())
+        parks.append(parked)
+    written: list[OutboxRow] = []
+    write = storage.write_orchestration
+
+    async def writes(
+        org_id: UUID, record: Orchestration, expected: int, rows: tuple[OutboxRow, ...] = ()
+    ) -> None:
+        written.extend(rows)
+        await write(org_id, record, expected, rows)
+
+    monkeypatch.setattr(storage, "write_orchestration", writes)
+    assert await orchestrations.wake(ctx, ParkReason.PROVIDER_UNAVAILABLE) == batch + 1
+    for parked in parks:
+        assert (await orchestrations.get(ctx, parked.id)).status is OrchestrationStatus.RUNNING
+    steps = sorted(
+        OrchestrationPayload.model_validate(dict(row.payload)).not_before
+        for row in written
+        if row.kind == work_row_kind(WorkKind.ORCHESTRATION)
+    )
+    assert [later - earlier for earlier, later in pairwise(steps)] == [timedelta(seconds=2)] * batch
+    assert await orchestrations.wake(ctx, ParkReason.PROVIDER_UNAVAILABLE) == 0
 
 
 async def test_fail_is_conditioned_on_the_version_it_read(world: World) -> None:
