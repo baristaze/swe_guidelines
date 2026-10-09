@@ -7,6 +7,9 @@ import pytest
 from contracts.work_cap import (
     a_burst_drains_as_fast_as_the_worker_runs_at_a_cap_of_two,
     a_second_item_is_passed_over_at_a_cap_of_one,
+    a_tenants_own_cap_holds_in_place_of_the_lanes,
+    a_tenants_own_cap_holds_on_a_lane_with_no_cap,
+    an_operator,
 )
 from contracts.work_storage import make_item
 
@@ -742,6 +745,101 @@ async def test_a_burst_at_a_cap_of_two_drains_as_fast_as_the_worker_runs(
     await a_burst_drains_as_fast_as_the_worker_runs_at_a_cap_of_two(
         managers, storage.get_work_storage(), ctx, bob
     )
+
+
+async def test_a_tenants_own_cap_of_one_holds_in_place_of_a_lane_cap_of_four(
+    managers: Managers, storage: StorageMemoryImpl, ctx: TenantContext
+) -> None:
+    bob = await second_tenant(managers)
+    await a_tenants_own_cap_holds_in_place_of_the_lanes(
+        managers, storage.get_work_storage(), ctx, bob
+    )
+
+
+async def test_a_tenants_own_cap_holds_on_a_lane_with_no_cap(
+    managers: Managers, storage: StorageMemoryImpl, ctx: TenantContext
+) -> None:
+    bob = await second_tenant(managers)
+    await a_tenants_own_cap_holds_on_a_lane_with_no_cap(
+        managers, storage.get_work_storage(), ctx, bob
+    )
+
+
+async def test_an_operator_sets_reads_and_clears_an_orgs_own_cap(
+    managers: Managers, ctx: TenantContext
+) -> None:
+    """A write operator sets the cap and writes it over, keeping the row; a
+    read operator reads it and may do nothing else; a clear answers what it
+    removed, and after it there is nothing to read or clear."""
+    writer, reader, plane = an_operator(), an_operator(OperatorRole.READ), managers.work_operator
+    first = await plane.set_tenant_cap(writer, ctx.org_id, "bulk", 2)
+    again = await plane.set_tenant_cap(writer, ctx.org_id, "bulk", 3)
+    assert (again.id, again.created_at, again.cap) == (first.id, first.created_at, 3)
+    assert again.updated_by == writer.identity_id
+    assert await plane.read_tenant_cap(reader, ctx.org_id, "bulk") == again
+    with pytest.raises(NotAuthorized):
+        await plane.set_tenant_cap(reader, ctx.org_id, "bulk", 1)
+    with pytest.raises(NotAuthorized):
+        await plane.clear_tenant_cap(reader, ctx.org_id, "bulk")
+    assert await plane.clear_tenant_cap(writer, ctx.org_id, "bulk") == again
+    with pytest.raises(NotFound):
+        await plane.read_tenant_cap(reader, ctx.org_id, "bulk")
+    with pytest.raises(NotFound):
+        await plane.clear_tenant_cap(writer, ctx.org_id, "bulk")
+
+
+@pytest.mark.parametrize(("lane", "cap"), [("bulk", 0), ("bulk", -1), ("bulk", 10_001), ("", 1)])
+async def test_a_cap_outside_its_bounds_is_refused_and_writes_nothing(
+    managers: Managers, ctx: TenantContext, lane: str, cap: int
+) -> None:
+    with pytest.raises(ValidationFailed):
+        await managers.work_operator.set_tenant_cap(an_operator(), ctx.org_id, lane, cap)
+    with pytest.raises(NotFound):
+        await managers.work_operator.read_tenant_cap(an_operator(), ctx.org_id, lane)
+
+
+async def test_a_cap_names_an_org_that_is_there(
+    managers: Managers, storage: StorageMemoryImpl, ctx: TenantContext
+) -> None:
+    """An org that is not there has no cap to set, read, or clear; a deleted
+    one takes no new cap, since its items fail at their claim."""
+    plane, writer = managers.work_operator, an_operator()
+    nobody = new_id()
+    with pytest.raises(NotFound):
+        await plane.set_tenant_cap(writer, nobody, "bulk", 1)
+    with pytest.raises(NotFound):
+        await plane.read_tenant_cap(writer, nobody, "bulk")
+    with pytest.raises(NotFound):
+        await plane.clear_tenant_cap(writer, nobody, "bulk")
+    org = await storage.get_tenancy_storage().read_org(ctx.org_id)
+    assert org is not None
+    await storage.get_tenancy_storage().write_org(
+        ctx.org_id, org.model_copy(update={"deleted_at": utcnow(), "deleted_by": ctx.user_id})
+    )
+    with pytest.raises(NotFound):
+        await plane.set_tenant_cap(writer, ctx.org_id, "bulk", 1)
+
+
+async def test_purge_tenant_takes_the_caps_of_a_tenant_past_its_retention_alone(
+    managers: Managers, storage: StorageMemoryImpl, ctx: TenantContext
+) -> None:
+    bob = await second_tenant(managers)
+    writer = an_operator()
+    for org_id in (ctx.org_id, bob.org_id):
+        for lane in ("default", "bulk"):
+            await managers.work_operator.set_tenant_cap(writer, org_id, lane, 2)
+    assert await managers.work.purge_tenant(ctx) == 0, "a live tenant keeps its caps"
+    org = await storage.get_tenancy_storage().read_org(ctx.org_id)
+    assert org is not None
+    long_ago = utcnow() - timedelta(days=3650)
+    await storage.get_tenancy_storage().write_org(
+        ctx.org_id, org.model_copy(update={"deleted_at": long_ago, "deleted_by": ctx.user_id})
+    )
+    assert await managers.work.purge_tenant(ctx) == 2
+    assert await managers.work.purge_tenant(ctx) == 0
+    work = storage.get_work_storage()
+    assert await work.read_tenant_cap(ctx.org_id, "bulk") is None
+    assert await work.read_tenant_cap(bob.org_id, "bulk") is not None, "the other tenant's stay"
 
 
 async def test_every_write_after_the_enqueue_is_the_platforms(

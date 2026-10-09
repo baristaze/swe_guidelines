@@ -35,6 +35,13 @@ def attempts_after_hand_back(attempts: int) -> int:
     return max(0, attempts - 1)
 
 
+def cap_for(own: int | None, lane_cap: int | None) -> int | None:
+    """The cap the claim holds a tenant to on a lane: its own cap there where
+    it has one, the lane's where it has none, and None, no cap, with
+    neither."""
+    return lane_cap if own is None else own
+
+
 def is_at_cap(held: int, cap: int) -> bool:
     """True when the claim passes a tenant over on a lane: it already holds
     `cap` items claimed there under a live lease."""

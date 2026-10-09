@@ -97,7 +97,10 @@ def test_role_metadata_holds_only_that_role() -> None:
     core = role_metadata(DatabaseRole.CORE)
     assert {t.name for t in core.tables.values()} >= {"orgs", "identities", "users"}
     assert all(t.schema == "core" for t in core.tables.values())
-    assert {t.name for t in role_metadata(DatabaseRole.QUEUE).tables.values()} == {"work_items"}
+    assert {t.name for t in role_metadata(DatabaseRole.QUEUE).tables.values()} == {
+        "work_items",
+        "tenant_caps",
+    }
     assert {t.name for t in role_metadata(DatabaseRole.ACTIVITY).tables.values()} == {
         "events",
         "event_cursors",

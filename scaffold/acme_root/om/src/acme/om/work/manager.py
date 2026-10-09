@@ -8,6 +8,7 @@ from uuid import UUID
 
 from acme.om.context import OperatorContext, RequestContext, TenantContext
 from acme.om.outbox.types.row import OutboxRow
+from acme.om.work.types.tenant_cap import TenantCap
 from acme.om.work.types.work_item import WorkItem, WorkKind
 
 
@@ -62,12 +63,14 @@ class WorkManagerInterface(ABC):
         to the next item, so no row stays claimed with nobody to settle it.
 
         `tenant_cap` is the lane's cap on the items one tenant holds claimed
-        on it under a live lease; None sets none, and the claim counts
-        nothing. The claim passes over a tenant at its cap and takes the
-        oldest item of a tenant under it, so one tenant cannot hold every
-        worker of a lane it shares. A passed-over item is not written: it
-        waits where it is, with its attempts, and the next claim after a
-        slot frees takes it."""
+        on it under a live lease; None sets none. A tenant's own cap on the
+        lane, which an operator sets, holds for that tenant in its place,
+        on a lane with a cap or without one. The claim passes over a
+        tenant at its cap and takes the oldest item of a tenant under it,
+        so one tenant cannot hold every worker of a lane it shares. A tenant
+        with neither cap is never passed over. A passed-over item is not
+        written: it waits where it is, with its attempts, and the next claim
+        after a slot frees takes it."""
         ...
 
     @abstractmethod
@@ -123,7 +126,7 @@ class WorkManagerInterface(ABC):
     async def purge_items(self) -> int:
         """Platform-internal: the sweep, across tenants, like the outbox's
         purge: deletes items done or failed past the retention, a batch at a
-        time; returns how many. The one hard delete of the namespace. It takes no context,
+        time; returns how many. The one hard delete of an item. It takes no context,
         because it runs for no tenant and no principal."""
         ...
 
@@ -151,6 +154,14 @@ class WorkManagerInterface(ABC):
         ...
 
     @abstractmethod
+    async def purge_tenant(self, ctx: TenantContext) -> int:
+        """The sweep, for one tenant deleted longer ago than the retention:
+        the tenant's own caps, on every lane, a batch at most a call; returns
+        how many went. Any other tenant returns 0 and reads nothing. Its
+        items go by their own retention, across tenants."""
+        ...
+
+    @abstractmethod
     async def mark_purged(self, ctx: TenantContext) -> bool:
         """Platform-internal: the tenancy manager's `mark_purged`, for the sweep,
         once a pass found nothing left of the tenant to trim."""
@@ -159,7 +170,8 @@ class WorkManagerInterface(ABC):
 
 class WorkOperatorManagerInterface(ABC):
     """The operator plane of the work queue: one named org's failed item,
-    sent back to the queue. Takes `OperatorContext` and nothing else."""
+    sent back to the queue, and one named org's own cap on a lane. Takes
+    `OperatorContext` and nothing else."""
 
     @abstractmethod
     async def requeue(self, admin: OperatorContext, org_id: UUID, item_id: UUID) -> WorkItem:
@@ -170,4 +182,30 @@ class WorkOperatorManagerInterface(ABC):
         and the operator who requeued it. Requires the write permission.
         NotFound when the org or the item is not there; WorkNotFailed when
         the item is not failed."""
+        ...
+
+    @abstractmethod
+    async def set_tenant_cap(
+        self, admin: OperatorContext, org_id: UUID, lane: str, cap: int
+    ) -> TenantCap:
+        """The org's own cap on the lane: the most items it holds claimed
+        there under a live lease, in place of the lane's cap, from the next
+        claim on. Sets it, or writes it over the one there. Requires the
+        write permission. NotFound when the org is not there or is deleted;
+        ValidationFailed when the lane is empty or the cap is outside 1 to
+        `MAX_CAP`."""
+        ...
+
+    @abstractmethod
+    async def read_tenant_cap(self, admin: OperatorContext, org_id: UUID, lane: str) -> TenantCap:
+        """The org's own cap on the lane. Requires the read permission.
+        NotFound when the org is not there or has no cap of its own there."""
+        ...
+
+    @abstractmethod
+    async def clear_tenant_cap(self, admin: OperatorContext, org_id: UUID, lane: str) -> TenantCap:
+        """Removes the org's own cap on the lane, so the lane's cap holds for
+        it from the next claim on, or none; returns the cap it removed.
+        Requires the write permission. NotFound when the org is not there or
+        has no cap of its own there."""
         ...

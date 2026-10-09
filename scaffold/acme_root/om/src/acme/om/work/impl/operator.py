@@ -1,16 +1,19 @@
 import logging
 from uuid import UUID
 
+from pydantic import ValidationError
+
 from acme.infra.observability import OUTCOMES
 from acme.infra.topics import EntityChangedPayload, Topics, TopicsInterface, WorkAvailablePayload
 from acme.om.base import new_id, utcnow
 from acme.om.context import OperatorContext, OperatorPermission
 from acme.om.events.storage import EventStorageInterface
 from acme.om.events.types.event import Event
-from acme.om.exceptions import NotFound, WorkNotFailed
+from acme.om.exceptions import NotFound, ValidationFailed, WorkNotFailed
 from acme.om.tenancy.storage import TenancyStorageInterface
 from acme.om.work.manager import WorkOperatorManagerInterface
 from acme.om.work.storage import WorkStorageInterface
+from acme.om.work.types.tenant_cap import TenantCap
 from acme.om.work.types.work_item import WorkItem, WorkStatus
 
 log = logging.getLogger(__name__)
@@ -39,11 +42,9 @@ class WorkOperatorManagerImpl(WorkOperatorManagerInterface):
 
     async def requeue(self, admin: OperatorContext, org_id: UUID, item_id: UUID) -> WorkItem:
         admin.require(OperatorPermission.WRITE)
-        org = await self._tenancy.read_org(org_id)
-        if org is None or org.deleted_at is not None:
-            # A deleted org's item is failed at its claim, so it has no way
-            # forward to send it back to.
-            raise NotFound(f"org {org_id} not found")
+        # A deleted org's item is failed at its claim, so it has no way
+        # forward to send it back to.
+        await self._live_org(org_id)
         stored = await self._storage.read_item(org_id, item_id)
         if stored is None:
             raise NotFound(f"work item {item_id} not found")
@@ -88,6 +89,65 @@ class WorkOperatorManagerImpl(WorkOperatorManagerInterface):
             ),
         )
         return written
+
+    async def set_tenant_cap(
+        self, admin: OperatorContext, org_id: UUID, lane: str, cap: int
+    ) -> TenantCap:
+        admin.require(OperatorPermission.WRITE)
+        # A deleted org's items are failed at their claim: no cap is its.
+        await self._live_org(org_id)
+        now = utcnow()
+        try:
+            # An operator has no user in the tenant: the identity is the actor.
+            wanted = TenantCap(
+                id=new_id(),
+                lane=lane,
+                cap=cap,
+                created_at=now,
+                updated_at=now,
+                created_by=admin.identity_id,
+                updated_by=admin.identity_id,
+            )
+        except ValidationError as error:
+            raise ValidationFailed(str(error)) from None
+        written = await self._storage.write_tenant_cap(org_id, wanted)
+        log.info(
+            "operator %s set the cap of org %s on lane %s to %d",
+            admin.identity_id,
+            org_id,
+            lane,
+            cap,
+        )
+        return written
+
+    async def read_tenant_cap(self, admin: OperatorContext, org_id: UUID, lane: str) -> TenantCap:
+        admin.require(OperatorPermission.READ)
+        if await self._tenancy.read_org(org_id) is None:
+            raise NotFound(f"org {org_id} not found")
+        stored = await self._storage.read_tenant_cap(org_id, lane)
+        # The support trail: the tenant and the operator, as every read of a
+        # tenant's rows on this plane leaves.
+        log.info("operator %s read the cap on lane %s of org %s", admin.identity_id, lane, org_id)
+        if stored is None:
+            raise NotFound(f"org {org_id} has no cap of its own on lane {lane}")
+        return stored
+
+    async def clear_tenant_cap(self, admin: OperatorContext, org_id: UUID, lane: str) -> TenantCap:
+        admin.require(OperatorPermission.WRITE)
+        if await self._tenancy.read_org(org_id) is None:
+            raise NotFound(f"org {org_id} not found")
+        removed = await self._storage.delete_tenant_cap(org_id, lane)
+        if removed is None:
+            raise NotFound(f"org {org_id} has no cap of its own on lane {lane}")
+        log.info(
+            "operator %s cleared the cap of org %s on lane %s", admin.identity_id, org_id, lane
+        )
+        return removed
+
+    async def _live_org(self, org_id: UUID) -> None:
+        org = await self._tenancy.read_org(org_id)
+        if org is None or org.deleted_at is not None:
+            raise NotFound(f"org {org_id} not found")
 
     async def _audit(self, admin: OperatorContext, org_id: UUID, failed: WorkItem) -> None:
         """The event that names the requeue and who made it, with what the

@@ -48,7 +48,7 @@ class WorkOptions(Platform):
     max_retry_delay: timedelta = timedelta(minutes=15)
     stale_stagger: timedelta = timedelta(seconds=5)
     retention: timedelta = timedelta(days=30)  # a done or failed item is purged after this
-    purge_batch: int = 1000  # items one purge statement deletes at most
+    purge_batch: int = 1000  # items, or one tenant's caps, one purge statement deletes at most
 
 
 def caused_by(rctx: RequestContext, item: WorkItem) -> RequestContext:
@@ -318,6 +318,12 @@ class WorkManagerImpl(WorkManagerInterface):
 
     async def maintenance_contexts(self, rctx: RequestContext) -> list[TenantContext]:
         return await self._tenancy.service_contexts(rctx)
+
+    async def purge_tenant(self, ctx: TenantContext) -> int:
+        ctx.require(Permission.WRITE)
+        if not await self._tenancy.tenant_expired(ctx):
+            return 0
+        return await self._storage.purge_tenant_caps(ctx.org_id, self._options.purge_batch)
 
     async def mark_purged(self, ctx: TenantContext) -> bool:
         return await self._tenancy.mark_purged(ctx)

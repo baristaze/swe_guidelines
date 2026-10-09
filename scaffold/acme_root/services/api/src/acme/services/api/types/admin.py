@@ -9,6 +9,7 @@ from pydantic import Field
 
 from acme.om.context import OperatorRole, Role
 from acme.om.tenancy.rules import MAX_OPERATOR_TOKEN_TTL
+from acme.om.work.types.tenant_cap import MAX_CAP
 from acme.om.work.types.work_item import WorkKind, WorkStatus
 from acme.services.api.types.common import RequestBody, View
 
@@ -139,3 +140,19 @@ class OperatorWorkItemView(View):
     max_attempts: int
     last_error: str | None
     updated_at: datetime
+
+
+class SetTenantCapRequest(RequestBody):
+    """An org's own cap on a lane: the most items it holds claimed there at
+    once, in place of the lane's cap."""
+
+    cap: int = Field(ge=1, le=MAX_CAP)
+
+
+class TenantCapView(View):
+    """An org's own cap on a lane, with who last set it and when."""
+
+    lane: str
+    cap: int
+    updated_at: datetime
+    updated_by: UUID

@@ -1,7 +1,7 @@
-"""Storage of the work queue. The claim is the one named atomic method. The
-claim, the requeue of expired leases, the purge, and the two reads of the
-sweep's gauges reach across tenants in the system scope; every other
-operation takes org_id first. The claim mints a token, and the writes that
+"""Storage of the work queue, and of the tenants' own caps on its lanes. The
+claim is the one named atomic method. The claim, the requeue of expired
+leases, the purge, and the two reads of the sweep's gauges reach across
+tenants in the system scope; every other operation takes org_id first. The claim mints a token, and the writes that
 move a claimed item are conditional on that token still being on the row, so
 a lost lease can never be written over, not even by the worker that held the
 item before and holds it again."""
@@ -12,6 +12,7 @@ from datetime import datetime, timedelta
 from enum import StrEnum
 from uuid import UUID
 
+from acme.om.work.types.tenant_cap import TenantCap
 from acme.om.work.types.work_item import WorkItem, WorkKind
 
 
@@ -75,11 +76,39 @@ class WorkStorageInterface(ABC):
         token, and the lease. The claim is the platform's write, so it signs
         `updated_by` with EMPTY_UUID.
 
-        With `tenant_cap`, the same statement passes over every tenant that
-        already holds that many items claimed on the lane under a live lease
-        (`rules.is_at_cap`): their items stay as they are, unwritten, and the
-        row taken is the oldest of a tenant under its cap. None counts
-        nothing, and the statement is the one without a cap."""
+        The same statement passes over every tenant that already holds its
+        cap in items claimed on the lane under a live lease
+        (`rules.is_at_cap`): its own cap on the lane where it has one, and
+        `tenant_cap`, the lane's, where it has none (`rules.cap_for`). Their
+        items stay as they are, unwritten, and the row taken is the oldest of
+        a tenant under its cap. With `tenant_cap` None, only the tenants with
+        a cap of their own on the lane are counted, and a lane where none has
+        one passes nobody over."""
+        ...
+
+    @abstractmethod
+    async def write_tenant_cap(self, org_id: UUID, cap: TenantCap) -> TenantCap:
+        """One statement: the tenant's cap on `cap.lane`, inserted, or written
+        over the one there, which keeps its id, its creation, and its
+        creator. Returns the row as stored."""
+        ...
+
+    @abstractmethod
+    async def read_tenant_cap(self, org_id: UUID, lane: str) -> TenantCap | None:
+        """The tenant's own cap on the lane; None when it has none there."""
+        ...
+
+    @abstractmethod
+    async def delete_tenant_cap(self, org_id: UUID, lane: str) -> TenantCap | None:
+        """One statement: deletes the tenant's own cap on the lane and returns
+        it; None when it had none there. From the next claim on, the lane's
+        cap holds for the tenant, or none."""
+        ...
+
+    @abstractmethod
+    async def purge_tenant_caps(self, org_id: UUID, limit: int) -> int:
+        """Deletes at most `limit` of the tenant's caps, on any lane; returns
+        how many. For the sweep of a tenant past its retention."""
         ...
 
     @abstractmethod
@@ -105,8 +134,8 @@ class WorkStorageInterface(ABC):
         """Cross-tenant, for the sweep, in the system scope: deletes at most
         `limit` items done or failed whose last change was before `before`,
         skipping items another transaction holds; returns how many. The one
-        hard delete of the namespace. It takes no tenant: one statement
-        reaches every tenant's settled items."""
+        hard delete of an item. It takes no tenant: one statement reaches
+        every tenant's settled items."""
         ...
 
     @abstractmethod

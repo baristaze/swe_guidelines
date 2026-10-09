@@ -18,6 +18,8 @@ from acme.services.api.types.admin import (
     OperatorView,
     OperatorWorkItemView,
     PlatformSizeView,
+    SetTenantCapRequest,
+    TenantCapView,
     TotpConfirmedView,
 )
 from acme.services.api.types.events import OperatorEventView
@@ -90,3 +92,18 @@ class AdminServiceInterface(ABC):
     async def requeue_work(
         self, admin: OperatorContext, org_id: UUID, item_id: UUID
     ) -> OperatorWorkItemView: ...
+
+    @abstractmethod
+    async def set_tenant_cap(
+        self, admin: OperatorContext, org_id: UUID, lane: str, body: SetTenantCapRequest
+    ) -> TenantCapView: ...
+
+    @abstractmethod
+    async def get_tenant_cap(
+        self, admin: OperatorContext, org_id: UUID, lane: str
+    ) -> TenantCapView: ...
+
+    @abstractmethod
+    async def clear_tenant_cap(
+        self, admin: OperatorContext, org_id: UUID, lane: str
+    ) -> TenantCapView: ...

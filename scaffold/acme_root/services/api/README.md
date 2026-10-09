@@ -109,13 +109,16 @@ app, and `main.py` is the `acme-api` command: `serve`, `migrate`,
   time, delete a team org as its owner does (closed for everyone in it
   at once; the worker ends its providers and then deletes it; a
   personal org is refused), send one of an org's failed work items back
-  to the queue, and read the platform's size: the tenant count, the
-  user count, and the events of twenty-four hours, as the maintenance
-  worker last counted them, with the moment it did (`404` before its
-  first count; the route counts nothing).
+  to the queue, set, read, or clear an org's own cap on a lane (the
+  most items it holds claimed there at once, in place of the lane's
+  cap; `404` where it has none), and read the platform's size: the
+  tenant count, the user count, and the events of twenty-four hours,
+  as the maintenance worker last counted them, with the moment it did
+  (`404` before its first count; the route counts nothing).
   (`/v1/admin/orgs`, `/v1/admin/orgs/{org_id}`,
   `/v1/admin/orgs/{org_id}/members`, `/v1/admin/orgs/{org_id}/events`,
-  `/v1/admin/orgs/{org_id}/work/{item_id}/requeue`, `/v1/admin/size`). A read route
+  `/v1/admin/orgs/{org_id}/work/{item_id}/requeue`,
+  `/v1/admin/orgs/{org_id}/work/lanes/{lane}/cap`, `/v1/admin/size`). A read route
   needs an operator who may read; a write route one who may write.
   Every read and write takes an operator token. An operator enrols the
   second factor once, at the first sign-in to the plane, and until then

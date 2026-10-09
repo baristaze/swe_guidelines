@@ -230,8 +230,8 @@ def test_the_worker_hands_each_retention_to_its_manager(tmp_path: Path) -> None:
 
 
 def test_the_tenant_cap_is_the_lanes_and_0_sets_none() -> None:
-    """The cap travels with the lane the worker claims from. 0 sets no cap,
-    so the claim counts nothing and behaves as it does without one."""
+    """The cap travels with the lane the worker claims from. 0 sets no lane
+    cap, so the claim counts only the tenants with a cap of their own."""
     base = {"_env_file": None, "environment": "test", "worker_id": "maintenance-test"}
     assert loop_options(MaintenanceSettings.model_validate(base)).tenant_cap is None
     capped = MaintenanceSettings.model_validate({**base, "worker_tenant_cap": 2})

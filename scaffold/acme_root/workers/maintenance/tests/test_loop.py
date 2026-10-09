@@ -176,6 +176,9 @@ class LeaseLosingWork(WorkManagerInterface):
     async def maintenance_contexts(self, rctx: RequestContext) -> list[TenantContext]:
         return await self._inner.maintenance_contexts(rctx)
 
+    async def purge_tenant(self, ctx: TenantContext) -> int:
+        return await self._inner.purge_tenant(ctx)
+
     async def mark_purged(self, ctx: TenantContext) -> bool:
         return await self._inner.mark_purged(ctx)
 
