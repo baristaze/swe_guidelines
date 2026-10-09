@@ -2156,6 +2156,29 @@ are parsed by their `type` and routed into the query cache or the store,
 never into components. A hidden app may pause the socket and resume with
 a fresh ticket and a replay.
 
+Most records only refresh what the person sees. A few are told to them
+as well: a notice, such as an invitation accepted. A replay routes only
+the last record of each entity on a page, so a notice could hide behind
+a later record of its entity. So the channel keeps notices apart and
+hands each over once, when the cursor passes it. A push is handed over
+at once. A replay hands over its notices together when it ends, in
+stream order, from all its pages. It ends at the head, or when a read
+fails partway. Either way the cursor has passed what it read, and no
+later replay reads it again. Routing tells the person nothing, so a
+notice is told only by its hand-over. A stopped channel hands over
+nothing, so a switch never shows the old tenant's notice in the new one
+([One Tenant at a Time](#one-tenant-at-a-time)).
+
+<!-- agents-only
+- The portal's channel asks `isAnnounced` which records are notices and
+  hands them to `announce`
+  ([`channel.ts`](scaffold/acme_root/apps/portal/src/realtime/channel.ts)).
+  The first catch-up hands over the notices it reads as a replay does.
+  The scaffold tells of no record, so its provider passes neither.
+- A push past a gap the replay cannot close yet is routed and not told.
+  The replay that passes it tells it.
+-->
+
 ### The Operator Console
 
 The operator console is a separate app. It shares the portal's stack,
