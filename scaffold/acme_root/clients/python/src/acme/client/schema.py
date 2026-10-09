@@ -497,6 +497,17 @@ class SessionView(BaseModel):
     revoked_at: Annotated[AwareDatetime | None, Field(title='Revoked At')]
 
 
+class SetTenantCapRequest(BaseModel):
+    """
+    An org's own cap on a lane: the most items it holds claimed there at
+    once, in place of the lane's cap.
+    """
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    cap: Annotated[int, Field(ge=1, le=10000, title='Cap')]
+
+
 class InvitationToken(RootModel[str]):
     root: Annotated[str, Field(max_length=500, title='Invitation Token')]
 
@@ -623,6 +634,16 @@ class StreamTruncatedDetail(BaseModel):
     """
     floor: Annotated[int, Field(title='Floor')]
     head: Annotated[int, Field(title='Head')]
+
+
+class TenantCapView(BaseModel):
+    """
+    An org's own cap on a lane, with who last set it and when.
+    """
+    cap: Annotated[int, Field(title='Cap')]
+    lane: Annotated[str, Field(title='Lane')]
+    updated_at: Annotated[AwareDatetime, Field(title='Updated At')]
+    updated_by: Annotated[UUID, Field(title='Updated By')]
 
 
 class TotpConfirmedView(BaseModel):

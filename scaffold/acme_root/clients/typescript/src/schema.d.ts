@@ -191,6 +191,38 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/admin/orgs/{org_id}/work/lanes/{lane}/cap": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Tenant Cap
+         * @description The org's own cap on the lane; `404` when it has none, and the lane's
+         *     cap holds for it.
+         */
+        get: operations["get_tenant_cap_v1_admin_orgs__org_id__work_lanes__lane__cap_get"];
+        /**
+         * Set Tenant Cap
+         * @description Sets the org's own cap on the lane: the most items it holds claimed
+         *     there at once, in place of the lane's cap, from the next claim on.
+         */
+        put: operations["set_tenant_cap_v1_admin_orgs__org_id__work_lanes__lane__cap_put"];
+        post?: never;
+        /**
+         * Clear Tenant Cap
+         * @description Removes the org's own cap on the lane and answers the cap it removed;
+         *     the lane's cap holds for it from the next claim on. `404` when it has
+         *     none.
+         */
+        delete: operations["clear_tenant_cap_v1_admin_orgs__org_id__work_lanes__lane__cap_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/admin/orgs/{org_id}/work/{item_id}/requeue": {
         parameters: {
             query?: never;
@@ -2174,6 +2206,15 @@ export interface components {
             revoked_at: string | null;
         };
         /**
+         * SetTenantCapRequest
+         * @description An org's own cap on a lane: the most items it holds claimed there at
+         *     once, in place of the lane's cap.
+         */
+        SetTenantCapRequest: {
+            /** Cap */
+            cap: number;
+        };
+        /**
          * SignInCallbackRequest
          * @description The code the browser brought back to the callback, and the verifier
          *     the sign-in's start answered with, which the API exchanges with the
@@ -2334,6 +2375,26 @@ export interface components {
             floor: number;
             /** Head */
             head: number;
+        };
+        /**
+         * TenantCapView
+         * @description An org's own cap on a lane, with who last set it and when.
+         */
+        TenantCapView: {
+            /** Cap */
+            cap: number;
+            /** Lane */
+            lane: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /**
+             * Updated By
+             * Format: uuid
+             */
+            updated_by: string;
         };
         /**
          * TotpConfirmedView
@@ -2906,6 +2967,118 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["UserView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_tenant_cap_v1_admin_orgs__org_id__work_lanes__lane__cap_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "x-app"?: string | null;
+                "x-app-version"?: string | null;
+            };
+            path: {
+                org_id: string;
+                lane: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TenantCapView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    set_tenant_cap_v1_admin_orgs__org_id__work_lanes__lane__cap_put: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "x-app"?: string | null;
+                "x-app-version"?: string | null;
+            };
+            path: {
+                org_id: string;
+                lane: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetTenantCapRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TenantCapView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    clear_tenant_cap_v1_admin_orgs__org_id__work_lanes__lane__cap_delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "x-app"?: string | null;
+                "x-app-version"?: string | null;
+            };
+            path: {
+                org_id: string;
+                lane: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TenantCapView"];
                 };
             };
             /** @description Validation Error */
