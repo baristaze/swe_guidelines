@@ -827,6 +827,16 @@ sweep that performs a tenant operation asks for one service context per
 live tenant, whose user is `EMPTY_UUID`. Each is declared on its
 interface, and a test names every one.
 
+An integration that acts for a person produces a stage too.
+`member_context` turns its request stage into the `TenantContext` of
+the live member whose address it names, found by the address's digest,
+with the member's own role and the credential kind `INTERNAL`. The
+address counts only once the person's sign-in through the identity
+provider proved it, and only an integration's handler passes one, taken
+from the payload its provider signed. A person who is no member, a
+removed member, or an unproven address gets none, and the call acts as
+nobody.
+
 ## The Storage Layer
 
 The storage layer persists what the business layer gives it and returns
