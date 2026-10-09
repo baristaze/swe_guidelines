@@ -4,6 +4,10 @@ from pathlib import Path
 from uuid import UUID
 
 import pytest
+from contracts.work_cap import (
+    a_burst_drains_as_fast_as_the_worker_runs_at_a_cap_of_two,
+    a_second_item_is_passed_over_at_a_cap_of_one,
+)
 from contracts.work_storage import make_item
 
 from acme.infra.impl.local import InfraLocalImpl
@@ -722,37 +726,22 @@ async def test_a_claim_in_a_deleted_org_fails_the_item_and_moves_on(
     assert await managers.work.purge_items() == 1
 
 
-async def test_a_tenant_over_its_cap_waits_while_another_tenants_item_is_claimed(
+async def test_a_tenant_at_a_cap_of_one_is_passed_over_while_another_tenants_item_is_claimed(
     managers: Managers, storage: StorageMemoryImpl, ctx: TenantContext
 ) -> None:
-    """With a cap of one on the lane, a tenant's second item goes back to the
-    lane with a delay and its attempts as they were, and the same claim takes
-    the next tenant's item, so one tenant cannot hold every worker."""
     bob = await second_tenant(managers)
+    await a_second_item_is_passed_over_at_a_cap_of_one(
+        managers, storage.get_work_storage(), ctx, bob
+    )
 
-    async def enqueued(by: TenantContext, ready_ago: int) -> WorkItem:
-        item = make_item(available_in=timedelta(seconds=-ready_ago))
-        return await managers.work.enqueue(by, item.model_copy(update={"created_by": by.user_id}))
 
-    first, second, bobs = await enqueued(ctx, 3), await enqueued(ctx, 2), await enqueued(bob, 1)
-    over_cap = OUTCOMES.labels(subsystem="work", outcome="over_cap")._value.get()
-
-    running = await managers.work.claim(request(), "default", [WorkKind.NOOP], "w1", LEASE, 1)
-    assert running is not None and running[1].id == first.id and running[1].attempts == 1
-    before = utcnow()
-    claimed = await managers.work.claim(request(), "default", [WorkKind.NOOP], "w2", LEASE, 1)
-    assert claimed is not None
-    work_ctx, item = claimed
-    assert (work_ctx.org_id, item.id, item.attempts) == (bob.org_id, bobs.id, 1)
-
-    waiting = await storage.get_work_storage().read_item(ctx.org_id, second.id)
-    assert waiting is not None
-    assert waiting.status is WorkStatus.QUEUED and waiting.attempts == 0, "no attempt spent"
-    assert waiting.available_at >= before + WorkOptions().over_cap_delay, "back with a delay"
-    assert (waiting.claimed_by, waiting.claim_token, waiting.lease_expires_at) == (None,) * 3
-    assert waiting.updated_by == EMPTY_UUID, "the hand-back is the platform's write"
-    assert OUTCOMES.labels(subsystem="work", outcome="over_cap")._value.get() == over_cap + 1
-    assert await managers.work.claim(request(), "default", [WorkKind.NOOP], "w3", LEASE, 1) is None
+async def test_a_burst_at_a_cap_of_two_drains_as_fast_as_the_worker_runs(
+    managers: Managers, storage: StorageMemoryImpl, ctx: TenantContext
+) -> None:
+    bob = await second_tenant(managers)
+    await a_burst_drains_as_fast_as_the_worker_runs_at_a_cap_of_two(
+        managers, storage.get_work_storage(), ctx, bob
+    )
 
 
 async def test_every_write_after_the_enqueue_is_the_platforms(

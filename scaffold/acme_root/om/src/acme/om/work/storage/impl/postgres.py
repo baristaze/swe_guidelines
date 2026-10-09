@@ -2,17 +2,8 @@ from collections.abc import Sequence
 from datetime import datetime, timedelta
 from uuid import UUID
 
-from sqlalchemy import (
-    DateTime,
-    Interval,
-    case,
-    func,
-    literal,
-    literal_column,
-    select,
-    tuple_,
-    update,
-)
+from sqlalchemy import DateTime, Interval, case, func, literal, literal_column, select, update
+from sqlalchemy.orm import aliased
 from sqlalchemy.sql import Select
 
 from acme.om.base import EMPTY_UUID, new_id, utcnow
@@ -90,20 +81,41 @@ class WorkStoragePostgresImpl(PgStorageBase, WorkStorageInterface):
             return written
 
     async def claim_next(
-        self, lane: str, kinds: Sequence[WorkKind], worker_id: str, lease: timedelta
+        self,
+        lane: str,
+        kinds: Sequence[WorkKind],
+        worker_id: str,
+        lease: timedelta,
+        tenant_cap: int | None = None,
     ) -> tuple[UUID, WorkItem] | None:
         now = utcnow()
-        candidate = (
-            select(WorkItems.id)
-            .where(
-                WorkItems.lane == lane,
-                WorkItems.status == WorkStatus.QUEUED.value,
-                WorkItems.kind.in_([kind.value for kind in kinds]),
-                WorkItems.available_at <= now,
+        ready = select(WorkItems.id).where(
+            WorkItems.lane == lane,
+            WorkItems.status == WorkStatus.QUEUED.value,
+            WorkItems.kind.in_([kind.value for kind in kinds]),
+            WorkItems.available_at <= now,
+        )
+        if tenant_cap is not None:
+            # rules.is_at_cap, in SQL: the tenants that already hold the cap
+            # on the lane under a live lease, counted once per statement over
+            # the claim's index (a lane holds as many claimed items as its
+            # workers run). Their items are passed over, never written.
+            held = aliased(WorkItems)
+            at_cap = (
+                select(held.org_id)
+                .where(
+                    held.lane == lane,
+                    held.status == WorkStatus.CLAIMED.value,
+                    held.lease_expires_at > now,
+                )
+                .group_by(held.org_id)
+                .having(func.count() >= tenant_cap)
             )
+            ready = ready.where(WorkItems.org_id.not_in(at_cap))
+        candidate = (
             # The item ready longest goes first, by the claim's index, so a
             # claim reads the first free row and not the whole ready backlog.
-            .order_by(WorkItems.available_at, WorkItems.id)
+            ready.order_by(WorkItems.available_at, WorkItems.id)
             .limit(1)
             .with_for_update(skip_locked=True)
             .scalar_subquery()
@@ -129,21 +141,6 @@ class WorkStoragePostgresImpl(PgStorageBase, WorkStorageInterface):
             claimed = (row.org_id, to_model(row, WorkItem))
             await session.commit()
             return claimed
-
-    async def count_claimed_ahead(self, org_id: UUID, item: WorkItem, now: datetime) -> int:
-        # The claim's index leads with the lane and the status, then the claim
-        # order, so this reads the lane's claimed items ahead of the item and
-        # no more: a lane holds as many as its workers run.
-        stmt = select(func.count()).where(
-            WorkItems.org_id == org_id,
-            WorkItems.lane == item.lane,
-            WorkItems.status == WorkStatus.CLAIMED.value,
-            WorkItems.lease_expires_at > now,
-            tuple_(WorkItems.available_at, WorkItems.id)
-            < tuple_(literal(item.available_at), literal(item.id)),
-        )
-        async with self._session_for(stmt, org_id=org_id) as session:
-            return (await session.execute(stmt)).scalar_one()
 
     async def requeue_stale(
         self, now: datetime, stagger: timedelta, limit: int

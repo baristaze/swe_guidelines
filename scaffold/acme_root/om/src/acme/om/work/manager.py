@@ -62,11 +62,12 @@ class WorkManagerInterface(ABC):
         to the next item, so no row stays claimed with nobody to settle it.
 
         `tenant_cap` is the lane's cap on the items one tenant holds claimed
-        on it; None sets none, and the claim counts nothing. A claimed item
-        whose tenant already holds that many claimed ahead of it on the lane
-        goes back to the lane after the options' delay, with no attempt
-        spent, and the claim moves on to the next item, so one tenant cannot
-        hold every worker of a lane it shares."""
+        on it under a live lease; None sets none, and the claim counts
+        nothing. The claim passes over a tenant at its cap and takes the
+        oldest item of a tenant under it, so one tenant cannot hold every
+        worker of a lane it shares. A passed-over item is not written: it
+        waits where it is, with its attempts, and the next claim after a
+        slot frees takes it."""
         ...
 
     @abstractmethod
