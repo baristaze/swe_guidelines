@@ -450,7 +450,11 @@ resumes parked records (staggered), rolls periods, relays the outbox,
 and purges done outbox rows, done and failed work items past a
 retention setting (`purge_items(before)`), soft-deleted rows,
 idempotency markers, redeemed or expired socket tickets, and ended
-sessions.
+sessions. A duty that needs a tenant's own context, a chore such as
+rolling a period, runs under that tenant's service context, only in the
+tenants one read across tenants names as due. A pass past its time
+budget takes no new tenant, but always one, and the next pass carries on
+from the last tenant it ran.
 
 **Source.** Worker Roles, Maintenance Without a Scheduler; The Storage
 Layer, Database Roles.
@@ -458,7 +462,8 @@ Layer, Database Roles.
 **Look for.** Where housekeeping runs; any leader election, cron
 component, or scheduled task; how parked records are resumed; whether
 the sweep relays the outbox and runs every purge, the work queue's
-`purge_items` and its retention setting among them.
+`purge_items` and its retention setting among them; how a chore finds
+its tenants, and where the next pass starts.
 
 **Violation.** A dedicated scheduler process or cron job for
 housekeeping; a sweep that is not safe to run twice concurrently; a
@@ -466,7 +471,10 @@ sweep only one elected instance runs; a sweep with no outbox relay,
 so a crash between the core write and its handoff is never repaired;
 a purge missing, so done rows, done or failed work items, idempotency
 markers, socket tickets, or sessions outlive their retention or their
-lifetime; every parked record resumed in the same instant.
+lifetime; every parked record resumed in the same instant; a chore that
+asks every tenant on every pass whether it is due; a pass with no time
+budget, or one that starts again at the first tenant each time, so a
+tenant late in the list waits for ever.
 
 **Severity.** medium
 

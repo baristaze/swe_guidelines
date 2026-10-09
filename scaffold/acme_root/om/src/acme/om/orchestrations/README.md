@@ -19,7 +19,9 @@ This is one of the kinds of thing [Acme is made of](../../../../README.md).
 - **Fail reason**: why a record ended unfinished: a bound of its input,
   or `defect`, a step that still failed on its last attempt.
 - **Period**: for a record kept per period, such as a day, the org, the
-  kind, and the period are its unique key.
+  kind, and the period are its unique key. The sweep opens the next
+  period's record as a chore, in the tenants where it is due
+  ([ADR 0089](../../../../../docs/adr/0089-the-sweep-runs-standing-chores-in-the-tenants-one-read-names.md)).
 
 ## What can happen
 
