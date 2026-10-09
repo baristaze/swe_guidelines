@@ -131,10 +131,22 @@ class OrchestrationsManagerImpl(OrchestrationsManagerInterface):
             raise ValidationFailed(f"orchestration {record_id} has {record.status.value}")
         return await self._resume(ctx, record, self._clock())
 
-    async def wake(self, ctx: TenantContext, reason: ParkReason) -> int:
+    async def wake(
+        self, ctx: TenantContext, reason: ParkReason, record_id: UUID | None = None
+    ) -> int:
         ctx.require(Permission.WRITE)
         now = self._clock()
-        waiting = await self._storage.read_parked(ctx.org_id, reason, self._options.wake_batch)
+        if record_id is None:
+            waiting = await self._storage.read_parked(ctx.org_id, reason, self._options.wake_batch)
+        else:
+            record = await self._storage.read_orchestration(ctx.org_id, record_id)
+            waiting = (
+                [record]
+                if record is not None
+                and record.status is OrchestrationStatus.PARKED
+                and record.park_reason is reason
+                else []
+            )
         return await self._resume_all(ctx, waiting, now)
 
     async def fail(

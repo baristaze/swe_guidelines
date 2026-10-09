@@ -1,0 +1,59 @@
+"""A resource: one thing of an org that one holder may use at a time, such
+as a loading dock. It stands for a row of another namespace, by a registered
+kind and that row's id, and it carries the lease store's anchor: the highest
+token granted on it, the lease that holds it, and until when. The anchor's
+row is what a grant locks."""
+
+from datetime import datetime
+from enum import StrEnum
+from typing import Annotated, ClassVar
+from uuid import UUID
+
+from pydantic import Field, StringConstraints
+
+from acme.om.base import Identifiable, Trackable
+
+Label = Annotated[str, StringConstraints(min_length=1, max_length=64, pattern=r"^[a-z0-9:_.-]+$")]
+"""One thing a resource offers, and a selector needs: lower case, a short
+token such as `cold` or `door:north`."""
+
+MAX_LABELS = 32
+
+
+class ResourceKind(StrEnum):
+    """A product adds its kinds here, each with the shape of what its ask
+    carries (`ASK_PAYLOADS`) and its hooks (`ResourceKindInterface`)."""
+
+    NOOP = "noop"  # the mechanism's own: a grant starts nothing, and every request may be granted
+
+
+class Resource(Identifiable, Trackable):
+    MANAGER_OWNED_FIELDS: ClassVar[tuple[str, ...]] = (
+        "available",
+        "retired_at",
+        "token",
+        "lease_id",
+        "held_until",
+        "mean_hold_seconds",
+    )
+    """The kind, the row, the labels, and the bound are the owner's at the
+    registration; the rest moves only through the manager's transitions."""
+
+    kind: ResourceKind
+    # The row it stands for, in the namespace that owns the kind. One
+    # resource per org, kind, and row.
+    ref_id: UUID
+    labels: tuple[Label, ...] = Field(default=(), max_length=MAX_LABELS)
+    # The bound on one lease: no grant and no renewal runs longer than this.
+    max_term_seconds: int = Field(default=300, ge=1, le=86_400)
+    # Out of service: held leases run on, and nothing new is granted.
+    available: bool = True
+    retired_at: datetime | None = None
+    # The anchor. `token` is the highest granted, and the next grant takes
+    # one more; `lease_id` and `held_until` name the lease that holds it.
+    token: int = 0
+    lease_id: UUID | None = None
+    held_until: datetime | None = None
+    # How long a lease of it is held, measured as each one ends; the wait
+    # estimate replays its line from it.
+    mean_hold_seconds: float | None = None

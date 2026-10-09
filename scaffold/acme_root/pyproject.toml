@@ -108,6 +108,8 @@ tenantless = [
     "EventStorageInterface.count_since",
     "EventStorageInterface.trim",
     "IdempotencyStorageInterface.purge_records",
+    "LeasesStorageInterface.purge_settled",
+    "LeasesStorageInterface.read_due_orgs",
     "MediaStorageInterface.purge_files_across_tenants",
     "MediaStorageInterface.read_purgeable",
     "OrchestrationsStorageInterface.purge_settled",

@@ -4,6 +4,7 @@ from abc import ABC, abstractmethod
 
 from acme.om.events.storage import EventStorageInterface
 from acme.om.idempotency.storage import IdempotencyStorageInterface
+from acme.om.leases.storage import LeasesStorageInterface
 from acme.om.media.storage import MediaStorageInterface
 from acme.om.orchestrations.storage import OrchestrationsStorageInterface
 from acme.om.outbox.storage import OutboxStorageInterface
@@ -32,6 +33,9 @@ class StorageInterface(ABC):
 
     @abstractmethod
     def get_orchestrations_storage(self) -> OrchestrationsStorageInterface: ...
+
+    @abstractmethod
+    def get_lease_storage(self) -> LeasesStorageInterface: ...
 
     @abstractmethod
     async def healthcheck(self) -> bool: ...

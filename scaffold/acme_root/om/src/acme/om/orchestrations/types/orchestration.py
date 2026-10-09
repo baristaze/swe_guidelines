@@ -42,6 +42,7 @@ class ParkReason(StrEnum):
     """Why a record waits, and so what wakes it."""
 
     PROVIDER_UNAVAILABLE = "provider_unavailable"  # a provider a step calls did not answer
+    RESOURCE = "resource"  # in line for a resource; the grant wakes it
 
 
 class FailReason(StrEnum):

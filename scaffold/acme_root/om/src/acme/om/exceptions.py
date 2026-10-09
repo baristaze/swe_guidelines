@@ -198,6 +198,16 @@ class WorkNotFailed(WorkException, Conflict):
     code = "work_not_failed"
 
 
+class LeasesException(PlatformException): ...
+
+
+class LeaseEnded(LeasesException, Conflict):
+    """The lease is no longer active, has expired by the server's clock, or
+    holds a retired resource: its holder stops acting on the resource."""
+
+    code = "lease_ended"
+
+
 class EventsException(PlatformException): ...
 
 
