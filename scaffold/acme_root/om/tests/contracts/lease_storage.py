@@ -537,6 +537,12 @@ class LeaseStorageContract:
         due = set(await storage.read_due_orgs(now, now - timedelta(seconds=30), 10_000))
         assert {lapsed_org, overdue_org, free_org} <= due
         assert idle_org not in due and elsewhere_org not in due
+        # In the order of their ids, after the one named: the sweep reads on
+        # past an org it skips.
+        ours = sorted((lapsed_org, overdue_org, free_org))
+        after = await storage.read_due_orgs(now, now - timedelta(seconds=30), 10_000, ours[0])
+        assert after == sorted(after) and all(org_id > ours[0] for org_id in after)
+        assert set(ours[1:]) <= set(after)
 
     async def test_the_purge_takes_what_settled_and_keeps_what_runs(
         self, storage: LeasesStorageInterface

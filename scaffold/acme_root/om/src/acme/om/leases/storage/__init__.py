@@ -219,10 +219,14 @@ class LeasesStorageInterface(ABC):
     # The sweep.
 
     @abstractmethod
-    async def read_due_orgs(self, now: datetime, lapsed_before: datetime, limit: int) -> list[UUID]:
+    async def read_due_orgs(
+        self, now: datetime, lapsed_before: datetime, limit: int, after: UUID | None = None
+    ) -> list[UUID]:
         """Cross-tenant, for the sweep, in the system scope: the orgs with
         something due: a lease lapsed before `lapsed_before`, a request past
-        its wait, or a free resource with a request of its kind waiting."""
+        its wait, or a free resource with a request in its line. In the
+        order of their ids, after `after` when it is given, so the sweep
+        reads past an org it skips."""
         ...
 
     @abstractmethod

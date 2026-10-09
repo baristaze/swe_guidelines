@@ -306,20 +306,32 @@ class LeasesManagerImpl(LeasesManagerInterface):
     # The sweep.
 
     async def sweep(self, rctx: RequestContext) -> int:
+        """Visits up to `sweep_orgs` live orgs with something due. A deleted
+        org stays due until its purge takes its rows, so the sweep reads on
+        past it, and it takes no live org's place in the batch."""
         now = self._clock()
         lapsed_before = now - self._options.margin
-        due = await self._storage.read_due_orgs(now, lapsed_before, self._options.sweep_orgs)
-        ended = 0
-        for org_id in due:
-            try:
-                ctx = await self._tenancy.service_context(rctx, org_id, EMPTY_UUID)
-            except InvalidCredential:
-                continue  # a deleted org: its rows go with it
-            try:
-                ended += await self._sweep_org(ctx)
-            except Exception:
-                log.exception("sweep: leases of org %s failed", org_id)
-        return ended
+        ended = visited = 0
+        after: UUID | None = None
+        while True:
+            due = await self._storage.read_due_orgs(
+                now, lapsed_before, self._options.sweep_orgs, after
+            )
+            for org_id in due:
+                try:
+                    ctx = await self._tenancy.service_context(rctx, org_id, EMPTY_UUID)
+                except InvalidCredential:
+                    continue  # a deleted org: its rows go with its purge
+                try:
+                    ended += await self._sweep_org(ctx)
+                except Exception:
+                    log.exception("sweep: leases of org %s failed", org_id)
+                visited += 1
+                if visited == self._options.sweep_orgs:
+                    return ended
+            if len(due) < self._options.sweep_orgs:
+                return ended
+            after = due[-1]
 
     async def purge_across_tenants(self) -> int:
         return await self._storage.purge_settled(

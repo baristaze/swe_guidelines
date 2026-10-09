@@ -342,7 +342,9 @@ class LeasesStorageMemoryImpl(MemoryStorageBase, LeasesStorageInterface, Resourc
 
     # The sweep.
 
-    async def read_due_orgs(self, now: datetime, lapsed_before: datetime, limit: int) -> list[UUID]:
+    async def read_due_orgs(
+        self, now: datetime, lapsed_before: datetime, limit: int, after: UUID | None = None
+    ) -> list[UUID]:
         due: set[UUID] = set()
         for org_id, lease in self._rows_across_tenants(self._leases):
             if lease.status is LeaseStatus.ACTIVE and lease.expires_at <= lapsed_before:
@@ -359,7 +361,7 @@ class LeasesStorageMemoryImpl(MemoryStorageBase, LeasesStorageInterface, Resourc
             free = resource.lease_id is None and resource.available and resource.retired_at is None
             if free and any(stands_in(request, resource) for request in waiting.get(org_id, ())):
                 due.add(org_id)
-        return sorted(due)[:limit]
+        return sorted(o for o in due if after is None or o > after)[:limit]
 
     async def purge_settled(self, before: datetime, limit: int) -> int:
         async with self._lock:

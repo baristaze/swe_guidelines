@@ -26,7 +26,7 @@ from acme.om.context import (
 )
 from acme.om.leases.impl.kinds import NoopResourceKindImpl, OrchestrationWaiterImpl
 from acme.om.leases.impl.manager import LeasesManagerImpl, LeasesOptions
-from acme.om.leases.types.lease import LeaseStatus
+from acme.om.leases.types.lease import Lease, LeaseStatus
 from acme.om.leases.types.request import LeaseRequest, WaiterKind
 from acme.om.leases.types.resource import Resource, ResourceKind
 from acme.om.orchestrations.rules import advanced
@@ -71,27 +71,39 @@ class World:
         self.storage = storage
         self.managers: Managers = build_managers(storage, InfraLocalImpl(tmp_path))
         self.now = utcnow()
-        self.leases = LeasesManagerImpl(
-            storage.get_lease_storage(),
+        self.leases = self.leases_of(sweep_orgs=100_000)
+        self.slug = f"ajax-{new_id().hex[-8:]}"
+
+    def leases_of(self, *, sweep_orgs: int) -> LeasesManagerImpl:
+        return LeasesManagerImpl(
+            self.storage.get_lease_storage(),
             self.managers.tenancy,
             self.managers.outbox,
-            LeasesOptions(margin=MARGIN, sweep_orgs=100_000),
+            LeasesOptions(margin=MARGIN, sweep_orgs=sweep_orgs),
             kinds={ResourceKind.NOOP: NoopResourceKindImpl()},
             waiters={
                 WaiterKind.ORCHESTRATION: OrchestrationWaiterImpl(self.managers.orchestrations)
             },
             clock=lambda: self.now,
         )
-        self.slug = f"ajax-{new_id().hex[-8:]}"
 
     def rctx(self) -> RequestContext:
         return RequestContext(request_id=new_id(), app=APP)
 
-    async def owner(self) -> TenantContext:
+    async def owner(self, slug: str | None = None) -> TenantContext:
+        slug = slug or self.slug
         owner, _ = await self.managers.tenancy.bootstrap(
-            self.rctx(), "Ajax", self.slug, f"a-{self.slug}@x.test", "Ann"
+            self.rctx(), "Ajax", slug, f"a-{slug}@x.test", "Ann"
         )
         return owner
+
+    async def delete_org(self, ctx: TenantContext) -> None:
+        tenancy = self.storage.get_tenancy_storage()
+        org = await tenancy.read_org(ctx.org_id)
+        assert org is not None
+        await tenancy.write_org(
+            ctx.org_id, org.model_copy(update={"deleted_at": utcnow(), "deleted_by": ctx.user_id})
+        )
 
     async def member(self, name: str) -> TenantContext:
         creator, user, _ = await self.managers.tenancy.add_member(
@@ -187,6 +199,34 @@ async def test_a_lapsed_lease_holds_until_the_margin_passes_then_the_line_moves_
     assert granted.lease is not None and granted.lease.token == 2
     anchor = await world.leases.get_resource(owner, dock.id)
     assert (anchor.lease_id, anchor.token) == (granted.lease.id, 2)
+
+
+async def test_a_deleted_org_takes_no_place_of_a_live_one_in_the_sweep(world: World) -> None:
+    """A deleted org's lapsed lease stays due until its purge takes it, and
+    the sweep reads on past it: in a batch of one org, the live org's lapsed
+    lease still ends. Other cases leave due orgs, the storage contract's
+    tenants among them, which no org row names; so the case runs a year on,
+    and a full sweep a second before the two leases lapse leaves only them
+    due."""
+    world.later(timedelta(days=365))
+    first, second = await world.owner(), await world.owner(f"bolt-{new_id().hex[-8:]}")
+    gone, live = sorted((first, second), key=lambda ctx: ctx.org_id)
+    held: dict[UUID, Lease] = {}
+    for ctx in (gone, live):
+        standing = await world.leases.ask(ctx, an_ask(await world.dock(ctx), term_seconds=60))
+        assert standing.lease is not None
+        held[ctx.org_id] = standing.lease
+    await world.delete_org(gone)
+    world.later(timedelta(seconds=60) + MARGIN - timedelta(seconds=1))
+    await world.leases.sweep(world.rctx())
+    assert (await world.leases.get_lease(live, held[live.org_id].id)).status is LeaseStatus.ACTIVE
+
+    world.later(timedelta(seconds=2))
+    assert await world.leases_of(sweep_orgs=1).sweep(world.rctx()) == 1
+    ended = await world.leases.get_lease(live, held[live.org_id].id)
+    assert ended.status is LeaseStatus.EXPIRED
+    kept = await world.storage.get_lease_storage().read_lease(gone.org_id, held[gone.org_id].id)
+    assert kept is not None and kept.status is LeaseStatus.ACTIVE
 
 
 async def test_a_parked_record_is_woken_with_its_lease_when_the_resource_frees(

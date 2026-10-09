@@ -469,7 +469,9 @@ class LeasesStoragePostgresImpl(PgStorageBase, LeasesStorageInterface):
 
     # The sweep.
 
-    async def read_due_orgs(self, now: datetime, lapsed_before: datetime, limit: int) -> list[UUID]:
+    async def read_due_orgs(
+        self, now: datetime, lapsed_before: datetime, limit: int, after: UUID | None = None
+    ) -> list[UUID]:
         lapsed = select(Leases.org_id).where(
             Leases.status == ACTIVE, Leases.expires_at <= lapsed_before
         )
@@ -499,7 +501,10 @@ class LeasesStoragePostgresImpl(PgStorageBase, LeasesStorageInterface):
             Resources.retired_at.is_(None),
             in_line,
         )
-        stmt = union(lapsed, overdue, free).limit(limit)
+        due = union(lapsed, overdue, free).subquery()
+        stmt = select(due.c.org_id).order_by(due.c.org_id).limit(limit)
+        if after is not None:
+            stmt = stmt.where(due.c.org_id > after)
         # Every tenant's, so the system scope, spelled here.
         async with self._session_for(Leases, org_id=EMPTY_UUID) as session:
             await session.execute(PLAN_WITH_VALUES)

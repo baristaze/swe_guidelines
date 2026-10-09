@@ -163,7 +163,12 @@ class Refusing(ResourceKindInterface):
 
 
 class World:
-    def __init__(self, tmp_path: Path, kind: ResourceKindInterface | None = None) -> None:
+    def __init__(
+        self,
+        tmp_path: Path,
+        kind: ResourceKindInterface | None = None,
+        options: LeasesOptions | None = None,
+    ) -> None:
         self.storage = StorageMemoryImpl()
         self.managers: Managers = build_managers(self.storage, InfraLocalImpl(tmp_path))
         self.now = utcnow()
@@ -171,7 +176,7 @@ class World:
             self.storage.get_lease_storage(),
             self.managers.tenancy,
             self.managers.outbox,
-            LeasesOptions(margin=MARGIN),
+            options or LeasesOptions(margin=MARGIN),
             kinds={ResourceKind.NOOP: kind or NoopResourceKindImpl()},
             waiters={
                 WaiterKind.ORCHESTRATION: OrchestrationWaiterImpl(self.managers.orchestrations)
@@ -183,11 +188,20 @@ class World:
     def rctx(self) -> RequestContext:
         return RequestContext(request_id=new_id(), app=APP)
 
-    async def owner(self) -> TenantContext:
+    async def owner(self, slug: str | None = None) -> TenantContext:
+        slug = slug or self.slug
         owner, _ = await self.managers.tenancy.bootstrap(
-            self.rctx(), "Ajax", self.slug, f"a-{self.slug}@x.test", "Ann"
+            self.rctx(), "Ajax", slug, f"a-{slug}@x.test", "Ann"
         )
         return owner
+
+    async def delete_org(self, ctx: TenantContext) -> None:
+        tenancy = self.storage.get_tenancy_storage()
+        org = await tenancy.read_org(ctx.org_id)
+        assert org is not None
+        await tenancy.write_org(
+            ctx.org_id, org.model_copy(update={"deleted_at": self.now, "deleted_by": ctx.user_id})
+        )
 
     async def member(self, name: str, role: Role = Role.MEMBER) -> TenantContext:
         """A person of the org, as a session of theirs would act."""
@@ -384,6 +398,27 @@ async def test_a_lapsed_lease_holds_until_the_margin_passes_then_the_line_moves_
     assert lapsed.status is LeaseStatus.EXPIRED
     granted = await world.leases.get_request(bob, waits.request.id)
     assert granted.lease is not None and granted.lease.token > held.lease.token
+
+
+async def test_a_deleted_org_takes_no_place_of_a_live_one_in_the_sweep(tmp_path: Path) -> None:
+    """A deleted org's lapsed lease stays due until its purge takes it. The
+    sweep reads on past it, so in a batch of one org, the live org's lapsed
+    lease still ends, whichever comes first."""
+    world = World(tmp_path, options=LeasesOptions(margin=MARGIN, sweep_orgs=1))
+    first, second = await world.owner(), await world.owner(f"bolt-{new_id().hex[-8:]}")
+    gone, live = sorted((first, second), key=lambda ctx: ctx.org_id)
+    held: dict[UUID, Lease] = {}
+    for ctx in (gone, live):
+        standing = await world.leases.ask(ctx, an_ask(await world.resource(ctx)))
+        assert standing.lease is not None
+        held[ctx.org_id] = standing.lease
+    await world.delete_org(gone)
+    world.later(timedelta(seconds=60) + MARGIN + timedelta(seconds=1))
+    assert await world.leases.sweep(world.rctx()) == 1
+    ended = await world.leases.get_lease(live, held[live.org_id].id)
+    assert ended.status is LeaseStatus.EXPIRED
+    kept = await world.storage.get_lease_storage().read_lease(gone.org_id, held[gone.org_id].id)
+    assert kept is not None and kept.status is LeaseStatus.ACTIVE
 
 
 async def test_the_sweep_expires_a_request_past_its_wait(world: World) -> None:
