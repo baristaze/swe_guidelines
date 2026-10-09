@@ -17,6 +17,7 @@ served to it. Exposure is by listing, never by folder.
 - [Idempotency records](om/src/acme/om/idempotency/README.md): the outcome of a request that may arrive twice
 - [Work items](om/src/acme/om/work/README.md): background jobs, the claim, the lease, and the dead letter
 - [Orchestrations](om/src/acme/om/orchestrations/README.md): long-running records, a step at a time, that park or fail
+- [Leases](om/src/acme/om/leases/README.md): a resource one holder uses at a time, its lease under a fencing token, and the line in front of it
 - [Files](om/src/acme/om/media/README.md): files as references, the bounded upload straight to the store, and the sweep
 - [Infrastructure](infra/README.md): cache, buckets, topics, queues, secrets, flags, observability; what each promises and which twin runs where
 - [Integrations](integrations/README.md): the identity provider, its twin, the absent provider, and the webhook check
