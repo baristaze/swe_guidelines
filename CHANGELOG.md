@@ -5,62 +5,57 @@ included, stay on its GitHub release. Releases are tagged
 `vMAJOR.MINOR.PATCH`; see `CONTRIBUTING.md` for what bumps which
 number.
 
-## 0.58.0 (2026-10-09)
+## 0.59.0 (2026-10-09)
 
-A read cache is keyed by the tenant's generation, which a write bumps
-once its transaction commits. The portal's channel hands over each
-notice once, as its cursor passes it. A purge across tenants acts in
-one tenant's context, a member's add asks the org's gate, and an
-optional investigator's skill says where an integration's deliveries
-stop. Minor.
+A resource's owner updates its labels, its bound, and its availability
+in the commit of its own row, and its line is offered it again. A
+tenant reads its leases back as a history, each with the request it
+answered. A kind may refuse an ask before anything of it lands, and a
+line answers each place and estimate from one replay. The scaffold's
+import-direction test counts the read cache as the cache's interface.
+Minor.
 
 ### Added
 
-- A read cache: the scaffold's `ReadCache`
-  (`infra/src/acme/infra/cache/read.py`), a typed reader on a scoped
-  `CacheInterface`. It reads and puts under
-  `<name>:<window>:<generation>` for the tenant the call names, and
-  reads the generation before the source. `bump` is one `increment` of
-  it. Windows are whole days. A miss, an entry that does not decode,
-  and an unreachable cache each read the source. ASY-05 names it as its
-  shape, ASY-06 as a call site that fails open, and ADR 0095 records
+- An owner's update of a resource: `update_statement` with a
+  `ResourceUpdate` (`land_update` in memory) changes the labels, the
+  bound, or the availability it names, in the commit of the owner's
+  row, and keeps the rest. After the commit that registered or updated
+  a resource, the owner calls the manager's `offer`; the manager's own
+  `register` and `update` offer at once, and the sweep offers what a
+  crash left. A request the new labels match may be granted, and one
+  they no longer match leaves the line. A held lease keeps its term,
+  and a new bound holds from its next renewal. ASY-36 and ASY-37 check
   it.
-- Notices on the channel: a notice, a record the person is told about,
-  such as an invitation accepted, is handed over once, as the cursor
-  passes it. A push hands it over at once. A replay hands over its
-  notices together when it ends, from all its pages, whether it reaches
-  the head or a read fails partway. A stopped channel hands over
-  nothing, so a switch never shows the old tenant's notice. The portal
-  channel takes the optional `isAnnounced` and `announce`, and the
-  scaffold's provider passes neither. NET-20 holds the hand-over,
-  DEL-40 the switch, and ADR 0096 records it.
-- A purge across tenants that must act in the tenant of a row it found,
-  such as asking another manager to erase the files attached to it,
-  takes that tenant's context from
-  `TenancyManagerInterface.sweep_context`: the one the pass minted.
-  Under the pass's stage it reads nothing. A tenant marked purged has
-  none, and its row goes as it is. Such a purge stays one call.
-- A member's admission: `add_member_to`, the one create every path that
-  adds a member to an org goes through, takes the org's gate where a
-  system bounds who may join. The gate is asked once the person is
-  known to be new to the org, so a repeated add never counts a member
-  twice. Its refusal comes before any write, and its outbox rows ride
-  the add's commit. The scaffold's tenancy carries this seam and the
-  purge's, and wires neither. CTX-05, CTX-16, CTX-17, and NET-11 check
-  them, and ADR 0097 records them.
-- `ops-integration-silent`, an optional investigator's skill in the
-  scaffold. It counts an inbound webhook route's answers by status,
-  reads the worker's `deliveries` outcomes, the `webhooks` queue, and
-  its dead letters, and says where the deliveries stopped, why, and
-  what next. Locally it reads through `docker compose` alone; in the
-  cloud, under the investigate profile. A tree with no inbound webhook
-  leaves it out. OPS-11 lists it among the optional skills, and
-  arch-check's required thirteen stay.
+- A lease history: a resource's leases, and the org's, newest first by
+  `created_at` and then `id`, ended ones included, each with the
+  request it answered from one join, at most `history_limit` a page.
+  The next page starts after the last lease's `HistoryMark`, which an
+  opaque cursor carries. A tenant reads only its own. The scaffold
+  serves it at `GET /v1/leases`, the Python client reads it with
+  `lease_history`, and the migration `core/202610091856` adds the two
+  indexes it walks. ASY-36 checks it.
+- A kind's check at the ask: a kind that refuses some asks registers an
+  `AskCheckInterface` beside its hooks. Its `check_ask` runs under the
+  asker's context, with the request as it would land and the resource
+  it names, and refuses with `NotAuthorized` or `ValidationFailed`
+  before anything lands. A kind with none accepts every ask. ASY-36
+  checks it, and ADR 0098 records it with the update and the history.
 
 ### Changed
 
-- Infrastructure, Cache: a write bumps the tenant's generation once its
-  transaction commits, never before, so no read caches the old value
-  under the new number. ASY-05 holds the bump's time.
-- Operations Without a Principal: a deleted tenant keeps its service
-  context until a pass finds nothing of it left and marks it purged.
+- Leases on a Resource: a grant lands only while the request still fits
+  the resource as its row stands under the anchor's lock, in its line
+  and with the lease's term and window within its bound (`grant_fits`).
+  A grant decided on labels or a bound read before the lock is a
+  violation of ASY-32.
+- Leases on a Resource: a resource's line answers each request's place
+  and estimate (`Place`) from one replay over the reads it makes. A line
+  that reads the store again for each place is a violation of ASY-34.
+
+### Fixed
+
+- The scaffold's import-direction test lists `acme.infra.cache.read`
+  with the infra interfaces, so a manager that takes a `ReadCache`
+  through its constructor, as ADR 0095 asks, passes a copy's unit gate.
+  The scan's own test asserts the read cache is no impl.
