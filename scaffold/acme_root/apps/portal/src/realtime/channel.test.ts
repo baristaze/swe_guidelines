@@ -4,7 +4,7 @@ import { ApiError, type EventView } from "@acme/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useConnectionStore } from "../store/connection";
 import { CLOSE_UNAUTHENTICATED, openChannel, SOCKET_OPEN, type Channel, type SocketLike } from "./channel";
-import type { Envelope } from "./envelopes";
+import type { Envelope, EventEnvelope } from "./envelopes";
 import { watchPage, type PageLike } from "./pageVisibility";
 import { backoffDelay, DEGRADED_POLL_INTERVAL_MS, HIDDEN_PAUSE_MS, PING_INTERVAL_MS, STABLE_OPEN_MS } from "./timeouts";
 
@@ -54,7 +54,12 @@ const hello = (seq: number) => ({ type: "hello", sent_at: null, org_id: "o1", us
 /** The stream in storage, as pages after a seq. */
 type Pages = (after: number) => EventView[];
 
-function harness(pages: Pages = () => [], pageSize = 200, clock?: () => number) {
+function harness(
+  pages: Pages = () => [],
+  pageSize = 200,
+  clock?: () => number,
+  replayKey?: (envelope: EventEnvelope) => string,
+) {
   const sockets: FakeSocket[] = [];
   const routed: Envelope[] = [];
   const fetches: number[] = [];
@@ -80,6 +85,7 @@ function harness(pages: Pages = () => [], pageSize = 200, clock?: () => number) 
     refreshAll,
     connection: useConnectionStore,
     pageSize,
+    replayKey,
   });
   return { channel, sockets, routed, fetches, requestTicket, onUnauthenticated, refreshAll };
 }
@@ -330,6 +336,24 @@ describe("stream cursor", () => {
       .filter((e) => e.type === "event")
       .map((e) => (e as { payload: { kind: string } }).payload.kind);
     expect(kinds).toEqual(["media.file.updated", "tenancy.user.deleted"]);
+  });
+
+  it("routes a replay page once per record of an entity whose reader reads each record", async () => {
+    // A reader gathers what it is handed, so every member changed while the
+    // tab was away is read or placed, not only the last one.
+    const stream = [event(6), { ...event(7), target_id: "u6" }, event(8), { ...event(9), kind: "media.file.updated" }];
+    const byRecord = (envelope: EventEnvelope) =>
+      envelope.payload.kind.startsWith("tenancy.user.") ? `user/${envelope.payload.target_id}` : "file";
+    const h = harness((after) => stream.filter((e) => e.seq > after), 200, undefined, byRecord);
+    channel = h.channel;
+    await flush();
+    h.sockets[0]!.accept();
+    await flush();
+    h.sockets[0]!.receive(hello(5));
+    await flush();
+    h.sockets[0]!.receive(push(9));
+    await flush();
+    expect(h.routed.filter((e) => e.type === "event").map(seqOf)).toEqual([7, 8, 9]);
   });
 
   it("stops paging when a page moves the cursor nowhere", async () => {

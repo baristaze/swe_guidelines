@@ -1,21 +1,31 @@
 // Envelopes route into the query cache, never into components. An
-// `entity_changed` push invalidates the queries that carry the entity named
-// inside its kind (`<namespace>.<entity>.<action>`): by convention the queries
-// whose key starts with the entity name, and by the table below where the
-// entity is read through another query, or through none.
+// `entity_changed` push names an entity inside its kind
+// (`<namespace>.<entity>.<action>`) and one record of it. For an entity with
+// a hint reader, the push is a hint: the reader reads that one record and
+// places it (`hints.ts`). Any other push invalidates the queries that carry
+// its entity: by convention the queries whose key starts with the entity
+// name, and by the table below where the entity is read through another
+// query, or through none.
 import type { QueryClient, QueryKey } from "@tanstack/react-query";
 import { keys } from "../queries/keys";
-import { entityOf, isEntityChanged, type Envelope } from "./envelopes";
+import { entityOf, isEntityChanged, type Envelope, type EventEnvelope } from "./envelopes";
+import type { Hints } from "./hints";
 
 export interface RouteOutcome {
   invalidated: QueryKey[];
+  /** The entity whose reader took the push as a hint, when one did. */
+  hinted?: string;
 }
+
+/** The hint reader of each entity read one record at a time. */
+export type HintReaders = Readonly<Record<string, Hints>>;
 
 // Entities the convention does not reach on its own. A membership is read as
 // the role and the permissions inside `me`, as the role in the person's list
 // of places the org chip reads, and as the role beside each member in
 // Settings; a user is read twice, as a row of the member list and as the name
-// and the email in `me`, so a user push refreshes both. A revoked session is
+// and the email in `me`, so a user push reaches both: its reader places the
+// member in both (`userCache.ts`). A revoked session is
 // nobody's query: this session's own revocation arrives as a 4401 close, not
 // as a push. No screen reads an orchestration's record; a screen that does
 // keys its queries under the entity and drops its line here.
@@ -53,11 +63,30 @@ export function isKeptFresh(queryKey: QueryKey): boolean {
   return KEPT_FRESH.has(queryKey[0] as string);
 }
 
-/** Routes one envelope, live or read back from the stream: every query its
- * entity is read from is read again. */
-export function routeEnvelope(queryClient: QueryClient, envelope: Envelope): RouteOutcome {
+/** Routes one envelope, live or read back from the stream: the entity's
+ * reader reads the one record it names, or, for an entity with none, every
+ * query the entity is read from is read again. */
+export function routeEnvelope(
+  queryClient: QueryClient,
+  envelope: Envelope,
+  readers: HintReaders = {},
+): RouteOutcome {
   if (!isEntityChanged(envelope)) return { invalidated: [] };
-  const targets = [...targetsOf(entityOf(envelope.payload.kind))];
+  const entity = entityOf(envelope.payload.kind);
+  const reader = readers[entity];
+  if (reader) {
+    reader.hint(envelope.payload.target_id, envelope.payload.version);
+    return { invalidated: [], hinted: entity };
+  }
+  const targets = [...targetsOf(entity)];
   for (const queryKey of targets) void queryClient.invalidateQueries({ queryKey });
   return { invalidated: targets };
+}
+
+/** What a page read back from the stream keeps one push of, the last: the
+ * record, for an entity whose reader reads each record, and the entity for
+ * any other, since one invalidation reads all of it again. */
+export function replayKey(envelope: EventEnvelope, readers: HintReaders = {}): string {
+  const entity = entityOf(envelope.payload.kind);
+  return readers[entity] ? `${entity}/${envelope.payload.target_id}` : entity;
 }
