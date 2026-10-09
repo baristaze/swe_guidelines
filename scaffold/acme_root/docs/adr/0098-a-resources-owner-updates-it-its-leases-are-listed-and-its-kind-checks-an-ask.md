@@ -86,7 +86,7 @@ holds them.
   standing live at the grant, since a request may wait for days.
 - A refusal by the kind replays under its idempotency key; an asker that
   gains what it lacked asks again under a new key.
-- `LeasesManagerInterface` declares 21 operations, past the twenty
-  arch-check names for a review (CON-01). It stays whole: every
+- `LeasesManagerInterface` declares 21 operations, past the twenty at
+  which arch-check asks for a judgment (CON-01). It stays whole: every
   operation reads or moves one resource's anchor and its line, and a
   split would cut the grant's lock from what frees a resource.
