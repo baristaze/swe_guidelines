@@ -1,6 +1,6 @@
 // The socket's whole life without React: ticket, connect, subscribe, ping,
 // reconnect with backoff, the degraded polling mode, the pause of a hidden
-// tab, and the stream cursor.
+// tab, the stream cursor, and the notices it hands over.
 // Everything it reaches for is handed in, so the loop runs in a test over a
 // fake socket and fake timers. The provider owns one of these per session.
 import type { EventView } from "@acme/client";
@@ -47,11 +47,20 @@ export interface ChannelDeps {
   fetchEventsAfter(after: number, limit: number): Promise<EventView[]>;
   /** Hands one envelope to the router; the query cache is behind it. A
    * record read back from the stream (a replay, the first catch-up) comes
-   * here too, only the last record of each entity. */
+   * here too, only the last record of each entity. It tells the person
+   * nothing: a notice is `announce`'s alone. */
   route(envelope: Envelope): void;
   /** What a page read back from the stream routes one push of, the last
    * (`replayKey` in `router.ts`); the entity when none is handed in. */
   replayKey?(envelope: EventEnvelope): string;
+  /** Whether a record is a notice: one the person is told about, not only
+   * refreshed by. None is when none is handed in. */
+  isAnnounced?(envelope: EventEnvelope): boolean;
+  /** Hands over notices in stream order, each once, as the cursor passes
+   * it: a push at once, and what a replay or the first catch-up read in one
+   * call when it ends, every page of it, however it ends. Never after
+   * `stop`, so a switch shows no notice of the tenant it left. */
+  announce?(envelopes: EventEnvelope[]): void;
   /** Refreshes every query, for a first catch-up the stream's tail cannot answer. */
   refreshAll(): Promise<unknown>;
   connection: { getState(): ConnectionState };
@@ -99,6 +108,7 @@ export function openChannel(deps: ChannelDeps): Channel {
   // When the page began reading, near enough: the provider opens the channel
   // in the same render that mounts the page's first queries.
   const startedAt = now();
+  const isAnnounced = deps.isAnnounced ?? (() => false);
   // Frames and replays are applied strictly in arrival order.
   let inbox: Promise<void> = Promise.resolve();
 
@@ -106,11 +116,23 @@ export function openChannel(deps: ChannelDeps): Channel {
     if (socket?.readyState === SOCKET_OPEN) socket.send(JSON.stringify(command));
   };
 
+  // Hands notices over unless the channel stopped: a switch of tenant and a
+  // sign-out stop it, so nothing the old session read is told in the new one.
+  const announce = (notices: EventEnvelope[]) => {
+    if (!stopped && notices.length > 0) deps.announce?.(notices);
+  };
+
   // Routes one envelope unless it is behind the cursor; returns the seq to
   // replay after when the envelope is ahead of it. `route` is where the
   // envelope goes: the router by default, and a replay's collector when a
-  // page is being coalesced.
-  const apply = (envelope: Envelope, route: (routed: Envelope) => void = deps.route): number | null => {
+  // page is being coalesced. `tell` is where a notice goes once the cursor
+  // passes it: handed over at once by default, and kept for the end of a
+  // replay. The cursor passes each seq once, so each notice is told once.
+  const apply = (
+    envelope: Envelope,
+    route: (routed: Envelope) => void = deps.route,
+    tell: (notice: EventEnvelope) => void = (notice) => announce([notice]),
+  ): number | null => {
     if (!isEntityChanged(envelope)) {
       route(envelope);
       return null;
@@ -120,6 +142,7 @@ export function openChannel(deps: ChannelDeps): Channel {
     if (placement.kind === "gap") return placement.after;
     route(envelope);
     if (placement.kind === "next") cursor = placement.cursor;
+    if (isAnnounced(envelope)) tell(envelope);
     return null;
   };
 
@@ -139,33 +162,48 @@ export function openChannel(deps: ChannelDeps): Channel {
   // is not in storage yet), so reading the same page again would too. The
   // cursor stays where it is, and the next push or pong retries from there.
   // A fetch refused as truncated is a resync instead.
+  //
+  // A notice is kept apart from the collapse to one route per entity, which
+  // would hide it behind a later record of its entity. The replay keeps every
+  // notice it applies, across all its pages, and hands them over once it
+  // ends, however it ends: a failed fetch included, since the cursor has
+  // passed them and no later replay reads them again.
   const replay = async (after: number): Promise<void> => {
-    let from = after;
-    while (!stopped) {
-      let page: EventView[];
-      try {
-        page = await deps.fetchEventsAfter(from, deps.pageSize);
-      } catch (error) {
-        const head = truncatedHead(error);
-        if (head !== null) await resync(head);
-        return;
+    const kept: EventEnvelope[] = [];
+    try {
+      let from = after;
+      while (!stopped) {
+        let page: EventView[];
+        try {
+          page = await deps.fetchEventsAfter(from, deps.pageSize);
+        } catch (error) {
+          const head = truncatedHead(error);
+          if (head !== null) await resync(head);
+          return;
+        }
+        if (stopped) return;
+        // One route per entity, not per record, where routing invalidates every
+        // query the entity is read from: a page of two hundred records of one
+        // entity that each triggered a route would cancel and restart the same
+        // refetch two hundred times over. Where the entity's reader reads the
+        // one record a push names, it is one route per record, and the reader
+        // gathers them. The last push of each is the one routed, and every
+        // record still moves the cursor.
+        const last = new Map<string, Envelope>();
+        for (const event of page) {
+          const envelope = eventEnvelope(event);
+          apply(
+            envelope,
+            (routed) => last.set(keyOf(envelope), routed),
+            (notice) => kept.push(notice),
+          );
+        }
+        for (const envelope of last.values()) deps.route(envelope);
+        if (isLastPage(page.length, deps.pageSize) || cursor === null || cursor <= from) return;
+        from = cursor;
       }
-      if (stopped) return;
-      // One route per entity, not per record, where routing invalidates every
-      // query the entity is read from: a page of two hundred records of one
-      // entity that each triggered a route would cancel and restart the same
-      // refetch two hundred times over. Where the entity's reader reads the
-      // one record a push names, it is one route per record, and the reader
-      // gathers them. The last push of each is the one routed, and every
-      // record still moves the cursor.
-      const last = new Map<string, Envelope>();
-      for (const event of page) {
-        const envelope = eventEnvelope(event);
-        apply(envelope, (routed) => last.set(keyOf(envelope), routed));
-      }
-      for (const envelope of last.values()) deps.route(envelope);
-      if (isLastPage(page.length, deps.pageSize) || cursor === null || cursor <= from) return;
-      from = cursor;
+    } finally {
+      announce(kept);
     }
   };
 
@@ -183,7 +221,8 @@ export function openChannel(deps: ChannelDeps): Channel {
     if (apply(envelope) === null) return;
     // Still ahead of the cursor: the push is worth routing either way, but
     // the cursor never moves past seqs that were not replayed, so the next
-    // push or pong retries the fetch from where it stands.
+    // push or pong retries the fetch from where it stands. A notice waits for
+    // the replay that passes it, so it is told once.
     deps.route(envelope);
   };
 
@@ -205,9 +244,10 @@ export function openChannel(deps: ChannelDeps): Channel {
   // The first hello's catch-up. What the page read before the socket
   // subscribed may predate a change the socket never pushed, so the stream's
   // tail is read and the records produced since the page began reading are
-  // routed: the queries they touch refetch, and the rest stay as read. When
-  // the tail cannot tell, or the hello carries no time, the cache is
-  // refreshed wholesale instead.
+  // routed: the queries they touch refetch, and the rest stay as read. The
+  // notices among them are handed over as a replay's are. When the tail
+  // cannot tell, or the hello carries no time, the cache is refreshed
+  // wholesale instead, and no notice is read to hand over.
   const firstCatchUp = async (head: number, sentAt: string | null | undefined, waitedMs: number) => {
     if (!sentAt) {
       await deps.refreshAll();
@@ -229,11 +269,14 @@ export function openChannel(deps: ChannelDeps): Channel {
       return;
     }
     const last = new Map<string, Envelope>();
+    const kept: EventEnvelope[] = [];
     for (const event of recent) {
       const envelope = eventEnvelope(event);
       last.set(keyOf(envelope), envelope);
+      if (isAnnounced(envelope)) kept.push(envelope);
     }
     for (const envelope of last.values()) deps.route(envelope);
+    announce(kept);
   };
 
   const stopPolling = () => {

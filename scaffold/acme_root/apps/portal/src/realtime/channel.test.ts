@@ -6,6 +6,7 @@ import { useConnectionStore } from "../store/connection";
 import { CLOSE_UNAUTHENTICATED, openChannel, SOCKET_OPEN, type Channel, type SocketLike } from "./channel";
 import type { Envelope, EventEnvelope } from "./envelopes";
 import { watchPage, type PageLike } from "./pageVisibility";
+import { eventEnvelope } from "./stream";
 import { backoffDelay, DEGRADED_POLL_INTERVAL_MS, HIDDEN_PAUSE_MS, PING_INTERVAL_MS, STABLE_OPEN_MS } from "./timeouts";
 
 class FakeSocket implements SocketLike {
@@ -59,9 +60,11 @@ function harness(
   pageSize = 200,
   clock?: () => number,
   replayKey?: (envelope: EventEnvelope) => string,
+  isAnnounced?: (envelope: EventEnvelope) => boolean,
 ) {
   const sockets: FakeSocket[] = [];
   const routed: Envelope[] = [];
+  const announced: number[][] = [];
   const fetches: number[] = [];
   const requestTicket = vi.fn(() => Promise.resolve("tkt"));
   const onUnauthenticated = vi.fn();
@@ -86,8 +89,12 @@ function harness(
     connection: useConnectionStore,
     pageSize,
     replayKey,
+    isAnnounced,
+    announce: (envelopes) => {
+      announced.push(envelopes.map(seqOf));
+    },
   });
-  return { channel, sockets, routed, fetches, requestTicket, onUnauthenticated, refreshAll };
+  return { channel, sockets, routed, announced, fetches, requestTicket, onUnauthenticated, refreshAll };
 }
 
 // Lets the ticket request and the inbox settle without moving the clock.
@@ -398,6 +405,187 @@ describe("stream cursor", () => {
     h2.sockets[0]!.receive(push(6));
     await flush();
     expect(channel.cursor()).toBe(6);
+  });
+});
+
+describe("a notice", () => {
+  // A record the person is told about, not only refreshed by. Which records
+  // are notices is a product's call; here, an invitation as it is accepted.
+  const accepted = (seq: number, invitation = `i${seq}`): EventView => ({
+    ...event(seq),
+    kind: "tenancy.invitation.updated",
+    target_id: invitation,
+  });
+  const isNotice = (envelope: EventEnvelope) => envelope.payload.kind === "tenancy.invitation.updated";
+
+  /** An open channel at cursor 5 that tells of notices. */
+  async function open(pages: Pages, pageSize = 200) {
+    const h = harness(pages, pageSize, undefined, undefined, isNotice);
+    channel = h.channel;
+    await flush();
+    h.sockets[0]!.accept();
+    await flush();
+    h.sockets[0]!.receive(hello(5));
+    await flush();
+    return h;
+  }
+
+  /** The same, then dropped and reconnected: the open replays from 5. */
+  async function reconnected(stream: EventView[], pageSize = 200) {
+    const h = await open((after) => stream.filter((e) => e.seq > after).slice(0, pageSize), pageSize);
+    h.sockets[0]!.drop();
+    await vi.advanceTimersByTimeAsync(1_000);
+    h.sockets[1]!.accept();
+    await flush();
+    return h;
+  }
+
+  it("is handed over at once when its push arrives in order, and once", async () => {
+    const h = await open(() => []);
+    h.sockets[0]!.receive(eventEnvelope(accepted(6)));
+    h.sockets[0]!.receive(eventEnvelope(accepted(6)));
+    await flush();
+    expect(h.announced).toEqual([[6]]);
+    expect(h.routed.filter((e) => e.type === "event").map(seqOf)).toEqual([6]);
+  });
+
+  it("is kept through the collapse: a later record of its entity does not hide it", async () => {
+    const created = { ...event(7), kind: "tenancy.invitation.created", target_id: "i7" };
+    const h = await reconnected([accepted(6), created, event(8)]);
+    expect(channel!.cursor()).toBe(8);
+    // The cache is routed one record per entity, the last; the notice is told.
+    expect(h.routed.filter((e) => e.type === "event").map(seqOf)).toEqual([7, 8]);
+    expect(h.announced).toEqual([[6]]);
+  });
+
+  it("is handed over with every notice of its replay in one call, across pages, in stream order", async () => {
+    const h = await reconnected([accepted(6), event(7), accepted(8), accepted(9), event(10)], 2);
+    expect(h.fetches).toEqual([5, 7, 9]);
+    expect(channel!.cursor()).toBe(10);
+    expect(h.announced).toEqual([[6, 8, 9]]);
+  });
+
+  it("is handed over when a later page fails, as when the network drops, and never again", async () => {
+    let calls = 0;
+    const stream = [accepted(6), event(7), accepted(8), event(9)];
+    const h = await open((after) => {
+      calls += 1;
+      if (calls === 2) throw new Error("the network went away");
+      return stream.filter((e) => e.seq > after).slice(0, 2);
+    }, 2);
+    h.sockets[0]!.receive({ type: "pong", sent_at: null, seq: 9 });
+    await flush();
+    // The replay was cut after its first page; the cursor passed 6.
+    expect(h.fetches).toEqual([5, 7]);
+    expect(channel!.cursor()).toBe(7);
+    expect(h.announced).toEqual([[6]]);
+    // The next replay starts past it, so 6 is never told again.
+    h.sockets[0]!.receive({ type: "pong", sent_at: null, seq: 9 });
+    await flush();
+    expect(channel!.cursor()).toBe(9);
+    expect(h.announced).toEqual([[6], [8]]);
+  });
+
+  it("is told once when its push lands past a gap the replay closes", async () => {
+    const stream = [event(6), accepted(7)];
+    const h = await open((after) => stream.filter((e) => e.seq > after));
+    h.sockets[0]!.receive(eventEnvelope(accepted(7)));
+    await flush();
+    expect(channel!.cursor()).toBe(7);
+    expect(h.announced).toEqual([[7]]);
+  });
+
+  it("waits for the replay that passes it when its push lands past a gap storage cannot close yet", async () => {
+    // Storage answers a short page without 6: the push is routed, not told.
+    let stream = [accepted(7)];
+    const h = await open((after) => stream.filter((e) => e.seq > after));
+    h.sockets[0]!.receive(eventEnvelope(accepted(7)));
+    await flush();
+    expect(channel!.cursor()).toBe(5);
+    expect(h.routed.filter((e) => e.type === "event").map(seqOf)).toEqual([7]);
+    expect(h.announced).toEqual([]);
+    // Once 6 is in storage, the replay that passes 7 tells it, once.
+    stream = [event(6), accepted(7)];
+    h.sockets[0]!.receive({ type: "pong", sent_at: null, seq: 7 });
+    await flush();
+    expect(channel!.cursor()).toBe(7);
+    expect(h.announced).toEqual([[7]]);
+  });
+
+  it("is kept by the first catch-up too", async () => {
+    let clock = 0;
+    const created = { ...event(5), kind: "tenancy.invitation.created", target_id: "i5" };
+    const stream = [
+      { ...accepted(4), produced_at: "2026-09-16T12:00:01Z" },
+      { ...created, produced_at: "2026-09-16T12:00:02Z" },
+    ];
+    const h = harness((after) => stream.filter((e) => e.seq > after), 200, () => clock, undefined, isNotice);
+    channel = h.channel;
+    await flush();
+    h.sockets[0]!.accept();
+    await flush();
+    clock += 3000;
+    h.sockets[0]!.receive({ ...hello(5), sent_at: "2026-09-16T12:00:03Z" });
+    await flush();
+    expect(h.routed.filter((e) => e.type === "event").map(seqOf)).toEqual([5]);
+    expect(h.announced).toEqual([[4]]);
+  });
+
+  it("is never handed over after a switch: the old tenant's replay ends after the stop", async () => {
+    // One place shows notices for every channel the app opens, as the
+    // provider's would; the switch stops the old channel and opens a new one.
+    const announced: number[][] = [];
+    const announce = (envelopes: EventEnvelope[]) => void announced.push(envelopes.map(seqOf));
+    // The old replay read a page that holds a notice, and its next page is
+    // still on its way when the switch stops the channel.
+    let resolvePage!: (page: EventView[]) => void;
+    const oldSocket = new FakeSocket();
+    const old = openChannel({
+      requestTicket: async () => "tkt",
+      openSocket: () => oldSocket,
+      fetchEventsAfter: (after) =>
+        after === 0
+          ? Promise.resolve([accepted(1), event(2)])
+          : new Promise<EventView[]>((resolve) => { resolvePage = resolve; }),
+      route: vi.fn(),
+      isAnnounced: isNotice,
+      announce,
+      refreshAll: async () => undefined,
+      connection: useConnectionStore,
+      pageSize: 2,
+    });
+    await flush();
+    oldSocket.accept();
+    await flush();
+    oldSocket.receive(hello(0));
+    await flush();
+    oldSocket.receive(eventEnvelope(accepted(5)));
+    await flush();
+    expect(old.cursor()).toBe(2);
+    old.stop();
+    const newSocket = new FakeSocket();
+    channel = openChannel({
+      requestTicket: async () => "tkt",
+      openSocket: () => newSocket,
+      fetchEventsAfter: async () => [],
+      route: vi.fn(),
+      isAnnounced: isNotice,
+      announce,
+      refreshAll: async () => undefined,
+      connection: useConnectionStore,
+      pageSize: 200,
+    });
+    await flush();
+    newSocket.accept();
+    await flush();
+    newSocket.receive(hello(40));
+    await flush();
+    // The old tenant's page lands in the new tenant's session.
+    resolvePage([accepted(3), event(4)]);
+    await flush();
+    newSocket.receive(eventEnvelope(accepted(41)));
+    await flush();
+    expect(announced).toEqual([[41]]);
   });
 });
 
