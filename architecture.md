@@ -1182,8 +1182,8 @@ storage, in its constructor.
 - Every capability is an interface with swappable impls, and a caller
   does not know which it holds.
 - The OM imports infra interfaces. Infra imports nothing from the OM.
-- Tenancy is a keying concern. Cache, buckets, secrets, and flags take
-  `org_id` first, and topic payloads carry it.
+- Tenancy is a keying concern. Cache, buckets, secrets, flags, and the
+  outage signal take `org_id` first, and topic payloads carry it.
 - Cross-tenant reference data uses `EMPTY_UUID` as its `org_id`, which
   infra knows by value, without importing the OM.
 - A handle arrives through a constructor, wired by the app container at
