@@ -74,6 +74,11 @@ plane. This is one of the kinds of thing
   typed there, and that address counts once the person's sign-in
   through the identity provider has proven it
   ([ADR 0090](../../../../../docs/adr/0090-an-integration-acts-as-the-member-its-proven-address-names.md)).
+- **A new member passes the org's gate.** Every path that adds a member
+  lands through one create, which asks the org's gate, where a system
+  bounds who may join, once the person is new to the org. A refusal
+  writes nothing, and the gate's rows ride the add's commit
+  ([ADR 0097](../../../../../docs/adr/0097-a-purge-across-tenants-acts-in-a-tenant-and-a-new-member-passes-a-gate.md)).
 
 ## How another namespace composes it
 
@@ -93,4 +98,6 @@ of its own reached through the manager: `tenancy.sign_in`,
 When an org is deleted, the sweep calls each namespace's
 `purge_tenant` once the org is past its retention, and tenancy marks
 the org purged when nothing is left. A new namespace adds its purge to
-the worker's map.
+the worker's map. A purge across tenants that must act in the tenant of
+a row it found takes the pass's context for that tenant from
+`sweep_context`; a tenant marked purged has none.
