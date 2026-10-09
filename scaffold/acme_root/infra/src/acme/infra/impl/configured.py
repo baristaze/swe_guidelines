@@ -20,6 +20,9 @@ from acme.infra.flags.launchdarkly import launchdarkly_config, launchdarkly_flag
 from acme.infra.flags.memory import FlagsMemoryImpl
 from acme.infra.impl.settings import ENVIRONMENTS, InfraSettings
 from acme.infra.impl.valkey import ValkeyConnection
+from acme.infra.outages import OutageSignalInterface
+from acme.infra.outages.cache import OutageSignalCacheImpl
+from acme.infra.outages.null import OutageSignalNullImpl
 from acme.infra.queues import QueuesInterface
 from acme.infra.queues.memory import QueueMemoryImpl
 from acme.infra.queues.sqs import QueueSqsImpl
@@ -103,6 +106,16 @@ class InfraConfiguredImpl(InfraInterface):
         self._caches: dict[CacheScope, CacheInterface] = {
             scope: self._build_cache(scope) for scope in CacheScope
         }
+        # The outage signal follows the cache: shared where the cache is, so
+        # every process on it learns of an outage at once. A process whose
+        # cache is its own has no one to tell, and its breakers hold what its
+        # calls learn.
+        if settings.cache_backend == "valkey":
+            self._outages: OutageSignalInterface = OutageSignalCacheImpl(
+                self._caches[CacheScope.OUTAGE]
+            )
+        else:
+            self._outages = OutageSignalNullImpl()
 
         if settings.buckets_backend == "s3":
             self._buckets: BucketsInterface = BucketsS3Impl(
@@ -192,9 +205,13 @@ class InfraConfiguredImpl(InfraInterface):
     def get_flags(self) -> FlagsInterface:
         return self._flags
 
+    def get_outages(self) -> OutageSignalInterface:
+        return self._outages
+
     def describe(self) -> list[str]:
         return [
             *(cache.describe() for cache in self._caches.values()),
+            self._outages.describe(),
             self._topics.describe(),
             self._buckets.describe(),
             self._queues.describe(),
@@ -205,7 +222,14 @@ class InfraConfiguredImpl(InfraInterface):
     async def start(self) -> None:
         if self._valkey is not None:
             await self._valkey.start()
-        for capability in (self._topics, self._buckets, self._queues, self._secrets, self._flags):
+        for capability in (
+            self._outages,
+            self._topics,
+            self._buckets,
+            self._queues,
+            self._secrets,
+            self._flags,
+        ):
             await capability.start()
 
     async def close(self) -> None:
@@ -213,7 +237,14 @@ class InfraConfiguredImpl(InfraInterface):
         last, once nothing holds it."""
         for cache in self._caches.values():
             await cache.close()
-        for capability in (self._flags, self._secrets, self._queues, self._buckets, self._topics):
+        for capability in (
+            self._flags,
+            self._secrets,
+            self._queues,
+            self._buckets,
+            self._topics,
+            self._outages,
+        ):
             await capability.close()
         if self._valkey is not None:
             await self._valkey.close()

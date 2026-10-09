@@ -73,7 +73,7 @@ follows by hand.
 ## Layout
 
 - [om/](om/README.md): the object model: namespaces, storage, migrations.
-- [infra/](infra/README.md): cache, buckets, topics, queues, secrets, flags, observability.
+- [infra/](infra/README.md): cache, buckets, topics, queues, secrets, flags, outages, observability.
 - [integrations/](integrations/README.md): the identity provider, its twin, and the webhook check.
 - [services/api/](services/api/README.md): the API, its gateway, and the realtime socket.
 - [workers/maintenance/](workers/maintenance/README.md): the work queue's worker and the sweep.

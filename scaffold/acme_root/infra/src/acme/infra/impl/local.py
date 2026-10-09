@@ -9,6 +9,8 @@ from acme.infra.cache import CacheInterface, CacheScope
 from acme.infra.cache.memory import CacheMemoryImpl
 from acme.infra.flags import FlagsInterface
 from acme.infra.flags.memory import FlagsMemoryImpl
+from acme.infra.outages import OutageSignalInterface
+from acme.infra.outages.null import OutageSignalNullImpl
 from acme.infra.queues import QueuesInterface
 from acme.infra.queues.memory import QueueMemoryImpl
 from acme.infra.root import InfraInterface
@@ -24,6 +26,8 @@ class InfraLocalImpl(InfraInterface):
         self._caches: dict[CacheScope, CacheInterface] = {
             scope: CacheMemoryImpl(scope) for scope in CacheScope
         }
+        # One process: its breakers hold what its calls learn.
+        self._outages = OutageSignalNullImpl()
         self._buckets = BucketsLocalImpl(root / "buckets")
         self._topics = TopicsMemoryImpl()
         self._queues = QueueMemoryImpl()
@@ -48,9 +52,13 @@ class InfraLocalImpl(InfraInterface):
     def get_flags(self) -> FlagsInterface:
         return self._flags
 
+    def get_outages(self) -> OutageSignalInterface:
+        return self._outages
+
     def describe(self) -> list[str]:
         return [
             *(cache.describe() for cache in self._caches.values()),
+            self._outages.describe(),
             self._topics.describe(),
             self._buckets.describe(),
             self._queues.describe(),
@@ -59,11 +67,25 @@ class InfraLocalImpl(InfraInterface):
         ]
 
     async def start(self) -> None:
-        for capability in (self._topics, self._buckets, self._queues, self._secrets, self._flags):
+        for capability in (
+            self._outages,
+            self._topics,
+            self._buckets,
+            self._queues,
+            self._secrets,
+            self._flags,
+        ):
             await capability.start()
 
     async def close(self) -> None:
         for cache in self._caches.values():
             await cache.close()
-        for capability in (self._flags, self._secrets, self._queues, self._buckets, self._topics):
+        for capability in (
+            self._flags,
+            self._secrets,
+            self._queues,
+            self._buckets,
+            self._topics,
+            self._outages,
+        ):
             await capability.close()

@@ -631,3 +631,33 @@ cool-down hard-coded instead of read from settings.
 
 **Check.** `arch-check` decides the breaker in the OM and the literal
 bound; the rest is judged.
+
+## CON-24 A provider's outage is one mark that every process reads
+
+**Principle.** Processes that call one provider share what they learn
+of it through the outage signal, an infra capability beside the
+breaker. A mark names the provider and the credential, the org that
+holds it and the secret's name, never its value, and carries a time to
+retry. A caller marks the pair when its calls fail together, reads it
+before it calls, and clears it when a call succeeds. Processes on a
+shared cache share one signal there, failing open; one process takes the
+null signal. A step that reads a mark parks on `provider_unavailable`
+until the retry time.
+
+**Source.** Interfaces, Composition by decoration.
+
+**Look for.** The signal each root builds against its cache backend;
+each call to a provider, what it reads before it goes out, and what
+marks and clears the pair; the key a mark is stored under; what a step
+does when it reads a mark.
+
+**Violation.** Processes on a shared cache that each learn of an outage
+from their own failed calls, paying the timeouts again; a mark keyed by
+the provider alone, so one org's failing key stops every org's calls; a
+signal that raises when the cache cannot answer; a mark with no retry
+time, or one that no success clears; a step that reads a mark and calls
+anyway, or fails its record instead of parking it.
+
+**Severity.** medium
+
+**Shape.** `scaffold/acme_root/infra/src/acme/infra/outages/`

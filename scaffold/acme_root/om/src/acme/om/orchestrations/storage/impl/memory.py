@@ -44,13 +44,16 @@ class OrchestrationsStorageMemoryImpl(
         return sorted(found, key=lambda r: r.id, reverse=True)[:limit]
 
     async def read_parked(
-        self, org_id: UUID, reason: ParkReason, limit: int
+        self, org_id: UUID, reason: ParkReason, limit: int, after: UUID | None = None
     ) -> list[Orchestration]:
-        return [
+        found = [
             r
             for r in self._rows(self._records, org_id)
-            if r.status is OrchestrationStatus.PARKED and r.park_reason is reason
-        ][:limit]
+            if r.status is OrchestrationStatus.PARKED
+            and r.park_reason is reason
+            and (after is None or r.id > after)
+        ]
+        return sorted(found, key=lambda r: r.id)[:limit]
 
     async def write_orchestration(
         self,

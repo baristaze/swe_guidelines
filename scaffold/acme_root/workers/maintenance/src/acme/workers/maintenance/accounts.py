@@ -11,7 +11,8 @@ Each step is one a rerun finds done, so a run that stopped halfway is
 finished by the next. A provider that cannot be reached, or that refuses the
 process's own key, parks the item, spending no attempt: nothing about the
 call has failed, and the work waits for the provider, or a person, to fix
-it. A provider that refuses the call itself fails the item at once, since
+it. The failure marks the provider out for every worker, so the next item
+parks without a call until the mark's retry time. A provider that refuses the call itself fails the item at once, since
 asking again gets the same answer, and leaves a failed item for an operator
 to read and requeue. The org stays until the provider is done: deleted
 first, it could no longer run the work that names it.
@@ -30,7 +31,7 @@ from acme.om.context import Permission, TenantContext
 from acme.om.tenancy import TenancyManagerInterface
 from acme.om.work.types.handler import WorkHandlerInterface
 from acme.om.work.types.work_item import DeleteAccountPayload, DeleteOrgPayload, WorkItem
-from acme.workers.maintenance.providers import provider_calls
+from acme.workers.maintenance.providers import ProviderCalls
 
 log = logging.getLogger(__name__)
 
@@ -40,15 +41,19 @@ class DeleteAccountHandlerImpl(WorkHandlerInterface):
     """The org's deletion manages members."""
 
     def __init__(
-        self, tenancy: TenancyManagerInterface, identity: IdentityProviderInterface
+        self,
+        tenancy: TenancyManagerInterface,
+        identity: IdentityProviderInterface,
+        identity_calls: ProviderCalls,
     ) -> None:
         self._tenancy = tenancy
         self._identity = identity
+        self._identity_calls = identity_calls
 
     async def handle(self, ctx: TenantContext, item: WorkItem) -> None:
         user_id = DeleteAccountPayload.model_validate(item.payload).provider_user_id
         if user_id is not None:
-            async with provider_calls():
+            async with self._identity_calls.calls():
                 await self._identity.delete_user(user_id)
         await self._tenancy.org.delete_personal_org(ctx)
         log.info("the personal org %s of a deleted account is deleted", ctx.org_id)
@@ -59,15 +64,19 @@ class DeleteOrgHandlerImpl(WorkHandlerInterface):
     """The org's deletion manages members."""
 
     def __init__(
-        self, tenancy: TenancyManagerInterface, identity: IdentityProviderInterface
+        self,
+        tenancy: TenancyManagerInterface,
+        identity: IdentityProviderInterface,
+        identity_calls: ProviderCalls,
     ) -> None:
         self._tenancy = tenancy
         self._identity = identity
+        self._identity_calls = identity_calls
 
     async def handle(self, ctx: TenantContext, item: WorkItem) -> None:
         org_id = DeleteOrgPayload.model_validate(item.payload).provider_org_id
         if org_id is not None:
-            async with provider_calls():
+            async with self._identity_calls.calls():
                 await self._identity.delete_organization(org_id)
         await self._tenancy.org.delete_closed_org(ctx)
         log.info("the closed team org %s is deleted", ctx.org_id)

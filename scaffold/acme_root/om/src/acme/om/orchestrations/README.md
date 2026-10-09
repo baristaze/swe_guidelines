@@ -35,7 +35,11 @@ This is one of the kinds of thing [Acme is made of](../../../../README.md).
 - **Wake.** A parked record runs again from its cursor when the reason
   clears (a `WAKE_PARKED` work item wakes every record of the org
   parked for it, a couple of seconds apart, or the one record it names
-  when the reason was that record's alone), or when a person resumes it.
+  when the reason was that record's alone), at the time its park named,
+  or when a person resumes it. A step that reads a provider's outage
+  parks on `provider_unavailable` until the outage's retry time, and
+  every park on one outage lands one wake of the org's records then
+  ([ADR 0088](../../../../../docs/adr/0088-a-providers-outage-is-a-shared-signal.md)).
 - **Succeed** after the last step, or **fail** on a bound.
 - **Sweep.** A settled record goes thirty days later. A parked or a
   running one is kept.

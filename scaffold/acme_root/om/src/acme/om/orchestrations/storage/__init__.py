@@ -58,9 +58,11 @@ class OrchestrationsStorageInterface(ABC):
 
     @abstractmethod
     async def read_parked(
-        self, org_id: UUID, reason: ParkReason, limit: int
+        self, org_id: UUID, reason: ParkReason, limit: int, after: UUID | None = None
     ) -> list[Orchestration]:
-        """The org's records parked for `reason`, oldest first."""
+        """The org's records parked for `reason`, oldest first by id, and only
+        those after `after` when it is given: a wake reads them a batch at a
+        time, each after the last one before it."""
         ...
 
     @abstractmethod
