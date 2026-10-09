@@ -89,7 +89,7 @@ async def test_an_ask_carries_its_key_and_reads_the_standing() -> None:
                 "request": {
                     "id": str(request_id), "kind": "noop", "resource_id": str(DOCK),
                     "labels": None, "waiter_kind": None, "waiter_id": None,
-                    "term_seconds": 60, "wait_until": None, "rank": 1.0,
+                    "term_seconds": 60, "start_seconds": None, "wait_until": None, "rank": 1.0,
                     "status": "waiting", "end_reason": None, "lease_id": None,
                     "created_at": "2026-10-08T00:00:00Z", "created_by": str(uuid4()),
                 },
@@ -105,3 +105,30 @@ async def test_an_ask_carries_its_key_and_reads_the_standing() -> None:
     sent = seen[0]
     assert UUID(sent.headers[IDEMPOTENCY_HEADER])
     assert json.loads(sent.content)["resource_id"] == str(DOCK)
+
+
+async def test_a_renewal_names_its_length_or_sends_no_body() -> None:
+    seen: list[httpx.Request] = []
+    lease_id = uuid4()
+
+    def answer(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        return httpx.Response(
+            200,
+            json={
+                "id": str(lease_id), "resource_id": str(DOCK), "request_id": str(uuid4()),
+                "holder_id": str(uuid4()), "fencing_token": 3, "term_seconds": 60,
+                "expires_at": "2026-10-08T00:05:00Z", "expires_in_seconds": 300.0,
+                "status": "active", "ended_at": None, "started_at": None,
+                "created_at": "2026-10-08T00:00:00Z",
+            },
+        )  # fmt: skip
+
+    async with ApiClient(
+        "http://test", app="cli", app_version="cli@test", transport=httpx.MockTransport(answer)
+    ) as api:
+        named = await api.renew_lease(lease_id, seconds=300)
+        await api.renew_lease(lease_id)
+    assert named.expires_in_seconds == 300.0
+    assert json.loads(seen[0].content) == {"seconds": 300}
+    assert seen[1].content == b""

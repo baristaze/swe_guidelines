@@ -1,7 +1,8 @@
 """Leases over the live app: an ask granted at once and one that waits, the
-line, a renewal and a release by the holder alone, the grant that follows,
-a manager's reorder and revocation, the refusals of a malformed ask, a
-replayed ask that joins no line twice, and the tenant boundary."""
+line, a renewal for the term or a named length and a release by the holder
+alone, the grant that follows, a manager's reorder and revocation, the
+refusals of a malformed ask, a replayed ask that joins no line twice, and
+the tenant boundary."""
 
 from typing import Any
 from uuid import UUID, uuid4
@@ -71,6 +72,12 @@ async def test_a_lease_is_granted_renewed_released_and_the_line_moves_on(
     assert (await client.post(f"/v1/leases/{lease_id}/release", headers=mia)).status_code == 403
     renewed = await client.post(f"/v1/leases/{lease_id}/renew", headers=ann)
     assert renewed.status_code == 200 and renewed.json()["status"] == "active"
+    renew = f"/v1/leases/{lease_id}/renew"
+    named = await client.post(renew, headers=ann, json={"seconds": 200})
+    assert named.status_code == 200 and 190 < named.json()["expires_in_seconds"] <= 200
+    bounded = await client.post(renew, headers=ann, json={"seconds": 5000})
+    assert 290 < bounded.json()["expires_in_seconds"] <= 300, "the resource's bound"
+    assert (await client.post(renew, headers=ann, json={"seconds": 0})).status_code == 422
     released = await client.post(f"/v1/leases/{lease_id}/release", headers=ann)
     assert released.status_code == 200 and released.json()["status"] == "released"
     ended = await client.post(f"/v1/leases/{lease_id}/renew", headers=ann)
@@ -108,11 +115,15 @@ async def test_a_malformed_ask_is_refused_and_a_replay_joins_no_line_twice(
     org_id = await org_of(client, owner)
     dock = await a_dock(container, org_id, "cold")
     refusals: list[dict[str, Any]] = [
-        {"labels": ["Not A Label"]},
+        {"labels": ["x" * 201]},
+        {"labels": ["a line\nbreak"]},
+        {"labels": [str(n) for n in range(161)]},
         {"resource_id": str(dock.id), "labels": ["cold"]},
         {},
         {"resource_id": str(dock.id), "payload": {"run": "anything"}},
         {"resource_id": str(dock.id), "term_seconds": 0},
+        {"resource_id": str(dock.id), "start_seconds": 0},
+        {"resource_id": str(dock.id), "term_seconds": 604_801},
         {"kind": "nothing", "labels": []},
         {"resource_id": "not-an-id"},
     ]

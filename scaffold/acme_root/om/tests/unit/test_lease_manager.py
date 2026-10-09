@@ -8,6 +8,13 @@ from pathlib import Path
 from uuid import UUID
 
 import pytest
+from contracts.lease_job import (
+    StartsAJob,
+    a_job_that_misses_its_window_lets_the_lease_lapse,
+    a_job_that_waited_past_its_window_starts_inside_the_margin,
+    a_resource_with_as_many_labels_as_a_real_one_is_matched,
+    the_jobs_worker_keeps_the_lease_and_no_one_else_does,
+)
 
 from acme.infra.impl.local import InfraLocalImpl
 from acme.om.base import new_id, utcnow
@@ -26,7 +33,7 @@ from acme.om.leases.impl.kinds import NoopResourceKindImpl, OrchestrationWaiterI
 from acme.om.leases.impl.manager import LeasesManagerImpl, LeasesOptions
 from acme.om.leases.rules import measured_hold, place_of, rank_at, replay, stands_in
 from acme.om.leases.storage import ResourceLandingInterface
-from acme.om.leases.types.lease import Lease, LeaseStatus
+from acme.om.leases.types.lease import JobClaim, Lease, LeaseStatus
 from acme.om.leases.types.request import (
     EndReason,
     LeaseRequest,
@@ -173,6 +180,7 @@ class World:
         self.storage = StorageMemoryImpl()
         self.managers: Managers = build_managers(self.storage, InfraLocalImpl(tmp_path))
         self.now = utcnow()
+        self.margin = MARGIN
         self.leases = LeasesManagerImpl(
             self.storage.get_lease_storage(),
             self.managers.tenancy,
@@ -182,6 +190,7 @@ class World:
             waiters={
                 WaiterKind.ORCHESTRATION: OrchestrationWaiterImpl(self.managers.orchestrations)
             },
+            work=self.managers.work,
             clock=lambda: self.now,
         )
         self.slug = f"ajax-{new_id().hex[-8:]}"
@@ -225,10 +234,40 @@ class World:
         self.now += by
         return self.now
 
+    def clock(self) -> datetime:
+        return self.now
+
 
 @pytest.fixture
 def world(tmp_path: Path) -> World:
     return World(tmp_path)
+
+
+@pytest.fixture
+def job_world(tmp_path: Path) -> World:
+    """A world whose grants start a job, which its worker keeps the lease
+    through."""
+    return World(tmp_path, StartsAJob())
+
+
+async def test_the_jobs_worker_keeps_the_lease_and_no_one_else_does(job_world: World) -> None:
+    await the_jobs_worker_keeps_the_lease_and_no_one_else_does(job_world)
+
+
+async def test_a_job_that_waited_past_its_window_starts_inside_the_margin(
+    job_world: World,
+) -> None:
+    await a_job_that_waited_past_its_window_starts_inside_the_margin(job_world)
+
+
+async def test_a_job_that_misses_its_window_lets_the_lease_lapse(job_world: World) -> None:
+    await a_job_that_misses_its_window_lets_the_lease_lapse(job_world)
+
+
+async def test_a_resource_with_as_many_labels_as_a_real_one_is_matched(
+    job_world: World,
+) -> None:
+    await a_resource_with_as_many_labels_as_a_real_one_is_matched(job_world)
 
 
 async def test_a_resource_registers_once_per_kind_and_row(world: World) -> None:
@@ -298,8 +337,9 @@ async def test_an_ask_is_held_to_its_kind_and_names_a_live_resource(world: World
     await world.leases.retire(owner, dock.id)
     with pytest.raises(NotFound):
         await world.leases.ask(owner, an_ask(dock))
-    with pytest.raises(ValueError):
-        an_ask(labels=("Not A Label",))
+    for refused in (("x" * 201,), ("a line\nbreak",), ("",), tuple(map(str, range(161)))):
+        with pytest.raises(ValueError):
+            an_ask(labels=refused)
 
 
 async def test_only_the_holder_renews_and_releases_and_a_lapsed_lease_is_not_renewed(
@@ -319,9 +359,37 @@ async def test_only_the_holder_renews_and_releases_and_a_lapsed_lease_is_not_ren
     world.later(timedelta(seconds=20))
     renewed = await world.leases.renew(ann, held.lease.id)
     assert renewed.expires_at == world.now + timedelta(seconds=30)
+    named = await world.leases.renew(ann, held.lease.id, 10)
+    assert named.expires_at == world.now + timedelta(seconds=10)
+    # A lease its holder keeps has no job, so no claim acts on it.
+    with pytest.raises(NotAuthorized):
+        await world.leases.start(
+            ann, held.lease.id, JobClaim(token=held.lease.token, claim_token=new_id())
+        )
+    with pytest.raises(ValidationFailed):
+        await world.leases.renew(ann, held.lease.id, 0)
     world.later(timedelta(seconds=31))
     with pytest.raises(LeaseEnded):
         await world.leases.renew(ann, held.lease.id)
+
+
+class StartsTwoJobs(StartsAJob):
+    """A kind whose grant would start two jobs, so no one item is the job."""
+
+    def grant_rows(
+        self, ctx: TenantContext, resource: Resource, request: LeaseRequest, lease: Lease
+    ) -> tuple[OutboxRow, ...]:
+        first = super().grant_rows(ctx, resource, request, lease)
+        return (*first, *super().grant_rows(ctx, resource, request, lease))
+
+
+async def test_a_grant_starts_one_job_at_most(tmp_path: Path) -> None:
+    world = World(tmp_path, StartsTwoJobs())
+    owner, ann = await world.owner(), await world.member("ann")
+    dock = await world.resource(owner)
+    with pytest.raises(ValueError, match="one at most"):
+        await world.leases.ask(ann, an_ask(dock))
+    assert (await world.leases.get_resource(owner, dock.id)).lease_id is None
 
 
 async def test_a_manager_revokes_and_the_line_moves_on(world: World) -> None:

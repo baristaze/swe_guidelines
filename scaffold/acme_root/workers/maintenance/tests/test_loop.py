@@ -161,6 +161,9 @@ class LeaseLosingWork(WorkManagerInterface):
         self._record_renewal()
         raise LeaseLost("held elsewhere")
 
+    async def holds(self, ctx: TenantContext, idempotency_key: UUID, claim_token: UUID) -> bool:
+        return await self._inner.holds(ctx, idempotency_key, claim_token)
+
     async def requeue_stale(self, rctx: RequestContext, limit: int) -> int:
         return await self._inner.requeue_stale(rctx, limit)
 

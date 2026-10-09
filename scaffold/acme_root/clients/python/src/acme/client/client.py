@@ -555,18 +555,22 @@ class ApiClient:
         labels: list[str] | None = None,
         payload: dict[str, Any] | None = None,
         term_seconds: int = 60,
+        start_seconds: int | None = None,
         wait_seconds: int = 3600,
         idempotency_key: str | None = None,
     ) -> StandingView:
         """Joins the line for one resource, or for any of `kind` with every
         label; granted at once only when no one waits in front. Always under
-        an idempotency key, so a retry joins no line twice."""
+        an idempotency key, so a retry joins no line twice. `start_seconds`
+        is the window a job the grant starts has to start in."""
         body: dict[str, Any] = {
             "kind": kind,
             "payload": payload or {},
             "term_seconds": term_seconds,
             "wait_seconds": wait_seconds,
         }
+        if start_seconds is not None:
+            body["start_seconds"] = start_seconds
         if resource_id is not None:
             body["resource_id"] = str(resource_id)
         if labels is not None:
@@ -603,10 +607,13 @@ class ApiClient:
     async def lease(self, lease_id: UUID) -> LeaseView:
         return LeaseView.model_validate(await self.request("GET", f"/v1/leases/{lease_id}"))
 
-    async def renew_lease(self, lease_id: UUID) -> LeaseView:
-        """The holder's: the lease runs its term again. A `lease_ended` refusal
-        means the lease is gone, and the holder stops."""
-        return LeaseView.model_validate(await self.request("POST", f"/v1/leases/{lease_id}/renew"))
+    async def renew_lease(self, lease_id: UUID, seconds: int | None = None) -> LeaseView:
+        """The holder's: the lease runs `seconds` from now, or its term again,
+        within the resource's bound. A `lease_ended` refusal means the lease
+        is gone, and the holder stops."""
+        body = None if seconds is None else {"seconds": seconds}
+        renewed = await self.request("POST", f"/v1/leases/{lease_id}/renew", json=body)
+        return LeaseView.model_validate(renewed)
 
     async def release_lease(self, lease_id: UUID) -> LeaseView:
         released = await self.request("POST", f"/v1/leases/{lease_id}/release")

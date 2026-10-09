@@ -307,6 +307,44 @@ class LeasesStorageMemoryImpl(MemoryStorageBase, LeasesStorageInterface, Resourc
             )
             return renewed
 
+    async def start_lease(
+        self,
+        org_id: UUID,
+        lease_id: UUID,
+        now: datetime,
+        lapsed_before: datetime,
+        expires_at: datetime,
+        actor: UUID,
+    ) -> Lease | None:
+        async with self._lock:
+            lease = self._get(self._leases, org_id, lease_id)
+            if (
+                lease is None
+                or lease.status is not LeaseStatus.ACTIVE
+                or lease.started_at is not None
+                or lease.expires_at <= lapsed_before
+            ):
+                return None
+            anchor = self._get(self._resources, org_id, lease.resource_id)
+            if anchor is None or anchor.lease_id != lease_id or anchor.retired_at is not None:
+                return None
+            started = lease.model_copy(
+                update={
+                    "started_at": now,
+                    "expires_at": expires_at,
+                    "updated_at": now,
+                    "updated_by": actor,
+                }
+            )
+            self._leases[lease_id] = (org_id, started)
+            self._resources[anchor.id] = (
+                org_id,
+                anchor.model_copy(
+                    update={"held_until": expires_at, "updated_at": now, "updated_by": actor}
+                ),
+            )
+            return started
+
     async def end_lease(
         self,
         org_id: UUID,

@@ -16,6 +16,7 @@ from acme.services.api.types.leases import (
     LeaseRequestView,
     LeaseView,
     LineView,
+    RenewRequest,
     ReorderRequest,
     StandingView,
 )
@@ -65,9 +66,12 @@ async def get_lease(ctx: Ctx, leases: LeasesService, lease_id: UUID) -> LeaseVie
 
 
 @router.post("/{lease_id}/renew", response_model=LeaseView, responses=ENDED)
-async def renew(ctx: Ctx, leases: LeasesService, lease_id: UUID) -> LeaseView:
-    """Its holder's: the lease runs its term again from now."""
-    return await leases.renew(ctx, lease_id)
+async def renew(
+    ctx: Ctx, leases: LeasesService, lease_id: UUID, body: RenewRequest | None = None
+) -> LeaseView:
+    """Its holder's: the lease runs the seconds the body names from now, or
+    its term again, within the resource's bound."""
+    return await leases.renew(ctx, lease_id, body)
 
 
 @router.post("/{lease_id}/release", response_model=LeaseView, responses=ENDED)

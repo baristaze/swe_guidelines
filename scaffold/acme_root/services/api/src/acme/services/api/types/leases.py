@@ -11,7 +11,7 @@ from pydantic import Field
 
 from acme.om.leases.types.lease import LeaseStatus
 from acme.om.leases.types.request import EndReason, RequestStatus, WaiterKind
-from acme.om.leases.types.resource import MAX_LABELS, Label, ResourceKind
+from acme.om.leases.types.resource import MAX_LABELS, MAX_TERM_SECONDS, Label, ResourceKind
 from acme.services.api.types.common import RequestBody, View
 
 
@@ -35,7 +35,9 @@ class ResourceView(View):
 class LeaseView(View):
     """One grant: the holder acts on the resource under `fencing_token` until
     it has used `expires_in_seconds`, counted from when it asked. The token is
-    no secret: it is the number the resource's own side refuses to go below."""
+    no secret: it is the number the resource's own side refuses to go below.
+    A grant that started a job shows when the job started, and until then
+    expires at the end of the window the job has to start in."""
 
     id: UUID
     resource_id: UUID
@@ -47,6 +49,7 @@ class LeaseView(View):
     expires_in_seconds: float
     status: LeaseStatus
     ended_at: datetime | None
+    started_at: datetime | None
     created_at: datetime
 
 
@@ -58,6 +61,7 @@ class LeaseRequestView(View):
     waiter_kind: WaiterKind | None
     waiter_id: UUID | None
     term_seconds: int
+    start_seconds: int | None
     wait_until: datetime | None
     rank: float
     status: RequestStatus
@@ -89,14 +93,24 @@ class AskRequest(RequestBody):
     """An ask for a lease: one resource by its id, or a selector, the labels
     a resource of `kind` must offer. `payload` is in the shape the kind
     fixes; the term is bounded by the resource's, and the ask expires in line
-    after `wait_seconds`."""
+    after `wait_seconds`. When the grant starts a job, `start_seconds` is the
+    window the job has to start in, bounded the same way; none gives it the
+    term."""
 
     kind: ResourceKind
     resource_id: UUID | None = None
     labels: list[Label] | None = Field(default=None, max_length=MAX_LABELS)
     payload: dict[str, Any] = Field(default_factory=dict)
-    term_seconds: int = Field(default=60, ge=1, le=86_400)
+    term_seconds: int = Field(default=60, ge=1, le=MAX_TERM_SECONDS)
+    start_seconds: int | None = Field(default=None, ge=1, le=MAX_TERM_SECONDS)
     wait_seconds: int = Field(default=3600, ge=1, le=604_800)
+
+
+class RenewRequest(RequestBody):
+    """A renewal: the lease runs `seconds` from now, within the resource's
+    bound, or its term again when it names none."""
+
+    seconds: int | None = Field(default=None, ge=1, le=MAX_TERM_SECONDS)
 
 
 class ReorderRequest(RequestBody):

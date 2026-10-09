@@ -288,6 +288,15 @@ class WorkManagerImpl(WorkManagerInterface):
             ctx, item, {"lease_expires_at": now + lease, "updated_at": now}
         )
 
+    async def holds(self, ctx: TenantContext, idempotency_key: UUID, claim_token: UUID) -> bool:
+        ctx.require(Permission.READ)
+        item = await self._storage.read_item_by_key(ctx.org_id, idempotency_key)
+        return (
+            item is not None
+            and item.status is WorkStatus.CLAIMED
+            and item.claim_token == claim_token
+        )
+
     async def requeue_stale(self, rctx: RequestContext, limit: int) -> int:
         requeued = await self._storage.requeue_stale(
             utcnow(), self._options.stale_stagger, max(1, limit)

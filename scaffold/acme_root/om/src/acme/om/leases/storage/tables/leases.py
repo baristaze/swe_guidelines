@@ -43,3 +43,5 @@ class Leases(IdentifiableMixin, TrackableMixin, Base):
     expires_at: Mapped[datetime]
     status: Mapped[str]
     ended_at: Mapped[datetime | None]
+    job_key: Mapped[UUID | None]
+    started_at: Mapped[datetime | None]

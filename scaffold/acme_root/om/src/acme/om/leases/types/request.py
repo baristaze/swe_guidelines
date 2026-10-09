@@ -12,7 +12,13 @@ from pydantic import Field, model_validator
 
 from acme.om.base import FrozenMapping, Identifiable, Platform, Trackable
 from acme.om.leases.types.lease import Lease
-from acme.om.leases.types.resource import MAX_LABELS, Label, Resource, ResourceKind
+from acme.om.leases.types.resource import (
+    MAX_LABELS,
+    MAX_TERM_SECONDS,
+    Label,
+    Resource,
+    ResourceKind,
+)
 
 
 class RequestStatus(StrEnum):
@@ -67,7 +73,10 @@ class LeaseRequest(Identifiable, Trackable):
     # that follows its request itself.
     waiter_kind: WaiterKind | None = None
     waiter_id: UUID | None = None
-    term_seconds: int = Field(default=60, ge=1, le=86_400)
+    term_seconds: int = Field(default=60, ge=1, le=MAX_TERM_SECONDS)
+    # For a grant that starts a job: the window the job has to start in, from
+    # the grant, within the resource's bound. None gives it the term.
+    start_seconds: int | None = Field(default=None, ge=1, le=MAX_TERM_SECONDS)
     # How long it may wait, from its ask; past it the sweep expires it.
     wait_seconds: int = Field(default=3600, ge=1, le=604_800)
     wait_until: datetime | None = None

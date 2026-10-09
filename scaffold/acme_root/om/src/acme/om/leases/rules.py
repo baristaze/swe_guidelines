@@ -1,5 +1,6 @@
 """Pure rules of the leases namespace: who stands in which line, whether a
-resource may be granted, the term a grant runs, the rank a reorder gives,
+resource may be granted, the term a grant, a job's start, and a renewal
+run, the rank a reorder gives,
 the hold a resource measures, and the replay that estimates a wait. Values
 in, values out; no clock, no storage, no settings: the caller passes the
 time."""
@@ -50,9 +51,28 @@ def is_grantable(resource: Resource) -> bool:
 
 
 def term_of(request: LeaseRequest, resource: Resource) -> timedelta:
-    """How long a grant or a renewal runs: what the request asked, within the
+    """How long a lease runs once held: what the request asked, within the
     resource's bound on one lease."""
     return timedelta(seconds=min(request.term_seconds, resource.max_term_seconds))
+
+
+def window_of(request: LeaseRequest, resource: Resource) -> timedelta:
+    """How long a grant runs before its job starts: the window the request
+    gave its job, or its term when it gave none, within the resource's
+    bound. A lease its holder keeps itself has no job, so its window is its
+    term."""
+    if request.start_seconds is None:
+        return term_of(request, resource)
+    return timedelta(seconds=min(request.start_seconds, resource.max_term_seconds))
+
+
+def renewal_of(lease: Lease, resource: Resource | None, seconds: int | None) -> timedelta:
+    """How long a renewal runs from now: the length it names, or the lease's
+    term again when it names none, within the resource's bound. A resource
+    already gone leaves the lease's own term as the bound."""
+    asked = lease.term_seconds if seconds is None else seconds
+    bound = lease.term_seconds if resource is None else resource.max_term_seconds
+    return timedelta(seconds=min(asked, bound))
 
 
 def is_lapsed(lease: Lease, lapsed_before: datetime) -> bool:

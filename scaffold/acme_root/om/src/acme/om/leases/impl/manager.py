@@ -25,12 +25,14 @@ from acme.om.leases.rules import (
     measured_hold,
     place_of,
     rank_at,
+    renewal_of,
     replay,
     stands_in,
     term_of,
+    window_of,
 )
 from acme.om.leases.storage import LeasesStorageInterface
-from acme.om.leases.types.lease import Grant, Lease, LeaseStatus
+from acme.om.leases.types.lease import Grant, JobClaim, Lease, LeaseStatus
 from acme.om.leases.types.request import (
     ASK_PAYLOADS,
     EndReason,
@@ -46,6 +48,8 @@ from acme.om.orchestrations.types.orchestration import Step
 from acme.om.outbox import OutboxRelayInterface
 from acme.om.outbox.types.row import OutboxRow, outbox_row
 from acme.om.tenancy import TenancyManagerInterface
+from acme.om.work import WorkManagerInterface
+from acme.om.work.types.work_item import asks_for_work
 
 log = logging.getLogger(__name__)
 
@@ -82,6 +86,7 @@ class LeasesManagerImpl(LeasesManagerInterface):
         *,
         kinds: Mapping[ResourceKind, ResourceKindInterface],
         waiters: Mapping[WaiterKind, WaiterInterface],
+        work: WorkManagerInterface,
         clock: Callable[[], datetime] = utcnow,
     ) -> None:
         self._storage = storage
@@ -90,6 +95,9 @@ class LeasesManagerImpl(LeasesManagerInterface):
         self._options = options
         self._kinds = kinds
         self._waiters = waiters
+        # The queue a lease's job rides: the worker's claim on it is read
+        # there, on the queue's own clock.
+        self._work = work
         self._clock = clock
 
     # Resources.
@@ -280,13 +288,20 @@ class LeasesManagerImpl(LeasesManagerInterface):
         ctx.require(Permission.READ)
         return await self._lease(ctx, lease_id)
 
-    async def renew(self, ctx: TenantContext, lease_id: UUID) -> Lease:
+    async def renew(
+        self,
+        ctx: TenantContext,
+        lease_id: UUID,
+        seconds: int | None = None,
+        job: JobClaim | None = None,
+    ) -> Lease:
         ctx.require(Permission.WRITE)
-        lease = await self._held(ctx, lease_id)
+        if seconds is not None and seconds < 1:
+            raise ValidationFailed(f"a renewal runs at least a second, not {seconds}")
+        lease = await self._held(ctx, lease_id, job)
         resource = await self._storage.read_resource(ctx.org_id, lease.resource_id)
-        bound = lease.term_seconds if resource is None else resource.max_term_seconds
         now = self._clock()
-        expires_at = now + timedelta(seconds=min(lease.term_seconds, bound))
+        expires_at = now + renewal_of(lease, resource, seconds)
         renewed = await self._storage.renew_lease(
             ctx.org_id, lease_id, now, expires_at, ctx.user_id
         )
@@ -294,9 +309,31 @@ class LeasesManagerImpl(LeasesManagerInterface):
             raise LeaseEnded(f"lease {lease_id} has ended")
         return renewed
 
-    async def release(self, ctx: TenantContext, lease_id: UUID) -> Lease:
+    async def start(self, ctx: TenantContext, lease_id: UUID, job: JobClaim) -> Lease:
         ctx.require(Permission.WRITE)
-        lease = await self._held(ctx, lease_id)
+        lease = await self._held(ctx, lease_id, job)
+        now = self._clock()
+        started = await self._storage.start_lease(
+            ctx.org_id,
+            lease_id,
+            now,
+            now - self._options.margin,
+            now + timedelta(seconds=lease.term_seconds),
+            ctx.user_id,
+        )
+        if started is not None:
+            log.info("the job of lease %s started in org %s", lease_id, ctx.org_id)
+            return started
+        lease = await self._lease(ctx, lease_id)
+        if lease.status is LeaseStatus.ACTIVE and lease.started_at is not None:
+            return lease  # started already: a retry of its job, say
+        raise LeaseEnded(f"lease {lease_id} has ended, or its job's window has passed")
+
+    async def release(
+        self, ctx: TenantContext, lease_id: UUID, job: JobClaim | None = None
+    ) -> Lease:
+        ctx.require(Permission.WRITE)
+        lease = await self._held(ctx, lease_id, job)
         return await self._end_or_refuse(ctx, lease, LeaseStatus.RELEASED)
 
     async def revoke(self, ctx: TenantContext, lease_id: UUID) -> Lease:
@@ -393,7 +430,6 @@ class LeasesManagerImpl(LeasesManagerInterface):
     async def _grant(
         self, ctx: TenantContext, resource: Resource, request: LeaseRequest, now: datetime
     ) -> Lease | None:
-        term = term_of(request, resource)
         lease = Lease(
             id=new_id(),
             created_at=now,
@@ -404,14 +440,23 @@ class LeasesManagerImpl(LeasesManagerInterface):
             request_id=request.id,
             holder_id=request.created_by,
             token=resource.token + 1,
-            term_seconds=int(term.total_seconds()),
-            expires_at=now + term,
+            term_seconds=int(term_of(request, resource).total_seconds()),
+            expires_at=now + window_of(request, resource),
         )
+        started = self._kind(resource.kind).grant_rows(ctx, resource, request, lease)
+        # The work row among what the grant starts is the lease's job: the
+        # relay keys its item by the row's id, and the worker that claims
+        # that item acts for the holder.
+        jobs = [row.id for row in started if asks_for_work(row.kind)]
+        if len(jobs) > 1:
+            raise ValueError(f"a {resource.kind.value} grant starts {len(jobs)} jobs; one at most")
+        if jobs:
+            lease = lease.model_copy(update={"job_key": jobs[0]})
         rows: tuple[OutboxRow, ...] = (
             outbox_row(ctx, LEASE_CREATED, lease.id, {}),
             outbox_row(ctx, REQUEST_UPDATED, request.id, {}),
             outbox_row(ctx, RESOURCE_UPDATED, resource.id, {}),
-            *self._kind(resource.kind).grant_rows(ctx, resource, request, lease),
+            *started,
         )
         if request.waiter_kind is not None and request.waiter_id is not None:
             waiter = self._waiters[request.waiter_kind]
@@ -595,11 +640,23 @@ class LeasesManagerImpl(LeasesManagerInterface):
             raise ValidationFailed(f"no resource kind {kind.value} is registered")
         return hooks
 
-    async def _held(self, ctx: TenantContext, lease_id: UUID) -> Lease:
-        """A lease its holder acts on: only the principal it was granted to."""
+    async def _held(self, ctx: TenantContext, lease_id: UUID, job: JobClaim | None) -> Lease:
+        """A lease acted on for its holder: by the principal it was granted
+        to, or, with `job`, by the worker whose claim on the lease's job
+        still holds, under the lease's token. The claim is the queue's own
+        fence, read live, so a worker the queue took the item back from is
+        refused; whoever the worker runs as gains nothing by it."""
         lease = await self._lease(ctx, lease_id)
-        if lease.holder_id != ctx.user_id:
-            raise NotAuthorized(f"lease {lease_id} is not held by {ctx.user_id}")
+        if job is None:
+            if lease.holder_id != ctx.user_id:
+                raise NotAuthorized(f"lease {lease_id} is not held by {ctx.user_id}")
+            return lease
+        if (
+            lease.job_key is None
+            or job.token != lease.token
+            or not await self._work.holds(ctx, lease.job_key, job.claim_token)
+        ):
+            raise NotAuthorized(f"lease {lease_id} is not held by this claim of its job")
         return lease
 
     async def _resource(self, ctx: TenantContext, resource_id: UUID) -> Resource:

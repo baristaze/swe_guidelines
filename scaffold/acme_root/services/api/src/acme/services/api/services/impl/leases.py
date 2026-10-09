@@ -15,6 +15,7 @@ from acme.services.api.types.leases import (
     LeaseRequestView,
     LeaseView,
     LineView,
+    RenewRequest,
     ReorderRequest,
     ResourceView,
     StandingView,
@@ -64,6 +65,7 @@ class LeasesServiceImpl(LeasesServiceInterface):
                 labels=None if body.labels is None else tuple(body.labels),
                 payload=body.payload,
                 term_seconds=body.term_seconds,
+                start_seconds=body.start_seconds,
                 wait_seconds=body.wait_seconds,
             )
         except ValidationError as error:
@@ -91,8 +93,11 @@ class LeasesServiceImpl(LeasesServiceInterface):
     async def get_lease(self, ctx: TenantContext, lease_id: UUID) -> LeaseView:
         return lease_view(await self._leases.get_lease(ctx, lease_id))
 
-    async def renew(self, ctx: TenantContext, lease_id: UUID) -> LeaseView:
-        return lease_view(await self._leases.renew(ctx, lease_id))
+    async def renew(
+        self, ctx: TenantContext, lease_id: UUID, body: RenewRequest | None
+    ) -> LeaseView:
+        seconds = None if body is None else body.seconds
+        return lease_view(await self._leases.renew(ctx, lease_id, seconds))
 
     async def release(self, ctx: TenantContext, lease_id: UUID) -> LeaseView:
         return lease_view(await self._leases.release(ctx, lease_id))

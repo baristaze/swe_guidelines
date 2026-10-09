@@ -13,11 +13,17 @@ from pydantic import Field, StringConstraints
 
 from acme.om.base import Identifiable, Trackable
 
-Label = Annotated[str, StringConstraints(min_length=1, max_length=64, pattern=r"^[a-z0-9:_.-]+$")]
-"""One thing a resource offers, and a selector needs: lower case, a short
-token such as `cold` or `door:north`."""
+Label = Annotated[
+    str, StringConstraints(min_length=1, max_length=200, pattern=r"^[^\x00-\x1f\x7f]+$")
+]
+"""One thing a resource offers, and a selector needs: free text of up to 200
+characters, such as `cold` or `North door, bay 3`, matched as written."""
 
-MAX_LABELS = 32
+MAX_LABELS = 160
+"""The most labels a resource offers, and a selector needs."""
+
+MAX_TERM_SECONDS = 604_800
+"""The longest bound a resource may set on one lease: seven days."""
 
 
 class ResourceKind(StrEnum):
@@ -45,7 +51,7 @@ class Resource(Identifiable, Trackable):
     ref_id: UUID
     labels: tuple[Label, ...] = Field(default=(), max_length=MAX_LABELS)
     # The bound on one lease: no grant and no renewal runs longer than this.
-    max_term_seconds: int = Field(default=300, ge=1, le=86_400)
+    max_term_seconds: int = Field(default=300, ge=1, le=MAX_TERM_SECONDS)
     # Out of service: held leases run on, and nothing new is granted.
     available: bool = True
     retired_at: datetime | None = None

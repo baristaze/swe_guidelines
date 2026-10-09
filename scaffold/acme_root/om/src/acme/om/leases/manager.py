@@ -6,13 +6,15 @@ request names one resource, or a selector, and waits in line; a grant is a
 side effect of a resource freeing (a release, an expiry, a revocation, or
 its availability back) and goes to the head of its line, decided under the
 anchor's lock. The holder renews its lease and releases it; the sweep ends
-one past its expiry and the skew margin."""
+one past its expiry and the skew margin. A grant that starts a job lets the
+worker that claims the job start the lease, renew it, and end it for the
+holder."""
 
 from abc import ABC, abstractmethod
 from uuid import UUID
 
 from acme.om.context import RequestContext, TenantContext
-from acme.om.leases.types.lease import Lease
+from acme.om.leases.types.lease import JobClaim, Lease
 from acme.om.leases.types.request import LeaseRequest, Line, Standing, WaiterKind
 from acme.om.leases.types.resource import Resource
 from acme.om.orchestrations.types.orchestration import Step
@@ -104,17 +106,37 @@ class LeasesManagerInterface(ABC):
     async def get_lease(self, ctx: TenantContext, lease_id: UUID) -> Lease: ...
 
     @abstractmethod
-    async def renew(self, ctx: TenantContext, lease_id: UUID) -> Lease:
-        """Its holder's: the lease runs its term again from now, within the
+    async def renew(
+        self,
+        ctx: TenantContext,
+        lease_id: UUID,
+        seconds: int | None = None,
+        job: JobClaim | None = None,
+    ) -> Lease:
+        """Its holder's, or with `job` its job's worker's: the lease runs
+        `seconds` from now, or its term again when it names none, within the
         resource's bound. A lease past its expiry, ended, or on a retired
-        resource is refused (`LeaseEnded`)."""
+        resource is refused (`LeaseEnded`); anyone else is refused
+        (`NotAuthorized`), and so is a claim that no longer holds the job."""
         ...
 
     @abstractmethod
-    async def release(self, ctx: TenantContext, lease_id: UUID) -> Lease:
-        """Its holder's: the lease ends and the resource goes to its line. A
-        released lease is answered as it is; one ended otherwise is refused
-        (`LeaseEnded`)."""
+    async def start(self, ctx: TenantContext, lease_id: UUID, job: JobClaim) -> Lease:
+        """Its job's worker's: the job starts, and the lease runs its term
+        from now. It lands while the lease still holds its resource: until
+        the window the grant gave the job and the skew margin have passed, so
+        a job that waited in its lane to the end of its window still gets its
+        whole term. Past that, or once the lease ended, it is refused
+        (`LeaseEnded`); a lease already started is answered as it is."""
+        ...
+
+    @abstractmethod
+    async def release(
+        self, ctx: TenantContext, lease_id: UUID, job: JobClaim | None = None
+    ) -> Lease:
+        """Its holder's, or with `job` its job's worker's: the lease ends and
+        the resource goes to its line. A released lease is answered as it
+        is; one ended otherwise is refused (`LeaseEnded`)."""
         ...
 
     @abstractmethod
