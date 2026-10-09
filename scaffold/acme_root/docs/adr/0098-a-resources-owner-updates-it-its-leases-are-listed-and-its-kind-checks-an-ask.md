@@ -44,15 +44,22 @@ holds them.
   (`rules.grant_fits`). A grant decided on labels read before an
   update lands nothing, and the update's own offer grants the line
   anew.
-- **The history is one read.** `list_leases` answers a resource's
-  leases, or the org's, newest first by `created_at` and then `id`,
-  ended ones included, each with the request it answered, from one
-  outer join. The manager clamps the page to `history_limit`, 200, and
-  the route to its own `limit`. It reads under the tenant's scope, so a
-  resource of another tenant has no history here. The route is
-  `GET /v1/leases`, with `resource_id` and `limit`; each entry is the
-  lease's view and its request's, without the payload, as the request's
-  view leaves it out. The Python client's `lease_history` reads it.
+- **The history is a page at a time, each one read.** `list_leases`
+  answers a resource's leases, or the org's, newest first by
+  `created_at` and then `id`, ended ones included, each with the request
+  it answered, from one outer join. The manager clamps the page to
+  `history_limit`, 200, and the route to its own `limit`; it reads one
+  entry past the page, so `has_more` is a fact. The next page starts
+  after the last lease's `HistoryMark`, its `created_at` and its `id`,
+  so two leases granted at one instant both list, and a lease granted
+  while a reader pages moves no page. It reads under the tenant's scope,
+  so a resource of another tenant has no history here. The route is
+  `GET /v1/leases`, with `resource_id`, `cursor`, and `limit`, and
+  answers a `LeasePageView`: the entries and an opaque `next_cursor`
+  that carries the mark, null on the last page. A cursor from another
+  list is refused with 422. Each entry is the lease's view and its
+  request's, without the payload, as the request's view leaves it out.
+  The Python client's `lease_history` reads a page.
 - **Two indexes on the `core` chain.**
   `202610091856_leases_listed_newest_first` adds
   `ix_leases_org_id_created_at_id` and

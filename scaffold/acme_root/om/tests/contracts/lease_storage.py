@@ -15,6 +15,7 @@ from acme.om.leases.storage import LeasesStorageInterface
 from acme.om.leases.types.lease import Grant, Lease, LeaseStatus
 from acme.om.leases.types.request import (
     EndReason,
+    HistoryMark,
     LeaseRequest,
     RequestStatus,
     WaiterKind,
@@ -556,9 +557,12 @@ class LeaseStorageContract:
         ended = await storage.end_lease(other, held.id, LeaseStatus.REVOKED, at, new_id(), 1.0, ())
         assert ended is None
         assert await storage.read_lease(org, held.id) == held
-        assert await storage.read_leases(other, None, 10) == []
-        assert await storage.read_leases(other, resource.id, 10) == []
-        assert [e.lease.id for e in await storage.read_leases(org, resource.id, 10)] == [held.id]
+        assert await storage.read_leases(other, None, None, 10) == []
+        assert await storage.read_leases(other, resource.id, None, 10) == []
+        mark = HistoryMark(created_at=at + timedelta(days=1), lease_id=held.id)
+        assert await storage.read_leases(other, None, mark, 10) == []
+        of_org = await storage.read_leases(org, resource.id, None, 10)
+        assert [e.lease.id for e in of_org] == [held.id]
         assert await storage.purge_tenant(other, 100) == 0
         assert await storage.read_resource(org, resource.id) is not None
 
@@ -673,7 +677,7 @@ class LeaseStorageContract:
         assert held is not None
         granted.append((held, request))
         newest_first = [lease.id for lease, _ in reversed(granted)]
-        org_wide = await storage.read_leases(org, None, 10)
+        org_wide = await storage.read_leases(org, None, None, 10)
         assert [e.lease.id for e in org_wide] == newest_first
         assert [e.lease.status for e in org_wide] == [LeaseStatus.ACTIVE] + 3 * [
             LeaseStatus.RELEASED
@@ -685,9 +689,54 @@ class LeaseStorageContract:
                 RequestStatus.GRANTED,
             )
             assert entry.request.lease_id == entry.lease.id
-        assert [e.lease.id for e in await storage.read_leases(org, None, 2)] == newest_first[:2]
-        of_a = await storage.read_leases(org, a.id, 10)
+        assert [e.lease.id for e in await storage.read_leases(org, None, None, 2)] == newest_first[
+            :2
+        ]
+        of_a = await storage.read_leases(org, a.id, None, 10)
         assert [e.lease.id for e in of_a] == [granted[2][0].id, granted[0][0].id]
+
+    async def test_a_history_pages_after_its_mark_and_two_grants_at_one_instant_both_list(
+        self, storage: LeasesStorageInterface
+    ) -> None:
+        """Page after page, each after the mark of the last, reaches every
+        lease once, newest first by the grant and then the id: two leases
+        granted at one instant both list, on whichever page the id puts them.
+        A resource's history pages the same way."""
+        org = new_id()
+        a, b = await self.a_resource(storage, org), await self.a_resource(storage, org)
+        start = utcnow() - timedelta(minutes=10)
+        landed: list[Lease] = []
+        for minute, resource in [(0, a), (1, b), (1, a), (2, b), (3, a)]:
+            request = await self.a_request(storage, org, make_request(resource))
+            anchor = await storage.read_resource(org, resource.id)
+            assert anchor is not None
+            grant = grant_of(anchor, request)
+            at = start + timedelta(minutes=minute)
+            lease = grant.lease.model_copy(
+                update={"created_at": at, "updated_at": at, "expires_at": at + TERM}
+            )
+            granted = await storage.grant(org, grant.model_copy(update={"lease": lease}), ())
+            assert granted is not None
+            landed.append(granted)
+            ended = await storage.end_lease(
+                org, granted.id, LeaseStatus.RELEASED, at, new_id(), 1.0, ()
+            )
+            assert ended is not None
+        newest_first = sorted(landed, key=lambda lease: (lease.created_at, lease.id), reverse=True)
+
+        for resource_id, expected in [
+            (None, newest_first),
+            (a.id, [lease for lease in newest_first if lease.resource_id == a.id]),
+        ]:
+            read: list[UUID] = []
+            mark: HistoryMark | None = None
+            while True:
+                page = await storage.read_leases(org, resource_id, mark, 2)
+                read += [entry.lease.id for entry in page]
+                if len(page) < 2:
+                    break
+                mark = HistoryMark.of(page[-1].lease)
+            assert read == [lease.id for lease in expected]
 
     # The sweep.
 

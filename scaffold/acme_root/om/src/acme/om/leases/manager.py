@@ -15,7 +15,14 @@ from uuid import UUID
 
 from acme.om.context import RequestContext, TenantContext
 from acme.om.leases.types.lease import JobClaim, Lease
-from acme.om.leases.types.request import LeaseEntry, LeaseRequest, Line, Standing, WaiterKind
+from acme.om.leases.types.request import (
+    HistoryMark,
+    LeasePage,
+    LeaseRequest,
+    Line,
+    Standing,
+    WaiterKind,
+)
 from acme.om.leases.types.resource import Resource, ResourceUpdate
 from acme.om.orchestrations.types.orchestration import Step
 
@@ -132,12 +139,17 @@ class LeasesManagerInterface(ABC):
 
     @abstractmethod
     async def list_leases(
-        self, ctx: TenantContext, resource_id: UUID | None = None, limit: int = 50
-    ) -> tuple[LeaseEntry, ...]:
+        self,
+        ctx: TenantContext,
+        resource_id: UUID | None = None,
+        after: HistoryMark | None = None,
+        limit: int = 50,
+    ) -> LeasePage:
         """The history: the org's leases, or one resource's, newest first,
         ended ones included, each with the request it answered, in one read;
-        at most `limit`, which the manager clamps. A resource of another
-        tenant has none here."""
+        a page of at most `limit`, which the manager clamps, and with `after`,
+        the page after the one that ended there (`HistoryMark.of` its last
+        lease). A resource of another tenant has none here."""
         ...
 
     @abstractmethod

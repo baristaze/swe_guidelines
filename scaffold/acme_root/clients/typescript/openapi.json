@@ -1174,6 +1174,35 @@
         "title": "LeaseEntryView",
         "type": "object"
       },
+      "LeasePageView": {
+        "description": "One page of a history, newest first. `next_cursor` fetches the next\npage and is null on the last one.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/LeaseEntryView"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "required": [
+          "items",
+          "next_cursor"
+        ],
+        "title": "LeasePageView",
+        "type": "object"
+      },
       "LeaseRequestView": {
         "properties": {
           "created_at": {
@@ -6369,7 +6398,7 @@
     },
     "/v1/leases": {
       "get": {
-        "description": "The history: the org's leases, or one resource's, newest first, ended\nones included, each with the request it answered; at most `limit`.",
+        "description": "The history: the org's leases, or one resource's, newest first, ended\nones included, each with the request it answered, a page at a time.",
         "operationId": "list_leases_v1_leases_get",
         "parameters": [
           {
@@ -6387,6 +6416,22 @@
                 }
               ],
               "title": "Resource Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
             }
           },
           {
@@ -6453,11 +6498,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "items": {
-                    "$ref": "#/components/schemas/LeaseEntryView"
-                  },
-                  "title": "Response List Leases V1 Leases Get",
-                  "type": "array"
+                  "$ref": "#/components/schemas/LeasePageView"
                 }
               }
             },

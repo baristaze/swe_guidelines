@@ -7,6 +7,7 @@ from acme.om.leases.storage import LeasesStorageInterface, ResourceLandingInterf
 from acme.om.leases.types.lease import Grant, Lease, LeaseStatus
 from acme.om.leases.types.request import (
     EndReason,
+    HistoryMark,
     LeaseEntry,
     LeaseRequest,
     RequestStatus,
@@ -297,12 +298,13 @@ class LeasesStorageMemoryImpl(MemoryStorageBase, LeasesStorageInterface, Resourc
         return self._get(self._leases, org_id, lease_id)
 
     async def read_leases(
-        self, org_id: UUID, resource_id: UUID | None, limit: int
+        self, org_id: UUID, resource_id: UUID | None, after: HistoryMark | None, limit: int
     ) -> list[LeaseEntry]:
         leases = [
             lease
             for lease in self._rows(self._leases, org_id)
-            if resource_id is None or lease.resource_id == resource_id
+            if (resource_id is None or lease.resource_id == resource_id)
+            and (after is None or (lease.created_at, lease.id) < (after.created_at, after.lease_id))
         ]
         leases.sort(key=lambda lease: (lease.created_at, lease.id), reverse=True)
         return [

@@ -5,6 +5,7 @@ reorder and revocation, the refusals of a malformed ask and of the kind's
 own check, a replayed ask that joins no line twice, the history, and the
 tenant boundary."""
 
+import base64
 from pathlib import Path
 from typing import Any
 from uuid import UUID, uuid4
@@ -216,19 +217,33 @@ async def test_the_history_lists_newest_first_with_requests_and_no_tenant_reads_
     second = (await ask(client, ann, resource_id=str(dock.id))).json()["lease"]
     history = await client.get("/v1/leases", headers=owner, params={"resource_id": str(dock.id)})
     assert history.status_code == 200, history.text
-    entries = history.json()
+    entries = history.json()["items"]
     assert [e["lease"]["id"] for e in entries] == [second["id"], first["id"]]
     assert [e["lease"]["status"] for e in entries] == ["active", "released"]
     assert [e["request"]["lease_id"] for e in entries] == [second["id"], first["id"]]
-    page = await client.get("/v1/leases", headers=ann, params={"limit": 1})
-    assert [e["lease"]["id"] for e in page.json()] == [second["id"]]
+    assert history.json()["next_cursor"] is None
+
+    # Page by page, through the cursor each page hands the next.
+    page = (await client.get("/v1/leases", headers=ann, params={"limit": 1})).json()
+    assert [e["lease"]["id"] for e in page["items"]] == [second["id"]]
+    cursor = page["next_cursor"]
+    assert cursor and first["id"] not in cursor, "opaque"
+    rest = await client.get("/v1/leases", headers=ann, params={"limit": 1, "cursor": cursor})
+    assert [e["lease"]["id"] for e in rest.json()["items"]] == [first["id"]]
+    assert rest.json()["next_cursor"] is None
+    for forged in ("not-a-cursor", base64.urlsafe_b64encode(f"files|{uuid4()}".encode()).decode()):
+        refused = await client.get("/v1/leases", headers=ann, params={"cursor": forged})
+        assert refused.status_code == 422, refused.text
+
     _, other = await container.managers.tenancy.bootstrap(
         seed_request(), "Other", "other", "eve@other.test", "Eve"
     )
     eve = await sign_in_as(client, "eve@other.test", other.id)
-    assert (await client.get("/v1/leases", headers=eve)).json() == []
+    assert (await client.get("/v1/leases", headers=eve)).json()["items"] == []
     mine = await client.get("/v1/leases", headers=eve, params={"resource_id": str(dock.id)})
-    assert mine.status_code == 200 and mine.json() == []
+    assert mine.status_code == 200 and mine.json()["items"] == []
+    theirs = await client.get("/v1/leases", headers=eve, params={"cursor": cursor})
+    assert theirs.status_code == 200 and theirs.json()["items"] == []
 
 
 async def test_another_tenants_leases_answer_as_missing_ones(

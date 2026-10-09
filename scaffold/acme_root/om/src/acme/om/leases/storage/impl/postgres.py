@@ -11,6 +11,7 @@ from sqlalchemy import (
     func,
     or_,
     select,
+    tuple_,
     union,
     update,
 )
@@ -28,6 +29,7 @@ from acme.om.leases.storage.tables.resources import Resources
 from acme.om.leases.types.lease import Grant, Lease, LeaseStatus
 from acme.om.leases.types.request import (
     EndReason,
+    HistoryMark,
     LeaseEntry,
     LeaseRequest,
     RequestStatus,
@@ -452,7 +454,7 @@ class LeasesStoragePostgresImpl(PgStorageBase, LeasesStorageInterface):
         return await self._one(stmt, org_id, Lease)
 
     async def read_leases(
-        self, org_id: UUID, resource_id: UUID | None, limit: int
+        self, org_id: UUID, resource_id: UUID | None, after: HistoryMark | None, limit: int
     ) -> list[LeaseEntry]:
         stmt = (
             select(Leases, LeaseRequests)
@@ -469,6 +471,10 @@ class LeasesStoragePostgresImpl(PgStorageBase, LeasesStorageInterface):
         )
         if resource_id is not None:
             stmt = stmt.where(Leases.resource_id == resource_id)
+        if after is not None:
+            # The page after the mark, newest first: one range of the index.
+            mark = tuple_(after.created_at, after.lease_id)
+            stmt = stmt.where(tuple_(Leases.created_at, Leases.id) < mark)
         async with self._session_for(stmt, org_id=org_id) as session:
             return [
                 LeaseEntry(

@@ -142,3 +142,25 @@ class LeaseEntry(Platform):
 
     lease: Lease
     request: LeaseRequest | None = None
+
+
+class HistoryMark(Platform):
+    """Where a page of a history ended: its last lease's grant and id. The
+    next page holds the leases that sort before it, newest first, so a page
+    stays where it is however many leases are granted after it."""
+
+    created_at: datetime
+    lease_id: UUID
+
+    @classmethod
+    def of(cls, lease: Lease) -> Self:
+        return cls(created_at=lease.created_at, lease_id=lease.id)
+
+
+class LeasePage(Platform):
+    """One page of a history, and whether another follows. The manager asks
+    storage for one entry more than the page and keeps it out, so `has_more`
+    is a fact about the rows."""
+
+    items: tuple[LeaseEntry, ...]
+    has_more: bool

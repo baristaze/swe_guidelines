@@ -2018,8 +2018,10 @@ each with the request it answered. A tenant reads only its own.
   or at the next sweep, each with its waiter's wake.
 - `list_leases` reads a resource's leases, or the org's, newest first by
   `created_at` and then `id`, each with its request from one join, at
-  most `history_limit` a page. `line` answers each request's `Place`,
-  its place and estimate, from one replay over the reads it makes.
+  most `history_limit` a page; the next page starts after the last
+  lease's `HistoryMark`, which the route's opaque cursor carries. `line`
+  answers each request's `Place`, its place and estimate, from one
+  replay over the reads it makes.
 - The sweep reads the due orgs in the order of their ids and reads on
   past a deleted one, so deleted orgs never fill its batch.
 - The client's `Fence` keeps the highest token per resource; its

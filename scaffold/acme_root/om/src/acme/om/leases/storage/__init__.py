@@ -10,6 +10,7 @@ from uuid import UUID
 from acme.om.leases.types.lease import Grant, Lease, LeaseStatus
 from acme.om.leases.types.request import (
     EndReason,
+    HistoryMark,
     LeaseEntry,
     LeaseRequest,
     RequestStatus,
@@ -232,11 +233,11 @@ class LeasesStorageInterface(ABC):
 
     @abstractmethod
     async def read_leases(
-        self, org_id: UUID, resource_id: UUID | None, limit: int
+        self, org_id: UUID, resource_id: UUID | None, after: HistoryMark | None, limit: int
     ) -> list[LeaseEntry]:
         """The org's leases, or one resource's, newest first (by their grant,
         then their id), whatever their status, each with the request it
-        answered, in one read."""
+        answered, in one read; with `after`, those that sort before it."""
         ...
 
     @abstractmethod

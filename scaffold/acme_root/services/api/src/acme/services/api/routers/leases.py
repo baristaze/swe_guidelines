@@ -13,7 +13,7 @@ from acme.services.api.gateway.resolve import LeasesService
 from acme.services.api.types.common import LIMIT_DEFAULT, ErrorResponse
 from acme.services.api.types.leases import (
     AskRequest,
-    LeaseEntryView,
+    LeasePageView,
     LeaseRequestView,
     LeaseView,
     LineView,
@@ -65,13 +65,17 @@ async def line(ctx: Ctx, leases: LeasesService, resource_id: UUID) -> LineView:
     return await leases.line(ctx, resource_id)
 
 
-@router.get("", response_model=list[LeaseEntryView])
+@router.get("", response_model=LeasePageView)
 async def list_leases(
-    ctx: Ctx, leases: LeasesService, resource_id: UUID | None = None, limit: int = LIMIT_DEFAULT
-) -> list[LeaseEntryView]:
+    ctx: Ctx,
+    leases: LeasesService,
+    resource_id: UUID | None = None,
+    cursor: str | None = None,
+    limit: int = LIMIT_DEFAULT,
+) -> LeasePageView:
     """The history: the org's leases, or one resource's, newest first, ended
-    ones included, each with the request it answered; at most `limit`."""
-    return await leases.list_leases(ctx, resource_id, limit)
+    ones included, each with the request it answered, a page at a time."""
+    return await leases.list_leases(ctx, resource_id, cursor, limit)
 
 
 @router.get("/{lease_id}", response_model=LeaseView)

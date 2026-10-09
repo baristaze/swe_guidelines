@@ -7,7 +7,7 @@ from uuid import UUID
 from acme.om.context import TenantContext
 from acme.services.api.types.leases import (
     AskRequest,
-    LeaseEntryView,
+    LeasePageView,
     LeaseRequestView,
     LeaseView,
     LineView,
@@ -43,10 +43,11 @@ class LeasesServiceInterface(ABC):
 
     @abstractmethod
     async def list_leases(
-        self, ctx: TenantContext, resource_id: UUID | None, limit: int
-    ) -> list[LeaseEntryView]:
-        """The org's leases, or one resource's, newest first, each with the
-        request it answered."""
+        self, ctx: TenantContext, resource_id: UUID | None, cursor: str | None, limit: int
+    ) -> LeasePageView:
+        """One page of the org's leases, or one resource's, newest first,
+        each with the request it answered; `cursor` is the previous page's
+        `next_cursor`."""
         ...
 
     @abstractmethod

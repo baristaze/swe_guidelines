@@ -59,7 +59,7 @@ kinds of thing [Acme is made of](../../../../README.md).
   **revoke** a lease, by a manager.
 - **Read** a resource's line, each request with its place and estimate,
   and the history: a resource's leases, or the org's, newest first,
-  ended ones too, each with the request it answered.
+  ended ones too, each with the request it answered, a page at a time.
 - **Leave.** A waiter that ends leaves every line.
 - **Sweep.** A pass ends each lease past its expiry and the skew
   margin, expires each request past its wait, and offers each free

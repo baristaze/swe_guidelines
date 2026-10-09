@@ -134,7 +134,7 @@ async def test_a_renewal_names_its_length_or_sends_no_body() -> None:
     assert seen[1].content == b""
 
 
-async def test_the_history_names_its_resource_and_its_bound_and_reads_each_entry() -> None:
+async def test_the_history_names_its_resource_its_bound_and_its_cursor_and_reads_a_page() -> None:
     seen: list[httpx.Request] = []
     lease_id, request_id = uuid4(), uuid4()
 
@@ -142,27 +142,31 @@ async def test_the_history_names_its_resource_and_its_bound_and_reads_each_entry
         seen.append(request)
         return httpx.Response(
             200,
-            json=[
-                {
-                    "lease": {
-                        "id": str(lease_id), "resource_id": str(DOCK),
-                        "request_id": str(request_id), "holder_id": str(uuid4()),
-                        "fencing_token": 2, "term_seconds": 60,
-                        "expires_at": "2026-10-08T00:01:00Z", "expires_in_seconds": 0.0,
-                        "status": "released", "ended_at": "2026-10-08T00:00:30Z",
-                        "started_at": None, "created_at": "2026-10-08T00:00:00Z",
-                    },
-                    "request": None,
-                }
-            ],
+            json={
+                "items": [
+                    {
+                        "lease": {
+                            "id": str(lease_id), "resource_id": str(DOCK),
+                            "request_id": str(request_id), "holder_id": str(uuid4()),
+                            "fencing_token": 2, "term_seconds": 60,
+                            "expires_at": "2026-10-08T00:01:00Z", "expires_in_seconds": 0.0,
+                            "status": "released", "ended_at": "2026-10-08T00:00:30Z",
+                            "started_at": None, "created_at": "2026-10-08T00:00:00Z",
+                        },
+                        "request": None,
+                    }
+                ],
+                "next_cursor": "bGVhc2Vz",
+            },
         )  # fmt: skip
 
     async with ApiClient(
         "http://test", app="cli", app_version="cli@test", transport=httpx.MockTransport(answer)
     ) as api:
-        (entry,) = await api.lease_history(DOCK, limit=10)
-        await api.lease_history()
+        page = await api.lease_history(DOCK, limit=10)
+        await api.lease_history(cursor=page.next_cursor)
+    (entry,) = page.items
     assert entry.lease.id == lease_id and entry.request is None
     assert seen[0].url.path == "/v1/leases"
     assert dict(seen[0].url.params) == {"limit": "10", "resource_id": str(DOCK)}
-    assert dict(seen[1].url.params) == {"limit": "200"}
+    assert dict(seen[1].url.params) == {"limit": "200", "cursor": "bGVhc2Vz"}

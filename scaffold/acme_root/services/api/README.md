@@ -91,11 +91,11 @@ app, and `main.py` is the `acme-api` command: `serve`, `migrate`,
 - **Leases.** Ask for a resource, by its id or by a selector, under an
   idempotency key; read where the request stands, its place and its
   estimate, or its lease; cancel it; read a resource's line, with each
-  place and estimate, and the history of leases, newest first; renew a
-  lease, for a length it names or its term again, and release it, as
-  its holder. The worker that runs a lease's job acts through the
-  manager, not a route. A manager reorders a request and
-  revokes a lease. (`/v1/leases/requests`,
+  place and estimate, and the history of leases, newest first, a page
+  at a time; renew a lease, for a length it names or its term again,
+  and release it, as its holder. The worker that runs a lease's job
+  acts through the manager, not a route. A manager reorders a request
+  and revokes a lease. (`/v1/leases/requests`,
   `/v1/leases/requests/{request_id}`, `.../cancel`, `.../reorder`,
   `/v1/leases/resources/{resource_id}/line`, `/v1/leases`,
   `/v1/leases/{lease_id}`, `.../renew`, `.../release`, `.../revoke`,

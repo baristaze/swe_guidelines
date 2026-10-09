@@ -5,16 +5,17 @@ statement or its memory twin, and offers the resource to its line after it;
 or it updates through the manager, which offers at once. A lease the
 resource holds keeps its term, and the line is the one its new labels make.
 The history lists newest first, ended leases too, each with the request it
-answered, and no tenant reads another's."""
+answered, a page at a time, and no tenant reads another's."""
 
 from datetime import datetime, timedelta
 from typing import Protocol
+from uuid import UUID
 
 from acme.om.base import new_id, utcnow
 from acme.om.context import RequestContext, TenantContext
 from acme.om.leases.impl.manager import LeasesManagerImpl
 from acme.om.leases.types.lease import LeaseStatus
-from acme.om.leases.types.request import LeaseRequest, RequestStatus
+from acme.om.leases.types.request import HistoryMark, LeaseRequest, RequestStatus
 from acme.om.leases.types.resource import Resource, ResourceKind, ResourceUpdate
 
 
@@ -169,8 +170,9 @@ async def the_history_lists_each_lease_with_its_request_and_no_tenant_reads_anot
     world: OwnerWorld,
 ) -> None:
     """A dock's leases and the org's, newest first, ended ones too, each with
-    the request it answered; a limit bounds the page. Another tenant reads
-    none of them, by the dock's id or across its own org."""
+    the request it answered; a limit bounds the page, and the page after the
+    last one's mark reaches the rest, until none follows. Another tenant
+    reads none of them, by the dock's id or across its own org."""
     owner = await world.owner()
     ann = await world.member("ann")
     dock = await world.leases.register(owner, a_dock(owner))
@@ -187,13 +189,28 @@ async def the_history_lists_each_lease_with_its_request_and_no_tenant_reads_anot
     newest_first = [held.lease.id, *(lease.id for lease in reversed(leases))]
 
     org_wide = await world.leases.list_leases(owner)
-    assert [e.lease.id for e in org_wide] == newest_first
-    assert [e.lease.status for e in org_wide] == [LeaseStatus.ACTIVE] + 3 * [LeaseStatus.RELEASED]
-    assert all(e.request is not None and e.request.lease_id == e.lease.id for e in org_wide)
-    assert [e.request.created_by for e in org_wide if e.request] == 4 * [ann.user_id]
+    assert not org_wide.has_more
+    assert [e.lease.id for e in org_wide.items] == newest_first
+    statuses = [e.lease.status for e in org_wide.items]
+    assert statuses == [LeaseStatus.ACTIVE] + 3 * [LeaseStatus.RELEASED]
+    assert all(e.request is not None and e.request.lease_id == e.lease.id for e in org_wide.items)
+    assert [e.request.created_by for e in org_wide.items if e.request] == 4 * [ann.user_id]
     of_dock = await world.leases.list_leases(ann, dock.id, limit=2)
-    assert [e.lease.id for e in of_dock] == [held.lease.id, leases[2].id]
+    assert [e.lease.id for e in of_dock.items] == [held.lease.id, leases[2].id]
+    assert of_dock.has_more, "the dock's first lease is on the next page"
+
+    paged: list[UUID] = []
+    mark: HistoryMark | None = None
+    while True:
+        page = await world.leases.list_leases(owner, after=mark, limit=3)
+        paged += [e.lease.id for e in page.items]
+        if not page.has_more:
+            break
+        mark = HistoryMark.of(page.items[-1].lease)
+    assert paged == newest_first, "every lease once, page by page"
 
     other = await world.owner(f"bolt-{new_id().hex[-8:]}")
-    assert await world.leases.list_leases(other) == ()
-    assert await world.leases.list_leases(other, dock.id) == ()
+    assert (await world.leases.list_leases(other)).items == ()
+    assert (await world.leases.list_leases(other, dock.id)).items == ()
+    beyond = await world.leases.list_leases(other, after=HistoryMark.of(held.lease))
+    assert beyond.items == ()

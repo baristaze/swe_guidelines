@@ -557,7 +557,7 @@ export interface paths {
         /**
          * List Leases
          * @description The history: the org's leases, or one resource's, newest first, ended
-         *     ones included, each with the request it answered; at most `limit`.
+         *     ones included, each with the request it answered, a page at a time.
          */
         get: operations["list_leases_v1_leases_get"];
         put?: never;
@@ -1724,6 +1724,17 @@ export interface components {
         LeaseEntryView: {
             lease: components["schemas"]["LeaseView"];
             request: components["schemas"]["LeaseRequestView"] | null;
+        };
+        /**
+         * LeasePageView
+         * @description One page of a history, newest first. `next_cursor` fetches the next
+         *     page and is null on the last one.
+         */
+        LeasePageView: {
+            /** Items */
+            items: components["schemas"]["LeaseEntryView"][];
+            /** Next Cursor */
+            next_cursor: string | null;
         };
         /** LeaseRequestView */
         LeaseRequestView: {
@@ -3889,6 +3900,7 @@ export interface operations {
         parameters: {
             query?: {
                 resource_id?: string | null;
+                cursor?: string | null;
                 limit?: number;
             };
             header?: {
@@ -3907,7 +3919,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["LeaseEntryView"][];
+                    "application/json": components["schemas"]["LeasePageView"];
                 };
             };
             /** @description Validation Error */

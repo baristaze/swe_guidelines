@@ -109,6 +109,14 @@ class LeaseEntryView(View):
     request: LeaseRequestView | None
 
 
+class LeasePageView(View):
+    """One page of a history, newest first. `next_cursor` fetches the next
+    page and is null on the last one."""
+
+    items: list[LeaseEntryView]
+    next_cursor: str | None
+
+
 class AskRequest(RequestBody):
     """An ask for a lease: one resource by its id, or a selector, the labels
     a resource of `kind` must offer. `payload` is in the shape the kind

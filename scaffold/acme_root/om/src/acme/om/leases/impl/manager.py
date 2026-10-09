@@ -38,7 +38,8 @@ from acme.om.leases.types.lease import Grant, JobClaim, Lease, LeaseStatus
 from acme.om.leases.types.request import (
     ASK_PAYLOADS,
     EndReason,
-    LeaseEntry,
+    HistoryMark,
+    LeasePage,
     LeaseRequest,
     Line,
     Place,
@@ -71,7 +72,7 @@ class LeasesOptions(Platform):
     margin: timedelta = timedelta(seconds=30)
     line_limit: int = 1000  # waiting requests of a kind one offer or estimate reads
     resource_limit: int = 200  # resources of a kind one ask or estimate reads
-    history_limit: int = 200  # the most leases one read of a history answers
+    history_limit: int = 200  # the most leases one page of a history answers
     # Heads one offer looks at, cancelling those that may no longer be
     # granted, before it leaves the rest to the next freeing or the sweep.
     offer_tries: int = 20
@@ -341,11 +342,18 @@ class LeasesManagerImpl(LeasesManagerInterface):
         return await self._lease(ctx, lease_id)
 
     async def list_leases(
-        self, ctx: TenantContext, resource_id: UUID | None = None, limit: int = 50
-    ) -> tuple[LeaseEntry, ...]:
+        self,
+        ctx: TenantContext,
+        resource_id: UUID | None = None,
+        after: HistoryMark | None = None,
+        limit: int = 50,
+    ) -> LeasePage:
         ctx.require(Permission.READ)
         bounded = max(1, min(limit, self._options.history_limit))
-        return tuple(await self._storage.read_leases(ctx.org_id, resource_id, bounded))
+        # One entry past the page, kept out of it: `has_more` is then a fact
+        # about the rows, so no lease in retention is left unreachable.
+        rows = await self._storage.read_leases(ctx.org_id, resource_id, after, bounded + 1)
+        return LeasePage(items=tuple(rows[:bounded]), has_more=len(rows) > bounded)
 
     async def renew(
         self,

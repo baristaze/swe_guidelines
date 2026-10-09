@@ -1095,6 +1095,15 @@ class LeaseEntryView(BaseModel):
     request: LeaseRequestView | None
 
 
+class LeasePageView(BaseModel):
+    """
+    One page of a history, newest first. `next_cursor` fetches the next
+    page and is null on the last one.
+    """
+    items: Annotated[list[LeaseEntryView], Field(title='Items')]
+    next_cursor: Annotated[str | None, Field(title='Next Cursor')]
+
+
 class MembershipChoicePageView(BaseModel):
     """
     One page of the signed-in person's places, each the org, the user, and

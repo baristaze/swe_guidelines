@@ -44,6 +44,7 @@ from acme.om.leases.storage import LeasesStorageInterface, ResourceLandingInterf
 from acme.om.leases.types.lease import JobClaim, Lease, LeaseStatus
 from acme.om.leases.types.request import (
     EndReason,
+    HistoryMark,
     LeaseRequest,
     RequestStatus,
     WaiterKind,
@@ -908,7 +909,11 @@ async def test_a_history_page_is_one_read_whatever_its_length(tmp_path: Path) ->
         await world.leases.release(owner, standing.lease.id)
     world.counted.reads.clear()
     page = await world.leases.list_leases(owner, dock.id, limit=50)
-    assert len(page) == 4, "the manager's bound"
-    assert all(e.request is not None and e.request.lease_id == e.lease.id for e in page)
+    assert (len(page.items), page.has_more) == (4, True), "the manager's bound"
+    assert all(e.request is not None and e.request.lease_id == e.lease.id for e in page.items)
     assert world.counted.reads == Counter({"read_leases": 1})
-    assert len(await world.leases.list_leases(owner, limit=0)) == 1
+    after = HistoryMark.of(page.items[-1].lease)
+    rest = await world.leases.list_leases(owner, dock.id, after=after, limit=50)
+    assert (len(rest.items), rest.has_more) == (2, False)
+    assert world.counted.reads == Counter({"read_leases": 2}), "one read a page"
+    assert len((await world.leases.list_leases(owner, limit=0)).items) == 1

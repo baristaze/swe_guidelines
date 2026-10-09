@@ -1,3 +1,5 @@
+import base64
+from datetime import datetime
 from uuid import UUID
 
 from pydantic import ValidationError
@@ -7,13 +9,14 @@ from acme.om.context import TenantContext
 from acme.om.exceptions import ValidationFailed
 from acme.om.leases import LeasesManagerInterface
 from acme.om.leases.types.lease import Lease
-from acme.om.leases.types.request import LeaseEntry, LeaseRequest, Standing
+from acme.om.leases.types.request import HistoryMark, LeaseEntry, LeaseRequest, Standing
 from acme.om.leases.types.resource import Resource
 from acme.services.api.services.leases import LeasesServiceInterface
 from acme.services.api.types.common import clamp_limit
 from acme.services.api.types.leases import (
     AskRequest,
     LeaseEntryView,
+    LeasePageView,
     LeaseRequestView,
     LeaseView,
     LineView,
@@ -38,6 +41,31 @@ def resource_view(resource: Resource) -> ResourceView:
 
 def request_view(request: LeaseRequest) -> LeaseRequestView:
     return LeaseRequestView.model_validate(request)
+
+
+HISTORY = "leases"
+
+
+def history_cursor(mark: HistoryMark) -> str:
+    """Opaque on the wire: the list a cursor belongs to, and the grant and
+    the id of the lease its page ended on. A history is ordered by both, so
+    the id alone is not the mark."""
+    raw = f"{HISTORY}|{mark.created_at.isoformat()}|{mark.lease_id}"
+    return base64.urlsafe_b64encode(raw.encode()).decode().rstrip("=")
+
+
+def history_mark(cursor: str) -> HistoryMark:
+    """The mark a history's cursor carries; one from another list, or from
+    nowhere, is refused rather than read."""
+    try:
+        raw = base64.urlsafe_b64decode(cursor + "=" * (-len(cursor) % 4)).decode()
+        listed, created_at, lease_id = raw.split("|")
+        granted = datetime.fromisoformat(created_at)
+        if listed != HISTORY or granted.tzinfo is None:
+            raise ValueError(listed)
+        return HistoryMark(created_at=granted, lease_id=UUID(lease_id))
+    except ValueError:
+        raise ValidationFailed("the cursor is not one this list issued") from None
 
 
 def entry_view(entry: LeaseEntry) -> LeaseEntryView:
@@ -105,10 +133,15 @@ class LeasesServiceImpl(LeasesServiceInterface):
         return lease_view(await self._leases.get_lease(ctx, lease_id))
 
     async def list_leases(
-        self, ctx: TenantContext, resource_id: UUID | None, limit: int
-    ) -> list[LeaseEntryView]:
-        entries = await self._leases.list_leases(ctx, resource_id, clamp_limit(limit))
-        return [entry_view(e) for e in entries]
+        self, ctx: TenantContext, resource_id: UUID | None, cursor: str | None, limit: int
+    ) -> LeasePageView:
+        after = history_mark(cursor) if cursor else None
+        page = await self._leases.list_leases(ctx, resource_id, after, clamp_limit(limit))
+        last = HistoryMark.of(page.items[-1].lease) if page.has_more else None
+        return LeasePageView(
+            items=[entry_view(e) for e in page.items],
+            next_cursor=None if last is None else history_cursor(last),
+        )
 
     async def renew(
         self, ctx: TenantContext, lease_id: UUID, body: RenewRequest | None
