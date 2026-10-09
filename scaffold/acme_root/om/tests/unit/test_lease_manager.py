@@ -36,7 +36,7 @@ from acme.om.context import (
     build_context,
 )
 from acme.om.exceptions import LeaseEnded, NotAuthorized, NotFound, ValidationFailed
-from acme.om.leases.hooks import ResourceKindInterface
+from acme.om.leases.hooks import AskCheckInterface, ResourceKindInterface
 from acme.om.leases.impl.kinds import NoopResourceKindImpl, OrchestrationWaiterImpl
 from acme.om.leases.impl.manager import LeasesManagerImpl, LeasesOptions
 from acme.om.leases.rules import measured_hold, place_of, rank_at, replay, stands_in
@@ -204,6 +204,7 @@ class World:
         tmp_path: Path,
         kind: ResourceKindInterface | None = None,
         options: LeasesOptions | None = None,
+        check: AskCheckInterface | None = None,
     ) -> None:
         self.storage = StorageMemoryImpl()
         self.managers: Managers = build_managers(self.storage, InfraLocalImpl(tmp_path))
@@ -220,6 +221,7 @@ class World:
                 WaiterKind.ORCHESTRATION: OrchestrationWaiterImpl(self.managers.orchestrations)
             },
             work=self.managers.work,
+            asks=None if check is None else {ResourceKind.NOOP: check},
             clock=lambda: self.now,
         )
         self.slug = f"ajax-{new_id().hex[-8:]}"
@@ -810,8 +812,8 @@ async def test_a_resource_registered_is_offered_at_once_to_a_selector_it_matches
     assert granted.lease is not None and granted.lease.resource_id == dock.id
 
 
-class Staffed(NoopResourceKindImpl):
-    """A kind that checks an ask: only an admin or the owner asks, and only
+class Staffed(AskCheckInterface):
+    """A kind's check of an ask: only an admin or the owner asks, and only
     for a resource that offers `staffed`, by its id or a selector's labels.
     It keeps what it was asked."""
 
@@ -836,7 +838,7 @@ async def test_a_kinds_check_refuses_an_ask_before_it_waits(tmp_path: Path) -> N
     line. The owner's ask for a staffed one is granted, and a kind without
     the check takes the member's ask as before."""
     kind = Staffed()
-    world = World(tmp_path, kind=kind)
+    world = World(tmp_path, check=kind)
     owner = await world.owner()
     mia = await world.member("mia")
     staffed, bare = await world.resource(owner, "staffed"), await world.resource(owner)

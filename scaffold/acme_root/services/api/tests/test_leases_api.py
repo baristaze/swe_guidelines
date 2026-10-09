@@ -5,17 +5,27 @@ reorder and revocation, the refusals of a malformed ask and of the kind's
 own check, a replayed ask that joins no line twice, the history, and the
 tenant boundary."""
 
+from pathlib import Path
 from typing import Any
 from uuid import UUID, uuid4
 
 import httpx
 import pytest
-from api_support import add_member, seed_request, sign_in_as
+from api_support import (
+    add_member,
+    build_container,
+    client_over,
+    seed_request,
+    sign_in,
+    sign_in_as,
+)
 
+from acme.om import root
 from acme.om.base import EMPTY_UUID, new_id, utcnow
 from acme.om.context import Role, TenantContext
 from acme.om.exceptions import NotAuthorized, ValidationFailed
-from acme.om.leases.impl.kinds import NoopResourceKindImpl
+from acme.om.leases.hooks import AskCheckInterface
+from acme.om.leases.impl.manager import LeasesManagerImpl
 from acme.om.leases.types.request import LeaseRequest
 from acme.om.leases.types.resource import Resource, ResourceKind
 from acme.services.api.container import AppContainer
@@ -149,44 +159,50 @@ async def test_a_malformed_ask_is_refused_and_a_replay_joins_no_line_twice(
     assert len(line.json()["requests"]) == 1
 
 
-async def test_a_kinds_check_refuses_an_ask_and_the_route_answers_it(
-    client: httpx.AsyncClient,
-    container: AppContainer,
-    owner: dict[str, str],
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """A kind whose check takes an ask from the owner alone, and for a
-    resource by its id: a member's ask is 403, a selector 422, and neither
-    stands in the line. Without the check, the member's ask is taken as
-    before."""
-    org_id = await org_of(client, owner)
-    dock = await a_dock(container, org_id)
-    mia = await a_member(client, container, org_id, "mia", Role.MEMBER)
+class OwnersAlone(AskCheckInterface):
+    """A kind's check that takes an ask from the owner alone, and for a
+    resource by its id."""
 
-    async def owners_alone(
-        self: NoopResourceKindImpl,
-        ctx: TenantContext,
-        request: LeaseRequest,
-        resource: Resource | None,
+    async def check_ask(
+        self, ctx: TenantContext, request: LeaseRequest, resource: Resource | None
     ) -> None:
         if ctx.role is not Role.OWNER:
             raise NotAuthorized(f"a {ctx.role.value} asks for no dock")
         if resource is None:
             raise ValidationFailed("a dock is asked for by its id")
 
-    monkeypatch.setattr(NoopResourceKindImpl, "check_ask", owners_alone)
-    refused = await ask(client, mia, resource_id=str(dock.id))
-    assert refused.status_code == 403, refused.text
-    assert refused.json()["error"]["code"] == "not_authorized"
-    selector = await ask(client, owner, labels=[])
-    assert selector.status_code == 422, selector.text
-    line = await client.get(f"/v1/leases/resources/{dock.id}/line", headers=owner)
-    assert line.json()["requests"] == [] and line.json()["resource"]["lease_id"] is None
-    held = await ask(client, owner, resource_id=str(dock.id))
-    assert held.status_code == 201 and held.json()["lease"] is not None
+
+async def test_a_kinds_check_refuses_an_ask_and_the_route_answers_it(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A root that registers the check for its kind: a member's ask is 403,
+    a selector 422, and neither stands in the line. The default root
+    registers none, and takes the member's ask as before."""
+
+    def with_the_check(*args: Any, **kwargs: Any) -> LeasesManagerImpl:
+        return LeasesManagerImpl(*args, **{**kwargs, "asks": {ResourceKind.NOOP: OwnersAlone()}})
+
+    monkeypatch.setattr(root, "LeasesManagerImpl", with_the_check)
+    checked = build_container(tmp_path / "checked")
     monkeypatch.undo()
-    taken = await ask(client, mia, resource_id=str(dock.id))
-    assert taken.status_code == 201 and taken.json()["place"] == 1
+    for container, refuses in ((checked, True), (build_container(tmp_path / "plain"), False)):
+        async with client_over(container) as client:
+            owner = await sign_in(client, container)
+            org_id = await org_of(client, owner)
+            dock = await a_dock(container, org_id)
+            mia = await a_member(client, container, org_id, "mia", Role.MEMBER)
+            asked = await ask(client, mia, resource_id=str(dock.id))
+            if not refuses:
+                assert asked.status_code == 201 and asked.json()["lease"] is not None
+                continue
+            assert asked.status_code == 403, asked.text
+            assert asked.json()["error"]["code"] == "not_authorized"
+            selector = await ask(client, owner, labels=[])
+            assert selector.status_code == 422, selector.text
+            line = await client.get(f"/v1/leases/resources/{dock.id}/line", headers=owner)
+            assert line.json()["requests"] == [] and line.json()["resource"]["lease_id"] is None
+            held = await ask(client, owner, resource_id=str(dock.id))
+            assert held.status_code == 201 and held.json()["lease"] is not None
 
 
 async def test_the_history_lists_newest_first_with_requests_and_no_tenant_reads_another(

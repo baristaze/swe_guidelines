@@ -16,7 +16,7 @@ from acme.om.exceptions import (
     TenantMismatch,
     ValidationFailed,
 )
-from acme.om.leases.hooks import ResourceKindInterface, WaiterInterface
+from acme.om.leases.hooks import AskCheckInterface, ResourceKindInterface, WaiterInterface
 from acme.om.leases.manager import LeasesManagerInterface
 from acme.om.leases.rules import (
     holds_lapsed,
@@ -92,6 +92,7 @@ class LeasesManagerImpl(LeasesManagerInterface):
         kinds: Mapping[ResourceKind, ResourceKindInterface],
         waiters: Mapping[WaiterKind, WaiterInterface],
         work: WorkManagerInterface,
+        asks: Mapping[ResourceKind, AskCheckInterface] | None = None,
         clock: Callable[[], datetime] = utcnow,
     ) -> None:
         self._storage = storage
@@ -100,6 +101,9 @@ class LeasesManagerImpl(LeasesManagerInterface):
         self._options = options
         self._kinds = kinds
         self._waiters = waiters
+        # The kinds that refuse some asks, each with its check; any other
+        # kind accepts every ask.
+        self._asks = asks or {}
         # The queue a lease's job rides: the worker's claim on it is read
         # there, on the queue's own clock.
         self._work = work
@@ -222,7 +226,9 @@ class LeasesManagerImpl(LeasesManagerInterface):
         )
         # The kind's own check, under the asker's context: a refusal raises,
         # and nothing lands.
-        await self._kind(request.kind).check_ask(ctx, asked, named)
+        check = self._asks.get(request.kind)
+        if check is not None:
+            await check.check_ask(ctx, asked, named)
         rows = (outbox_row(ctx, REQUEST_CREATED, asked.id, {}),)
         stored, created = await self._storage.create_request(ctx.org_id, asked, rows)
         if created:

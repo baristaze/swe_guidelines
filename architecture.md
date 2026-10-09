@@ -1915,7 +1915,12 @@ the org. It carries labels, free text that says what it offers, its
 bound on one lease, its availability, and the **anchor**: the highest
 token granted on it, the lease that holds it, and until when. The
 namespace that owns the row registers the resource in the same commit,
-and retires it with the row.
+updates its labels, its bound, and its availability with the row, and
+retires it with the row. After a registration or an update, the owner
+offers the resource to its line: a request its labels now match may be
+granted, and one they no longer match leaves that line. A lease it
+holds keeps its term, and a new bound holds from the lease's next
+renewal.
 
 A **lease** is one grant of one resource to one principal, under a
 fencing token one above the anchor's. Its holder renews it, for a length
@@ -1948,12 +1953,16 @@ kind and the labels it needs. One rank order serves every line of a
 tenant, so a selector request stands in each line it matches with one
 place, and a manager's reorder moves one request between two
 neighbours. A request answers its place, and an estimate of its wait
-replayed from each resource's measured holds. An ask is idempotent by
-its [key](#idempotency), and a direct ask never passes anyone waiting.
+replayed from each resource's measured holds, and a resource's line
+answers the same for each request in it, from one replay. An ask is
+idempotent by its [key](#idempotency), and a direct ask never passes
+anyone waiting. Before it waits, its kind may refuse it, for who asks
+or for what it asks, and nothing of it lands.
 
 A grant is a side effect of a resource freeing: a release, an expiry, a
 revocation, or its availability back. It goes to the head of the line,
-decided under the anchor's row lock, for a request still waiting. The
+decided under the anchor's row lock, for a request still waiting that
+the resource, as its row stands then, still serves. The
 lease, the anchor, the request's answer, and what the grant starts land
 in one commit, as rows and their outbox rows. A unique index over a
 resource's active leases is a second fence. Before it grants, it asks
@@ -1961,7 +1970,8 @@ the waiter whether it still waits, and the kind whether the request may
 still be granted; a no cancels the request, and the next is asked.
 
 A kind registers as a work kind does, with its hooks: what a grant
-starts, and whether a request may still be granted. A **waiter**
+starts, whether a request may still be granted, and, when it needs one,
+a check at the ask. A **waiter**
 registers the same way. A [long-running
 record](#long-running-orchestrations) parks on the reason `resource`,
 and the grant wakes it with its lease. A request that leaves its line
@@ -1970,7 +1980,9 @@ ends leaves every line. A kind keeps facts of its own about a lease in its own t
 keyed by the lease's id. The [sweep](#maintenance-without-a-scheduler)
 ends each lease past its expiry and the margin, expires each request
 past its wait, and offers each free resource to its line; retention
-purges what settled.
+purges what settled. Until then a resource's leases, and the org's,
+are a history: newest first, a page at a time, ended ones included,
+each with the request it answered. A tenant reads only its own.
 
 > **Principle:** One holder at a time, under a token that only grows.
 > The row lock and the index fence the grant, and the token fences
@@ -1979,18 +1991,34 @@ purges what settled.
 <!-- agents-only
 - The anchor's row is locked first and the request's second, in every
   write that moves a lease or a line, so two writers queue and never
-  deadlock. `grant` lands only while the anchor holds `expected_token`.
+  deadlock. `grant` lands only while the anchor holds `expected_token`,
+  and while the request still stands in the anchor's line as the row
+  stands under the lock, with the lease's term and window within its
+  bound (`grant_fits`).
 - A kind is a `ResourceKind` with its ask's shape in `ASK_PAYLOADS` and
   a `ResourceKindInterface`: `may_grant` reads the asker's standing
-  live, and `grant_rows` returns the rows the grant lands. A waiter is
+  live, and `grant_rows` returns the rows the grant lands. A kind that
+  refuses some asks registers an `AskCheckInterface` beside them: its
+  `check_ask` runs at the ask under the asker's context, with the
+  request as it would land and the resource it names, before anything
+  lands, and refuses by raising `NotAuthorized` or `ValidationFailed`.
+  A kind with none accepts every ask. A waiter is
   a `WaiterKind` with a `WaiterInterface`: `still_waits`, `wake_rows`,
   `end_rows`, and `revoke_rows`. An orchestration waits as
   `ParkReason.RESOURCE`.
-- The owner lands a resource with its row through `register_statement`
-  and retires it through `retire_statement`. The owner's commit knows no
-  waiter, so the requests that name a retired resource leave their line
-  through the manager, at once or at the next sweep, each with its
-  waiter's wake.
+- The owner lands a resource with its row through `register_statement`,
+  updates it through `update_statement` with a `ResourceUpdate`, and
+  retires it through `retire_statement` (`land_resource`, `land_update`,
+  and `land_retirement` in memory). After the commit that registered or
+  updated it, the owner calls the manager's `offer`; the manager's own
+  `register` and `update` offer at once, and the sweep offers what a
+  crash left. The owner's commit knows no waiter, so the requests that
+  name a retired resource leave their line through the manager, at once
+  or at the next sweep, each with its waiter's wake.
+- `list_leases` reads a resource's leases, or the org's, newest first by
+  `created_at` and then `id`, each with its request from one join, at
+  most `history_limit` a page. `line` answers each request's `Place`,
+  its place and estimate, from one replay over the reads it makes.
 - The sweep reads the due orgs in the order of their ids and reads on
   past a deleted one, so deleted orgs never fill its batch.
 - The client's `Fence` keeps the highest token per resource; its

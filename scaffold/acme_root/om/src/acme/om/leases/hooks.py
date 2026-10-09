@@ -1,8 +1,9 @@
 """The hooks a kind registers, as a work kind registers its handler. A
 resource kind says what a grant of it starts and whether a request may still
-be granted, and it may check an ask before it waits; a waiter kind says
-whether a waiter still waits and what wakes it. The root hands the manager
-one impl per kind, and a kind with none is refused at the ask."""
+be granted, and a kind that refuses some asks registers a check of them too;
+a waiter kind says whether a waiter still waits and what wakes it. The root
+hands the manager one impl per kind, and a kind with none is refused at the
+ask; a kind with no check accepts every ask."""
 
 from abc import ABC, abstractmethod
 from uuid import UUID
@@ -15,19 +16,6 @@ from acme.om.outbox.types.row import OutboxRow
 
 
 class ResourceKindInterface(ABC):
-    async def check_ask(
-        self, ctx: TenantContext, request: LeaseRequest, resource: Resource | None
-    ) -> None:
-        """Asked at the ask, under the asker's context, once its payload has
-        its kind's shape and before anything lands: whether this asker may
-        ask (its role, its credential), and whether what it asks fits (its
-        payload, and the labels of the resource it names, or None for a
-        selector). It refuses by raising `NotAuthorized` or
-        `ValidationFailed`, and the request never waits. An ask asked again
-        by its key is checked again. A kind that checks nothing keeps this,
-        which accepts every ask."""
-        return None
-
     @abstractmethod
     async def may_grant(
         self, ctx: TenantContext, resource: Resource, request: LeaseRequest
@@ -47,6 +35,24 @@ class ResourceKindInterface(ABC):
         its item acts for the holder, and the row carries the lease's id and
         token for it. A kind keeps per-lease facts of its own in its own
         table, keyed by the lease's id."""
+        ...
+
+
+class AskCheckInterface(ABC):
+    """A kind's check of an ask, registered beside its hooks only when the
+    kind refuses some asks."""
+
+    @abstractmethod
+    async def check_ask(
+        self, ctx: TenantContext, request: LeaseRequest, resource: Resource | None
+    ) -> None:
+        """Asked at the ask, under the asker's context, once its payload has
+        its kind's shape and before anything lands: whether this asker may
+        ask (its role, its credential), and whether what it asks fits (its
+        payload, and the labels of the resource it names, or None for a
+        selector). It refuses by raising `NotAuthorized` or
+        `ValidationFailed`, and the request never waits. An ask asked again
+        by its key is checked again."""
         ...
 
 

@@ -132,3 +132,37 @@ async def test_a_renewal_names_its_length_or_sends_no_body() -> None:
     assert named.expires_in_seconds == 300.0
     assert json.loads(seen[0].content) == {"seconds": 300}
     assert seen[1].content == b""
+
+
+async def test_the_history_names_its_resource_and_its_bound_and_reads_each_entry() -> None:
+    seen: list[httpx.Request] = []
+    lease_id, request_id = uuid4(), uuid4()
+
+    def answer(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        return httpx.Response(
+            200,
+            json=[
+                {
+                    "lease": {
+                        "id": str(lease_id), "resource_id": str(DOCK),
+                        "request_id": str(request_id), "holder_id": str(uuid4()),
+                        "fencing_token": 2, "term_seconds": 60,
+                        "expires_at": "2026-10-08T00:01:00Z", "expires_in_seconds": 0.0,
+                        "status": "released", "ended_at": "2026-10-08T00:00:30Z",
+                        "started_at": None, "created_at": "2026-10-08T00:00:00Z",
+                    },
+                    "request": None,
+                }
+            ],
+        )  # fmt: skip
+
+    async with ApiClient(
+        "http://test", app="cli", app_version="cli@test", transport=httpx.MockTransport(answer)
+    ) as api:
+        (entry,) = await api.lease_history(DOCK, limit=10)
+        await api.lease_history()
+    assert entry.lease.id == lease_id and entry.request is None
+    assert seen[0].url.path == "/v1/leases"
+    assert dict(seen[0].url.params) == {"limit": "10", "resource_id": str(DOCK)}
+    assert dict(seen[1].url.params) == {"limit": "200"}

@@ -406,6 +406,16 @@ class Permission(StrEnum):
     manage_keys = 'manage_keys'
 
 
+class PlaceView(BaseModel):
+    """
+    A waiting request's place (1 is next in some line it stands in) and
+    the estimate of its wait in seconds, as its standing answers them.
+    """
+    estimate_seconds: Annotated[float | None, Field(title='Estimate Seconds')]
+    place: Annotated[int | None, Field(title='Place')]
+    request_id: Annotated[UUID, Field(title='Request Id')]
+
+
 class PlatformSizeView(BaseModel):
     """
     How big the platform is, what the first responder to an alarm reads
@@ -928,8 +938,10 @@ class LeaseRequestView(BaseModel):
 
 class LineView(BaseModel):
     """
-    A resource and the requests in its line, first first.
+    A resource and the requests in its line, first first, with each one's
+    place and estimate in the same order.
     """
+    places: Annotated[list[PlaceView], Field(title='Places')]
     requests: Annotated[list[LeaseRequestView], Field(title='Requests')]
     resource: ResourceView
 
@@ -1072,6 +1084,15 @@ class IssuedLoginView(BaseModel):
     expires_at: Annotated[AwareDatetime, Field(title='Expires At')]
     memberships: Annotated[list[MembershipChoiceView], Field(title='Memberships')]
     token: Annotated[str, Field(title='Token')]
+
+
+class LeaseEntryView(BaseModel):
+    """
+    One lease of a history, with the request it answered; none when the
+    request was purged first.
+    """
+    lease: LeaseView
+    request: LeaseRequestView | None
 
 
 class MembershipChoicePageView(BaseModel):

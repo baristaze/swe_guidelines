@@ -1150,6 +1150,30 @@
         "title": "LastOwnerDetail",
         "type": "object"
       },
+      "LeaseEntryView": {
+        "description": "One lease of a history, with the request it answered; none when the\nrequest was purged first.",
+        "properties": {
+          "lease": {
+            "$ref": "#/components/schemas/LeaseView"
+          },
+          "request": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LeaseRequestView"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "lease",
+          "request"
+        ],
+        "title": "LeaseEntryView",
+        "type": "object"
+      },
       "LeaseRequestView": {
         "properties": {
           "created_at": {
@@ -1396,8 +1420,15 @@
         "type": "object"
       },
       "LineView": {
-        "description": "A resource and the requests in its line, first first.",
+        "description": "A resource and the requests in its line, first first, with each one's\nplace and estimate in the same order.",
         "properties": {
+          "places": {
+            "items": {
+              "$ref": "#/components/schemas/PlaceView"
+            },
+            "title": "Places",
+            "type": "array"
+          },
           "requests": {
             "items": {
               "$ref": "#/components/schemas/LeaseRequestView"
@@ -1411,7 +1442,8 @@
         },
         "required": [
           "resource",
-          "requests"
+          "requests",
+          "places"
         ],
         "title": "LineView",
         "type": "object"
@@ -1969,6 +2001,45 @@
         ],
         "title": "Permission",
         "type": "string"
+      },
+      "PlaceView": {
+        "description": "A waiting request's place (1 is next in some line it stands in) and\nthe estimate of its wait in seconds, as its standing answers them.",
+        "properties": {
+          "estimate_seconds": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Estimate Seconds"
+          },
+          "place": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Place"
+          },
+          "request_id": {
+            "format": "uuid",
+            "title": "Request Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "request_id",
+          "place",
+          "estimate_seconds"
+        ],
+        "title": "PlaceView",
+        "type": "object"
       },
       "PlatformSizeView": {
         "description": "How big the platform is, what the first responder to an alarm reads\nbefore it escalates: live tenants and users, and the events produced in\nthe twenty-four hours from `since` to `counted_at`. The maintenance\nworker counts it every few minutes, and this is its latest count:\n`counted_at` says how old the answer is.",
@@ -6296,9 +6367,122 @@
         ]
       }
     },
+    "/v1/leases": {
+      "get": {
+        "description": "The history: the org's leases, or one resource's, newest first, ended\nones included, each with the request it answered; at most `limit`.",
+        "operationId": "list_leases_v1_leases_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "resource_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Resource Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-app",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-App"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-app-version",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-App-Version"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/LeaseEntryView"
+                  },
+                  "title": "Response List Leases V1 Leases Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Leases",
+        "tags": [
+          "leases"
+        ]
+      }
+    },
     "/v1/leases/requests": {
       "post": {
-        "description": "Joins the line, last; granted at once only when no one waits in front.\nA replay answers the standing the first call saw: read the request for\nwhere it stands now.",
+        "description": "Joins the line, last; granted at once only when no one waits in front.\nThe resource's kind may refuse the ask first: 403 for who asks, 422 for\nwhat it asks. A replay answers what the first call saw: read the\nrequest for where it stands now.",
         "operationId": "ask_v1_leases_requests_post",
         "parameters": [
           {
@@ -6388,6 +6572,16 @@
               }
             },
             "description": "Successful Response"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "not_authorized: the kind refuses this asker"
           },
           "422": {
             "content": {

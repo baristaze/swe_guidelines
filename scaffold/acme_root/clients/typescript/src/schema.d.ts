@@ -547,6 +547,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/leases": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Leases
+         * @description The history: the org's leases, or one resource's, newest first, ended
+         *     ones included, each with the request it answered; at most `limit`.
+         */
+        get: operations["list_leases_v1_leases_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/leases/requests": {
         parameters: {
             query?: never;
@@ -559,8 +580,9 @@ export interface paths {
         /**
          * Ask
          * @description Joins the line, last; granted at once only when no one waits in front.
-         *     A replay answers the standing the first call saw: read the request for
-         *     where it stands now.
+         *     The resource's kind may refuse the ask first: 403 for who asks, 422 for
+         *     what it asks. A replay answers what the first call saw: read the
+         *     request for where it stands now.
          */
         post: operations["ask_v1_leases_requests_post"];
         delete?: never;
@@ -1694,6 +1716,15 @@ export interface components {
             /** Orgs */
             orgs: components["schemas"]["OwnedOrgRef"][];
         };
+        /**
+         * LeaseEntryView
+         * @description One lease of a history, with the request it answered; none when the
+         *     request was purged first.
+         */
+        LeaseEntryView: {
+            lease: components["schemas"]["LeaseView"];
+            request: components["schemas"]["LeaseRequestView"] | null;
+        };
         /** LeaseRequestView */
         LeaseRequestView: {
             /**
@@ -1790,9 +1821,12 @@ export interface components {
         };
         /**
          * LineView
-         * @description A resource and the requests in its line, first first.
+         * @description A resource and the requests in its line, first first, with each one's
+         *     place and estimate in the same order.
          */
         LineView: {
+            /** Places */
+            places: components["schemas"]["PlaceView"][];
             /** Requests */
             requests: components["schemas"]["LeaseRequestView"][];
             resource: components["schemas"]["ResourceView"];
@@ -2081,6 +2115,22 @@ export interface components {
          * @enum {string}
          */
         Permission: "read" | "write" | "manage_members" | "manage_keys";
+        /**
+         * PlaceView
+         * @description A waiting request's place (1 is next in some line it stands in) and
+         *     the estimate of its wait in seconds, as its standing answers them.
+         */
+        PlaceView: {
+            /** Estimate Seconds */
+            estimate_seconds: number | null;
+            /** Place */
+            place: number | null;
+            /**
+             * Request Id
+             * Format: uuid
+             */
+            request_id: string;
+        };
         /**
          * PlatformSizeView
          * @description How big the platform is, what the first responder to an alarm reads
@@ -3835,6 +3885,42 @@ export interface operations {
             };
         };
     };
+    list_leases_v1_leases_get: {
+        parameters: {
+            query?: {
+                resource_id?: string | null;
+                limit?: number;
+            };
+            header?: {
+                authorization?: string | null;
+                "x-app"?: string | null;
+                "x-app-version"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LeaseEntryView"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     ask_v1_leases_requests_post: {
         parameters: {
             query?: never;
@@ -3860,6 +3946,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["StandingView"];
+                };
+            };
+            /** @description not_authorized: the kind refuses this asker */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
             /** @description Validation Error */
