@@ -426,13 +426,12 @@ its two handoffs, the expiry of a lease) is declared as such on its
 interface; a transition whose return type is neither a stage nor a list
 of stages, where only `member_context` answers none. A call of
 `member_context` outside an integration's handler, or with an address
-its provider does not vouch is the acting person's own. The provider
-vouches for one it verified and carried as the actor's in the payload
-it signed, or one the handler reads from it by the actor id that
-payload carries. An address the actor typed at the provider (a
-message's sender, a commit's author) is never one, even inside a signed
-payload; neither is one read from a stored row or from a request's
-body.
+its provider does not vouch is the acting person's own: it vouches for
+one it verified and carried as the actor's in the payload it signed, or
+one the handler reads from it by the actor id that payload carries. An
+address the actor typed at the provider (a message's sender, a commit's
+author) is never one, even inside a signed payload; neither is one read
+from a stored row or from a request's body.
 
 **Severity.** high
 
