@@ -2,9 +2,10 @@
 provider, the personal org deleted and then purged whole by the sweep, their
 place in a team org gone with their account while what they made there
 stays; a provider that is down, or refusing the process's key, parking the
-work until it answers; and a provider that refuses the call itself failing
-it at once."""
+work until it answers, and every other worker's with it; and a provider that
+refuses the call itself failing it at once."""
 
+import asyncio
 from datetime import timedelta
 from pathlib import Path
 from typing import cast
@@ -13,14 +14,21 @@ from uuid import UUID
 import pytest
 from worker_support import build_container, request, signing, start_noop, upload
 
+from acme.infra.base import SYSTEM_SCOPE, utcnow
 from acme.infra.buckets import Buckets
+from acme.infra.cache import CacheScope
+from acme.infra.cache.memory import CacheMemoryImpl
+from acme.infra.outages import Outage
+from acme.infra.outages.cache import OutageSignalCacheImpl
 from acme.integrations.exceptions import ProviderConflict, ProviderRefused, ProviderUnavailable
 from acme.integrations.identity.twin import IdentityProviderTwinImpl
 from acme.om.context import Role, TenantContext
 from acme.om.work.types.handler import WorkParked, WorkRefused
 from acme.om.work.types.work_item import WorkItem, WorkKind
+from acme.workers.maintenance.accounts import DeleteAccountHandlerImpl
 from acme.workers.maintenance.container import WorkerContainer
-from acme.workers.maintenance.main import build_loop
+from acme.workers.maintenance.main import IDENTITY, IDENTITY_CREDENTIAL, build_loop
+from acme.workers.maintenance.providers import PROVIDER_WAIT, ProviderCalls
 
 LEASE = timedelta(seconds=30)
 
@@ -131,6 +139,67 @@ async def test_a_provider_that_is_down_parks_the_work_until_it_answers(tmp_path:
     # A second run finds every step done.
     await handlers[item.kind].handle(ctx, item)
     assert len(identity_of(container).deleted) == 1
+
+
+async def test_one_workers_failed_call_parks_the_next_without_a_call_until_one_answers(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Two workers on one shared cache. The first one's call fails and marks
+    the provider out; the second reads the mark and parks its item until the
+    mark's retry time, with no call. A call that answers clears the mark."""
+    container = build_container(tmp_path)
+    ann = await owner_of(container, "ajax")
+    bob, _ = await bob_signs_in(container, ann.org_id)
+    await container.managers.tenancy.org.delete_account(bob, "bob@example.test")
+    ctx, item = await claim_deletion(container)
+    shared = OutageSignalCacheImpl(CacheMemoryImpl(CacheScope.OUTAGE))
+    wait = timedelta(milliseconds=200)
+
+    def worker() -> DeleteAccountHandlerImpl:
+        calls = ProviderCalls(shared, IDENTITY, IDENTITY_CREDENTIAL, wait=wait)
+        return DeleteAccountHandlerImpl(
+            container.managers.tenancy, container.identity_provider, calls
+        )
+
+    first, second = worker(), worker()
+    twin = identity_of(container)
+
+    # The first worker's call fails: its item parks, and the pair is marked.
+    twin.unavailable_for = 1
+    with pytest.raises(WorkParked):
+        await first.handle(ctx, item)
+    mark = await shared.current(SYSTEM_SCOPE, IDENTITY, IDENTITY_CREDENTIAL)
+    assert mark is not None
+
+    # The second reads the mark and parks until its retry time. It makes no
+    # call: the provider still holds the failure a call would have taken.
+    twin.unavailable_for = 1
+    with pytest.raises(WorkParked) as parked:
+        await second.handle(ctx, item)
+    assert twin.unavailable_for == 1 and twin.deleted == []
+    assert timedelta(0) <= parked.value.resume_after <= wait
+
+    # Past the retry time the second calls. Another worker's call fails while
+    # this one is in flight and marks the pair again; this one answers, and
+    # its success clears the mark.
+    twin.unavailable_for = 0
+    await asyncio.sleep(max((mark.retry_at - utcnow()).total_seconds(), 0))
+    delete = twin.delete_user
+
+    async def answers_while_another_fails(user_id: str) -> None:
+        again = Outage(
+            org_id=SYSTEM_SCOPE,
+            provider=IDENTITY,
+            credential=IDENTITY_CREDENTIAL,
+            retry_at=utcnow() + PROVIDER_WAIT,
+        )
+        await shared.mark(again)
+        await delete(user_id)
+
+    monkeypatch.setattr(twin, "delete_user", answers_while_another_fails)
+    await second.handle(ctx, item)
+    assert len(twin.deleted) == 1
+    assert await shared.current(SYSTEM_SCOPE, IDENTITY, IDENTITY_CREDENTIAL) is None
 
 
 @pytest.mark.parametrize(

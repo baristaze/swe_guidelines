@@ -30,6 +30,12 @@ each outage costs.
   holds what its calls learned, and it has no one to tell.
 - **It fails open.** A cache that cannot answer is a pair with no mark,
   and the caller calls. The provider's own failure still stops it.
+- **The worker's provider calls read it.** `ProviderCalls` reads the
+  pair before its calls go out and parks the item until the mark's
+  retry time, with no call made. A `503` marks the pair for the minute
+  the item waits, and a call that answers clears it. The identity
+  provider's calls are made under the platform's own credential,
+  `SYSTEM_SCOPE` and `ACME_WORKOS_API_KEY`.
 - **A step that reads a mark parks.** It does not call. It parks its
   record on `provider_unavailable`
   ([ADR 0039](0039-long-running-work-is-a-record-a-guard-parks-and-a-bound-fails.md)),

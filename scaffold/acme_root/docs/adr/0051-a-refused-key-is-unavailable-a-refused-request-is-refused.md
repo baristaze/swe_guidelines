@@ -36,11 +36,13 @@ refusal of the request. The refusal of the key names the setting
 fix. A `404` on a deletion is not a refusal: the thing is gone already,
 and a rerun is one deletion.
 
-**Work reads the outcome by status.** The worker's `provider_calls`
+**Work reads the outcome by status.** The worker's `ProviderCalls`
 reads every provider failure the same way. A `503` parks the item for a
-minute, spending no attempt. A refusal of the request fails it for
-good, with the refusal as its reason. Anything else is the queue's to
-retry. `DELETE_ACCOUNT` and `DELETE_ORG` share this one reading.
+minute, spending no attempt, and marks the provider out for every
+worker ([ADR 0088](0088-a-providers-outage-is-a-shared-signal.md)). A
+refusal of the request fails it for good, with the refusal as its
+reason. Anything else is the queue's to retry. `DELETE_ACCOUNT` and
+`DELETE_ORG` share this one reading.
 
 ## Consequences
 
