@@ -49,7 +49,8 @@ step calls did not answer or is marked out
 work item `WAKE_PARKED` clears a reason: it resumes the org's records
 parked for it, two seconds apart, or the one record it names, when the
 reason was that record's alone. A park that knows when its reason may
-clear lands its record's wake for then. A person may resume a parked record too
+clear lands the org's wake for then, one for every park that names the
+same time. A person may resume a parked record too
 (`resume`). A woken record is not trusted: its next step asks its guard
 again. A bound of the input fails the record with its reason, which a
 product adds beside `defect`. The park is the record's status, never a

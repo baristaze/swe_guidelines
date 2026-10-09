@@ -2,7 +2,9 @@
 start, step, wake, resume, failure, and purge."""
 
 from datetime import timedelta
+from itertools import pairwise
 from pathlib import Path
+from uuid import UUID
 
 import pytest
 
@@ -27,10 +29,16 @@ from acme.om.orchestrations.types.orchestration import (
     ParkReason,
     RowError,
 )
+from acme.om.outbox.types.row import OutboxRow
 from acme.om.root import Managers, build_managers
 from acme.om.storage.impl.memory import StorageMemoryImpl
-from acme.om.work.impl.manager import not_before
-from acme.om.work.types.work_item import WakeParkedPayload, WorkKind, work_row_kind
+from acme.om.work.impl.manager import not_before, relayed_key
+from acme.om.work.types.work_item import (
+    OrchestrationPayload,
+    WakeParkedPayload,
+    WorkKind,
+    work_row_kind,
+)
 
 APP = AppContext(type=AppType.PORTAL, version="portal@test")
 
@@ -115,7 +123,8 @@ def test_the_resumes_of_one_wake_are_staggered() -> None:
 
 class World:
     def __init__(self, tmp_path: Path) -> None:
-        self.managers: Managers = build_managers(StorageMemoryImpl(), InfraLocalImpl(tmp_path))
+        self.storage = StorageMemoryImpl()
+        self.managers: Managers = build_managers(self.storage, InfraLocalImpl(tmp_path))
 
     async def org(self) -> TenantContext:
         slug = f"ajax-{new_id().hex[-8:]}"
@@ -191,25 +200,60 @@ async def test_wake_resumes_only_the_records_parked_for_the_reason(world: World)
     assert await orchestrations.wake(ctx, ParkReason.PROVIDER_UNAVAILABLE) == 0
 
 
-async def test_a_park_until_an_outages_retry_time_lands_its_own_wake_then(
-    world: World,
+async def test_the_parks_on_one_mark_land_one_wake_that_resumes_them_staggered(
+    world: World, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """A step that reads a provider's outage parks on `provider_unavailable`,
-    and the park lands the wake of its own record, which waits in the queue
-    until the outage's retry time."""
+    """Each step that reads a provider's outage parks on `provider_unavailable`
+    until the outage's retry time. The parks land one wake of the org's
+    records, waiting in the queue until then, and it resumes them staggered:
+    a provider that came back is not met by every parked record at once."""
     ctx = await world.org()
-    record = await world.managers.orchestrations.start(ctx, a_record())
-    parked = advanced(
-        record, utcnow(), record.created_by, cursor=0, total=3,
-        park=ParkReason.PROVIDER_UNAVAILABLE,
-    )  # fmt: skip
+    orchestrations, work = world.managers.orchestrations, world.managers.work
+    storage = world.storage.get_orchestrations_storage()
+    written: list[OutboxRow] = []
+    write = storage.write_orchestration
+
+    async def writes(
+        org_id: UUID, record: Orchestration, expected: int, rows: tuple[OutboxRow, ...] = ()
+    ) -> None:
+        written.extend(rows)
+        await write(org_id, record, expected, rows)
+
+    monkeypatch.setattr(storage, "write_orchestration", writes)
     retry_at = utcnow() + timedelta(minutes=5)
-    _, wake = step_rows(ctx, parked, wake_at=retry_at)
-    assert wake.kind == work_row_kind(WorkKind.WAKE_PARKED)
-    assert WakeParkedPayload.model_validate(dict(wake.payload)) == WakeParkedPayload(
-        reason=ParkReason.PROVIDER_UNAVAILABLE, record_id=record.id, not_before=retry_at
+    for _ in range(3):
+        record = await orchestrations.start(ctx, a_record())
+        parked = advanced(
+            record, utcnow(), record.created_by, cursor=0, total=3,
+            park=ParkReason.PROVIDER_UNAVAILABLE,
+        )  # fmt: skip
+        await storage.write_orchestration(
+            ctx.org_id, parked, record.version, step_rows(ctx, parked, wake_at=retry_at)
+        )
+    wake_rows = [r for r in written if r.kind == work_row_kind(WorkKind.WAKE_PARKED)]
+    assert len(wake_rows) == 3
+    # The relay lands each row: the three parks are one item.
+    landed = [await work.enqueue_relayed(row.org_id, row) for row in wake_rows]
+    assert len({item.id for item in landed}) == 1
+    wake = landed[0]
+    assert wake.available_at == retry_at
+    payload = WakeParkedPayload.model_validate(dict(wake.payload))
+    assert payload == WakeParkedPayload(reason=ParkReason.PROVIDER_UNAVAILABLE, not_before=retry_at)
+
+    # The item runs at the retry time: each record's next step a stagger
+    # after the one before.
+    written.clear()
+    assert await orchestrations.wake(ctx, payload.reason, payload.record_id) == 3
+    steps = sorted(
+        OrchestrationPayload.model_validate(dict(row.payload)).not_before
+        for row in written
+        if row.kind == work_row_kind(WorkKind.ORCHESTRATION)
     )
-    assert not_before(WorkKind.WAKE_PARKED, wake.payload) == retry_at
+    assert [later - earlier for earlier, later in pairwise(steps)] == [timedelta(seconds=2)] * 2
+
+    # A park whose row lands once its time has passed keeps its own key and
+    # runs at once: the wake its time named may have run before it parked.
+    assert relayed_key(WorkKind.WAKE_PARKED, wake_rows[0], retry_at) == wake_rows[0].id
     # A park that names no time lands its hint alone, and a wake that names
     # none runs at once.
     assert len(step_rows(ctx, parked)) == 1

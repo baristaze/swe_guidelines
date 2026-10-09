@@ -573,8 +573,9 @@ which never marks, since its breaker holds what its calls learned.
 Processes on a shared cache share one signal there, and it fails open as
 the cache does: a cache that cannot answer is a pair with no mark. A
 step that reads a mark does not call. It parks its record on
-`provider_unavailable` until the retry time, and the park lands its
-record's wake for then
+`provider_unavailable` until the retry time. Every park on one mark
+lands the same wake for then, which resumes the org's parked records
+staggered
 ([Long-Running Orchestrations](#long-running-orchestrations)).
 
 ### Injectability

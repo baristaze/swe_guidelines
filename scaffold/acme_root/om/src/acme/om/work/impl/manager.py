@@ -2,7 +2,7 @@ import logging
 from collections.abc import Sequence
 from datetime import datetime, timedelta
 from typing import Any
-from uuid import UUID
+from uuid import UUID, uuid5
 
 from pydantic import ValidationError
 
@@ -75,6 +75,25 @@ def not_before(kind: WorkKind, payload: object) -> datetime | None:
         return None
 
 
+def relayed_key(kind: WorkKind, row: OutboxRow, now: datetime) -> UUID:
+    """The idempotency key of the item a relayed row lands: the row's id, the
+    same on every run of the relay, so a retry creates nothing twice. A wake
+    of the org's records parked for one reason, at a time still to come, is
+    keyed by the org, the reason, and the time instead: the parks that read
+    one mark land one item, which resumes them staggered. A row whose time
+    has passed keeps its own key and runs at once, since the item its time
+    named may have run before its record parked."""
+    if kind is not WorkKind.WAKE_PARKED:
+        return row.id
+    try:
+        wake = WakeParkedPayload.model_validate(row.payload)
+    except ValidationError:
+        return row.id  # `_land` refuses it with the reason
+    if wake.record_id is not None or wake.not_before is None or wake.not_before <= now:
+        return row.id
+    return uuid5(row.org_id, f"{kind.value}:{wake.reason.value}:{wake.not_before.isoformat()}")
+
+
 class WorkManagerImpl(WorkManagerInterface):
     def __init__(
         self,
@@ -123,7 +142,7 @@ class WorkManagerImpl(WorkManagerInterface):
         second outbox row of that write, which landed in the same statement as
         the entity's. No context, since the relay runs without a principal: the
         actor comes from the row, and so does the idempotency key, which is the
-        row's id and the same on every run of the relay. The request that
+        same on every run of the relay (`relayed_key`). The request that
         caused the work and its trace context come from the row too, which
         names the request that made the write: the row is the whole handoff,
         so nothing here is minted afresh. The lane is the
@@ -145,7 +164,7 @@ class WorkManagerImpl(WorkManagerInterface):
                 updated_by=EMPTY_UUID,  # the machinery, from here on
                 kind=WorkKind(kind),
                 target_id=row.target_id,
-                idempotency_key=row.id,
+                idempotency_key=relayed_key(WorkKind(kind), row, now),
                 request_id=row.request_id,  # the request that made the write
                 traceparent=row.traceparent,  # its trace context, for the run's link
                 payload=row.payload,

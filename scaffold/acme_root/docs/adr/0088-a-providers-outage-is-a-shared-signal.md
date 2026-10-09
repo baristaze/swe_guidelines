@@ -33,9 +33,11 @@ each outage costs.
 - **A step that reads a mark parks.** It does not call. It parks its
   record on `provider_unavailable`
   ([ADR 0039](0039-long-running-work-is-a-record-a-guard-parks-and-a-bound-fails.md)),
-  and the park lands the `WAKE_PARKED` row of its own record with the
-  retry time as its `not_before`. The relay holds the item in the queue
-  until then, and the woken record asks its guard again.
+  and the park lands a `WAKE_PARKED` row for the org's records parked
+  on it, with the retry time as its `not_before`. The relay keys the
+  item by the org, the reason, and the time, so every park on one mark
+  lands one item. It waits in the queue until then and resumes the
+  records staggered, and each woken record asks its guard again.
 
 ## Consequences
 

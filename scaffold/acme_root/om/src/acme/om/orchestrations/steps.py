@@ -1,6 +1,6 @@
 """The rows a record's write lands beside it: the hint that announces the
 record changed, and, while it runs, the work row that asks for its next
-step, or, when its park names a time, the work row of its wake. A step
+step, or, when its park names a time, the work row of the wake then. A step
 writes them in the commit of its own effect, whichever namespace's storage
 makes it; the manager writes them with every transition it makes itself (a
 start, a resume, a park, a failure)."""
@@ -36,9 +36,11 @@ def step_rows(
 
     A park that knows when its reason may clear passes `wake_at`: a step that
     reads a provider's outage parks on `provider_unavailable` until the
-    outage's retry time. The park lands the `WAKE_PARKED` row of its own
-    record, waiting in the queue until then, and the woken record asks its
-    guard again.
+    outage's retry time. The park lands a `WAKE_PARKED` row for the org's
+    records parked for the reason, waiting in the queue until then. Every
+    record that read the same mark names the same time, and the work queue
+    lands their rows as one item, which resumes them staggered; each woken
+    record asks its guard again.
 
     The work row asks as the person who started the record, whoever wrote
     this step: a step woken by the platform or an operator still runs as the
@@ -46,7 +48,7 @@ def step_rows(
     principal is the one the claim rebuilds."""
     hint = versioned_row(ctx, CREATED if created else UPDATED, record.id, record.version)
     if record.status is OrchestrationStatus.PARKED and record.park_reason and wake_at:
-        wake = WakeParkedPayload(reason=record.park_reason, record_id=record.id, not_before=wake_at)
+        wake = WakeParkedPayload(reason=record.park_reason, not_before=wake_at)
         row = outbox_row(
             ctx, work_row_kind(WorkKind.WAKE_PARKED), ctx.org_id, wake.model_dump(mode="json")
         )
