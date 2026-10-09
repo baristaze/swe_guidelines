@@ -484,7 +484,10 @@ the caller's patience; a long operation that returns no id to follow.
 earns one persistent bidirectional channel; one provider component
 owns it for the whole app; every push rides it as a typed envelope
 parsed by a discriminated union on `type`, and a new kind of push is a
-new envelope type, not a new connection.
+new envelope type, not a new connection. A notice, a record the person
+is told about, is handed over once, as the cursor passes it: a push at
+once, a replay's notices together when it ends however it ends, and
+nothing once the channel stops.
 
 **Source.** Apps, Push-First Apps; Client App Architecture, Realtime:
 One Channel per App.
@@ -492,14 +495,18 @@ One Channel per App.
 **Look for.** The number of sockets or streams an app opens and which
 component owns them; how envelopes are discriminated; whether a
 feature added its own transport for updates; polling that runs while
-the channel is up.
+the channel is up; where a notice is told, live, after a replay's
+pages, after a failed read, and after a stop.
 
 **Violation.** A second WebSocket or stream for one feature; a second
 component that opens its own socket; a polling endpoint or a poll on a
 timer used while the channel is up; envelopes without a type field or
 routed by ad hoc inspection. A poll of what no push names, since its
 change is no event the system records, is not one: the flags snapshot
-(DEL-52) is such a poll.
+(DEL-52) is such a poll. A notice hidden by a replay's collapse to the
+last record of each entity, dropped when a later page fails, or told
+twice, by the route and by its hand-over (one handed over after a
+switch is DEL-40).
 
 **Severity.** medium
 

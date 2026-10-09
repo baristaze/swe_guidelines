@@ -1023,7 +1023,8 @@ message. The pick is an exchange for one session. An org chip switches
 by a second exchange; the app then drops the old tenant's caches and
 reopens its socket. It never holds two sessions.
 
-**Source.** Client App Architecture, One Tenant at a Time.
+**Source.** Client App Architecture, One Tenant at a Time; Realtime: One
+Channel per App.
 
 **Look for.** The sign-in and sign-up screens and what follows each
 answer; the org chip and its switch; what the switch clears in the
@@ -1033,7 +1034,8 @@ the app keeps a bearer.
 **Violation.** A dashboard rendered before a tenant is chosen; a
 switch that keeps the old tenant's query cache or store entries, so
 one tenant's rows show under another; a socket left open across a
-switch; two sessions held at once, or the sign-in credential kept
+switch, or a notice the old tenant's channel read handed over after it;
+two sessions held at once, or the sign-in credential kept
 after the exchange. (A picker in the console is DEL-16.)
 
 **Severity.** high
