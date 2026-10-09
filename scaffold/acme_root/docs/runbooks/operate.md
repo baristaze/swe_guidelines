@@ -2,8 +2,8 @@
 
 Every read of a deployed environment runs under its investigate profile,
 and nothing that writes runs under it. This runbook says what to run
-there. The `ops-investigate`, `ops-watch`, and `ops-root-cause` skills
-run the same commands; [ops/README.md](../../ops/README.md) names the
+there. The `ops-investigate`, `ops-watch`, `ops-root-cause`, and
+`ops-integration-silent` skills run the same commands; [ops/README.md](../../ops/README.md) names the
 roles and the skills.
 
 ## The profile

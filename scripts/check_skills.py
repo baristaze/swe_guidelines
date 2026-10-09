@@ -702,6 +702,7 @@ LOOP_BOUNDS: dict[str, tuple[str, ...]] = {
         "at most 20 pages of members",
     ),
     "ops-investigate": (POLLS, HOPS),
+    "ops-integration-silent": (POLLS, HOPS),
     "stress-test-run": (HOPS,),
     "ops-cloud-deployment-create": (PERSONS_NEXT,),
     "stress-test-create-or-update": (PERSONS_NEXT,),
