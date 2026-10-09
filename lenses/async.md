@@ -907,7 +907,7 @@ its payload against the shape, and the kind may refuse an ask before
 anything of it lands. What a grant starts holds one job at most, a work
 item the lease names by its key. A kind keeps facts of its own about a
 lease in its own table, keyed by the lease's id, and a tenant's history
-lists each lease with the request it answered, a page at a time.
+lists each lease with the request it answered.
 
 **Source.** Worker Roles, Leases on a Resource.
 

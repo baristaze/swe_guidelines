@@ -473,7 +473,7 @@ class LeasesStoragePostgresImpl(PgStorageBase, LeasesStorageInterface):
             stmt = stmt.where(Leases.resource_id == resource_id)
         if after is not None:
             # The page after the mark, newest first: one range of the index.
-            mark = tuple_(after.created_at, after.lease_id)
+            mark = (after.created_at, after.lease_id)
             stmt = stmt.where(tuple_(Leases.created_at, Leases.id) < mark)
         async with self._session_for(stmt, org_id=org_id) as session:
             return [
