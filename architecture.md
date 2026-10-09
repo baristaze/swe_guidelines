@@ -1787,6 +1787,20 @@ kept per period, relay what a crash left, and purge what is past
 retention. It is idempotent and serialized by the database, so it needs
 no leader, lock, or scheduler. Resumes are staggered.
 
+Most of it runs across tenants: one call in the system scope finds what
+is due, whatever its tenant, a batch at a time. The requeue, the relay,
+a purge past retention, and the end of a
+[resource's lease](#leases-on-a-resource) past its expiry run so. A duty
+that needs a tenant's own context is a **chore**: a step per tenant, run
+under that tenant's service context, such as opening the next period of
+a record kept per period. One read across tenants names the tenants
+where a chore is due, so a tenant with none due costs a pass nothing.
+Each pass has a time budget. Past it, the pass takes no new tenant, but
+always takes one, and a cursor carries the next pass on from the last
+tenant it ran. So every tenant due is reached in turn, however many are
+due
+([`loop.py`](scaffold/acme_root/workers/maintenance/src/acme/workers/maintenance/loop.py)).
+
 ### Leases on a Resource
 
 `optional`
