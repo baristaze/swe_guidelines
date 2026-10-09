@@ -253,6 +253,20 @@ class TenancyManagerInterface(ABC):
         ...
 
     @abstractmethod
+    async def sweep_context(self, rctx: RequestContext, org_id: UUID) -> TenantContext | None:
+        """Platform-internal: the service context a purge across tenants acts
+        in one tenant under, once it found a row of that tenant and must do
+        that tenant's work before the row goes, such as asking another
+        manager to erase the files attached to it: the one `service_contexts`
+        minted for it, deleted tenants included, since their rows are the
+        sweep's to settle. Under the request stage of the pass that listed
+        the tenants, it reads nothing; outside one, it reads the org row. None
+        for a tenant marked purged, in this pass or before it, and for one
+        with no org row: nothing of it is left to act in, and the caller lets
+        the row go as it is. The system scope always has one."""
+        ...
+
+    @abstractmethod
     async def purge_across_tenants(self) -> int:
         """Platform-internal: the sweep, across tenants, once a pass, in one
         transaction: hard-deletes removed members (and their memberships),

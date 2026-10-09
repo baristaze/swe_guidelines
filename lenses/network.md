@@ -276,7 +276,11 @@ manager for the principal; tenancy is an ordinary namespace. Nothing
 it stores can be presented as a credential: a password is a
 memory-hard hash under its own salt; a key, token, or ticket is a
 SHA-256 digest shown once and looked up by digest, its entropy the
-defense.
+defense. Every path that adds a member to an org lands through one
+create, `add_member_to`. Where a system bounds who may join, the create
+asks the org's gate once the person is known to be new to the org; the
+gate refuses before anything is written, and its outbox rows ride the
+add's commit.
 
 **Source.** The Network Layer, Auth: the Gateway Verifies, the Tenancy
 Domain Owns.
@@ -286,13 +290,18 @@ and session refresh are implemented (organizations, identities, users,
 memberships, teams, credentials, sessions, invitations); whether the
 gateway holds its own user or token tables; the hashing in the tenancy
 rules, what the credential tables hold, and the `Issued...View` that
-shows a secret once.
+shows a secret once. Every path that adds a member, whether it goes
+through the one create, and where a gate on who may join is asked.
 
 **Violation.** Identity logic inside gateway middleware; credential
 tables owned by the gateway rather than the tenancy namespace; a
 manager that cannot be tested without the HTTP layer; a password
 hashed with a fast digest or no salt; a key, token, or ticket stored
-in the clear, or looked up by anything but its digest.
+in the clear, or looked up by anything but its digest. A path that adds
+a member around the one create, so the gate is never asked; a gate
+asked before the person is known to be new to the org, so a repeated
+add is refused or counted again; a refusal that comes after a row is
+written; a gate's rows written in a commit of their own.
 
 **Severity.** high
 

@@ -112,21 +112,25 @@ passed to `get_cache`, and a manager calling it; the rest is judged.
 ## ASY-05 A read cache is a projection with a generation
 
 **Principle.** A cached read carries the tenant's generation number in
-its key, and a write bumps that number with one atomic `increment`, so
-every older entry is orphaned at once. The TTL is a backstop, never the
-primary invalidation.
+its key, and a write bumps that number with one atomic `increment` once
+its transaction commits, so every older entry is orphaned at once. The
+TTL is a backstop, never the primary invalidation.
 
 **Source.** Infrastructure, Cache.
 
-**Look for.** How a manager builds cache keys; what a write path does
-to the cache; use of `increment` versus `invalidate` on a write.
+**Look for.** How a manager builds cache keys, and whether it reads
+through `ReadCache`; what a write path does to the cache, and when; use
+of `increment` versus `invalidate` on a write.
 
 **Violation.** A write that tries to enumerate and delete a tenant's
-keys; a write that leaves the cache to expire by TTL alone; a key with
-no generation on a value that any write can change; `increment` used
-for anything other than rate limits and generations.
+keys; a write that leaves the cache to expire by TTL alone; a bump
+before the write commits or inside its transaction; a key with no
+generation on a value that any write can change; `increment` used for
+anything other than rate limits and generations.
 
 **Severity.** medium
+
+**Shape.** `scaffold/acme_root/infra/src/acme/infra/cache/read.py`
 
 ## ASY-06 A cache fails open and holds nothing that must be correct
 
@@ -145,6 +149,8 @@ a cache entry, where the rate-limit counter, the generation, and the
 liveness beat are cache-only by design.
 
 **Severity.** high
+
+**Shape.** `scaffold/acme_root/infra/src/acme/infra/cache/read.py`
 
 ## ASY-07 Caching is a manager decision
 

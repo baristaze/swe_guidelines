@@ -19,7 +19,7 @@ platform's own identities, which the grant job makes and no person signs in
 as."""
 
 import secrets
-from collections.abc import Mapping
+from collections.abc import Awaitable, Callable, Mapping
 from datetime import datetime
 from typing import Any
 from uuid import UUID
@@ -46,6 +46,14 @@ from acme.om.tenancy.types.issued import OrgMembership
 from acme.om.tenancy.types.membership import Membership
 from acme.om.tenancy.types.org import Org, OrgKind
 from acme.om.tenancy.types.user import User
+
+Admission = Callable[[], Awaitable[tuple[OutboxRow, ...]]]
+"""A member's admission: the gate `add_member_to` asks once the person is
+known to be new to the org, and never on a repeated add. It refuses by
+raising, before anything is written, and answers the outbox rows that ride
+the add's commit, such as one that moves a count of the org's members. A
+caller passes one where the system bounds who may join an org; the scaffold
+bounds nobody, so its callers pass none."""
 
 MAX_ORGS_PER_IDENTITY = 100
 """How many orgs one person may be a member of: the default of the managers'
@@ -278,6 +286,7 @@ async def add_member_to(
     request: RequestScope,
     max_orgs: int,
     invitation: Invitation | None = None,
+    admission: Admission | None = None,
 ) -> tuple[User, bool]:
     """A person in an org: the identity is created if the email is new, with
     its personal org, then the user and the membership land with the row that
@@ -290,7 +299,10 @@ async def add_member_to(
     user in the tenant, and the inviter on an accepted invitation. The service
     role is refused by name: it is the role a sweep's context carries, never a
     membership. A person already a member of `max_orgs` orgs is refused with
-    `MembershipLimitReached`."""
+    `MembershipLimitReached`. `admission`, when given, is the org's gate: it
+    is asked after both checks, and its refusal leaves nothing written, the
+    new identity included; the rows it answers land in the add's commit, or
+    not at all."""
     if role is Role.SERVICE:
         raise ValidationFailed("service is not a membership role")
     now = utcnow()
@@ -300,6 +312,9 @@ async def add_member_to(
         if member_org_id == org_id and existing.deleted_at is None:
             return existing, False
     refuse_one_more(identity.id, users, max_orgs)
+    # The gate is asked once the person is known to be new to the org, so a
+    # repeated add never asks it, and so never counts a member twice.
+    gated = await admission() if admission is not None else ()
     user = User(
         id=user_id,
         created_at=now,
@@ -334,7 +349,7 @@ async def add_member_to(
         traceparent=request.traceparent,
         app=request.app.type.value,
     )
-    rows = (row,)
+    rows = (row, *gated)
     await storage.create_member(
         org_id, user, membership, rows, to_write, personal, invitation=invitation
     )

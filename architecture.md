@@ -841,8 +841,14 @@ and produces none. Some are bookkeeping, relaying the outbox or expiring
 a lease, and read across tenants, getting each row's tenant back. And a
 handoff of a row a tenant's write produced takes the tenant id alone. A
 sweep that performs a tenant operation asks for one service context per
-live tenant, whose user is `EMPTY_UUID`. Each is declared on its
-interface, and a test names every one.
+tenant, whose user is `EMPTY_UUID`. A deleted tenant keeps its context
+until a pass finds nothing of it left and marks it purged. A purge
+across tenants that finds a tenant's row, and must act in that tenant
+before the row goes, such as asking another manager to erase the files
+attached to it, asks `sweep_context` for the context the pass minted
+for the tenant. Under the pass's request stage that reads nothing. A
+tenant marked purged has none, and its row goes as it is. Each is
+declared on its interface, and a test names every one.
 
 An integration that acts for a person produces a stage too.
 `member_context` turns its request stage into the `TenantContext` of
@@ -1227,11 +1233,14 @@ and generations.
 
 A cached read sits below authorization: the manager caches the tenant's
 data and applies the caller's visibility on every call. A read cache is
-a projection with a generation: a write bumps the tenant's generation,
-and older keys expire, with the TTL as a backstop and the bound on
-staleness. A cache fails open, an unreachable backend is a miss, and
-nothing that must be correct lives only in a cache. Caching is a
-manager's decision, never a storage impl's.
+a projection with a generation
+([`ReadCache`](scaffold/acme_root/infra/src/acme/infra/cache/read.py)).
+Its key carries the tenant's generation. A write bumps that generation
+once its transaction commits, never before, so no read caches the old
+value under the new number. Older keys expire, with the TTL as a
+backstop and the bound on staleness. A cache fails open, an unreachable
+backend is a miss, and nothing that must be correct lives only in a
+cache. Caching is a manager's decision, never a storage impl's.
 
 A degraded answer is declared where it is chosen. There are three: this
 cache, the rate limit ([The Gateway](#the-gateway)), and the channel
@@ -1506,6 +1515,16 @@ The gateway verifies and owns nothing. The tenancy namespace owns the
 identity model, from organizations to sessions, and issues the tokens
 ([`tenancy/`](scaffold/acme_root/om/src/acme/om/tenancy/)). Sign-up,
 invitations, and roles are business logic in the OM.
+
+Every path that adds a member to an org lands the same rows through one
+create, `add_member_to`: an accepted invitation, a single sign-on, the
+operator plane, and the seeding. Where a system bounds who may join an
+org, as a cap on its members does, the create takes the org's gate: a
+member's admission. The gate is asked once the person is known to be
+new to the org, so a repeated add never asks it and never counts a
+member twice. Its refusal comes before anything is written. The outbox
+rows it answers ride the add's commit, so what it counts moves only
+with a member who landed.
 
 Sign-up opens a deployed environment: the identity, its first org, and
 the owner membership, in one transaction. It is open by default, and a
@@ -1866,10 +1885,13 @@ no leader, lock, or scheduler. Resumes are staggered.
 Most of it runs across tenants: one call in the system scope finds what
 is due, whatever its tenant, a batch at a time. The requeue, the relay,
 a purge past retention, and the end of a
-[resource's lease](#leases-on-a-resource) past its expiry run so. A duty
-that needs a tenant's own context is a **chore**: a step per tenant, run
-under that tenant's service context, such as opening the next period of
-a record kept per period. One read across tenants names the tenants
+[resource's lease](#leases-on-a-resource) past its expiry run so. Such
+a call that must act in the tenant of a row it found stays one call: it
+takes that tenant's context from the pass
+([Operations Without a Principal](#operations-without-a-principal)). A
+duty that needs a tenant's own context is a **chore**: a step per
+tenant, run under that tenant's service context, such as opening the
+next period of a record kept per period. One read across tenants names the tenants
 where a chore is due, so a tenant with none due costs a pass nothing.
 Each pass has a time budget. Past it, the pass takes no new tenant, but
 always takes one, and a cursor carries the next pass on from the last
