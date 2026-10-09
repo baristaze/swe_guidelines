@@ -520,12 +520,13 @@ regular, heavy, stress. It runs against any environment.
 **Source.** Operations, Traffic and Stress.
 
 **Look for.** The generator under the tree and any second load tool
-beside it; the routes a session calls (a sign-in, a list, writes, an
-edit, a completion, a reopen, a read of the stream, one socket, a
-sign-out) and whether all are edge routes; the profile definitions;
-how it reaches tenants (the operator plane) and everything else (the
-public routes); the report it prints (requests by route and status,
-p50, p95, p99, the error ratio).
+beside it; the routes a session calls (a sign-in, one socket, a read of
+the person, a list of the members, a write, a key made under an
+idempotency key and revoked, a read of the stream, its own change seen
+on the socket, a sign-out) and whether all are edge routes; the profile
+definitions; how it reaches tenants (the operator plane) and everything
+else (the public routes); the report it prints (requests by route and
+status, p50, p95, p99, the error ratio).
 
 **Violation.** A second load script, or a stress tool that calls a
 manager or a domain service directly; a session that is one request
