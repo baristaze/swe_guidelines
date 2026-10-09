@@ -1,7 +1,9 @@
 """The sweep's pass: the requeue of expired leases and the outbox relay, once
 a pass across tenants and again while a batch comes back full, its budget and
-where the next pass resumes, a purge called again while its batch comes back
-full, each namespace's purge past its retention once a pass across tenants,
+where the next pass resumes, the standing chores in the tenants one read
+names as due, a page a pass from after the last tenant run, a purge called
+again while its batch comes back full, each namespace's purge past its
+retention once a pass across tenants,
 every row past its retention gone after one pass of the worker's own loop, a
 living tenant that costs the purges nothing, a deleted tenant's every row
 gone, the tenant marked purged once nothing of it is left and left out
@@ -40,7 +42,11 @@ from acme.om.base import EMPTY_UUID, new_id, utcnow
 from acme.om.context import CredentialKind, RequestContext, Role, TenantContext, build_context
 from acme.om.events.manager import audit_event
 from acme.om.media.types.file import File
-from acme.om.orchestrations.types.orchestration import OrchestrationKind, OrchestrationStatus
+from acme.om.orchestrations.types.orchestration import (
+    Orchestration,
+    OrchestrationKind,
+    OrchestrationStatus,
+)
 from acme.om.outbox import OutboxRelayInterface
 from acme.om.tenancy.rules import hash_token, permissions_of
 from acme.om.tenancy.storage.impl.memory import TenancyStorageMemoryImpl
@@ -50,6 +56,8 @@ from acme.om.work.types.work_item import WorkStatus
 from acme.workers.maintenance.container import WorkerContainer
 from acme.workers.maintenance.loop import (
     AcrossStep,
+    ChoreStep,
+    ChoreTenants,
     LoopOptions,
     PurgeStep,
     TallyStep,
@@ -168,6 +176,8 @@ def sweeping(
     outbox: OutboxRelayInterface | None = None,
     across: dict[str, AcrossStep] | None = None,
     tally: TallyStep | None = None,
+    chores: dict[str, ChoreStep] | None = None,
+    chore_tenants: ChoreTenants | None = None,
 ) -> WorkerLoop:
     return WorkerLoop(
         work=work,
@@ -175,6 +185,8 @@ def sweeping(
         purges=purges,
         across=across,
         tally=tally,
+        chores=chores,
+        chore_tenants=chore_tenants,
         handlers={},
         topics=container.infra.get_topics(),
         liveness=container.infra.get_cache(CacheScope.WORKER_LIVENESS),
@@ -229,6 +241,196 @@ async def test_a_pass_within_its_budget_reaches_every_tenant(tmp_path: Path) -> 
     loop = sweeping(container, listed(contexts), {"one": recording(calls, "one")}, fast_options())
     await loop._sweep_once()  # pyright: ignore[reportPrivateUsage]
     assert sorted(org for _, org in calls) == sorted(ctx.org_id for ctx in contexts)
+
+
+PERIOD = "2026-10-08"
+"""The day a record kept per period is for, in the tests of the chores."""
+
+
+def opening_the_period(container: WorkerContainer) -> ChoreStep:
+    """The chore of a copy that keeps a record per period: the period's `noop`
+    record, started under the tenant's service context. The org, the kind,
+    and the period are the record's key, so a start in an open period
+    answers the record as stored."""
+
+    async def chore(ctx: TenantContext) -> Orchestration:
+        now = utcnow()
+        return await container.managers.orchestrations.start(
+            ctx,
+            Orchestration(
+                id=new_id(),
+                created_at=now,
+                updated_at=now,
+                created_by=ctx.user_id,
+                updated_by=ctx.user_id,
+                kind=OrchestrationKind.NOOP,
+                input={"steps": 1},
+                period=PERIOD,
+            ),
+        )
+
+    return chore
+
+
+def due_in(org_ids: Sequence[UUID], asked: list[UUID | None] | None = None) -> ChoreTenants:
+    """The read of the tenants with a chore due, naming `org_ids`: in id
+    order, after `after` when one is given, at most `limit`. Each `after` it
+    is asked with goes in `asked`."""
+    named = sorted(org_ids)
+
+    async def read(rctx: RequestContext, after: UUID | None, limit: int) -> list[UUID]:
+        if asked is not None:
+            asked.append(after)
+        return [org_id for org_id in named if after is None or org_id > after][:limit]
+
+    return read
+
+
+async def test_a_period_opens_only_in_the_tenants_the_read_names(tmp_path: Path) -> None:
+    """With the worker's own managers and three living tenants, a pass opens
+    the period's record in the two the read names as due, under each one's
+    service context, and in no other. A second pass opens no second record:
+    the period is open."""
+    container = build_container(tmp_path)
+    orgs: dict[str, UUID] = {}
+    for slug in ("ajax", "beta", "gamma"):
+        _, org = await container.managers.tenancy.bootstrap(
+            request(), slug.title(), slug, f"ann@{slug}.test", "Ann"
+        )
+        orgs[slug] = org.id
+    loop = sweeping(
+        container,
+        container.managers.work,
+        {},
+        fast_options(),
+        container.managers.outbox,
+        chores={"period": opening_the_period(container)},
+        chore_tenants=due_in([orgs["beta"], orgs["gamma"]]),
+    )
+    for _ in range(2):
+        await loop._sweep_once()  # pyright: ignore[reportPrivateUsage]
+    contexts = await container.managers.work.maintenance_contexts(request())
+    by_org = {ctx.org_id: ctx for ctx in contexts}
+    opened: dict[str, list[str | None]] = {}
+    for slug, org_id in orgs.items():
+        page = await container.managers.orchestrations.get_recent(
+            by_org[org_id], OrchestrationKind.NOOP, 10
+        )
+        opened[slug] = [record.period for record in page.items]
+    assert opened == {"ajax": [], "beta": [PERIOD], "gamma": [PERIOD]}
+
+
+async def test_a_spent_budget_stops_the_chores_and_the_next_pass_reads_on_after_the_last_run(
+    tmp_path: Path,
+) -> None:
+    """With no budget at all a pass runs the chores of one tenant the read
+    names, never none, and the next pass reads on after it. Every tenant due
+    is reached in turn, one the read does not name never is, and a page that
+    came back short and ran whole sends the next pass back to the first."""
+    container = build_container(tmp_path)
+    contexts = service_contexts(5)
+    due = sorted(ctx.org_id for ctx in contexts if ctx.org_id != EMPTY_UUID)[1:4]
+    calls: list[tuple[str, UUID]] = []
+    asked: list[UUID | None] = []
+    loop = sweeping(
+        container,
+        listed(contexts),
+        {},
+        fast_options(sweep_budget=timedelta(0)),
+        chores={"one": recording(calls, "one"), "two": recording(calls, "two")},
+        chore_tenants=due_in(due, asked),
+    )
+    for _ in range(len(due) + 1):
+        await loop._sweep_once()  # pyright: ignore[reportPrivateUsage]
+    assert calls == [(name, org_id) for org_id in [*due, due[0]] for name in ("one", "two")]
+    assert asked == [None, due[0], due[1], None], "each pass reads on after the last one run"
+
+
+async def test_a_full_page_of_tenants_due_is_read_on_from_by_the_next_pass(
+    tmp_path: Path,
+) -> None:
+    """The read names a page of `chore_batch` tenants at most. A pass that
+    runs a whole page reads on after its last tenant next time; a short page
+    run whole sends the next pass back to the first."""
+    container = build_container(tmp_path)
+    contexts = service_contexts(3)
+    due = sorted(ctx.org_id for ctx in contexts if ctx.org_id != EMPTY_UUID)
+    calls: list[tuple[str, UUID]] = []
+    asked: list[UUID | None] = []
+    loop = sweeping(
+        container,
+        listed(contexts),
+        {},
+        fast_options(chore_batch=2),
+        chores={"one": recording(calls, "one")},
+        chore_tenants=due_in(due, asked),
+    )
+    for _ in range(3):
+        await loop._sweep_once()  # pyright: ignore[reportPrivateUsage]
+    assert [org_id for _, org_id in calls] == [*due, *due[:2]]
+    assert asked == [None, due[1], None]
+
+
+async def test_a_failing_chore_or_read_stops_no_other_step(tmp_path: Path) -> None:
+    """A chore that raises in one tenant leaves the other chores of it and
+    every other tenant's; a read that raises runs no chore and stops neither
+    the ring nor the purges across tenants."""
+    container = build_container(tmp_path)
+    contexts = service_contexts(2)
+    due = sorted(ctx.org_id for ctx in contexts if ctx.org_id != EMPTY_UUID)
+    calls: list[tuple[str, UUID]] = []
+
+    async def failing(ctx: TenantContext) -> object:
+        if ctx.org_id == due[0]:
+            raise RuntimeError("the chore failed")
+        calls.append(("failing", ctx.org_id))
+        return None
+
+    loop = sweeping(
+        container,
+        listed(contexts),
+        {},
+        fast_options(),
+        chores={"failing": failing, "one": recording(calls, "one")},
+        chore_tenants=due_in(due),
+    )
+    await loop._sweep_once()  # pyright: ignore[reportPrivateUsage]
+    assert calls == [("one", due[0]), ("failing", due[1]), ("one", due[1])]
+
+    async def broken(rctx: RequestContext, after: UUID | None, limit: int) -> list[UUID]:
+        raise RuntimeError("the read failed")
+
+    purged: list[tuple[str, UUID]] = []
+    across: list[str] = []
+
+    async def purge_across(rctx: RequestContext) -> int:
+        across.append("across")
+        return 0
+
+    loop = sweeping(
+        container,
+        listed(contexts),
+        {"one": recording(purged, "one")},
+        fast_options(),
+        across={"across": purge_across},
+        chores={"one": recording(calls, "one")},
+        chore_tenants=broken,
+    )
+    await loop._sweep_once()  # pyright: ignore[reportPrivateUsage]
+    assert len(calls) == 3, "no chore runs without the read"
+    assert len(purged) == len(contexts) and across == ["across"]
+
+
+def test_a_chore_needs_the_read_that_names_its_tenants(tmp_path: Path) -> None:
+    container = build_container(tmp_path)
+    with pytest.raises(ValueError, match="name the read"):
+        sweeping(
+            container,
+            listed(service_contexts(1)),
+            {},
+            fast_options(),
+            chores={"one": recording([], "one")},
+        )
 
 
 async def test_a_full_batch_is_purged_again_while_the_budget_lasts(tmp_path: Path) -> None:
