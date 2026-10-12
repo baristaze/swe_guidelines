@@ -522,7 +522,7 @@ record itself so it can carry only one kind of work.
 reason and, where known, a time to resume, and keeps everything
 achieved. A dependency that is down, a limit an operator can raise, or
 an input a person must supply parks the record; only a real limit
-terminates it.
+terminates it, short of a person's cancel (ASY-39).
 
 **Source.** The Network Layer, Long-Running Orchestrations.
 
@@ -992,3 +992,33 @@ write.
 
 **Shape.** `scaffold/acme_root/om/src/acme/om/work/storage/impl/postgres.py`,
 `scaffold/acme_root/om/src/acme/om/work/impl/operator.py`
+
+## ASY-39 A person cancels a running or a parked record
+
+**Principle.** A record is never in a state it cannot name, and every
+state short of its end has a way out. A person cancels a running or a
+parked record, and it settles `cancelled`, keeping everything achieved.
+A cancel is not a failure, and no wake revives it. Its write names the
+version it read, so a step already under way lands nothing after it.
+Whoever may resume a record may cancel it. A kind a person starts says
+what a second start does while one is open: it answers the open record,
+it is refused, or it starts another beside it.
+
+**Source.** The Network Layer, Long-Running Orchestrations.
+
+**Look for.** The statuses a record settles in, and every reader of
+them; the cancel, the permission it requires beside the resume's, and
+the version its write names; what a wake and a resume do with a
+cancelled record; what a second start of a kind a person starts does.
+
+**Violation.** A parked record whose only way out is a wake, or a
+running one whose work is gone and that no one can end; a cancel
+written as a failure, or one that drops the cursor or what the steps
+made; a cancel written without the version it read, so a step lands
+after it; a wake or a resume that runs a cancelled record again; a
+cancel open to someone who may not resume, or closed to someone who
+may; a kind a person starts that says nothing of a second start.
+
+**Severity.** high
+
+**Shape.** `scaffold/acme_root/om/src/acme/om/orchestrations/impl/manager.py`

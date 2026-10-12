@@ -1731,8 +1731,28 @@ known, a time to resume, keeping everything achieved. The event that
 clears the reason, the time its park named, a sweep, or a person wakes
 it.
 
-> **Principle:** A guard parks, a bound fails. A safety check leaves
-> the work resumable; only a real limit terminates it.
+A wake is not a parked record's only way out. A person **cancels** a
+running or a parked record, and it settles `cancelled`, keeping
+everything achieved. A cancel is not a failure, since only a bound
+fails, and no wake revives it. Its write names the version it read, so
+a step already under way lands nothing after it. Whoever may resume a
+record may cancel it. A kind a person starts says what a second start
+does while one is open: it answers the open record, it is refused, or
+it starts another beside it.
+
+So a record is never in a state it cannot name, and every state short
+of its end has a way out: a running record steps, parks, fails, or is
+cancelled, and a parked one is woken or cancelled. A step a dead worker
+may have done runs again and does once, since its handler is
+[idempotent](#idempotency-on-the-consumer-side) on its key and what it
+makes takes an id derived from the record and the row. A creating
+request is marked begun before it runs ([The Gateway](#the-gateway)),
+so a retry finds it in progress, never missing, and reruns it on the
+same id once the attempt's lease has passed.
+
+> **Principle:** A guard parks, a bound fails, a person cancels. A
+> safety check leaves the work resumable; only a real limit, or a
+> person who may resume it, terminates it.
 
 ## Worker Roles
 
