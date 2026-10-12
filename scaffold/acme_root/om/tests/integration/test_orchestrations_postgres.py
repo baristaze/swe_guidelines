@@ -2,8 +2,9 @@
 root. A `noop` record steps through its count, each running write asking
 for the next step as a work item in the same commit, and succeeds; a record
 parked for a provider is woken by the event that clears its reason, and
-runs again from its cursor. A step that read a version another writer moved
-is the storage contract's case."""
+runs again from its cursor; one a person cancels settles at its cursor, and
+nothing runs it again. A step that read a version another writer moved is
+the storage contract's case."""
 
 from collections.abc import AsyncIterator
 from datetime import timedelta
@@ -15,6 +16,7 @@ import pytest
 from acme.infra.impl.local import InfraLocalImpl
 from acme.om.base import new_id, utcnow
 from acme.om.context import AppContext, AppType, RequestContext, TenantContext
+from acme.om.exceptions import PreconditionFailed
 from acme.om.orchestrations.types.orchestration import (
     Orchestration,
     OrchestrationKind,
@@ -133,3 +135,33 @@ async def test_a_parked_record_is_woken_by_its_reason_and_runs_on_from_its_curso
     done = await orchestrations.step_noop(ctx, woken)
     assert (done.status, done.cursor) == (OrchestrationStatus.SUCCEEDED, 2)
     assert await orchestrations.wake(ctx, ParkReason.PROVIDER_UNAVAILABLE) == 0
+
+
+async def test_a_cancelled_record_settles_at_its_cursor_and_nothing_runs_it_again(
+    storage: StoragePostgresImpl, managers: Managers
+) -> None:
+    ctx = await an_org(managers)
+    orchestrations = managers.orchestrations
+    started = await orchestrations.start(ctx, a_record(steps=3))
+    assert await next_step(storage) == (ctx.org_id, started.id)
+    first = await orchestrations.step_noop(ctx, started)
+    assert await next_step(storage) == (ctx.org_id, started.id)
+    parked = first.model_copy(
+        update={
+            "status": OrchestrationStatus.PARKED,
+            "park_reason": ParkReason.PROVIDER_UNAVAILABLE,
+            "version": first.version + 1,
+        }
+    )
+    await storage.get_orchestrations_storage().write_orchestration(
+        ctx.org_id, parked, first.version, ()
+    )
+    ended = await orchestrations.cancel(ctx, started.id, "no longer needed")
+    assert (ended.status, ended.cursor, ended.total) == (OrchestrationStatus.CANCELLED, 1, 3)
+    assert await orchestrations.get(ctx, started.id) == ended
+    assert await next_step(storage) is None, "a cancelled record asks for no step"
+    assert await orchestrations.wake(ctx, ParkReason.PROVIDER_UNAVAILABLE) == 0
+    # A step that read the record before the cancel lands nothing.
+    with pytest.raises(PreconditionFailed):
+        await orchestrations.step_noop(ctx, first)
+    assert await orchestrations.get(ctx, started.id) == ended
