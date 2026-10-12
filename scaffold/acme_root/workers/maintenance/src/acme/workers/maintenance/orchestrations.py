@@ -2,12 +2,12 @@
 of the records an event cleared the reason of.
 
 A step reads the record when it runs. A record that is no longer running
-(parked, finished, failed) has nothing for the item to do, and the item
-completes. What one step of a kind does is the namespace whose rows it
-changes, which lands the step's effect and the record's next cursor in one
-commit, with the work row of the next step; so a worker that dies leaves the
-record at its last committed step, and the item comes back to the queue and
-goes on from there.
+(parked, succeeded, failed, or cancelled) has nothing for the item to do,
+and the item completes. What one step of a kind does is the namespace whose
+rows it changes, which lands the step's effect and the record's next cursor
+in one commit, with the work row of the next step; so a worker that dies
+leaves the record at its last committed step, and the item comes back to the
+queue and goes on from there.
 
 An error a step raises is the work queue's: the item is retried with a
 growing delay, and the retry starts again at the cursor the last commit

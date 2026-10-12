@@ -188,8 +188,9 @@ and their handling is in `/acme/<env>/maintenance`.
    are `orchestrations`, one outcome per kind and state,
    `<kind>_<state>`: `_running` when a record starts, `_parked` when a
    step waits on a provider that did not answer, `_resumed`,
-   `_succeeded`, and `_failed`. The mechanism's own kind is `noop`
-   (`noop_succeeded`); a product adds its kinds beside it. A parked
+   `_succeeded`, `_failed`, and `_cancelled`, a person's end. The
+   mechanism's own kind is `noop` (`noop_succeeded`); a product adds
+   its kinds beside it. A parked
    record is woken by the event that clears its reason (`WAKE_PARKED`)
    or by a person; one that stays parked is read beside the provider's
    lines of step 8. A `_failed` is `defect`, a step that still failed
@@ -487,7 +488,7 @@ and their handling is in `/acme/<env>/maintenance`.
 - Requests: <rate>, error ratio <ratio>, p95 <ms> by route (cloud: one p95 <ms, or none>, every route together)
 - Workers: <outcomes per kind>, oldest ready item <age>, failed in the last fifteen minutes <n>, oldest pending outbox row <age>
 - Failed work items: <item id, kind, org id, reason; or none>
-- Orchestrations: <kind> <started, parked, succeeded, failed> per kind, defects <record and org ids, or none>
+- Orchestrations: <kind> <started, parked, succeeded, failed, cancelled> per kind, defects <record and org ids, or none>
 - Queue: webhooks <n> (dead <n>), deliveries <outcomes>; services api, maintenance <running>/<desired>
 - Identity provider: sign-in <configured | off: acme/<env>/workos_api_key | not in the window>, webhook <configured | off: acme/<env>/workos_webhook_secret | signature refused: acme/<env>/workos_webhook_secret | not in the window>
 - Pool and cache: <checkouts, timeouts, hits, misses>

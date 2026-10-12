@@ -15,7 +15,8 @@ sweep open the next period of a record kept per period.
 **One mechanism, a namespace of its own.**
 `om/src/acme/om/orchestrations` holds the record, its storage in
 Postgres and in memory under the tenant fence, and its manager:
-`start`, `get`, `get_recent`, `resume`, `wake`, `fail`, and the purges.
+`start`, `get`, `get_recent`, `resume`, `wake`, `fail`, `cancel`, and
+the purges.
 The record (`Orchestration`) holds a kind, its input, a period, a
 status, a cursor, a total, what the steps applied and skipped, the
 first twenty skipped rows with a reason, a park reason, a fail reason,
@@ -51,8 +52,10 @@ parked for it, two seconds apart, or the one record it names, when the
 reason was that record's alone. A park that knows when its reason may
 clear lands the org's wake for then, one for every park that names the
 same time. A person may resume a parked record too
-(`resume`). A woken record is not trusted: its next step asks its guard
-again. A bound of the input fails the record with its reason, which a
+(`resume`), or cancel it: it settles `cancelled`, keeping what it made
+([ADR 0099](0099-a-person-cancels-a-running-or-a-parked-record.md)).
+A woken record is not trusted: its next step asks its guard again. A
+bound of the input fails the record with its reason, which a
 product adds beside `defect`. The park is the record's status, never a
 deferred work item, so only the record says
 why it waits.
@@ -94,5 +97,5 @@ record and its org.
 
 A settled record is purged thirty days later; a parked or running one
 is kept. A record whose last attempt could not write its failure stays
-running until its org is purged, and the work queue's dead letter
-names it.
+running until a person cancels it or its org is purged, and the work
+queue's dead letter names it.

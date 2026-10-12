@@ -1,5 +1,5 @@
 """The orchestration mechanism on its own: its pure rules, and the manager's
-start, step, wake, resume, failure, and purge."""
+start, step, wake, resume, failure, cancel, and purge."""
 
 from datetime import timedelta
 from itertools import pairwise
@@ -10,18 +10,28 @@ import pytest
 
 from acme.infra.impl.local import InfraLocalImpl
 from acme.om.base import new_id, utcnow
-from acme.om.context import AppContext, AppType, RequestContext, TenantContext
-from acme.om.exceptions import NotFound, PreconditionFailed, ValidationFailed
+from acme.om.context import (
+    AppContext,
+    AppType,
+    CredentialKind,
+    RequestContext,
+    Role,
+    TenantContext,
+    build_context,
+)
+from acme.om.exceptions import NotAuthorized, NotFound, PreconditionFailed, ValidationFailed
 from acme.om.orchestrations.impl.manager import OrchestrationsOptions
 from acme.om.orchestrations.rules import (
     ROW_ERRORS_KEPT,
     advanced,
+    cancelled,
     failed,
+    is_settled,
     resumed,
     stagger,
     with_row_errors,
 )
-from acme.om.orchestrations.steps import step_rows
+from acme.om.orchestrations.steps import UPDATED, step_rows
 from acme.om.orchestrations.types.orchestration import (
     FailReason,
     Orchestration,
@@ -33,6 +43,7 @@ from acme.om.orchestrations.types.orchestration import (
 from acme.om.outbox.types.row import OutboxRow
 from acme.om.root import Managers, build_managers
 from acme.om.storage.impl.memory import StorageMemoryImpl
+from acme.om.tenancy.rules import ROLE_PERMISSIONS
 from acme.om.work.impl.manager import not_before, relayed_key
 from acme.om.work.types.work_item import (
     OrchestrationPayload,
@@ -102,6 +113,20 @@ def test_a_bound_fails_the_record_and_names_why() -> None:
     ended = failed(record, now, record.created_by, FailReason.DEFECT)
     assert ended.status is OrchestrationStatus.FAILED
     assert ended.fail_reason is FailReason.DEFECT and ended.finished_at == now
+
+
+def test_a_cancel_settles_the_record_keeping_what_it_made() -> None:
+    record = a_record(
+        status=OrchestrationStatus.PARKED, park_reason=ParkReason.RESOURCE,
+        cursor=7, total=9, applied=6, skipped=1, row_errors=[{"row": 3, "reason": "malformed"}],
+    )  # fmt: skip
+    now = utcnow()
+    ended = cancelled(record, now, record.created_by)
+    assert ended.status is OrchestrationStatus.CANCELLED and is_settled(ended)
+    assert (ended.cursor, ended.total, ended.applied, ended.skipped) == (7, 9, 6, 1)
+    assert ended.row_errors == record.row_errors
+    assert (ended.park_reason, ended.fail_reason, ended.finished_at) == (None, None, now)
+    assert ended.version == record.version + 1
 
 
 def test_the_skipped_rows_named_are_bounded() -> None:
@@ -345,3 +370,140 @@ async def test_the_sweep_purges_settled_records_past_the_retention(world: World)
     with pytest.raises(NotFound):
         await orchestrations.get(ctx, old.id)
     assert (await orchestrations.get(ctx, live.id)).id == live.id
+
+
+# The cancel.
+
+
+async def parked_record(
+    world: World, ctx: TenantContext, reason: ParkReason = ParkReason.PROVIDER_UNAVAILABLE
+) -> Orchestration:
+    """A record two steps in, parked on `reason` at its cursor, with a row it
+    skipped and the rows its steps applied."""
+    orchestrations = world.managers.orchestrations
+    record = await orchestrations.start(ctx, a_record())
+    stepped = await orchestrations.step_noop(ctx, await orchestrations.step_noop(ctx, record))
+    parked = advanced(
+        stepped, utcnow(), record.created_by, cursor=2, total=3,
+        skipped=[RowError(row=2, reason="malformed")], park=reason,
+    ).model_copy(update={"applied": 1})  # fmt: skip
+    await world.storage.get_orchestrations_storage().write_orchestration(
+        ctx.org_id, parked, stepped.version, ()
+    )
+    return parked
+
+
+async def test_a_person_cancels_a_parked_record_and_it_keeps_what_it_made(world: World) -> None:
+    ctx = await world.org()
+    orchestrations = world.managers.orchestrations
+    parked = await parked_record(world, ctx)
+    ended = await orchestrations.cancel(ctx, parked.id, "the wrong file")
+    assert ended.status is OrchestrationStatus.CANCELLED and is_settled(ended)
+    assert (ended.cursor, ended.total, ended.applied, ended.skipped) == (2, 3, 1, 1)
+    assert ended.row_errors == parked.row_errors
+    assert ended.finished_at is not None and ended.updated_by == ctx.user_id
+    assert await orchestrations.get(ctx, parked.id) == ended
+    # A second cancel answers the record as it is; a record that finished is
+    # refused, since nothing is left to end.
+    assert await orchestrations.cancel(ctx, parked.id, "again") == ended
+    done = await orchestrations.start(ctx, a_record(input={"steps": 1}))
+    done = await orchestrations.step_noop(ctx, done)
+    with pytest.raises(ValidationFailed):
+        await orchestrations.cancel(ctx, done.id, "too late")
+    assert (await orchestrations.get(ctx, done.id)).status is OrchestrationStatus.SUCCEEDED
+
+
+async def test_a_step_in_flight_lands_nothing_after_a_cancel(world: World) -> None:
+    """The step read the running record before the cancel; its write names
+    that version, and the cancel's write moved it."""
+    ctx = await world.org()
+    orchestrations = world.managers.orchestrations
+    running = await orchestrations.start(ctx, a_record())
+    in_flight = await orchestrations.get(ctx, running.id)
+    ended = await orchestrations.cancel(ctx, running.id, "no longer needed")
+    with pytest.raises(PreconditionFailed):
+        await orchestrations.step_noop(ctx, in_flight)
+    with pytest.raises(PreconditionFailed):
+        await orchestrations.fail(ctx, in_flight, FailReason.DEFECT)
+    after = await orchestrations.get(ctx, running.id)
+    assert after == ended
+    assert (after.status, after.cursor) == (OrchestrationStatus.CANCELLED, 0)
+
+
+async def test_no_wake_revives_a_cancelled_record(world: World) -> None:
+    ctx = await world.org()
+    orchestrations = world.managers.orchestrations
+    by_id = await parked_record(world, ctx, ParkReason.RESOURCE)
+    in_batch = await parked_record(world, ctx)
+    ended = {
+        record.id: await orchestrations.cancel(ctx, record.id, "gave up")
+        for record in (by_id, in_batch)
+    }
+    assert await orchestrations.wake(ctx, ParkReason.RESOURCE, by_id.id) == 0
+    assert await orchestrations.wake(ctx, ParkReason.PROVIDER_UNAVAILABLE) == 0
+    for record_id in ended:
+        with pytest.raises(ValidationFailed):
+            await orchestrations.resume(ctx, record_id)
+        assert await orchestrations.get(ctx, record_id) == ended[record_id]
+
+
+async def test_a_cancel_takes_the_permission_a_resume_takes(world: World) -> None:
+    ctx = await world.org()
+    orchestrations = world.managers.orchestrations
+    parked = await parked_record(world, ctx)
+    viewer = build_context(
+        RequestContext(request_id=new_id(), app=APP),
+        user_id=ctx.user_id,
+        org_id=ctx.org_id,
+        role=Role.VIEWER,
+        permissions=ROLE_PERMISSIONS[Role.VIEWER],
+        credential_kind=CredentialKind.SESSION_TOKEN,
+    )
+    with pytest.raises(NotAuthorized):
+        await orchestrations.resume(viewer, parked.id)
+    with pytest.raises(NotAuthorized):
+        await orchestrations.cancel(viewer, parked.id, "not mine to end")
+    assert await orchestrations.get(ctx, parked.id) == parked
+
+
+async def test_a_cancelled_record_goes_with_the_purge_of_settled_records(world: World) -> None:
+    ctx = await world.org()
+    orchestrations = world.managers.orchestrations
+    ended = await orchestrations.cancel(ctx, (await parked_record(world, ctx)).id, "done with it")
+    assert await orchestrations.purge_across_tenants() == 0, "kept through its retention"
+    aged = ended.model_copy(
+        update={"updated_at": utcnow() - timedelta(days=31), "version": ended.version + 1}
+    )
+    await world.storage.get_orchestrations_storage().write_orchestration(
+        ctx.org_id, aged, ended.version, ()
+    )
+    assert await orchestrations.purge_across_tenants() == 1
+    with pytest.raises(NotFound):
+        await orchestrations.get(ctx, ended.id)
+
+
+async def test_a_cancel_publishes_the_records_event_at_the_cancelled_version(
+    world: World, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The record's own hint names the version the cancel wrote, and a client
+    that reads the record at it reads `cancelled`. No step is asked for."""
+    ctx = await world.org()
+    orchestrations = world.managers.orchestrations
+    parked = await parked_record(world, ctx)
+    storage = world.storage.get_orchestrations_storage()
+    written: list[OutboxRow] = []
+    write = storage.write_orchestration
+
+    async def writes(
+        org_id: UUID, record: Orchestration, expected: int, rows: tuple[OutboxRow, ...] = ()
+    ) -> None:
+        written.extend(rows)
+        await write(org_id, record, expected, rows)
+
+    monkeypatch.setattr(storage, "write_orchestration", writes)
+    ended = await orchestrations.cancel(ctx, parked.id, "stop")
+    assert [(row.kind, row.target_id, dict(row.payload)) for row in written] == [
+        (UPDATED, parked.id, {"version": ended.version})
+    ]
+    read = await orchestrations.get(ctx, written[0].target_id)
+    assert (read.version, read.status) == (ended.version, OrchestrationStatus.CANCELLED)

@@ -718,9 +718,12 @@ async def test_a_parked_record_whose_resource_is_retired_is_woken(world: World) 
         assert ended.request.end_reason is EndReason.RETIRED
 
 
+@pytest.mark.parametrize("end", ["failed", "cancelled"])
 async def test_a_request_whose_waiter_stopped_waiting_is_cancelled_never_granted(
-    world: World,
+    world: World, end: str
 ) -> None:
+    """A record that failed, or that a person cancelled while it waited in
+    line, no longer waits: the grant passes it as `waiter_gone`."""
     owner = await world.owner()
     ann, bob = await world.member("ann"), await world.member("bob")
     dock = await world.resource(owner)
@@ -728,8 +731,14 @@ async def test_a_request_whose_waiter_stopped_waiting_is_cancelled_never_granted
     record = await a_running_record(world, owner)
     gone = await world.leases.ask(owner, an_ask(dock, waiter=record.id), park_of(record))
     after = await world.leases.ask(bob, an_ask(dock))
-    parked = await world.managers.orchestrations.get(owner, record.id)
-    await world.managers.orchestrations.fail(owner, parked, FailReason.DEFECT)
+    orchestrations = world.managers.orchestrations
+    parked = await orchestrations.get(owner, record.id)
+    if end == "failed":
+        await orchestrations.fail(owner, parked, FailReason.DEFECT)
+    else:
+        await orchestrations.cancel(owner, parked.id, "no longer needed")
+    waiter = OrchestrationWaiterImpl(orchestrations)
+    assert not await waiter.still_waits(owner, record.id)
     assert held.lease is not None
     await world.leases.release(ann, held.lease.id)
     cancelled = await world.leases.get_request(owner, gone.request.id)

@@ -15,7 +15,15 @@ from acme.om.exceptions import (
     ValidationFailed,
 )
 from acme.om.orchestrations.manager import OrchestrationsManagerInterface
-from acme.om.orchestrations.rules import advanced, failed, is_settled, outcome, resumed, stagger
+from acme.om.orchestrations.rules import (
+    advanced,
+    cancelled,
+    failed,
+    is_settled,
+    outcome,
+    resumed,
+    stagger,
+)
 from acme.om.orchestrations.steps import step_rows
 from acme.om.orchestrations.storage import OrchestrationsStorageInterface
 from acme.om.orchestrations.types.orchestration import (
@@ -159,6 +167,29 @@ class OrchestrationsManagerImpl(OrchestrationsManagerInterface):
             if len(batch) < batch_size:
                 return woken
             after = batch[-1].id
+
+    async def cancel(self, ctx: TenantContext, record_id: UUID, reason: str) -> Orchestration:
+        ctx.require(Permission.WRITE)
+        record = await self.get(ctx, record_id)
+        if record.status is OrchestrationStatus.CANCELLED:
+            return record
+        if is_settled(record):
+            raise ValidationFailed(f"orchestration {record_id} has {record.status.value}")
+        ended = cancelled(record, self._clock(), ctx.user_id)
+        await self._write(ctx, ended, record.version)
+        # One line however the person wrote it, and bounded as a failure's detail.
+        why = " ".join(reason.split())[:500]
+        log.info(
+            "%s %s in org %s cancelled by %s at %d: %s",
+            record.kind.value,
+            record.id,
+            ctx.org_id,
+            ctx.user_id,
+            record.cursor,
+            why,
+        )
+        OUTCOMES.labels(subsystem="orchestrations", outcome=outcome(ended)).inc()
+        return ended
 
     async def fail(
         self,

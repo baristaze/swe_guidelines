@@ -1,7 +1,7 @@
 """Pure rules of the orchestrations namespace: the transitions a record makes
-(a step, a park, a failure, a resume), the stagger of the resumes one wake
-makes, and the bounded list of the rows a step skipped. Values in, values
-out; no clock, no storage, no settings: the caller passes the time."""
+(a step, a park, a failure, a cancel, a resume), the stagger of the resumes
+one wake makes, and the bounded list of the rows a step skipped. Values in,
+values out; no clock, no storage, no settings: the caller passes the time."""
 
 from collections.abc import Sequence
 from datetime import datetime, timedelta
@@ -88,6 +88,20 @@ def failed(
         status=OrchestrationStatus.FAILED,
         fail_reason=reason,
         fail_detail=detail,
+        park_reason=None,
+        finished_at=now,
+    )
+
+
+def cancelled(record: Orchestration, now: datetime, actor: UUID) -> Orchestration:
+    """A person ended the record, running or parked. What it achieved stays
+    achieved, its cursor with it; nothing more is done, and no wake revives
+    it. It is no failure, since no bound ended it."""
+    return _written(
+        record,
+        now,
+        actor,
+        status=OrchestrationStatus.CANCELLED,
         park_reason=None,
         finished_at=now,
     )

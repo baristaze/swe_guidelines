@@ -223,6 +223,7 @@ class OrchestrationStorageContract:
         old = back + timedelta(days=40)
         old_done = make_record(status=OrchestrationStatus.SUCCEEDED, updated_ago=old)
         old_failed = make_record(status=OrchestrationStatus.FAILED, updated_ago=old)
+        old_cancelled = make_record(status=OrchestrationStatus.CANCELLED, updated_ago=old)
         old_parked = make_record(
             status=OrchestrationStatus.PARKED,
             park_reason=ParkReason.PROVIDER_UNAVAILABLE,
@@ -230,14 +231,15 @@ class OrchestrationStorageContract:
         )
         fresh = make_record(status=OrchestrationStatus.SUCCEEDED)
         theirs = make_record(status=OrchestrationStatus.SUCCEEDED, updated_ago=old)
-        for record in (old_done, old_failed, old_parked, fresh):
+        for record in (old_done, old_failed, old_cancelled, old_parked, fresh):
             await seed(storage, org, record)
         await seed(storage, other, theirs)
         cut = utcnow() - back - timedelta(days=30)
-        assert await storage.purge_settled(cut, 2) == 2, "a batch at most"
-        assert await storage.purge_settled(cut, 2) == 1
-        assert await storage.purge_settled(cut, 2) == 0
-        assert await storage.read_orchestration(org, old_done.id) is None
+        assert await storage.purge_settled(cut, 3) == 3, "a batch at most"
+        assert await storage.purge_settled(cut, 3) == 1
+        assert await storage.purge_settled(cut, 3) == 0
+        for gone in (old_done, old_failed, old_cancelled):
+            assert await storage.read_orchestration(org, gone.id) is None
         assert await storage.read_orchestration(other, theirs.id) is None, "every tenant's"
         assert await storage.read_orchestration(org, old_parked.id) is not None
         assert await storage.read_orchestration(org, fresh.id) is not None

@@ -12,7 +12,8 @@ This is one of the kinds of thing [Acme is made of](../../../../README.md).
 - **Kind**: what the job is, with the shape of its input. The core has
   one, `noop`, which steps through a count and changes nothing else. A
   product replaces it with its own kinds.
-- **Status**: running, parked, succeeded, or failed.
+- **Status**: running, parked, succeeded, failed, or cancelled. The
+  last three are settled: a record never leaves them.
 - **Park reason**: why a parked record waits, and so what wakes it. The
   core has two: `provider_unavailable`, and `resource`, for a record in
   line for a [lease](../leases/README.md).
@@ -41,14 +42,21 @@ This is one of the kinds of thing [Acme is made of](../../../../README.md).
   every park on one outage lands one wake of the org's records then
   ([ADR 0088](../../../../../docs/adr/0088-a-providers-outage-is-a-shared-signal.md)).
 - **Succeed** after the last step, or **fail** on a bound.
+- **Cancel.** A person ends a running or a parked record, and it
+  settles `cancelled`, keeping its cursor and what it made. No wake
+  revives it, and a step already under way lands nothing after it. A
+  request it waits on in a lease's line is passed over at the next
+  grant
+  ([ADR 0099](../../../../../docs/adr/0099-a-person-cancels-a-running-or-a-parked-record.md)).
 - **Sweep.** A settled record goes thirty days later. A parked or a
   running one is kept.
 
 ## The rules
 
-- **A guard parks, a bound fails.** A limit that can clear keeps the
-  record resumable; a limit of the input ends it. Nothing a record made
-  is undone by its end.
+- **A guard parks, a bound fails, a person cancels.** A limit that can
+  clear keeps the record resumable; a limit of the input ends it, and
+  so does a person who may resume it. Nothing a record made is undone
+  by its end.
 - **Anything else is the queue's.** A store that does not answer makes
   the step raise, and the work queue retries it from the last cursor.
   On the last attempt the record fails as `defect`.
@@ -63,8 +71,10 @@ This is one of the kinds of thing [Acme is made of](../../../../README.md).
 ## How another namespace composes it
 
 A product adds a kind to `OrchestrationKind` and its input shape to
-`ORCHESTRATION_INPUTS`. The step lives in the namespace whose rows it
-changes: it writes its rows and the record's `Step` in one commit, the
+`ORCHESTRATION_INPUTS`. A kind a person starts says what a second
+start does while one is open: it answers the open record, it is
+refused, or it starts beside it. The step lives in the namespace whose
+rows it changes: it writes its rows and the record's `Step` in one commit, the
 record's rows from `steps.step_rows` among them. The worker's
 orchestration handler maps the kind to that step. A guard adds a
 `ParkReason`, and whatever clears it asks for `WAKE_PARKED`

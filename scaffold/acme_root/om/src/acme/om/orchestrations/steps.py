@@ -3,7 +3,7 @@ record changed, and, while it runs, the work row that asks for its next
 step, or, when its park names a time, the work row of the wake then. A step
 writes them in the commit of its own effect, whichever namespace's storage
 makes it; the manager writes them with every transition it makes itself (a
-start, a resume, a park, a failure)."""
+start, a resume, a park, a failure, a cancel)."""
 
 from datetime import datetime
 

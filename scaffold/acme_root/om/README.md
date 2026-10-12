@@ -68,7 +68,8 @@ A **work item** is a job for later. It waits in a queue until a worker
 claims it, holds it for a short lease, and does it.
 
 An **orchestration** is a long job kept as a record, done one step at a
-time. It succeeds, fails, or parks until what it waits for is back.
+time. It succeeds, fails, or parks until what it waits for is back,
+and a person may cancel it on the way.
 
 A **lease** lends one holder a thing only one may use at a time, such
 as a loading dock, for a term it renews. Each grant carries a token

@@ -9,7 +9,10 @@ stops the work with a reason and keeps everything the record achieved; the
 event that clears the reason, or a person, wakes it. A guard parks; only a
 bound fails. An error that is neither (a database or a store that did not
 answer) is the work queue's to retry: the item comes back with a growing
-delay, and the step starts again at the cursor the last commit left."""
+delay, and the step starts again at the cursor the last commit left.
+
+A person may also cancel a running or a parked record: it settles
+`cancelled`, keeping what it achieved, and nothing wakes it."""
 
 from datetime import datetime
 from enum import StrEnum
@@ -22,19 +25,26 @@ from acme.om.base import FrozenMapping, Identifiable, Platform, Trackable
 
 class OrchestrationKind(StrEnum):
     """A product adds its kinds here, each with its input shape
-    (`ORCHESTRATION_INPUTS`) and the step the worker runs for it."""
+    (`ORCHESTRATION_INPUTS`) and the step the worker runs for it. A kind a
+    person starts says what a second start does while one is open: it
+    answers the open record, it is refused, or it starts beside it."""
 
-    NOOP = "noop"  # the mechanism's own: steps through its input's count, and changes nothing else
+    # The mechanism's own: steps through its input's count, and changes
+    # nothing else. A second start starts beside the open one.
+    NOOP = "noop"
 
 
 class OrchestrationStatus(StrEnum):
     RUNNING = "running"  # a work item carries the next step
     PARKED = "parked"  # stopped with a reason; woken by the event that clears it, or a person
     SUCCEEDED = "succeeded"
-    FAILED = "failed"
+    FAILED = "failed"  # a bound ended it
+    CANCELLED = "cancelled"  # a person ended it, running or parked; never a failure
 
 
-SETTLED = frozenset({OrchestrationStatus.SUCCEEDED, OrchestrationStatus.FAILED})
+SETTLED = frozenset(
+    {OrchestrationStatus.SUCCEEDED, OrchestrationStatus.FAILED, OrchestrationStatus.CANCELLED}
+)
 """The statuses a record never leaves."""
 
 

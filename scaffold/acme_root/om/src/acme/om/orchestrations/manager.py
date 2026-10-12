@@ -2,10 +2,11 @@
 cursor advanced one step at a time by whichever worker holds its work item.
 
 This namespace is the mechanism, the same for every kind: the record, its
-start, its failure, and the two ways a parked record wakes (the event that
-clears its reason, or a person). What one step of a kind does is the
-namespace whose rows it changes: that namespace lands the record beside its
-own rows (`Step`), a park among them. The one kind this namespace steps
+start, its failure, the two ways a parked record wakes (the event that
+clears its reason, or a person), and the way out that is no wake (a
+person's cancel). What one step of a kind does is the namespace whose rows
+it changes: that namespace lands the record beside its own rows (`Step`), a
+park among them. The one kind this namespace steps
 itself is `noop`, which changes nothing else."""
 
 from abc import ABC, abstractmethod
@@ -65,6 +66,20 @@ class OrchestrationsManagerInterface(ABC):
         for it (a provider that answers again clears `provider_unavailable`).
         With `record_id`, only that record, when it is parked for `reason`: a
         grant clears `resource` for the one record it was for."""
+        ...
+
+    @abstractmethod
+    async def cancel(self, ctx: TenantContext, record_id: UUID, reason: str) -> Orchestration:
+        """A person's end of a running or a parked record: it settles
+        `cancelled`, keeping its cursor and everything it achieved, and no
+        wake revives it. It takes the permission `resume` takes. The write
+        is conditioned on the version it read, so a step already under way
+        lands nothing after it. `reason` is the person's why, logged with the
+        record. A cancelled record is answered as it is; one that succeeded
+        or failed is refused (`ValidationFailed`). A request the record
+        waits on no longer waits: the next grant passes it as
+        `waiter_gone`, and the caller's `leave` of the leases takes it out
+        of its line at once."""
         ...
 
     @abstractmethod
