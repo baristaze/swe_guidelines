@@ -82,7 +82,12 @@ the maintenance worker should not carry.
    record the item advances is a compare-and-set on the record's
    version, since the fences guard the queue row and not the record. An
    effect the handler must make happen rides an outbox row or a work
-   item, never a topic alone.
+   item, never a topic alone. A handler that needs an outside provider
+   the copy does not reach yet gets it through a client under
+   `integrations/`, with a real impl, a deterministic twin, and the
+   setting that picks one, as the conventions' Two storage impls rule
+   says, or through the provider's own skill where the copy has one;
+   it never calls the provider directly.
 3. A long-running kind is an `OrchestrationKind` whose step is mapped in
    `build_loop`, not a handler that loops; it parks or fails as Long-Running
    Orchestrations states. A lane is a work kind's, and every orchestration
