@@ -34,7 +34,9 @@ sees Y"), never the newest failures of any kind. A change event tied to the
 symptom is a failure the stream records or a write that landed, and
 either request is followed, so a run whose only such change events are
 writes that landed still makes its passes: a request can land its
-write and fail its answer. Without `--request-id`, the
+write and fail its answer. A write a signals file names as deciding
+the symptom (a setting, a row its reason reads) is tied to it too, and
+its request is followed. Without `--request-id`, the
 symptom is the one the prompt or the investigation's report names;
 when neither names one, ask for it, as for `--env`. A pass that finds
 no cause reports "not found" for its id. After the fifth pass the
@@ -211,6 +213,8 @@ runs once, before the passes. It is not a pass.
    the stream records is a change event of a kind a signals file's
    Change events names. Any other change event tied to the symptom is a
    write that landed, whose request is followed for what it did next.
+   A write a signals file names as deciding the symptom is tied to it,
+   whichever route made it.
    When no change event is tied to the symptom, the run makes no pass,
    as Input says.
 4. The error tracker, by the pass's request id. The tracker holds no
@@ -335,15 +339,24 @@ runs once, before the passes. It is not a pass.
    `start` of step 3 to now, rounded up, and its read covers the
    window: `jq -n '(now - <start>) / 60 | ceil'`. The local reader has
    no log store of its own: without `--log-file` its log leg reports
-   zero lines, which says nothing.
+   zero lines, which says nothing. `--log-file` takes one file, so the
+   processes' logs go in one: step 5's `docker compose ... logs` call
+   for `api maintenance`, without its `grep`, written to a file with
+   `>`. A process that logs to a file of its own on the host is read by
+   step 5's `grep` instead.
 
 8. Correlate. One request id ties the change event row (what the tenant
    asked), the log lines (what the process decided), the trace (where
    it waited), and the error event (where it broke). The cause is the
    first of those that disagrees with the code's intent; read the
-   code at the file and line the error names with `Read` and `Grep`.
+   code at the file and line the error names with `Read` and `Grep`,
+   or, with no error event, the code of the module the log line names.
    A log line or a kind a signals file names is read as that file says.
-   When none disagrees, the pass ends with "not found" for its id,
+   A cause the code intends, which a signals file reads as the
+   symptom's reason (a setting, a row), disagrees with nothing and is
+   still the cause: the pass ends with "cause found", naming that
+   setting or row.
+   Otherwise, when none disagrees, the pass ends with "not found" for its id,
    naming each leg it could not read, and the next id's pass starts.
 9. Write the report once the last pass ends, the fifth at most. The
    fix is a pull request, a setting, or a resource, named; it is never
