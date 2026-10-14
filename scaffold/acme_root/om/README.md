@@ -98,5 +98,5 @@ arrive twice, so the second copy gets the first one's answer.
 - [Outbox rows](src/acme/om/outbox/README.md)
 - [Work items](src/acme/om/work/README.md)
 - [Orchestrations](src/acme/om/orchestrations/README.md)
-- [Resources, leases, and the line](src/acme/om/leases/README.md)
+- [Leasable resources, leases, and the line](src/acme/om/leases/README.md)
 - [Idempotency records](src/acme/om/idempotency/README.md)

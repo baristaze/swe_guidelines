@@ -36,14 +36,14 @@ class LeasesServiceInterface(ABC):
     ) -> LeaseRequestView: ...
 
     @abstractmethod
-    async def line(self, ctx: TenantContext, resource_id: UUID) -> LineView: ...
+    async def line(self, ctx: TenantContext, leasable_resource_id: UUID) -> LineView: ...
 
     @abstractmethod
     async def get_lease(self, ctx: TenantContext, lease_id: UUID) -> LeaseView: ...
 
     @abstractmethod
     async def list_leases(
-        self, ctx: TenantContext, resource_id: UUID | None, cursor: str | None, limit: int
+        self, ctx: TenantContext, leasable_resource_id: UUID | None, cursor: str | None, limit: int
     ) -> LeasePageView:
         """One page of the org's leases, or one resource's, newest first,
         each with the request it answered; `cursor` is the previous page's

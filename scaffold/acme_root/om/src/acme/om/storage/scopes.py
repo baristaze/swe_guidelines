@@ -105,7 +105,7 @@ TABLE_SCOPES: dict[str, TableScope] = {
     "change_events": TableScope(ScopeKind.ORG),
     "change_event_cursors": TableScope(ScopeKind.ORG),
     "orchestrations": TableScope(ScopeKind.ORG),
-    "resources": TableScope(ScopeKind.ORG),
+    "leasable_resources": TableScope(ScopeKind.ORG),
     "leases": TableScope(ScopeKind.ORG),
     "lease_requests": TableScope(ScopeKind.ORG),
     # A tenant's rows that also belong to one person in it. A user's person

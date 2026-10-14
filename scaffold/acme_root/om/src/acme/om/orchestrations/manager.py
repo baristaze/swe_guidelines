@@ -65,7 +65,7 @@ class OrchestrationsManagerInterface(ABC):
         resumes, staggered; returns how many. What cleared the reason asks
         for it (a provider that answers again clears `provider_unavailable`).
         With `record_id`, only that record, when it is parked for `reason`: a
-        grant clears `resource` for the one record it was for."""
+        grant clears `leasable_resource` for the one record it was for."""
         ...
 
     @abstractmethod

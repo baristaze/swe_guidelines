@@ -3,7 +3,12 @@ from uuid import UUID
 
 from acme.om.exceptions import TenantMismatch
 from acme.om.leases.rules import grant_fits, stands_in
-from acme.om.leases.storage import LeasesStorageInterface, ResourceLandingInterface
+from acme.om.leases.storage import LeasableResourceLandingInterface, LeasesStorageInterface
+from acme.om.leases.types.leasable_resource import (
+    LeasableResource,
+    LeasableResourceKind,
+    LeasableResourceUpdate,
+)
 from acme.om.leases.types.lease import Grant, Lease, LeaseStatus
 from acme.om.leases.types.request import (
     EndReason,
@@ -13,7 +18,6 @@ from acme.om.leases.types.request import (
     RequestStatus,
     WaiterKind,
 )
-from acme.om.leases.types.resource import Resource, ResourceKind, ResourceUpdate
 from acme.om.orchestrations.storage import StepLandingInterface
 from acme.om.orchestrations.types.orchestration import Step
 from acme.om.outbox.storage import OutboxLandingInterface
@@ -21,7 +25,9 @@ from acme.om.outbox.types.row import OutboxRow
 from acme.om.storage.impl.memory_base import MemoryStorageBase, MemoryTable
 
 
-class LeasesStorageMemoryImpl(MemoryStorageBase, LeasesStorageInterface, ResourceLandingInterface):
+class LeasesStorageMemoryImpl(
+    MemoryStorageBase, LeasesStorageInterface, LeasableResourceLandingInterface
+):
     """The twin. Its one lock stands in for the anchor's row lock and the
     request's: every write reads and writes under it with no await between,
     so the caller that arrives second is refused against the state the first
@@ -34,36 +40,40 @@ class LeasesStorageMemoryImpl(MemoryStorageBase, LeasesStorageInterface, Resourc
     ) -> None:
         super().__init__(outbox)
         self._steps = steps
-        self._resources: MemoryTable[Resource] = {}
+        self._resources: MemoryTable[LeasableResource] = {}
         self._leases: MemoryTable[Lease] = {}
         self._requests: MemoryTable[LeaseRequest] = {}
 
-    # Resources.
+    # LeasableResources.
 
-    async def create_resource(
-        self, org_id: UUID, resource: Resource, outbox_rows: tuple[OutboxRow, ...]
+    async def create_leasable_resource(
+        self, org_id: UUID, resource: LeasableResource, outbox_rows: tuple[OutboxRow, ...]
     ) -> bool:
         async with self._lock:
             if self._by_ref(org_id, resource.kind, resource.ref_id) is not None:
                 return False  # the (org, kind, ref) key, as the index is in Postgres
             return self._insert(self._resources, org_id, resource, outbox_rows)
 
-    async def read_resource(self, org_id: UUID, resource_id: UUID) -> Resource | None:
-        return self._get(self._resources, org_id, resource_id)
+    async def read_leasable_resource(
+        self, org_id: UUID, leasable_resource_id: UUID
+    ) -> LeasableResource | None:
+        return self._get(self._resources, org_id, leasable_resource_id)
 
-    async def read_resource_by_ref(
-        self, org_id: UUID, kind: ResourceKind, ref_id: UUID
-    ) -> Resource | None:
+    async def read_leasable_resource_by_ref(
+        self, org_id: UUID, kind: LeasableResourceKind, ref_id: UUID
+    ) -> LeasableResource | None:
         return self._by_ref(org_id, kind, ref_id)
 
-    async def read_resources(self, org_id: UUID, kind: ResourceKind, limit: int) -> list[Resource]:
+    async def read_leasable_resources(
+        self, org_id: UUID, kind: LeasableResourceKind, limit: int
+    ) -> list[LeasableResource]:
         return [
             r
             for r in self._rows(self._resources, org_id)
             if r.kind is kind and r.retired_at is None
         ][:limit]
 
-    async def read_free(self, org_id: UUID, limit: int) -> list[Resource]:
+    async def read_free(self, org_id: UUID, limit: int) -> list[LeasableResource]:
         return [
             r
             for r in self._rows(self._resources, org_id)
@@ -73,14 +83,14 @@ class LeasesStorageMemoryImpl(MemoryStorageBase, LeasesStorageInterface, Resourc
     async def write_availability(
         self,
         org_id: UUID,
-        resource_id: UUID,
+        leasable_resource_id: UUID,
         available: bool,
         at: datetime,
         actor: UUID,
         outbox_rows: tuple[OutboxRow, ...],
-    ) -> Resource | None:
+    ) -> LeasableResource | None:
         async with self._lock:
-            resource = self._get(self._resources, org_id, resource_id)
+            resource = self._get(self._resources, org_id, leasable_resource_id)
             if resource is None or resource.retired_at is not None:
                 return None
             written = resource.model_copy(
@@ -89,38 +99,38 @@ class LeasesStorageMemoryImpl(MemoryStorageBase, LeasesStorageInterface, Resourc
             self._put(self._resources, org_id, written, outbox_rows)
             return written
 
-    async def update_resource(
+    async def update_leasable_resource(
         self,
         org_id: UUID,
-        resource_id: UUID,
-        change: ResourceUpdate,
+        leasable_resource_id: UUID,
+        change: LeasableResourceUpdate,
         at: datetime,
         actor: UUID,
         outbox_rows: tuple[OutboxRow, ...],
-    ) -> Resource | None:
+    ) -> LeasableResource | None:
         async with self._lock:
-            resource = self._get(self._resources, org_id, resource_id)
+            resource = self._get(self._resources, org_id, leasable_resource_id)
             if resource is None or resource.retired_at is not None:
                 return None
             self._land(org_id, outbox_rows)
             self.land_update(org_id, resource.kind, resource.ref_id, change, at, actor)
-            return self._get(self._resources, org_id, resource_id)
+            return self._get(self._resources, org_id, leasable_resource_id)
 
-    async def retire_resource(
+    async def retire_leasable_resource(
         self,
         org_id: UUID,
-        resource_id: UUID,
+        leasable_resource_id: UUID,
         at: datetime,
         actor: UUID,
         outbox_rows: tuple[OutboxRow, ...],
-    ) -> Resource | None:
+    ) -> LeasableResource | None:
         async with self._lock:
-            resource = self._get(self._resources, org_id, resource_id)
+            resource = self._get(self._resources, org_id, leasable_resource_id)
             if resource is None or resource.retired_at is not None:
                 return None
             self._land(org_id, outbox_rows)
             self.land_retirement(org_id, resource.kind, resource.ref_id, at, actor)
-            return self._get(self._resources, org_id, resource_id)
+            return self._get(self._resources, org_id, leasable_resource_id)
 
     # Requests.
 
@@ -149,7 +159,7 @@ class LeasesStorageMemoryImpl(MemoryStorageBase, LeasesStorageInterface, Resourc
         return self._get(self._requests, org_id, request_id)
 
     async def read_waiting(
-        self, org_id: UUID, kind: ResourceKind, limit: int
+        self, org_id: UUID, kind: LeasableResourceKind, limit: int
     ) -> list[LeaseRequest]:
         found = [r for r in self._waiting_in(org_id) if r.kind is kind]
         return sorted(found, key=lambda r: (r.rank, r.id))[:limit]
@@ -162,7 +172,7 @@ class LeasesStorageMemoryImpl(MemoryStorageBase, LeasesStorageInterface, Resourc
 
     async def read_stranded(self, org_id: UUID, limit: int) -> list[LeaseRequest]:
         retired = {r.id for r in self._rows(self._resources, org_id) if r.retired_at is not None}
-        stranded = [r for r in self._waiting_in(org_id) if r.resource_id in retired]
+        stranded = [r for r in self._waiting_in(org_id) if r.leasable_resource_id in retired]
         return sorted(stranded, key=lambda r: (r.rank, r.id))[:limit]
 
     async def settle_request(
@@ -246,7 +256,7 @@ class LeasesStorageMemoryImpl(MemoryStorageBase, LeasesStorageInterface, Resourc
         if lease.token != grant.expected_token + 1:
             raise ValueError("a grant's token is one above the anchor's")
         async with self._lock:
-            anchor = self._get(self._resources, org_id, lease.resource_id)
+            anchor = self._get(self._resources, org_id, lease.leasable_resource_id)
             request = self._get(self._requests, org_id, lease.request_id)
             if (
                 anchor is None
@@ -261,7 +271,10 @@ class LeasesStorageMemoryImpl(MemoryStorageBase, LeasesStorageInterface, Resourc
                 return None
             # The second fence, as the unique indexes are in Postgres.
             if any(
-                (held.resource_id == lease.resource_id and held.status is LeaseStatus.ACTIVE)
+                (
+                    held.leasable_resource_id == lease.leasable_resource_id
+                    and held.status is LeaseStatus.ACTIVE
+                )
                 or held.request_id == lease.request_id
                 for held in self._rows(self._leases, org_id)
             ):
@@ -298,12 +311,12 @@ class LeasesStorageMemoryImpl(MemoryStorageBase, LeasesStorageInterface, Resourc
         return self._get(self._leases, org_id, lease_id)
 
     async def read_leases(
-        self, org_id: UUID, resource_id: UUID | None, after: HistoryMark | None, limit: int
+        self, org_id: UUID, leasable_resource_id: UUID | None, after: HistoryMark | None, limit: int
     ) -> list[LeaseEntry]:
         leases = [
             lease
             for lease in self._rows(self._leases, org_id)
-            if (resource_id is None or lease.resource_id == resource_id)
+            if (leasable_resource_id is None or lease.leasable_resource_id == leasable_resource_id)
             and (after is None or (lease.created_at, lease.id) < (after.created_at, after.lease_id))
         ]
         leases.sort(key=lambda lease: (lease.created_at, lease.id), reverse=True)
@@ -327,7 +340,7 @@ class LeasesStorageMemoryImpl(MemoryStorageBase, LeasesStorageInterface, Resourc
             lease = self._get(self._leases, org_id, lease_id)
             if lease is None or lease.status is not LeaseStatus.ACTIVE or lease.expires_at <= now:
                 return None
-            anchor = self._get(self._resources, org_id, lease.resource_id)
+            anchor = self._get(self._resources, org_id, lease.leasable_resource_id)
             if anchor is None or anchor.lease_id != lease_id or anchor.retired_at is not None:
                 return None
             renewed = lease.model_copy(
@@ -360,7 +373,7 @@ class LeasesStorageMemoryImpl(MemoryStorageBase, LeasesStorageInterface, Resourc
                 or lease.expires_at <= lapsed_before
             ):
                 return None
-            anchor = self._get(self._resources, org_id, lease.resource_id)
+            anchor = self._get(self._resources, org_id, lease.leasable_resource_id)
             if anchor is None or anchor.lease_id != lease_id or anchor.retired_at is not None:
                 return None
             started = lease.model_copy(
@@ -402,7 +415,7 @@ class LeasesStorageMemoryImpl(MemoryStorageBase, LeasesStorageInterface, Resourc
             )
             self._land(org_id, outbox_rows)
             self._leases[lease_id] = (org_id, ended)
-            anchor = self._get(self._resources, org_id, lease.resource_id)
+            anchor = self._get(self._resources, org_id, lease.leasable_resource_id)
             if anchor is not None and anchor.lease_id == lease_id:
                 self._resources[anchor.id] = (
                     org_id,
@@ -441,7 +454,7 @@ class LeasesStorageMemoryImpl(MemoryStorageBase, LeasesStorageInterface, Resourc
                 due.add(org_id)
             # Retired, with a request that names it.
             if resource.retired_at is not None and any(
-                request.resource_id == resource.id for request in waiting.get(org_id, ())
+                request.leasable_resource_id == resource.id for request in waiting.get(org_id, ())
             ):
                 due.add(org_id)
         return sorted(o for o in due if after is None or o > after)[:limit]
@@ -486,16 +499,16 @@ class LeasesStorageMemoryImpl(MemoryStorageBase, LeasesStorageInterface, Resourc
     # step as its own row, as the statements share its transaction in
     # Postgres. Both are synchronous, so nothing runs between them.
 
-    def land_resource(self, org_id: UUID, resource: Resource) -> None:
+    def land_leasable_resource(self, org_id: UUID, resource: LeasableResource) -> None:
         if self._by_ref(org_id, resource.kind, resource.ref_id) is None:
             self._resources.setdefault(resource.id, (org_id, resource))
 
     def land_update(
         self,
         org_id: UUID,
-        kind: ResourceKind,
+        kind: LeasableResourceKind,
         ref_id: UUID,
-        change: ResourceUpdate,
+        change: LeasableResourceUpdate,
         at: datetime,
         actor: UUID,
     ) -> None:
@@ -506,7 +519,7 @@ class LeasesStorageMemoryImpl(MemoryStorageBase, LeasesStorageInterface, Resourc
         self._resources[resource.id] = (org_id, resource.model_copy(update=fields))
 
     def land_retirement(
-        self, org_id: UUID, kind: ResourceKind, ref_id: UUID, at: datetime, actor: UUID
+        self, org_id: UUID, kind: LeasableResourceKind, ref_id: UUID, at: datetime, actor: UUID
     ) -> None:
         resource = self._by_ref(org_id, kind, ref_id)
         if resource is None or resource.retired_at is not None:
@@ -525,7 +538,9 @@ class LeasesStorageMemoryImpl(MemoryStorageBase, LeasesStorageInterface, Resourc
 
     # The shared steps.
 
-    def _by_ref(self, org_id: UUID, kind: ResourceKind, ref_id: UUID) -> Resource | None:
+    def _by_ref(
+        self, org_id: UUID, kind: LeasableResourceKind, ref_id: UUID
+    ) -> LeasableResource | None:
         return next(
             (
                 r

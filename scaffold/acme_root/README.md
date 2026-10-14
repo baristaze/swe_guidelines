@@ -5,7 +5,7 @@ the Software Design and Architecture Guidelines prescribe
 ([the pin](specs/architecture.md)). It holds what every product needs
 before its first domain screen: tenancy with an operator plane, change events
 and audit, the outbox, idempotency, the work queue, orchestrations,
-leases on a scarce resource, and files. A product renames it and builds its domain on top.
+leases on a scarce leasable resource, and files. A product renames it and builds its domain on top.
 
 ## Quick start
 

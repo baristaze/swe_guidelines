@@ -14,6 +14,7 @@ from abc import ABC, abstractmethod
 from uuid import UUID
 
 from acme.om.context import RequestContext, TenantContext
+from acme.om.leases.types.leasable_resource import LeasableResource, LeasableResourceUpdate
 from acme.om.leases.types.lease import JobClaim, Lease
 from acme.om.leases.types.request import (
     HistoryMark,
@@ -23,16 +24,15 @@ from acme.om.leases.types.request import (
     Standing,
     WaiterKind,
 )
-from acme.om.leases.types.resource import Resource, ResourceUpdate
 from acme.om.orchestrations.types.orchestration import Step
 
 
 class LeasesManagerInterface(ABC):
-    # Resources: the kind's owner registers one, updates it, sets its
+    # Leasable resources: the kind's owner registers one, updates it, sets its
     # availability, and retires it.
 
     @abstractmethod
-    async def register(self, ctx: TenantContext, resource: Resource) -> Resource:
+    async def register(self, ctx: TenantContext, resource: LeasableResource) -> LeasableResource:
         """The create: a resource of a registered kind for the owner's row,
         offered to its line at once. A kind and row registered already answer
         the stored resource. An owner that writes its row in the same commit
@@ -42,8 +42,8 @@ class LeasesManagerInterface(ABC):
 
     @abstractmethod
     async def update(
-        self, ctx: TenantContext, resource_id: UUID, change: ResourceUpdate
-    ) -> Resource:
+        self, ctx: TenantContext, leasable_resource_id: UUID, change: LeasableResourceUpdate
+    ) -> LeasableResource:
         """The owner's update: each field it names, of the labels, the bound,
         and the availability, under the anchor's lock, and nothing it leaves
         out; then the resource is offered to its line, so a waiting request
@@ -54,7 +54,7 @@ class LeasesManagerInterface(ABC):
         ...
 
     @abstractmethod
-    async def offer(self, ctx: TenantContext, resource_id: UUID) -> Lease | None:
+    async def offer(self, ctx: TenantContext, leasable_resource_id: UUID) -> Lease | None:
         """Offers a resource to its line, and answers the lease it granted, if
         any: what its owner calls after the commit that registered it,
         updated it, or put it back in service. The sweep offers each free
@@ -62,18 +62,20 @@ class LeasesManagerInterface(ABC):
         ...
 
     @abstractmethod
-    async def get_resource(self, ctx: TenantContext, resource_id: UUID) -> Resource: ...
+    async def get_leasable_resource(
+        self, ctx: TenantContext, leasable_resource_id: UUID
+    ) -> LeasableResource: ...
 
     @abstractmethod
     async def set_available(
-        self, ctx: TenantContext, resource_id: UUID, available: bool
-    ) -> Resource:
+        self, ctx: TenantContext, leasable_resource_id: UUID, available: bool
+    ) -> LeasableResource:
         """Takes a resource out of service, where held leases run on and
         nothing new is granted, or puts it back, which offers it to its line."""
         ...
 
     @abstractmethod
-    async def retire(self, ctx: TenantContext, resource_id: UUID) -> Resource:
+    async def retire(self, ctx: TenantContext, leasable_resource_id: UUID) -> LeasableResource:
         """Retires a resource with its owner's row: the requests that name it
         leave their line as `retired`, each waking its waiter, and its lease
         is never renewed."""
@@ -107,7 +109,7 @@ class LeasesManagerInterface(ABC):
         ...
 
     @abstractmethod
-    async def line(self, ctx: TenantContext, resource_id: UUID) -> Line:
+    async def line(self, ctx: TenantContext, leasable_resource_id: UUID) -> Line:
         """A resource and the requests in its line, first first, each with its
         place and estimate, replayed from the one read the line makes."""
         ...
@@ -141,7 +143,7 @@ class LeasesManagerInterface(ABC):
     async def list_leases(
         self,
         ctx: TenantContext,
-        resource_id: UUID | None = None,
+        leasable_resource_id: UUID | None = None,
         after: HistoryMark | None = None,
         limit: int = 50,
     ) -> LeasePage:

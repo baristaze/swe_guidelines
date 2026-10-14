@@ -6,10 +6,10 @@ from uuid import UUID
 
 from acme.om.context import TenantContext
 from acme.om.exceptions import NotFound
-from acme.om.leases.hooks import ResourceKindInterface, WaiterInterface
+from acme.om.leases.hooks import LeasableResourceKindInterface, WaiterInterface
+from acme.om.leases.types.leasable_resource import LeasableResource
 from acme.om.leases.types.lease import Lease
 from acme.om.leases.types.request import LeaseRequest
-from acme.om.leases.types.resource import Resource
 from acme.om.orchestrations import OrchestrationsManagerInterface
 from acme.om.orchestrations.rules import is_settled
 from acme.om.orchestrations.types.orchestration import ParkReason
@@ -17,16 +17,16 @@ from acme.om.outbox.types.row import OutboxRow, outbox_row
 from acme.om.work.types.work_item import WakeParkedPayload, WorkKind, work_row_kind
 
 
-class NoopResourceKindImpl(ResourceKindInterface):
+class NoopLeasableResourceKindImpl(LeasableResourceKindInterface):
     """A grant starts nothing, and every request may be granted."""
 
     async def may_grant(
-        self, ctx: TenantContext, resource: Resource, request: LeaseRequest
+        self, ctx: TenantContext, resource: LeasableResource, request: LeaseRequest
     ) -> bool:
         return True
 
     def grant_rows(
-        self, ctx: TenantContext, resource: Resource, request: LeaseRequest, lease: Lease
+        self, ctx: TenantContext, resource: LeasableResource, request: LeaseRequest, lease: Lease
     ) -> tuple[OutboxRow, ...]:
         return ()
 
@@ -65,7 +65,7 @@ class OrchestrationWaiterImpl(WaiterInterface):
     @staticmethod
     def _wake(ctx: TenantContext, waiter_id: UUID) -> tuple[OutboxRow, ...]:
         """A `WAKE_PARKED` item naming the one record."""
-        payload = WakeParkedPayload(reason=ParkReason.RESOURCE, record_id=waiter_id)
+        payload = WakeParkedPayload(reason=ParkReason.LEASABLE_RESOURCE, record_id=waiter_id)
         return (
             outbox_row(
                 ctx,

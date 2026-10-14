@@ -106,7 +106,7 @@ class WakeParkedPayload(OmBase):
     that answers again clears `provider_unavailable`); the item's target is
     the org. Every record parked for it is resumed when the item runs, or
     the one `record_id` names, when the reason was that record's alone (a
-    grant, or its request's end without one, clears `resource` for the
+    grant, or its request's end without one, clears `leasable_resource` for the
     record it was for). A park that knows when its reason may clear (a
     provider marked out until a retry time) asks for the org's wake then:
     the item waits in the queue until `not_before`, and the parks that name

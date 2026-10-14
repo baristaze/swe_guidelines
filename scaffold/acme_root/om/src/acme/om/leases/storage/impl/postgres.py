@@ -23,9 +23,14 @@ from acme.om.base import EMPTY_UUID
 from acme.om.exceptions import TenantMismatch, UniqueKeyTaken
 from acme.om.leases.rules import grant_fits
 from acme.om.leases.storage import LeasesStorageInterface
+from acme.om.leases.storage.tables.leasable_resources import LeasableResources
 from acme.om.leases.storage.tables.lease_requests import LeaseRequests
 from acme.om.leases.storage.tables.leases import Leases
-from acme.om.leases.storage.tables.resources import Resources
+from acme.om.leases.types.leasable_resource import (
+    LeasableResource,
+    LeasableResourceKind,
+    LeasableResourceUpdate,
+)
 from acme.om.leases.types.lease import Grant, Lease, LeaseStatus
 from acme.om.leases.types.request import (
     EndReason,
@@ -35,7 +40,6 @@ from acme.om.leases.types.request import (
     RequestStatus,
     WaiterKind,
 )
-from acme.om.leases.types.resource import Resource, ResourceKind, ResourceUpdate
 from acme.om.orchestrations.storage.impl.postgres import land_step
 from acme.om.orchestrations.types.orchestration import Step
 from acme.om.outbox.storage.tables.outbox_rows import OutboxRows
@@ -43,25 +47,25 @@ from acme.om.outbox.types.row import OutboxRow
 from acme.om.storage.impl.pg_base import PLAN_WITH_VALUES, PgStorageBase, delete_batch, deleted
 from acme.om.storage.utils.translation import to_model, to_row, to_values
 
-REF_KEY = "uq_resources_org_id_kind_ref_id"
+REF_KEY = "uq_leasable_resources_org_id_kind_ref_id"
 WAITING = RequestStatus.WAITING.value
 ACTIVE = LeaseStatus.ACTIVE.value
 
 
-def register_statement(org_id: UUID, resource: Resource) -> Insert:
+def register_statement(org_id: UUID, resource: LeasableResource) -> Insert:
     """The registration as a companion statement, run by the storage of the
     namespace that owns the kind, in the transaction that writes its own row:
     the resource lands with it, or not at all. A kind and row registered
     already leave the stored resource as it is."""
-    values = {**to_values(resource, Resources), "org_id": org_id}
-    return pg_insert(Resources).values(**values).on_conflict_do_nothing()
+    values = {**to_values(resource, LeasableResources), "org_id": org_id}
+    return pg_insert(LeasableResources).values(**values).on_conflict_do_nothing()
 
 
 def update_statement(
     org_id: UUID,
-    kind: ResourceKind,
+    kind: LeasableResourceKind,
     ref_id: UUID,
-    change: ResourceUpdate,
+    change: LeasableResourceUpdate,
     at: datetime,
     actor: UUID,
 ) -> Update:
@@ -74,19 +78,19 @@ def update_statement(
     if change.labels is not None:
         values["labels"] = list(change.labels)
     return (
-        update(Resources)
+        update(LeasableResources)
         .where(
-            Resources.org_id == org_id,
-            Resources.kind == kind.value,
-            Resources.ref_id == ref_id,
-            Resources.retired_at.is_(None),
+            LeasableResources.org_id == org_id,
+            LeasableResources.kind == kind.value,
+            LeasableResources.ref_id == ref_id,
+            LeasableResources.retired_at.is_(None),
         )
         .values(**values)
     )
 
 
 def retire_statement(
-    org_id: UUID, kind: ResourceKind, ref_id: UUID, at: datetime, actor: UUID
+    org_id: UUID, kind: LeasableResourceKind, ref_id: UUID, at: datetime, actor: UUID
 ) -> Update:
     """The retirement as a companion statement, in the transaction that
     retires the owner's row; it takes the anchor's lock. Its lease runs on
@@ -94,12 +98,12 @@ def retire_statement(
     until the manager takes them out of line, each with its waiter's wake,
     which the owner's commit knows nothing of."""
     return (
-        update(Resources)
+        update(LeasableResources)
         .where(
-            Resources.org_id == org_id,
-            Resources.kind == kind.value,
-            Resources.ref_id == ref_id,
-            Resources.retired_at.is_(None),
+            LeasableResources.org_id == org_id,
+            LeasableResources.kind == kind.value,
+            LeasableResources.ref_id == ref_id,
+            LeasableResources.retired_at.is_(None),
         )
         .values(retired_at=at, available=False, updated_at=at, updated_by=actor)
     )
@@ -116,69 +120,77 @@ def _stamp(row: Any, at: datetime, actor: UUID) -> None:
 
 
 class LeasesStoragePostgresImpl(PgStorageBase, LeasesStorageInterface):
-    # Resources.
+    # LeasableResources.
 
-    async def create_resource(
-        self, org_id: UUID, resource: Resource, outbox_rows: tuple[OutboxRow, ...]
+    async def create_leasable_resource(
+        self, org_id: UUID, resource: LeasableResource, outbox_rows: tuple[OutboxRow, ...]
     ) -> bool:
         try:
-            return await self._insert(Resources, org_id, resource, outbox_rows)
+            return await self._insert(LeasableResources, org_id, resource, outbox_rows)
         except UniqueKeyTaken as taken:
             # The kind and row are registered under another id; that one stands.
             if REF_KEY in taken.message:
                 return False
             raise
 
-    async def read_resource(self, org_id: UUID, resource_id: UUID) -> Resource | None:
-        stmt = select(Resources).where(Resources.org_id == org_id, Resources.id == resource_id)
-        return await self._one(stmt, org_id, Resource)
-
-    async def read_resource_by_ref(
-        self, org_id: UUID, kind: ResourceKind, ref_id: UUID
-    ) -> Resource | None:
-        stmt = select(Resources).where(
-            Resources.org_id == org_id, Resources.kind == kind.value, Resources.ref_id == ref_id
+    async def read_leasable_resource(
+        self, org_id: UUID, leasable_resource_id: UUID
+    ) -> LeasableResource | None:
+        stmt = select(LeasableResources).where(
+            LeasableResources.org_id == org_id, LeasableResources.id == leasable_resource_id
         )
-        return await self._one(stmt, org_id, Resource)
+        return await self._one(stmt, org_id, LeasableResource)
 
-    async def read_resources(self, org_id: UUID, kind: ResourceKind, limit: int) -> list[Resource]:
+    async def read_leasable_resource_by_ref(
+        self, org_id: UUID, kind: LeasableResourceKind, ref_id: UUID
+    ) -> LeasableResource | None:
+        stmt = select(LeasableResources).where(
+            LeasableResources.org_id == org_id,
+            LeasableResources.kind == kind.value,
+            LeasableResources.ref_id == ref_id,
+        )
+        return await self._one(stmt, org_id, LeasableResource)
+
+    async def read_leasable_resources(
+        self, org_id: UUID, kind: LeasableResourceKind, limit: int
+    ) -> list[LeasableResource]:
         stmt = (
-            select(Resources)
+            select(LeasableResources)
             .where(
-                Resources.org_id == org_id,
-                Resources.kind == kind.value,
-                Resources.retired_at.is_(None),
+                LeasableResources.org_id == org_id,
+                LeasableResources.kind == kind.value,
+                LeasableResources.retired_at.is_(None),
             )
-            .order_by(Resources.id)
+            .order_by(LeasableResources.id)
             .limit(limit)
         )
-        return await self._all(stmt, org_id, Resource)
+        return await self._all(stmt, org_id, LeasableResource)
 
-    async def read_free(self, org_id: UUID, limit: int) -> list[Resource]:
+    async def read_free(self, org_id: UUID, limit: int) -> list[LeasableResource]:
         stmt = (
-            select(Resources)
+            select(LeasableResources)
             .where(
-                Resources.org_id == org_id,
-                Resources.lease_id.is_(None),
-                Resources.available.is_(True),
-                Resources.retired_at.is_(None),
+                LeasableResources.org_id == org_id,
+                LeasableResources.lease_id.is_(None),
+                LeasableResources.available.is_(True),
+                LeasableResources.retired_at.is_(None),
             )
-            .order_by(Resources.id)
+            .order_by(LeasableResources.id)
             .limit(limit)
         )
-        return await self._all(stmt, org_id, Resource)
+        return await self._all(stmt, org_id, LeasableResource)
 
     async def write_availability(
         self,
         org_id: UUID,
-        resource_id: UUID,
+        leasable_resource_id: UUID,
         available: bool,
         at: datetime,
         actor: UUID,
         outbox_rows: tuple[OutboxRow, ...],
-    ) -> Resource | None:
-        async with self._session_for(Resources, org_id=org_id) as session:
-            anchor = await self._anchor(session, org_id, resource_id)
+    ) -> LeasableResource | None:
+        async with self._session_for(LeasableResources, org_id=org_id) as session:
+            anchor = await self._anchor(session, org_id, leasable_resource_id)
             if anchor is None or anchor.retired_at is not None:
                 await session.rollback()
                 return None
@@ -186,52 +198,54 @@ class LeasesStoragePostgresImpl(PgStorageBase, LeasesStorageInterface):
             _stamp(anchor, at, actor)
             _land(session, org_id, outbox_rows)
             await session.flush()
-            stored = to_model(anchor, Resource)
+            stored = to_model(anchor, LeasableResource)
             await session.commit()
             return stored
 
-    async def update_resource(
+    async def update_leasable_resource(
         self,
         org_id: UUID,
-        resource_id: UUID,
-        change: ResourceUpdate,
+        leasable_resource_id: UUID,
+        change: LeasableResourceUpdate,
         at: datetime,
         actor: UUID,
         outbox_rows: tuple[OutboxRow, ...],
-    ) -> Resource | None:
-        async with self._session_for(Resources, org_id=org_id) as session:
-            anchor = await self._anchor(session, org_id, resource_id)
+    ) -> LeasableResource | None:
+        async with self._session_for(LeasableResources, org_id=org_id) as session:
+            anchor = await self._anchor(session, org_id, leasable_resource_id)
             if anchor is None or anchor.retired_at is not None:
                 await session.rollback()
                 return None
             await session.execute(
                 update_statement(
-                    org_id, ResourceKind(anchor.kind), anchor.ref_id, change, at, actor
+                    org_id, LeasableResourceKind(anchor.kind), anchor.ref_id, change, at, actor
                 )
             )
             _land(session, org_id, outbox_rows)
             await session.commit()
-        return await self.read_resource(org_id, resource_id)
+        return await self.read_leasable_resource(org_id, leasable_resource_id)
 
-    async def retire_resource(
+    async def retire_leasable_resource(
         self,
         org_id: UUID,
-        resource_id: UUID,
+        leasable_resource_id: UUID,
         at: datetime,
         actor: UUID,
         outbox_rows: tuple[OutboxRow, ...],
-    ) -> Resource | None:
-        async with self._session_for(Resources, org_id=org_id) as session:
-            anchor = await self._anchor(session, org_id, resource_id)
+    ) -> LeasableResource | None:
+        async with self._session_for(LeasableResources, org_id=org_id) as session:
+            anchor = await self._anchor(session, org_id, leasable_resource_id)
             if anchor is None or anchor.retired_at is not None:
                 await session.rollback()
                 return None
             await session.execute(
-                retire_statement(org_id, ResourceKind(anchor.kind), anchor.ref_id, at, actor)
+                retire_statement(
+                    org_id, LeasableResourceKind(anchor.kind), anchor.ref_id, at, actor
+                )
             )
             _land(session, org_id, outbox_rows)
             await session.commit()
-        return await self.read_resource(org_id, resource_id)
+        return await self.read_leasable_resource(org_id, leasable_resource_id)
 
     # Requests.
 
@@ -280,7 +294,7 @@ class LeasesStoragePostgresImpl(PgStorageBase, LeasesStorageInterface):
         return await self._one(stmt, org_id, LeaseRequest)
 
     async def read_waiting(
-        self, org_id: UUID, kind: ResourceKind, limit: int
+        self, org_id: UUID, kind: LeasableResourceKind, limit: int
     ) -> list[LeaseRequest]:
         stmt = (
             select(LeaseRequests)
@@ -308,15 +322,15 @@ class LeasesStoragePostgresImpl(PgStorageBase, LeasesStorageInterface):
         return await self._all(stmt, org_id, LeaseRequest)
 
     async def read_stranded(self, org_id: UUID, limit: int) -> list[LeaseRequest]:
-        retired = select(Resources.id).where(
-            Resources.org_id == org_id, Resources.retired_at.is_not(None)
+        retired = select(LeasableResources.id).where(
+            LeasableResources.org_id == org_id, LeasableResources.retired_at.is_not(None)
         )
         stmt = (
             select(LeaseRequests)
             .where(
                 LeaseRequests.org_id == org_id,
                 LeaseRequests.status == WAITING,
-                LeaseRequests.resource_id.in_(retired.scalar_subquery()),
+                LeaseRequests.leasable_resource_id.in_(retired.scalar_subquery()),
             )
             .order_by(LeaseRequests.rank, LeaseRequests.id)
             .limit(limit)
@@ -414,8 +428,8 @@ class LeasesStoragePostgresImpl(PgStorageBase, LeasesStorageInterface):
         lease = grant.lease
         if lease.token != grant.expected_token + 1:
             raise ValueError("a grant's token is one above the anchor's")
-        async with self._session_for(Resources, org_id=org_id) as session:
-            anchor = await self._anchor(session, org_id, lease.resource_id)
+        async with self._session_for(LeasableResources, org_id=org_id) as session:
+            anchor = await self._anchor(session, org_id, lease.leasable_resource_id)
             if (
                 anchor is None
                 or anchor.token != grant.expected_token
@@ -427,7 +441,7 @@ class LeasesStoragePostgresImpl(PgStorageBase, LeasesStorageInterface):
                 return None
             request = await self._waiting(session, org_id, lease.request_id)
             if request is None or not grant_fits(
-                to_model(request, LeaseRequest), to_model(anchor, Resource), lease
+                to_model(request, LeaseRequest), to_model(anchor, LeasableResource), lease
             ):
                 await session.rollback()
                 return None
@@ -454,7 +468,7 @@ class LeasesStoragePostgresImpl(PgStorageBase, LeasesStorageInterface):
         return await self._one(stmt, org_id, Lease)
 
     async def read_leases(
-        self, org_id: UUID, resource_id: UUID | None, after: HistoryMark | None, limit: int
+        self, org_id: UUID, leasable_resource_id: UUID | None, after: HistoryMark | None, limit: int
     ) -> list[LeaseEntry]:
         stmt = (
             select(Leases, LeaseRequests)
@@ -469,8 +483,8 @@ class LeasesStoragePostgresImpl(PgStorageBase, LeasesStorageInterface):
             .order_by(Leases.created_at.desc(), Leases.id.desc())
             .limit(limit)
         )
-        if resource_id is not None:
-            stmt = stmt.where(Leases.resource_id == resource_id)
+        if leasable_resource_id is not None:
+            stmt = stmt.where(Leases.leasable_resource_id == leasable_resource_id)
         if after is not None:
             # The page after the mark, newest first: one range of the index.
             mark = (after.created_at, after.lease_id)
@@ -610,33 +624,33 @@ class LeasesStoragePostgresImpl(PgStorageBase, LeasesStorageInterface):
         # for as long as that line's resource is held, and enough such orgs
         # would keep every other out of the batch.
         in_line = exists().where(
-            LeaseRequests.org_id == Resources.org_id,
-            LeaseRequests.kind == Resources.kind,
+            LeaseRequests.org_id == LeasableResources.org_id,
+            LeaseRequests.kind == LeasableResources.kind,
             LeaseRequests.status == WAITING,
             or_(
-                LeaseRequests.resource_id == Resources.id,
+                LeaseRequests.leasable_resource_id == LeasableResources.id,
                 and_(
-                    LeaseRequests.resource_id.is_(None),
-                    Resources.labels.contains(LeaseRequests.labels),
+                    LeaseRequests.leasable_resource_id.is_(None),
+                    LeasableResources.labels.contains(LeaseRequests.labels),
                 ),
             ),
         )
-        free = select(Resources.org_id).where(
-            Resources.lease_id.is_(None),
-            Resources.available.is_(True),
-            Resources.retired_at.is_(None),
+        free = select(LeasableResources.org_id).where(
+            LeasableResources.lease_id.is_(None),
+            LeasableResources.available.is_(True),
+            LeasableResources.retired_at.is_(None),
             in_line,
         )
         stranded = (
             select(LeaseRequests.org_id)
             .join(
-                Resources,
+                LeasableResources,
                 and_(
-                    Resources.org_id == LeaseRequests.org_id,
-                    Resources.id == LeaseRequests.resource_id,
+                    LeasableResources.org_id == LeaseRequests.org_id,
+                    LeasableResources.id == LeaseRequests.leasable_resource_id,
                 ),
             )
-            .where(LeaseRequests.status == WAITING, Resources.retired_at.is_not(None))
+            .where(LeaseRequests.status == WAITING, LeasableResources.retired_at.is_not(None))
         )
         due = union(lapsed, overdue, free, stranded).subquery()
         stmt = select(due.c.org_id).order_by(due.c.org_id).limit(limit)
@@ -659,10 +673,10 @@ class LeasesStoragePostgresImpl(PgStorageBase, LeasesStorageInterface):
                 limit=limit,
             ),
             delete_batch(
-                Resources,
-                Resources.retired_at.is_not(None),
-                Resources.retired_at < before,
-                Resources.lease_id.is_(None),
+                LeasableResources,
+                LeasableResources.retired_at.is_not(None),
+                LeasableResources.retired_at < before,
+                LeasableResources.lease_id.is_(None),
                 limit=limit,
             ),
         )
@@ -677,7 +691,7 @@ class LeasesStoragePostgresImpl(PgStorageBase, LeasesStorageInterface):
     async def purge_tenant(self, org_id: UUID, limit: int) -> int:
         purged = 0
         async with self._session_for(Leases, org_id=org_id) as session:
-            for table in (Leases, LeaseRequests, Resources):
+            for table in (Leases, LeaseRequests, LeasableResources):
                 stmt = delete_batch(table, table.org_id == org_id, limit=limit)
                 purged += deleted(await session.execute(stmt))
             await session.commit()
@@ -686,25 +700,29 @@ class LeasesStoragePostgresImpl(PgStorageBase, LeasesStorageInterface):
     # The shared steps.
 
     @staticmethod
-    async def _anchor(session: AsyncSession, org_id: UUID, resource_id: UUID) -> Resources | None:
+    async def _anchor(
+        session: AsyncSession, org_id: UUID, leasable_resource_id: UUID
+    ) -> LeasableResources | None:
         """The anchor's row, locked: every writer of a lease or a line of the
         resource takes it first."""
         stmt = (
-            select(Resources)
-            .where(Resources.org_id == org_id, Resources.id == resource_id)
+            select(LeasableResources)
+            .where(LeasableResources.org_id == org_id, LeasableResources.id == leasable_resource_id)
             .with_for_update()
         )
         return (await session.execute(stmt)).scalar_one_or_none()
 
     async def _anchor_of(
         self, session: AsyncSession, org_id: UUID, lease_id: UUID
-    ) -> Resources | None:
+    ) -> LeasableResources | None:
         """The anchor of a lease's resource, locked, before the lease's row."""
-        stmt = select(Leases.resource_id).where(Leases.org_id == org_id, Leases.id == lease_id)
-        resource_id = (await session.execute(stmt)).scalar_one_or_none()
-        if resource_id is None:
+        stmt = select(Leases.leasable_resource_id).where(
+            Leases.org_id == org_id, Leases.id == lease_id
+        )
+        leasable_resource_id = (await session.execute(stmt)).scalar_one_or_none()
+        if leasable_resource_id is None:
             return None
-        return await self._anchor(session, org_id, resource_id)
+        return await self._anchor(session, org_id, leasable_resource_id)
 
     @staticmethod
     async def _waiting(
@@ -733,14 +751,14 @@ class LeasesStoragePostgresImpl(PgStorageBase, LeasesStorageInterface):
         await session.commit()
         return stored
 
-    async def _one[M: Resource | Lease | LeaseRequest](
+    async def _one[M: LeasableResource | Lease | LeaseRequest](
         self, stmt: Any, org_id: UUID, model: type[M]
     ) -> M | None:
         async with self._session_for(stmt, org_id=org_id) as session:
             row = (await session.execute(stmt)).scalar_one_or_none()
             return None if row is None else to_model(row, model)
 
-    async def _all[M: Resource | Lease | LeaseRequest](
+    async def _all[M: LeasableResource | Lease | LeaseRequest](
         self, stmt: Any, org_id: UUID, model: type[M]
     ) -> list[M]:
         async with self._session_for(stmt, org_id=org_id) as session:

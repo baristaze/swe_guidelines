@@ -30,7 +30,7 @@ class Lease(Identifiable, Trackable):
     )
     """A lease is the grant's and its transitions'; no caller writes it."""
 
-    resource_id: UUID
+    leasable_resource_id: UUID
     request_id: UUID  # the request it answered; one lease per request
     holder_id: UUID  # the principal that asked, and the one that renews and releases
     token: int  # one above the anchor's when it was granted

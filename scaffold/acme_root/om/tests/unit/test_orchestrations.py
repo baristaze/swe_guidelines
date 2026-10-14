@@ -117,7 +117,7 @@ def test_a_bound_fails_the_record_and_names_why() -> None:
 
 def test_a_cancel_settles_the_record_keeping_what_it_made() -> None:
     record = a_record(
-        status=OrchestrationStatus.PARKED, park_reason=ParkReason.RESOURCE,
+        status=OrchestrationStatus.PARKED, park_reason=ParkReason.LEASABLE_RESOURCE,
         cursor=7, total=9, applied=6, skipped=1, row_errors=[{"row": 3, "reason": "malformed"}],
     )  # fmt: skip
     now = utcnow()
@@ -433,13 +433,13 @@ async def test_a_step_in_flight_lands_nothing_after_a_cancel(world: World) -> No
 async def test_no_wake_revives_a_cancelled_record(world: World) -> None:
     ctx = await world.org()
     orchestrations = world.managers.orchestrations
-    by_id = await parked_record(world, ctx, ParkReason.RESOURCE)
+    by_id = await parked_record(world, ctx, ParkReason.LEASABLE_RESOURCE)
     in_batch = await parked_record(world, ctx)
     ended = {
         record.id: await orchestrations.cancel(ctx, record.id, "gave up")
         for record in (by_id, in_batch)
     }
-    assert await orchestrations.wake(ctx, ParkReason.RESOURCE, by_id.id) == 0
+    assert await orchestrations.wake(ctx, ParkReason.LEASABLE_RESOURCE, by_id.id) == 0
     assert await orchestrations.wake(ctx, ParkReason.PROVIDER_UNAVAILABLE) == 0
     for record_id in ended:
         with pytest.raises(ValidationFailed):

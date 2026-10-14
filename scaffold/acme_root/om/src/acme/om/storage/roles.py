@@ -29,7 +29,7 @@ TABLE_ROLES: dict[str, DatabaseRole] = {
     "change_event_cursors": DatabaseRole.ACTIVITY,
     "outbox_rows": DatabaseRole.CORE,
     "orchestrations": DatabaseRole.CORE,
-    "resources": DatabaseRole.CORE,
+    "leasable_resources": DatabaseRole.CORE,
     "leases": DatabaseRole.CORE,
     "lease_requests": DatabaseRole.CORE,
     "system_sizes": DatabaseRole.ADMIN,
@@ -39,6 +39,7 @@ DROPPED_TABLE_ROLES: dict[str, DatabaseRole] = {
     "event_cursors": DatabaseRole.ACTIVITY,
     "events": DatabaseRole.ACTIVITY,
     "platform_sizes": DatabaseRole.ADMIN,
+    "resources": DatabaseRole.CORE,
     "sessions": DatabaseRole.CORE,
 }
 """Tables the migration chain made and later dropped or renamed, by the name

@@ -7,26 +7,26 @@ from sqlalchemy.orm import Mapped, mapped_column
 from acme.om.storage.tables.base import Base, IdentifiableMixin, TrackableMixin
 
 
-class Resources(IdentifiableMixin, TrackableMixin, Base):
-    __tablename__ = "resources"
+class LeasableResources(IdentifiableMixin, TrackableMixin, Base):
+    __tablename__ = "leasable_resources"
     # org_id leads every read of a tenant's resources, so it gets no index of
     # its own.
     __org_id_index__ = False
     __table_args__ = (
         # One resource per org, kind, and the row it stands for.
-        Index("uq_resources_org_id_kind_ref_id", "org_id", "kind", "ref_id", unique=True),
+        Index("uq_leasable_resources_org_id_kind_ref_id", "org_id", "kind", "ref_id", unique=True),
         # The org's resources of a kind, by id.
-        Index("ix_resources_org_id_kind_id", "org_id", "kind", "id"),
+        Index("ix_leasable_resources_org_id_kind_id", "org_id", "kind", "id"),
         # The free ones, which the sweep offers to their lines.
         Index(
-            "ix_resources_org_id_kind_free",
+            "ix_leasable_resources_org_id_kind_free",
             "org_id",
             "kind",
             postgresql_where=text("lease_id IS NULL AND available AND retired_at IS NULL"),
         ),
         # The retired ones the purge takes, across tenants, by their retirement.
         Index(
-            "ix_resources_retired_at",
+            "ix_leasable_resources_retired_at",
             "retired_at",
             postgresql_where=text("retired_at IS NOT NULL"),
         ),

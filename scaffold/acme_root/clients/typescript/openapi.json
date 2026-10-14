@@ -173,7 +173,7 @@
         "description": "An ask for a lease: one resource by its id, or a selector, the labels\na resource of `kind` must offer. `payload` is in the shape the kind\nfixes; the term is bounded by the resource's, and the ask expires in line\nafter `wait_seconds`. When the grant starts a job, `start_seconds` is the\nwindow the job has to start in, bounded the same way; none gives it the\nterm.",
         "properties": {
           "kind": {
-            "$ref": "#/components/schemas/ResourceKind"
+            "$ref": "#/components/schemas/LeasableResourceKind"
           },
           "labels": {
             "anyOf": [
@@ -193,12 +193,7 @@
             ],
             "title": "Labels"
           },
-          "payload": {
-            "additionalProperties": true,
-            "title": "Payload",
-            "type": "object"
-          },
-          "resource_id": {
+          "leasable_resource_id": {
             "anyOf": [
               {
                 "format": "uuid",
@@ -208,7 +203,12 @@
                 "type": "null"
               }
             ],
-            "title": "Resource Id"
+            "title": "Leasable Resource Id"
+          },
+          "payload": {
+            "additionalProperties": true,
+            "title": "Payload",
+            "type": "object"
           },
           "start_seconds": {
             "anyOf": [
@@ -1194,6 +1194,107 @@
         "title": "LastOwnerDetail",
         "type": "object"
       },
+      "LeasableResourceKind": {
+        "description": "A product adds its kinds here, each with the shape of what its ask\ncarries (`ASK_PAYLOADS`) and its hooks (`LeasableResourceKindInterface`).",
+        "enum": [
+          "noop"
+        ],
+        "title": "LeasableResourceKind",
+        "type": "string"
+      },
+      "LeasableResourceView": {
+        "description": "A resource and its anchor: the highest token granted on it, and the\nlease that holds it until when.",
+        "properties": {
+          "available": {
+            "title": "Available",
+            "type": "boolean"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "fencing_token": {
+            "title": "Fencing Token",
+            "type": "integer"
+          },
+          "held_until": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Held Until"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/LeasableResourceKind"
+          },
+          "labels": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Labels",
+            "type": "array"
+          },
+          "lease_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lease Id"
+          },
+          "max_term_seconds": {
+            "title": "Max Term Seconds",
+            "type": "integer"
+          },
+          "ref_id": {
+            "format": "uuid",
+            "title": "Ref Id",
+            "type": "string"
+          },
+          "retired_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Retired At"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "ref_id",
+          "labels",
+          "max_term_seconds",
+          "available",
+          "retired_at",
+          "fencing_token",
+          "lease_id",
+          "held_until",
+          "created_at"
+        ],
+        "title": "LeasableResourceView",
+        "type": "object"
+      },
       "LeaseEntryView": {
         "description": "One lease of a history, with the request it answered; none when the\nrequest was purged first.",
         "properties": {
@@ -1275,7 +1376,7 @@
             "type": "string"
           },
           "kind": {
-            "$ref": "#/components/schemas/ResourceKind"
+            "$ref": "#/components/schemas/LeasableResourceKind"
           },
           "labels": {
             "anyOf": [
@@ -1290,6 +1391,18 @@
               }
             ],
             "title": "Labels"
+          },
+          "leasable_resource_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Leasable Resource Id"
           },
           "lease_id": {
             "anyOf": [
@@ -1306,18 +1419,6 @@
           "rank": {
             "title": "Rank",
             "type": "number"
-          },
-          "resource_id": {
-            "anyOf": [
-              {
-                "format": "uuid",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Resource Id"
           },
           "start_seconds": {
             "anyOf": [
@@ -1375,7 +1476,7 @@
         "required": [
           "id",
           "kind",
-          "resource_id",
+          "leasable_resource_id",
           "labels",
           "waiter_kind",
           "waiter_id",
@@ -1445,14 +1546,14 @@
             "title": "Id",
             "type": "string"
           },
+          "leasable_resource_id": {
+            "format": "uuid",
+            "title": "Leasable Resource Id",
+            "type": "string"
+          },
           "request_id": {
             "format": "uuid",
             "title": "Request Id",
-            "type": "string"
-          },
-          "resource_id": {
-            "format": "uuid",
-            "title": "Resource Id",
             "type": "string"
           },
           "started_at": {
@@ -1477,7 +1578,7 @@
         },
         "required": [
           "id",
-          "resource_id",
+          "leasable_resource_id",
           "request_id",
           "holder_id",
           "fencing_token",
@@ -1495,6 +1596,9 @@
       "LineView": {
         "description": "A resource and the requests in its line, first first, with each one's\nplace and estimate in the same order.",
         "properties": {
+          "leasable_resource": {
+            "$ref": "#/components/schemas/LeasableResourceView"
+          },
           "places": {
             "items": {
               "$ref": "#/components/schemas/PlaceView"
@@ -1508,13 +1612,10 @@
             },
             "title": "Requests",
             "type": "array"
-          },
-          "resource": {
-            "$ref": "#/components/schemas/ResourceView"
           }
         },
         "required": [
-          "resource",
+          "leasable_resource",
           "requests",
           "places"
         ],
@@ -2196,107 +2297,6 @@
         ],
         "title": "RequestStatus",
         "type": "string"
-      },
-      "ResourceKind": {
-        "description": "A product adds its kinds here, each with the shape of what its ask\ncarries (`ASK_PAYLOADS`) and its hooks (`ResourceKindInterface`).",
-        "enum": [
-          "noop"
-        ],
-        "title": "ResourceKind",
-        "type": "string"
-      },
-      "ResourceView": {
-        "description": "A resource and its anchor: the highest token granted on it, and the\nlease that holds it until when.",
-        "properties": {
-          "available": {
-            "title": "Available",
-            "type": "boolean"
-          },
-          "created_at": {
-            "format": "date-time",
-            "title": "Created At",
-            "type": "string"
-          },
-          "fencing_token": {
-            "title": "Fencing Token",
-            "type": "integer"
-          },
-          "held_until": {
-            "anyOf": [
-              {
-                "format": "date-time",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Held Until"
-          },
-          "id": {
-            "format": "uuid",
-            "title": "Id",
-            "type": "string"
-          },
-          "kind": {
-            "$ref": "#/components/schemas/ResourceKind"
-          },
-          "labels": {
-            "items": {
-              "type": "string"
-            },
-            "title": "Labels",
-            "type": "array"
-          },
-          "lease_id": {
-            "anyOf": [
-              {
-                "format": "uuid",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Lease Id"
-          },
-          "max_term_seconds": {
-            "title": "Max Term Seconds",
-            "type": "integer"
-          },
-          "ref_id": {
-            "format": "uuid",
-            "title": "Ref Id",
-            "type": "string"
-          },
-          "retired_at": {
-            "anyOf": [
-              {
-                "format": "date-time",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Retired At"
-          }
-        },
-        "required": [
-          "id",
-          "kind",
-          "ref_id",
-          "labels",
-          "max_term_seconds",
-          "available",
-          "retired_at",
-          "fencing_token",
-          "lease_id",
-          "held_until",
-          "created_at"
-        ],
-        "title": "ResourceView",
-        "type": "object"
       },
       "Role": {
         "enum": [
@@ -6587,7 +6587,7 @@
         "parameters": [
           {
             "in": "query",
-            "name": "resource_id",
+            "name": "leasable_resource_id",
             "required": false,
             "schema": {
               "anyOf": [
@@ -6599,7 +6599,7 @@
                   "type": "null"
                 }
               ],
-              "title": "Resource Id"
+              "title": "Leasable Resource Id"
             }
           },
           {
@@ -6700,6 +6700,97 @@
           }
         },
         "summary": "List Leases",
+        "tags": [
+          "leases"
+        ]
+      }
+    },
+    "/v1/leases/leasable-resources/{leasable_resource_id}/line": {
+      "get": {
+        "operationId": "line_v1_leases_leasable_resources__leasable_resource_id__line_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "leasable_resource_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Leasable Resource Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-app",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-App"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-app-version",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-App-Version"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LineView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Line",
         "tags": [
           "leases"
         ]
@@ -7105,97 +7196,6 @@
           }
         },
         "summary": "Reorder",
-        "tags": [
-          "leases"
-        ]
-      }
-    },
-    "/v1/leases/resources/{resource_id}/line": {
-      "get": {
-        "operationId": "line_v1_leases_resources__resource_id__line_get",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "resource_id",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "title": "Resource Id",
-              "type": "string"
-            }
-          },
-          {
-            "in": "header",
-            "name": "authorization",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Authorization"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-app",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-App"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-app-version",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-App-Version"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/LineView"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Line",
         "tags": [
           "leases"
         ]

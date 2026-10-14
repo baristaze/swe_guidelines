@@ -586,6 +586,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/leases/leasable-resources/{leasable_resource_id}/line": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Line */
+        get: operations["line_v1_leases_leasable_resources__leasable_resource_id__line_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/leases/requests": {
         parameters: {
             query?: never;
@@ -660,23 +677,6 @@ export interface paths {
          * @description A manager's: the request moves in front of `before_id`, or to the end.
          */
         post: operations["reorder_v1_leases_requests__request_id__reorder_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/leases/resources/{resource_id}/line": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Line */
-        get: operations["line_v1_leases_resources__resource_id__line_get"];
-        put?: never;
-        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -1208,15 +1208,15 @@ export interface components {
          *     term.
          */
         AskRequest: {
-            kind: components["schemas"]["ResourceKind"];
+            kind: components["schemas"]["LeasableResourceKind"];
             /** Labels */
             labels?: string[] | null;
+            /** Leasable Resource Id */
+            leasable_resource_id?: string | null;
             /** Payload */
             payload?: {
                 [key: string]: unknown;
             };
-            /** Resource Id */
-            resource_id?: string | null;
             /** Start Seconds */
             start_seconds?: number | null;
             /**
@@ -1725,6 +1725,50 @@ export interface components {
             orgs: components["schemas"]["OwnedOrgRef"][];
         };
         /**
+         * LeasableResourceKind
+         * @description A product adds its kinds here, each with the shape of what its ask
+         *     carries (`ASK_PAYLOADS`) and its hooks (`LeasableResourceKindInterface`).
+         * @enum {string}
+         */
+        LeasableResourceKind: "noop";
+        /**
+         * LeasableResourceView
+         * @description A resource and its anchor: the highest token granted on it, and the
+         *     lease that holds it until when.
+         */
+        LeasableResourceView: {
+            /** Available */
+            available: boolean;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Fencing Token */
+            fencing_token: number;
+            /** Held Until */
+            held_until: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            kind: components["schemas"]["LeasableResourceKind"];
+            /** Labels */
+            labels: string[];
+            /** Lease Id */
+            lease_id: string | null;
+            /** Max Term Seconds */
+            max_term_seconds: number;
+            /**
+             * Ref Id
+             * Format: uuid
+             */
+            ref_id: string;
+            /** Retired At */
+            retired_at: string | null;
+        };
+        /**
          * LeaseEntryView
          * @description One lease of a history, with the request it answered; none when the
          *     request was purged first.
@@ -1762,15 +1806,15 @@ export interface components {
              * Format: uuid
              */
             id: string;
-            kind: components["schemas"]["ResourceKind"];
+            kind: components["schemas"]["LeasableResourceKind"];
             /** Labels */
             labels: string[] | null;
+            /** Leasable Resource Id */
+            leasable_resource_id: string | null;
             /** Lease Id */
             lease_id: string | null;
             /** Rank */
             rank: number;
-            /** Resource Id */
-            resource_id: string | null;
             /** Start Seconds */
             start_seconds: number | null;
             status: components["schemas"]["RequestStatus"];
@@ -1823,15 +1867,15 @@ export interface components {
              */
             id: string;
             /**
+             * Leasable Resource Id
+             * Format: uuid
+             */
+            leasable_resource_id: string;
+            /**
              * Request Id
              * Format: uuid
              */
             request_id: string;
-            /**
-             * Resource Id
-             * Format: uuid
-             */
-            resource_id: string;
             /** Started At */
             started_at: string | null;
             status: components["schemas"]["LeaseStatus"];
@@ -1844,11 +1888,11 @@ export interface components {
          *     place and estimate in the same order.
          */
         LineView: {
+            leasable_resource: components["schemas"]["LeasableResourceView"];
             /** Places */
             places: components["schemas"]["PlaceView"][];
             /** Requests */
             requests: components["schemas"]["LeaseRequestView"][];
-            resource: components["schemas"]["ResourceView"];
         };
         /**
          * LogoutRequest
@@ -2184,50 +2228,6 @@ export interface components {
          * @enum {string}
          */
         RequestStatus: "waiting" | "granted" | "cancelled" | "expired";
-        /**
-         * ResourceKind
-         * @description A product adds its kinds here, each with the shape of what its ask
-         *     carries (`ASK_PAYLOADS`) and its hooks (`ResourceKindInterface`).
-         * @enum {string}
-         */
-        ResourceKind: "noop";
-        /**
-         * ResourceView
-         * @description A resource and its anchor: the highest token granted on it, and the
-         *     lease that holds it until when.
-         */
-        ResourceView: {
-            /** Available */
-            available: boolean;
-            /**
-             * Created At
-             * Format: date-time
-             */
-            created_at: string;
-            /** Fencing Token */
-            fencing_token: number;
-            /** Held Until */
-            held_until: string | null;
-            /**
-             * Id
-             * Format: uuid
-             */
-            id: string;
-            kind: components["schemas"]["ResourceKind"];
-            /** Labels */
-            labels: string[];
-            /** Lease Id */
-            lease_id: string | null;
-            /** Max Term Seconds */
-            max_term_seconds: number;
-            /**
-             * Ref Id
-             * Format: uuid
-             */
-            ref_id: string;
-            /** Retired At */
-            retired_at: string | null;
-        };
         /**
          * Role
          * @enum {string}
@@ -3953,7 +3953,7 @@ export interface operations {
     list_leases_v1_leases_get: {
         parameters: {
             query?: {
-                resource_id?: string | null;
+                leasable_resource_id?: string | null;
                 cursor?: string | null;
                 limit?: number;
             };
@@ -3974,6 +3974,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["LeasePageView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    line_v1_leases_leasable_resources__leasable_resource_id__line_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "x-app"?: string | null;
+                "x-app-version"?: string | null;
+            };
+            path: {
+                leasable_resource_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LineView"];
                 };
             };
             /** @description Validation Error */
@@ -4130,41 +4165,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["LeaseRequestView"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    line_v1_leases_resources__resource_id__line_get: {
-        parameters: {
-            query?: never;
-            header?: {
-                authorization?: string | null;
-                "x-app"?: string | null;
-                "x-app-version"?: string | null;
-            };
-            path: {
-                resource_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["LineView"];
                 };
             };
             /** @description Validation Error */

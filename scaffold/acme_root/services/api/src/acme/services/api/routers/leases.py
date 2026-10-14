@@ -60,22 +60,22 @@ async def reorder(
     return await leases.reorder(ctx, request_id, body)
 
 
-@router.get("/resources/{resource_id}/line", response_model=LineView)
-async def line(ctx: Ctx, leases: LeasesService, resource_id: UUID) -> LineView:
-    return await leases.line(ctx, resource_id)
+@router.get("/leasable-resources/{leasable_resource_id}/line", response_model=LineView)
+async def line(ctx: Ctx, leases: LeasesService, leasable_resource_id: UUID) -> LineView:
+    return await leases.line(ctx, leasable_resource_id)
 
 
 @router.get("", response_model=LeasePageView)
 async def list_leases(
     ctx: Ctx,
     leases: LeasesService,
-    resource_id: UUID | None = None,
+    leasable_resource_id: UUID | None = None,
     cursor: str | None = None,
     limit: int = LIMIT_DEFAULT,
 ) -> LeasePageView:
     """The history: the org's leases, or one resource's, newest first, ended
     ones included, each with the request it answered, a page at a time."""
-    return await leases.list_leases(ctx, resource_id, cursor, limit)
+    return await leases.list_leases(ctx, leasable_resource_id, cursor, limit)
 
 
 @router.get("/{lease_id}", response_model=LeaseView)

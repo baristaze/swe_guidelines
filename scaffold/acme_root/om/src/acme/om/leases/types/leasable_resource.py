@@ -1,8 +1,8 @@
-"""A resource: one thing of an org that one holder may use at a time, such
-as a loading dock. It stands for a row of another namespace, by a registered
-kind and that row's id, and it carries the lease store's anchor: the highest
-token granted on it, the lease that holds it, and until when. The anchor's
-row is what a grant locks."""
+"""A leasable resource: one thing of an org that one holder may use at a
+time, such as a loading dock. It stands for a row of another namespace, by
+a registered kind and that row's id, and it carries the lease store's
+anchor: the highest token granted on it, the lease that holds it, and until
+when. The anchor's row is what a grant locks."""
 
 from datetime import datetime
 from enum import StrEnum
@@ -26,14 +26,14 @@ MAX_TERM_SECONDS = 604_800
 """The longest bound a resource may set on one lease: seven days."""
 
 
-class ResourceKind(StrEnum):
+class LeasableResourceKind(StrEnum):
     """A product adds its kinds here, each with the shape of what its ask
-    carries (`ASK_PAYLOADS`) and its hooks (`ResourceKindInterface`)."""
+    carries (`ASK_PAYLOADS`) and its hooks (`LeasableResourceKindInterface`)."""
 
     NOOP = "noop"  # the mechanism's own: a grant starts nothing, and every request may be granted
 
 
-class Resource(Identifiable, Trackable):
+class LeasableResource(Identifiable, Trackable):
     MANAGER_OWNED_FIELDS: ClassVar[tuple[str, ...]] = (
         "available",
         "retired_at",
@@ -44,10 +44,10 @@ class Resource(Identifiable, Trackable):
     )
     """The kind and the row are the owner's at the registration, and the
     labels and the bound at the registration and at each update of its row
-    (`ResourceUpdate`), which may name its availability too; the rest moves
+    (`LeasableResourceUpdate`), which may name its availability too; the rest moves
     only through the manager's transitions."""
 
-    kind: ResourceKind
+    kind: LeasableResourceKind
     # The row it stands for, in the namespace that owns the kind. One
     # resource per org, kind, and row.
     ref_id: UUID
@@ -67,7 +67,7 @@ class Resource(Identifiable, Trackable):
     mean_hold_seconds: float | None = None
 
 
-class ResourceUpdate(OmBase):
+class LeasableResourceUpdate(OmBase):
     """An owner's update of its resource, landed with its own row: what the
     resource offers now, its bound on one lease, and whether it is in
     service. Each field it names changes, and each it leaves out (None)

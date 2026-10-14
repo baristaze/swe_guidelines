@@ -11,17 +11,17 @@ from typing import Any, cast
 from uuid import UUID
 
 import pytest
+from contracts.leasable_resource import (
+    an_owners_update_grants_the_requests_its_labels_now_match,
+    an_update_that_takes_a_resource_out_of_service_lands_in_the_owners_commit,
+    the_history_lists_each_lease_with_its_request_and_no_tenant_reads_another,
+)
 from contracts.lease_job import (
     StartsAJob,
     a_job_that_misses_its_window_lets_the_lease_lapse,
     a_job_that_waited_past_its_window_starts_inside_the_margin,
     a_resource_with_as_many_labels_as_a_real_one_is_matched,
     the_jobs_worker_keeps_the_lease_and_no_one_else_does,
-)
-from contracts.lease_resource import (
-    an_owners_update_grants_the_requests_its_labels_now_match,
-    an_update_that_takes_a_resource_out_of_service_lands_in_the_owners_commit,
-    the_history_lists_each_lease_with_its_request_and_no_tenant_reads_another,
 )
 
 from acme.infra.impl.local import InfraLocalImpl
@@ -36,11 +36,16 @@ from acme.om.context import (
     build_context,
 )
 from acme.om.exceptions import LeaseEnded, NotAuthorized, NotFound, ValidationFailed
-from acme.om.leases.hooks import AskCheckInterface, ResourceKindInterface
-from acme.om.leases.impl.kinds import NoopResourceKindImpl, OrchestrationWaiterImpl
+from acme.om.leases.hooks import AskCheckInterface, LeasableResourceKindInterface
+from acme.om.leases.impl.kinds import NoopLeasableResourceKindImpl, OrchestrationWaiterImpl
 from acme.om.leases.impl.manager import LeasesManagerImpl, LeasesOptions
 from acme.om.leases.rules import measured_hold, place_of, rank_at, replay, stands_in
-from acme.om.leases.storage import LeasesStorageInterface, ResourceLandingInterface
+from acme.om.leases.storage import LeasableResourceLandingInterface, LeasesStorageInterface
+from acme.om.leases.types.leasable_resource import (
+    LeasableResource,
+    LeasableResourceKind,
+    LeasableResourceUpdate,
+)
 from acme.om.leases.types.lease import JobClaim, Lease, LeaseStatus
 from acme.om.leases.types.request import (
     EndReason,
@@ -49,7 +54,6 @@ from acme.om.leases.types.request import (
     RequestStatus,
     WaiterKind,
 )
-from acme.om.leases.types.resource import Resource, ResourceKind, ResourceUpdate
 from acme.om.orchestrations.rules import advanced
 from acme.om.orchestrations.types.orchestration import (
     FailReason,
@@ -69,15 +73,17 @@ APP = AppContext(type=AppType.PORTAL, version="portal@test")
 MARGIN = timedelta(seconds=30)
 
 
-def a_resource(labels: tuple[str, ...] = (), max_term_seconds: int = 300) -> Resource:
+def a_leasable_resource(
+    labels: tuple[str, ...] = (), max_term_seconds: int = 300
+) -> LeasableResource:
     now = utcnow()
-    return Resource(
+    return LeasableResource(
         id=new_id(),
         created_at=now,
         updated_at=now,
         created_by=new_id(),
         updated_by=new_id(),
-        kind=ResourceKind.NOOP,
+        kind=LeasableResourceKind.NOOP,
         ref_id=new_id(),
         labels=labels,
         max_term_seconds=max_term_seconds,
@@ -85,7 +91,7 @@ def a_resource(labels: tuple[str, ...] = (), max_term_seconds: int = 300) -> Res
 
 
 def an_ask(
-    resource: Resource | None = None,
+    resource: LeasableResource | None = None,
     *,
     labels: tuple[str, ...] | None = None,
     key: UUID | None = None,
@@ -101,8 +107,8 @@ def an_ask(
         created_by=new_id(),
         updated_by=new_id(),
         idempotency_key=key or new_id(),
-        kind=ResourceKind.NOOP,
-        resource_id=None if resource is None else resource.id,
+        kind=LeasableResourceKind.NOOP,
+        leasable_resource_id=None if resource is None else resource.id,
         labels=labels if resource is None else None,
         waiter_kind=None if waiter is None else WaiterKind.ORCHESTRATION,
         waiter_id=waiter,
@@ -115,7 +121,7 @@ def an_ask(
 
 
 def test_a_selector_stands_in_the_line_of_every_resource_with_its_labels() -> None:
-    cold, dry = a_resource(("cold", "north")), a_resource(("dry",))
+    cold, dry = a_leasable_resource(("cold", "north")), a_leasable_resource(("dry",))
     selector = an_ask(labels=("cold",)).model_copy(update={"rank": 1.0})
     assert stands_in(selector, cold) and not stands_in(selector, dry)
     named = an_ask(dry)
@@ -137,7 +143,7 @@ def test_the_measured_hold_moves_a_fifth_of_the_way_to_each_new_one() -> None:
 
 def test_the_estimate_replays_the_lines_from_the_measured_holds() -> None:
     now = utcnow()
-    held = a_resource(("cold",)).model_copy(
+    held = a_leasable_resource(("cold",)).model_copy(
         update={
             "lease_id": new_id(),
             "held_until": now + timedelta(seconds=10),
@@ -153,7 +159,7 @@ def test_the_estimate_replays_the_lines_from_the_measured_holds() -> None:
     assert replay(third, [held], waiting, now) == 50.0
     assert place_of(third, [held], waiting) == 3
     # A second, free one takes the first at once and halves the line.
-    free = a_resource(("cold",)).model_copy(update={"mean_hold_seconds": 20.0})
+    free = a_leasable_resource(("cold",)).model_copy(update={"mean_hold_seconds": 20.0})
     assert replay(first, [held, free], waiting, now) == 0.0
     assert replay(third, [held, free], waiting, now) == 20.0
     # No resource it can take: no estimate, and no place.
@@ -165,16 +171,16 @@ def test_the_estimate_replays_the_lines_from_the_measured_holds() -> None:
 # The manager.
 
 
-class Refusing(ResourceKindInterface):
+class Refusing(LeasableResourceKindInterface):
     """A kind that no longer allows any request at the grant."""
 
     async def may_grant(
-        self, ctx: TenantContext, resource: Resource, request: LeaseRequest
+        self, ctx: TenantContext, resource: LeasableResource, request: LeaseRequest
     ) -> bool:
         return False
 
     def grant_rows(
-        self, ctx: TenantContext, resource: Resource, request: LeaseRequest, lease: Lease
+        self, ctx: TenantContext, resource: LeasableResource, request: LeaseRequest, lease: Lease
     ) -> tuple[OutboxRow, ...]:
         return ()
 
@@ -203,7 +209,7 @@ class World:
     def __init__(
         self,
         tmp_path: Path,
-        kind: ResourceKindInterface | None = None,
+        kind: LeasableResourceKindInterface | None = None,
         options: LeasesOptions | None = None,
         check: AskCheckInterface | None = None,
     ) -> None:
@@ -217,12 +223,12 @@ class World:
             self.managers.tenancy,
             self.managers.outbox,
             options or LeasesOptions(margin=MARGIN),
-            kinds={ResourceKind.NOOP: kind or NoopResourceKindImpl()},
+            kinds={LeasableResourceKind.NOOP: kind or NoopLeasableResourceKindImpl()},
             waiters={
                 WaiterKind.ORCHESTRATION: OrchestrationWaiterImpl(self.managers.orchestrations)
             },
             work=self.managers.work,
-            asks=None if check is None else {ResourceKind.NOOP: check},
+            asks=None if check is None else {LeasableResourceKind.NOOP: check},
             clock=lambda: self.now,
         )
         self.slug = f"ajax-{new_id().hex[-8:]}"
@@ -259,18 +265,23 @@ class World:
             credential_kind=CredentialKind.AUTH_SESSION_TOKEN,
         )
 
-    async def resource(self, ctx: TenantContext, *labels: str) -> Resource:
-        return await self.leases.register(ctx, a_resource(labels))
+    async def leasable_resource(self, ctx: TenantContext, *labels: str) -> LeasableResource:
+        return await self.leases.register(ctx, a_leasable_resource(labels))
 
     async def land_update(
-        self, ctx: TenantContext, resource: Resource, change: ResourceUpdate, *, commits: bool
+        self,
+        ctx: TenantContext,
+        resource: LeasableResource,
+        change: LeasableResourceUpdate,
+        *,
+        commits: bool,
     ) -> None:
         """The owner's memory storage lands the update under its own lock, in
         the write of its row; a write that fails lands neither."""
         if not commits:
             return
         landing = self.storage.get_lease_storage()
-        assert isinstance(landing, ResourceLandingInterface)
+        assert isinstance(landing, LeasableResourceLandingInterface)
         landing.land_update(
             ctx.org_id, resource.kind, resource.ref_id, change, self.now, ctx.user_id
         )
@@ -333,8 +344,8 @@ async def test_the_history_lists_each_lease_with_its_request_and_no_tenant_reads
 
 async def test_a_resource_registers_once_per_kind_and_row(world: World) -> None:
     owner = await world.owner()
-    resource = await world.resource(owner)
-    again = a_resource().model_copy(update={"ref_id": resource.ref_id, "token": 99})
+    resource = await world.leasable_resource(owner)
+    again = a_leasable_resource().model_copy(update={"ref_id": resource.ref_id, "token": 99})
     assert await world.leases.register(owner, again) == resource
     assert resource.token == 0 and resource.lease_id is None
 
@@ -344,7 +355,7 @@ async def test_a_free_resource_is_granted_at_once_and_the_next_waits_in_line(
 ) -> None:
     owner = await world.owner()
     ann, bob = await world.member("ann"), await world.member("bob")
-    dock = await world.resource(owner)
+    dock = await world.leasable_resource(owner)
     first = await world.leases.ask(ann, an_ask(dock))
     assert first.lease is not None and first.lease.token == 1
     assert first.lease.holder_id == ann.user_id
@@ -360,7 +371,7 @@ async def test_a_free_resource_is_granted_at_once_and_the_next_waits_in_line(
 async def test_a_direct_ask_never_passes_anyone_waiting(world: World) -> None:
     owner = await world.owner()
     ann, bob = await world.member("ann"), await world.member("bob")
-    dock = await world.resource(owner)
+    dock = await world.leasable_resource(owner)
     # Someone waits in front of a free resource: an offer a crash cut short.
     waiting = an_ask(dock).model_copy(
         update={"created_by": ann.user_id, "wait_until": world.now + timedelta(hours=1)}
@@ -375,7 +386,7 @@ async def test_a_direct_ask_never_passes_anyone_waiting(world: World) -> None:
 async def test_an_ask_asked_again_by_its_key_joins_no_line_twice(world: World) -> None:
     owner = await world.owner()
     ann, bob = await world.member("ann"), await world.member("bob")
-    dock = await world.resource(owner)
+    dock = await world.leasable_resource(owner)
     held = await world.leases.ask(ann, an_ask(dock))
     key = new_id()
     waits = await world.leases.ask(bob, an_ask(dock, key=key))
@@ -390,11 +401,11 @@ async def test_an_ask_asked_again_by_its_key_joins_no_line_twice(world: World) -
 
 async def test_an_ask_is_held_to_its_kind_and_names_a_live_resource(world: World) -> None:
     owner = await world.owner()
-    dock = await world.resource(owner)
+    dock = await world.leasable_resource(owner)
     with pytest.raises(ValidationFailed):
         await world.leases.ask(owner, an_ask(dock).model_copy(update={"payload": {"x": 1}}))
     with pytest.raises(NotFound):
-        await world.leases.ask(owner, an_ask(a_resource()))
+        await world.leases.ask(owner, an_ask(a_leasable_resource()))
     await world.leases.retire(owner, dock.id)
     with pytest.raises(NotFound):
         await world.leases.ask(owner, an_ask(dock))
@@ -408,7 +419,7 @@ async def test_only_the_holder_renews_and_releases_and_a_lapsed_lease_is_not_ren
 ) -> None:
     owner = await world.owner()
     ann, bob = await world.member("ann"), await world.member("bob")
-    dock = await world.leases.register(owner, a_resource(max_term_seconds=30))
+    dock = await world.leases.register(owner, a_leasable_resource(max_term_seconds=30))
     held = await world.leases.ask(ann, an_ask(dock, term_seconds=600))
     assert held.lease is not None
     # The term is the resource's bound, whatever the ask named.
@@ -438,7 +449,7 @@ class StartsTwoJobs(StartsAJob):
     """A kind whose grant would start two jobs, so no one item is the job."""
 
     def grant_rows(
-        self, ctx: TenantContext, resource: Resource, request: LeaseRequest, lease: Lease
+        self, ctx: TenantContext, resource: LeasableResource, request: LeaseRequest, lease: Lease
     ) -> tuple[OutboxRow, ...]:
         first = super().grant_rows(ctx, resource, request, lease)
         return (*first, *super().grant_rows(ctx, resource, request, lease))
@@ -447,16 +458,16 @@ class StartsTwoJobs(StartsAJob):
 async def test_a_grant_starts_one_job_at_most(tmp_path: Path) -> None:
     world = World(tmp_path, StartsTwoJobs())
     owner, ann = await world.owner(), await world.member("ann")
-    dock = await world.resource(owner)
+    dock = await world.leasable_resource(owner)
     with pytest.raises(ValueError, match="one at most"):
         await world.leases.ask(ann, an_ask(dock))
-    assert (await world.leases.get_resource(owner, dock.id)).lease_id is None
+    assert (await world.leases.get_leasable_resource(owner, dock.id)).lease_id is None
 
 
 async def test_a_manager_revokes_and_the_line_moves_on(world: World) -> None:
     owner = await world.owner()
     ann, bob = await world.member("ann"), await world.member("bob")
-    dock = await world.resource(owner)
+    dock = await world.leasable_resource(owner)
     held = await world.leases.ask(ann, an_ask(dock))
     waits = await world.leases.ask(bob, an_ask(dock))
     assert held.lease is not None
@@ -476,7 +487,7 @@ async def test_a_manager_revokes_and_the_line_moves_on(world: World) -> None:
 async def test_a_holder_cancels_its_own_and_a_manager_any(world: World) -> None:
     owner = await world.owner()
     ann, bob = await world.member("ann"), await world.member("bob")
-    dock = await world.resource(owner)
+    dock = await world.leasable_resource(owner)
     await world.leases.ask(owner, an_ask(dock))
     mine = await world.leases.ask(ann, an_ask(dock))
     theirs = await world.leases.ask(bob, an_ask(dock))
@@ -491,7 +502,7 @@ async def test_a_holder_cancels_its_own_and_a_manager_any(world: World) -> None:
 async def test_a_manager_reorders_one_request_and_no_one_else(world: World) -> None:
     owner = await world.owner()
     ann, bob, cy = await world.member("ann"), await world.member("bob"), await world.member("cy")
-    dock = await world.resource(owner)
+    dock = await world.leasable_resource(owner)
     await world.leases.ask(owner, an_ask(dock))
     a, b, c = [(await world.leases.ask(m, an_ask(dock))).request for m in (ann, bob, cy)]
     with pytest.raises(NotAuthorized):
@@ -513,13 +524,13 @@ async def test_a_lapsed_lease_holds_until_the_margin_passes_then_the_line_moves_
     the sweep ends it and the head of the line is granted a greater token."""
     owner = await world.owner()
     ann, bob = await world.member("ann"), await world.member("bob")
-    dock = await world.resource(owner)
+    dock = await world.leasable_resource(owner)
     held = await world.leases.ask(ann, an_ask(dock, term_seconds=60))
     waits = await world.leases.ask(bob, an_ask(dock))
     assert held.lease is not None
     world.later(timedelta(seconds=60) + MARGIN - timedelta(seconds=1))
     assert await world.leases.sweep(world.rctx()) == 0
-    still = await world.leases.get_resource(owner, dock.id)
+    still = await world.leases.get_leasable_resource(owner, dock.id)
     assert still.lease_id == held.lease.id
     assert (await world.leases.get_request(bob, waits.request.id)).lease is None
     world.later(timedelta(seconds=2))
@@ -539,7 +550,7 @@ async def test_a_deleted_org_takes_no_place_of_a_live_one_in_the_sweep(tmp_path:
     gone, live = sorted((first, second), key=lambda ctx: ctx.org_id)
     held: dict[UUID, Lease] = {}
     for ctx in (gone, live):
-        standing = await world.leases.ask(ctx, an_ask(await world.resource(ctx)))
+        standing = await world.leases.ask(ctx, an_ask(await world.leasable_resource(ctx)))
         assert standing.lease is not None
         held[ctx.org_id] = standing.lease
     await world.delete_org(gone)
@@ -554,7 +565,7 @@ async def test_a_deleted_org_takes_no_place_of_a_live_one_in_the_sweep(tmp_path:
 async def test_the_sweep_expires_a_request_past_its_wait(world: World) -> None:
     owner = await world.owner()
     ann = await world.member("ann")
-    dock = await world.resource(owner)
+    dock = await world.leasable_resource(owner)
     await world.leases.ask(owner, an_ask(dock, term_seconds=3600))
     waits = await world.leases.ask(ann, an_ask(dock, wait_seconds=60))
     world.later(timedelta(seconds=61))
@@ -566,17 +577,17 @@ async def test_the_sweep_expires_a_request_past_its_wait(world: World) -> None:
 async def test_a_kind_that_refuses_at_the_grant_cancels_the_request(tmp_path: Path) -> None:
     world = World(tmp_path, kind=Refusing())
     owner = await world.owner()
-    dock = await world.resource(owner)
+    dock = await world.leasable_resource(owner)
     refused = await world.leases.ask(owner, an_ask(dock))
     assert refused.lease is None
     assert refused.request.status is RequestStatus.CANCELLED
     assert refused.request.end_reason is EndReason.REFUSED
-    assert (await world.leases.get_resource(owner, dock.id)).lease_id is None
+    assert (await world.leases.get_leasable_resource(owner, dock.id)).lease_id is None
 
 
 async def test_an_unavailable_resource_grants_nothing_until_it_is_back(world: World) -> None:
     owner = await world.owner()
-    dock = await world.resource(owner)
+    dock = await world.leasable_resource(owner)
     await world.leases.set_available(owner, dock.id, False)
     waits = await world.leases.ask(owner, an_ask(dock))
     assert waits.lease is None
@@ -606,7 +617,7 @@ async def a_running_record(world: World, ctx: TenantContext) -> Orchestration:
 def park_of(record: Orchestration) -> Step:
     after = advanced(
         record, utcnow(), record.created_by, cursor=record.cursor, total=None,
-        park=ParkReason.RESOURCE,
+        park=ParkReason.LEASABLE_RESOURCE,
     )  # fmt: skip
     return Step(record=after, expected_version=record.version)
 
@@ -616,14 +627,17 @@ async def test_a_parked_record_is_woken_with_its_lease_when_the_resource_frees(
 ) -> None:
     owner = await world.owner()
     ann = await world.member("ann")
-    dock = await world.resource(owner)
+    dock = await world.leasable_resource(owner)
     held = await world.leases.ask(ann, an_ask(dock))
     record = await a_running_record(world, owner)
     key = new_id()
     waits = await world.leases.ask(owner, an_ask(dock, key=key, waiter=record.id), park_of(record))
     assert waits.lease is None
     parked = await world.managers.orchestrations.get(owner, record.id)
-    assert parked.status is OrchestrationStatus.PARKED and parked.park_reason is ParkReason.RESOURCE
+    assert (
+        parked.status is OrchestrationStatus.PARKED
+        and parked.park_reason is ParkReason.LEASABLE_RESOURCE
+    )
     assert held.lease is not None
     await world.leases.release(ann, held.lease.id)
     # The grant asked for the record's wake in its own commit; the worker
@@ -634,7 +648,7 @@ async def test_a_parked_record_is_woken_with_its_lease_when_the_resource_frees(
     assert claimed is not None
     ctx, item = claimed
     payload = WakeParkedPayload.model_validate(dict(item.payload))
-    assert (payload.reason, payload.record_id) == (ParkReason.RESOURCE, record.id)
+    assert (payload.reason, payload.record_id) == (ParkReason.LEASABLE_RESOURCE, record.id)
     assert await world.managers.orchestrations.wake(ctx, payload.reason, payload.record_id) == 1
     woken = await world.managers.orchestrations.get(owner, record.id)
     assert woken.status is OrchestrationStatus.RUNNING
@@ -658,7 +672,7 @@ async def woken(world: World, *records: Orchestration) -> None:
             break
         ctx, item = claimed
         payload = WakeParkedPayload.model_validate(dict(item.payload))
-        assert payload.reason is ParkReason.RESOURCE
+        assert payload.reason is ParkReason.LEASABLE_RESOURCE
         named.append(payload.record_id)
         assert await world.managers.orchestrations.wake(ctx, payload.reason, payload.record_id)
     assert sorted(map(str, named)) == sorted(str(r.id) for r in records)
@@ -669,7 +683,7 @@ async def test_a_parked_record_whose_request_expires_is_woken_and_reads_its_end(
 ) -> None:
     owner = await world.owner()
     ann = await world.member("ann")
-    dock = await world.resource(owner)
+    dock = await world.leasable_resource(owner)
     await world.leases.ask(ann, an_ask(dock))
     record = await a_running_record(world, owner)
     ask = an_ask(dock, wait_seconds=60, waiter=record.id)
@@ -696,7 +710,7 @@ async def test_a_parked_record_whose_resource_is_retired_is_woken(world: World) 
     ann = await world.member("ann")
     asks: list[LeaseRequest] = []
     records: list[Orchestration] = []
-    docks = [await world.resource(owner), await world.resource(owner)]
+    docks = [await world.leasable_resource(owner), await world.leasable_resource(owner)]
     for dock in docks:
         await world.leases.ask(ann, an_ask(dock))
         record = await a_running_record(world, owner)
@@ -706,9 +720,9 @@ async def test_a_parked_record_whose_resource_is_retired_is_woken(world: World) 
     await world.leases.retire(owner, docks[0].id)
     await woken(world, records[0])
     landing = world.storage.get_lease_storage()
-    assert isinstance(landing, ResourceLandingInterface)
+    assert isinstance(landing, LeasableResourceLandingInterface)
     landing.land_retirement(
-        owner.org_id, ResourceKind.NOOP, docks[1].ref_id, world.now, owner.user_id
+        owner.org_id, LeasableResourceKind.NOOP, docks[1].ref_id, world.now, owner.user_id
     )
     assert await world.leases.sweep(world.rctx()) == 1
     await woken(world, records[1])
@@ -726,7 +740,7 @@ async def test_a_request_whose_waiter_stopped_waiting_is_cancelled_never_granted
     line, no longer waits: the grant passes it as `waiter_gone`."""
     owner = await world.owner()
     ann, bob = await world.member("ann"), await world.member("bob")
-    dock = await world.resource(owner)
+    dock = await world.leasable_resource(owner)
     held = await world.leases.ask(ann, an_ask(dock))
     record = await a_running_record(world, owner)
     gone = await world.leases.ask(owner, an_ask(dock, waiter=record.id), park_of(record))
@@ -750,7 +764,10 @@ async def test_a_request_whose_waiter_stopped_waiting_is_cancelled_never_granted
 
 async def test_a_waiter_that_ends_leaves_every_line(world: World) -> None:
     owner = await world.owner()
-    a, b = await world.resource(owner, "cold"), await world.resource(owner, "cold")
+    a, b = (
+        await world.leasable_resource(owner, "cold"),
+        await world.leasable_resource(owner, "cold"),
+    )
     await world.leases.ask(owner, an_ask(a))
     await world.leases.ask(owner, an_ask(b))
     waiter = new_id()
@@ -770,7 +787,10 @@ async def test_a_selector_is_granted_by_the_first_resource_that_frees_and_leaves
 ) -> None:
     owner = await world.owner()
     ann, bob = await world.member("ann"), await world.member("bob")
-    north, south = await world.resource(owner, "cold"), await world.resource(owner, "cold")
+    north, south = (
+        await world.leasable_resource(owner, "cold"),
+        await world.leasable_resource(owner, "cold"),
+    )
     on_north = await world.leases.ask(ann, an_ask(north))
     await world.leases.ask(bob, an_ask(south))
     either = await world.leases.ask(owner, an_ask(labels=("cold",)))
@@ -781,14 +801,17 @@ async def test_a_selector_is_granted_by_the_first_resource_that_frees_and_leaves
     assert on_north.lease is not None
     await world.leases.release(ann, on_north.lease.id)
     granted = await world.leases.get_request(owner, either.request.id)
-    assert granted.lease is not None and granted.lease.resource_id == north.id
+    assert granted.lease is not None and granted.lease.leasable_resource_id == north.id
     assert (await world.leases.line(owner, south.id)).requests == ()
 
 
 async def test_two_resources_freeing_at_once_grant_a_selector_once(world: World) -> None:
     owner = await world.owner()
     ann, bob, cy = await world.member("ann"), await world.member("bob"), await world.member("cy")
-    north, south = await world.resource(owner, "cold"), await world.resource(owner, "cold")
+    north, south = (
+        await world.leasable_resource(owner, "cold"),
+        await world.leasable_resource(owner, "cold"),
+    )
     on_north = await world.leases.ask(ann, an_ask(north))
     on_south = await world.leases.ask(bob, an_ask(south))
     either = await world.leases.ask(owner, an_ask(labels=("cold",)))
@@ -799,12 +822,15 @@ async def test_two_resources_freeing_at_once_grant_a_selector_once(world: World)
     first = await world.leases.get_request(owner, either.request.id)
     second = await world.leases.get_request(cy, behind.request.id)
     assert first.lease is not None and second.lease is not None
-    assert {first.lease.resource_id, second.lease.resource_id} == {north.id, south.id}
+    assert {first.lease.leasable_resource_id, second.lease.leasable_resource_id} == {
+        north.id,
+        south.id,
+    }
 
 
 async def test_purge_tenant_reads_nothing_of_a_live_tenant(world: World) -> None:
     owner = await world.owner()
-    await world.resource(owner)
+    await world.leasable_resource(owner)
     assert await world.leases.purge_tenant(owner) == 0
 
 
@@ -817,9 +843,9 @@ async def test_a_resource_registered_is_offered_at_once_to_a_selector_it_matches
     owner = await world.owner()
     waits = await world.leases.ask(owner, an_ask(labels=("cold",)))
     assert waits.lease is None
-    dock = await world.resource(owner, "cold")
+    dock = await world.leasable_resource(owner, "cold")
     granted = await world.leases.get_request(owner, waits.request.id)
-    assert granted.lease is not None and granted.lease.resource_id == dock.id
+    assert granted.lease is not None and granted.lease.leasable_resource_id == dock.id
 
 
 class Staffed(AskCheckInterface):
@@ -828,10 +854,10 @@ class Staffed(AskCheckInterface):
     It keeps what it was asked."""
 
     def __init__(self) -> None:
-        self.asked: list[tuple[UUID, LeaseRequest, Resource | None]] = []
+        self.asked: list[tuple[UUID, LeaseRequest, LeasableResource | None]] = []
 
     async def check_ask(
-        self, ctx: TenantContext, request: LeaseRequest, resource: Resource | None
+        self, ctx: TenantContext, request: LeaseRequest, resource: LeasableResource | None
     ) -> None:
         self.asked.append((ctx.user_id, request, resource))
         if ctx.role not in (Role.OWNER, Role.ADMIN):
@@ -851,7 +877,10 @@ async def test_a_kinds_check_refuses_an_ask_before_it_waits(tmp_path: Path) -> N
     world = World(tmp_path, check=kind)
     owner = await world.owner()
     mia = await world.member("mia")
-    staffed, bare = await world.resource(owner, "staffed"), await world.resource(owner)
+    staffed, bare = (
+        await world.leasable_resource(owner, "staffed"),
+        await world.leasable_resource(owner),
+    )
     refused = an_ask(staffed)
     with pytest.raises(NotAuthorized):
         await world.leases.ask(mia, refused)
@@ -873,7 +902,7 @@ async def test_a_kinds_check_refuses_an_ask_before_it_waits(tmp_path: Path) -> N
     assert granted.lease is not None
     plain = World(tmp_path)
     plain_owner = await plain.owner()
-    dock = await plain.resource(plain_owner)
+    dock = await plain.leasable_resource(plain_owner)
     asked = await plain.leases.ask(await plain.member("mia"), an_ask(dock))
     assert asked.lease is not None
 
@@ -883,7 +912,10 @@ async def test_a_line_answers_each_place_and_estimate_from_one_read(world: World
     standing answers, and the line reads the storage as often for eight of
     them as for three."""
     owner = await world.owner()
-    dock, spare = await world.resource(owner, "cold"), await world.resource(owner, "cold")
+    dock, spare = (
+        await world.leasable_resource(owner, "cold"),
+        await world.leasable_resource(owner, "cold"),
+    )
     for resource in (dock, spare):
         assert (await world.leases.ask(owner, an_ask(resource))).lease is not None
 
@@ -910,7 +942,7 @@ async def test_a_line_answers_each_place_and_estimate_from_one_read(world: World
 async def test_a_history_page_is_one_read_whatever_its_length(tmp_path: Path) -> None:
     world = World(tmp_path, options=LeasesOptions(margin=MARGIN, history_limit=4))
     owner = await world.owner()
-    dock = await world.resource(owner)
+    dock = await world.leasable_resource(owner)
     for _ in range(6):
         standing = await world.leases.ask(owner, an_ask(dock))
         assert standing.lease is not None

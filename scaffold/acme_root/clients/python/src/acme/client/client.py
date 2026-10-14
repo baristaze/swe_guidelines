@@ -552,7 +552,7 @@ class ApiClient:
         self,
         *,
         kind: str = "noop",
-        resource_id: UUID | None = None,
+        leasable_resource_id: UUID | None = None,
         labels: list[str] | None = None,
         payload: dict[str, Any] | None = None,
         term_seconds: int = 60,
@@ -572,8 +572,8 @@ class ApiClient:
         }
         if start_seconds is not None:
             body["start_seconds"] = start_seconds
-        if resource_id is not None:
-            body["resource_id"] = str(resource_id)
+        if leasable_resource_id is not None:
+            body["leasable_resource_id"] = str(leasable_resource_id)
         if labels is not None:
             body["labels"] = labels
         asked = await self.request(
@@ -601,20 +601,26 @@ class ApiClient:
         moved = await self.request("POST", f"/v1/leases/requests/{request_id}/reorder", json=body)
         return LeaseRequestView.model_validate(moved)
 
-    async def resource_line(self, resource_id: UUID) -> LineView:
+    async def leasable_resource_line(self, leasable_resource_id: UUID) -> LineView:
         """A resource's line, first first, with each place and estimate."""
-        line = await self.request("GET", f"/v1/leases/resources/{resource_id}/line")
+        line = await self.request(
+            "GET", f"/v1/leases/leasable-resources/{leasable_resource_id}/line"
+        )
         return LineView.model_validate(line)
 
     async def lease_history(
-        self, resource_id: UUID | None = None, *, cursor: str | None = None, limit: int = LIMIT_MAX
+        self,
+        leasable_resource_id: UUID | None = None,
+        *,
+        cursor: str | None = None,
+        limit: int = LIMIT_MAX,
     ) -> LeasePageView:
         """One page of the org's leases, or one resource's, newest first,
         ended ones too, each with the request it answered; `cursor` is the
         previous page's `next_cursor`."""
         params: dict[str, Any] = {"limit": limit}
-        if resource_id is not None:
-            params["resource_id"] = str(resource_id)
+        if leasable_resource_id is not None:
+            params["leasable_resource_id"] = str(leasable_resource_id)
         if cursor:
             params["cursor"] = cursor
         page = await self.request("GET", "/v1/leases", params=params)

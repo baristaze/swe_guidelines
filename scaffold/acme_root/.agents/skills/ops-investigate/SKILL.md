@@ -198,14 +198,15 @@ and their handling is in `/acme/<env>/maintenance`.
    `ERROR` with the record's id and the org's (`<kind> <id> in org
    <org> failed: defect ...`), so step 7 finds it. A running record
    whose `_succeeded` never follows is a step the queue keeps retrying:
-   read the worker's `failed` outcomes beside it. A lease on a resource
-   counts `leases`/`granted`, then `released`, `expired`, or `revoked`;
-   a request that left its line without one counts `request_expired` or
-   `request_<why>` (`asked`, `waiter_gone`, `refused`). The work queue and the outbox are Postgres
-   tables, and each sweep pass reads four numbers of them across every
-   tenant: `acme_work_oldest_ready_seconds` (how long the item ready
-   longest has waited), `acme_work_failed_recently` (items failed in the
-   last fifteen minutes and still failed),
+   read the worker's `failed` outcomes beside it. A lease on a leasable
+   resource counts `leases`/`granted`, then `released`, `expired`, or
+   `revoked`; a request that left its line without one counts
+   `request_expired` or `request_<why>` (`asked`, `waiter_gone`,
+   `refused`). The work queue and the outbox are Postgres tables, and
+   each sweep pass reads four numbers of them across every tenant:
+   `acme_work_oldest_ready_seconds` (how long the item ready longest has
+   waited), `acme_work_failed_recently` (items failed in the last
+   fifteen minutes and still failed),
    `acme_outbox_oldest_pending_seconds` (how long ago the oldest row not
    yet relayed landed), and `acme_outbox_failed_recently` (rows failed
    for good in the last fifteen minutes). Locally they are gauges on

@@ -15,8 +15,8 @@ This is one of the kinds of thing [Acme is made of](../../../../README.md).
 - **Status**: running, parked, succeeded, failed, or cancelled. The
   last three are settled: a record never leaves them.
 - **Park reason**: why a parked record waits, and so what wakes it. The
-  core has two: `provider_unavailable`, and `resource`, for a record in
-  line for a [lease](../leases/README.md).
+  core has two: `provider_unavailable`, and `leasable_resource`, for a
+  record in line for a [lease](../leases/README.md).
 - **Fail reason**: why a record ended unfinished: a bound of its input,
   or `defect`, a step that still failed on its last attempt.
 - **Period**: for a record kept per period, such as a day, the org, the

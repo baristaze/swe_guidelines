@@ -274,6 +274,32 @@ class IssuedTotpSecretView(BaseModel):
     otpauth_uri: Annotated[str | None, Field(title='Otpauth Uri')]
 
 
+class LeasableResourceKind(StrEnum):
+    """
+    A product adds its kinds here, each with the shape of what its ask
+    carries (`ASK_PAYLOADS`) and its hooks (`LeasableResourceKindInterface`).
+    """
+    noop = 'noop'
+
+
+class LeasableResourceView(BaseModel):
+    """
+    A resource and its anchor: the highest token granted on it, and the
+    lease that holds it until when.
+    """
+    available: Annotated[bool, Field(title='Available')]
+    created_at: Annotated[AwareDatetime, Field(title='Created At')]
+    fencing_token: Annotated[int, Field(title='Fencing Token')]
+    held_until: Annotated[AwareDatetime | None, Field(title='Held Until')]
+    id: Annotated[UUID, Field(title='Id')]
+    kind: LeasableResourceKind
+    labels: Annotated[list[str], Field(title='Labels')]
+    lease_id: Annotated[UUID | None, Field(title='Lease Id')]
+    max_term_seconds: Annotated[int, Field(title='Max Term Seconds')]
+    ref_id: Annotated[UUID, Field(title='Ref Id')]
+    retired_at: Annotated[AwareDatetime | None, Field(title='Retired At')]
+
+
 class LeaseStatus(StrEnum):
     active = 'active'
     released = 'released'
@@ -296,8 +322,8 @@ class LeaseView(BaseModel):
     fencing_token: Annotated[int, Field(title='Fencing Token')]
     holder_id: Annotated[UUID, Field(title='Holder Id')]
     id: Annotated[UUID, Field(title='Id')]
+    leasable_resource_id: Annotated[UUID, Field(title='Leasable Resource Id')]
     request_id: Annotated[UUID, Field(title='Request Id')]
-    resource_id: Annotated[UUID, Field(title='Resource Id')]
     started_at: Annotated[AwareDatetime | None, Field(title='Started At')]
     status: LeaseStatus
     term_seconds: Annotated[int, Field(title='Term Seconds')]
@@ -454,32 +480,6 @@ class RequestStatus(StrEnum):
     granted = 'granted'
     cancelled = 'cancelled'
     expired = 'expired'
-
-
-class ResourceKind(StrEnum):
-    """
-    A product adds its kinds here, each with the shape of what its ask
-    carries (`ASK_PAYLOADS`) and its hooks (`ResourceKindInterface`).
-    """
-    noop = 'noop'
-
-
-class ResourceView(BaseModel):
-    """
-    A resource and its anchor: the highest token granted on it, and the
-    lease that holds it until when.
-    """
-    available: Annotated[bool, Field(title='Available')]
-    created_at: Annotated[AwareDatetime, Field(title='Created At')]
-    fencing_token: Annotated[int, Field(title='Fencing Token')]
-    held_until: Annotated[AwareDatetime | None, Field(title='Held Until')]
-    id: Annotated[UUID, Field(title='Id')]
-    kind: ResourceKind
-    labels: Annotated[list[str], Field(title='Labels')]
-    lease_id: Annotated[UUID | None, Field(title='Lease Id')]
-    max_term_seconds: Annotated[int, Field(title='Max Term Seconds')]
-    ref_id: Annotated[UUID, Field(title='Ref Id')]
-    retired_at: Annotated[AwareDatetime | None, Field(title='Retired At')]
 
 
 class Role(StrEnum):
@@ -792,10 +792,10 @@ class AskRequest(BaseModel):
     model_config = ConfigDict(
         extra='forbid',
     )
-    kind: ResourceKind
+    kind: LeasableResourceKind
     labels: Annotated[Labels | None, Field(title='Labels')] = None
+    leasable_resource_id: Annotated[UUID | None, Field(title='Leasable Resource Id')] = None
     payload: Annotated[dict[str, Any] | None, Field(title='Payload')] = None
-    resource_id: Annotated[UUID | None, Field(title='Resource Id')] = None
     start_seconds: Annotated[StartSeconds | None, Field(title='Start Seconds')] = None
     term_seconds: Annotated[int | None, Field(ge=1, le=604800, title='Term Seconds')] = 60
     wait_seconds: Annotated[int | None, Field(ge=1, le=604800, title='Wait Seconds')] = 3600
@@ -923,11 +923,11 @@ class LeaseRequestView(BaseModel):
     created_by: Annotated[UUID, Field(title='Created By')]
     end_reason: EndReason | None
     id: Annotated[UUID, Field(title='Id')]
-    kind: ResourceKind
+    kind: LeasableResourceKind
     labels: Annotated[list[str] | None, Field(title='Labels')]
+    leasable_resource_id: Annotated[UUID | None, Field(title='Leasable Resource Id')]
     lease_id: Annotated[UUID | None, Field(title='Lease Id')]
     rank: Annotated[float, Field(title='Rank')]
-    resource_id: Annotated[UUID | None, Field(title='Resource Id')]
     start_seconds: Annotated[int | None, Field(title='Start Seconds')]
     status: RequestStatus
     term_seconds: Annotated[int, Field(title='Term Seconds')]
@@ -941,9 +941,9 @@ class LineView(BaseModel):
     A resource and the requests in its line, first first, with each one's
     place and estimate in the same order.
     """
+    leasable_resource: LeasableResourceView
     places: Annotated[list[PlaceView], Field(title='Places')]
     requests: Annotated[list[LeaseRequestView], Field(title='Requests')]
-    resource: ResourceView
 
 
 class MeView(BaseModel):

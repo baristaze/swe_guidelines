@@ -87,7 +87,7 @@ async def test_an_ask_carries_its_key_and_reads_the_standing() -> None:
             201,
             json={
                 "request": {
-                    "id": str(request_id), "kind": "noop", "resource_id": str(DOCK),
+                    "id": str(request_id), "kind": "noop", "leasable_resource_id": str(DOCK),
                     "labels": None, "waiter_kind": None, "waiter_id": None,
                     "term_seconds": 60, "start_seconds": None, "wait_until": None, "rank": 1.0,
                     "status": "waiting", "end_reason": None, "lease_id": None,
@@ -100,11 +100,11 @@ async def test_an_ask_carries_its_key_and_reads_the_standing() -> None:
     async with ApiClient(
         "http://test", app="cli", app_version="cli@test", transport=httpx.MockTransport(answer)
     ) as api:
-        standing = await api.ask_lease(resource_id=DOCK)
+        standing = await api.ask_lease(leasable_resource_id=DOCK)
     assert standing.place == 1 and standing.request.id == request_id
     sent = seen[0]
     assert UUID(sent.headers[IDEMPOTENCY_HEADER])
-    assert json.loads(sent.content)["resource_id"] == str(DOCK)
+    assert json.loads(sent.content)["leasable_resource_id"] == str(DOCK)
 
 
 async def test_a_renewal_names_its_length_or_sends_no_body() -> None:
@@ -116,7 +116,7 @@ async def test_a_renewal_names_its_length_or_sends_no_body() -> None:
         return httpx.Response(
             200,
             json={
-                "id": str(lease_id), "resource_id": str(DOCK), "request_id": str(uuid4()),
+                "id": str(lease_id), "leasable_resource_id": str(DOCK), "request_id": str(uuid4()),
                 "holder_id": str(uuid4()), "fencing_token": 3, "term_seconds": 60,
                 "expires_at": "2026-10-08T00:05:00Z", "expires_in_seconds": 300.0,
                 "status": "active", "ended_at": None, "started_at": None,
@@ -146,7 +146,7 @@ async def test_the_history_names_its_resource_its_bound_and_its_cursor_and_reads
                 "items": [
                     {
                         "lease": {
-                            "id": str(lease_id), "resource_id": str(DOCK),
+                            "id": str(lease_id), "leasable_resource_id": str(DOCK),
                             "request_id": str(request_id), "holder_id": str(uuid4()),
                             "fencing_token": 2, "term_seconds": 60,
                             "expires_at": "2026-10-08T00:01:00Z", "expires_in_seconds": 0.0,
@@ -168,5 +168,5 @@ async def test_the_history_names_its_resource_its_bound_and_its_cursor_and_reads
     (entry,) = page.items
     assert entry.lease.id == lease_id and entry.request is None
     assert seen[0].url.path == "/v1/leases"
-    assert dict(seen[0].url.params) == {"limit": "10", "resource_id": str(DOCK)}
+    assert dict(seen[0].url.params) == {"limit": "10", "leasable_resource_id": str(DOCK)}
     assert dict(seen[1].url.params) == {"limit": "200", "cursor": "bGVhc2Vz"}

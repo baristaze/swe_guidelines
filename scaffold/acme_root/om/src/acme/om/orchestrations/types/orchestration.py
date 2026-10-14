@@ -52,7 +52,8 @@ class ParkReason(StrEnum):
     """Why a record waits, and so what wakes it."""
 
     PROVIDER_UNAVAILABLE = "provider_unavailable"  # a provider a step calls did not answer
-    RESOURCE = "resource"  # in line for a resource; the grant, or the request's end, wakes it
+    # In line for a leasable resource; the grant, or the request's end, wakes it.
+    LEASABLE_RESOURCE = "leasable_resource"
 
 
 class FailReason(StrEnum):

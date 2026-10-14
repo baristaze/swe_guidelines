@@ -1,11 +1,11 @@
-"""A resource its owner updates, and the history of its leases: the cases the
-memory suite and the Postgres suite both run, each over its own root. The
-owner lands its update in the commit of its own row, through the companion
-statement or its memory twin, and offers the resource to its line after it;
-or it updates through the manager, which offers at once. A lease the
-resource holds keeps its term, and the line is the one its new labels make.
-The history lists newest first, ended leases too, each with the request it
-answered, a page at a time, and no tenant reads another's."""
+"""A leasable resource its owner updates, and the history of its leases: the
+cases the memory suite and the Postgres suite both run, each over its own
+root. The owner lands its update in the commit of its own row, through the
+companion statement or its memory twin, and offers the resource to its line
+after it; or it updates through the manager, which offers at once. A lease
+the resource holds keeps its term, and the line is the one its new labels
+make. The history lists newest first, ended leases too, each with the
+request it answered, a page at a time, and no tenant reads another's."""
 
 from datetime import datetime, timedelta
 from typing import Protocol
@@ -14,9 +14,13 @@ from uuid import UUID
 from acme.om.base import new_id, utcnow
 from acme.om.context import RequestContext, TenantContext
 from acme.om.leases.impl.manager import LeasesManagerImpl
+from acme.om.leases.types.leasable_resource import (
+    LeasableResource,
+    LeasableResourceKind,
+    LeasableResourceUpdate,
+)
 from acme.om.leases.types.lease import LeaseStatus
 from acme.om.leases.types.request import HistoryMark, LeaseRequest, RequestStatus
-from acme.om.leases.types.resource import Resource, ResourceKind, ResourceUpdate
 
 
 class OwnerWorld(Protocol):
@@ -30,7 +34,12 @@ class OwnerWorld(Protocol):
     async def member(self, name: str) -> TenantContext: ...
 
     async def land_update(
-        self, ctx: TenantContext, resource: Resource, change: ResourceUpdate, *, commits: bool
+        self,
+        ctx: TenantContext,
+        resource: LeasableResource,
+        change: LeasableResourceUpdate,
+        *,
+        commits: bool,
     ) -> None:
         """The owner's commit of its row with the resource's update; with
         `commits` False, the commit fails and neither lands."""
@@ -45,15 +54,15 @@ class OwnerWorld(Protocol):
 
 def a_dock(
     owner: TenantContext, labels: tuple[str, ...] = (), max_term_seconds: int = 600
-) -> Resource:
+) -> LeasableResource:
     now = utcnow()
-    return Resource(
+    return LeasableResource(
         id=new_id(),
         created_at=now,
         updated_at=now,
         created_by=owner.user_id,
         updated_by=owner.user_id,
-        kind=ResourceKind.NOOP,
+        kind=LeasableResourceKind.NOOP,
         ref_id=new_id(),
         labels=labels,
         max_term_seconds=max_term_seconds,
@@ -61,7 +70,7 @@ def a_dock(
 
 
 def an_ask(
-    resource: Resource | None = None,
+    resource: LeasableResource | None = None,
     *,
     labels: tuple[str, ...] | None = None,
     term_seconds: int = 60,
@@ -74,8 +83,8 @@ def an_ask(
         created_by=new_id(),
         updated_by=new_id(),
         idempotency_key=new_id(),
-        kind=ResourceKind.NOOP,
-        resource_id=None if resource is None else resource.id,
+        kind=LeasableResourceKind.NOOP,
+        leasable_resource_id=None if resource is None else resource.id,
         labels=labels,
         term_seconds=term_seconds,
     )
@@ -98,7 +107,7 @@ async def an_owners_update_grants_the_requests_its_labels_now_match(world: Owner
     frozen = await world.leases.ask(cat, an_ask(labels=("frozen",), term_seconds=600))
     assert cold.place == 1 and frozen.place is None
 
-    change = ResourceUpdate(labels=("frozen",), max_term_seconds=120)
+    change = LeasableResourceUpdate(labels=("frozen",), max_term_seconds=120)
     updated = await world.leases.update(owner, dock.id, change)
     assert (updated.labels, updated.max_term_seconds) == (("frozen",), 120)
     kept = await world.leases.get_lease(ann, held.lease.id)
@@ -114,7 +123,7 @@ async def an_owners_update_grants_the_requests_its_labels_now_match(world: Owner
 
     await world.leases.release(ann, held.lease.id)
     granted = await world.leases.get_request(cat, frozen.request.id)
-    assert granted.lease is not None and granted.lease.resource_id == dock.id
+    assert granted.lease is not None and granted.lease.leasable_resource_id == dock.id
     assert granted.lease.term_seconds == 120, "the new bound"
     waits = await world.leases.get_request(bob, cold.request.id)
     assert waits.lease is None and waits.request.status is RequestStatus.WAITING
@@ -122,10 +131,10 @@ async def an_owners_update_grants_the_requests_its_labels_now_match(world: Owner
     dry = await world.leases.register(owner, a_dock(owner, ("dry",)))
     wet = await world.leases.ask(bob, an_ask(labels=("wet",)))
     assert wet.lease is None
-    await world.land_update(owner, dry, ResourceUpdate(labels=("wet",)), commits=True)
+    await world.land_update(owner, dry, LeasableResourceUpdate(labels=("wet",)), commits=True)
     offered = await world.leases.offer(owner, dry.id)
     assert offered is not None and offered.request_id == wet.request.id
-    relabelled = await world.leases.get_resource(owner, dry.id)
+    relabelled = await world.leases.get_leasable_resource(owner, dry.id)
     assert (relabelled.labels, relabelled.max_term_seconds) == (("wet",), 600), "the bound stays"
 
 
@@ -144,25 +153,25 @@ async def an_update_that_takes_a_resource_out_of_service_lands_in_the_owners_com
     held = await world.leases.ask(ann, an_ask(dock))
     assert held.lease is not None
     waits = await world.leases.ask(bob, an_ask(dock))
-    out = ResourceUpdate(available=False)
+    out = LeasableResourceUpdate(available=False)
 
     await world.land_update(owner, dock, out, commits=False)
-    assert (await world.leases.get_resource(owner, dock.id)).available
+    assert (await world.leases.get_leasable_resource(owner, dock.id)).available
     await world.land_update(owner, dock, out, commits=True)
-    paused = await world.leases.get_resource(owner, dock.id)
+    paused = await world.leases.get_leasable_resource(owner, dock.id)
     assert (paused.available, paused.labels, paused.max_term_seconds) == (False, ("cold",), 600)
 
     await world.leases.release(ann, held.lease.id)
     await world.leases.sweep(world.rctx())
     still = await world.leases.get_request(bob, waits.request.id)
     assert still.lease is None and still.request.status is RequestStatus.WAITING
-    assert (await world.leases.get_resource(owner, dock.id)).lease_id is None
+    assert (await world.leases.get_leasable_resource(owner, dock.id)).lease_id is None
 
-    await world.land_update(owner, dock, ResourceUpdate(available=True), commits=True)
+    await world.land_update(owner, dock, LeasableResourceUpdate(available=True), commits=True)
     granted = await world.leases.offer(owner, dock.id)
     assert granted is not None and granted.request_id == waits.request.id
     assert granted.token == held.lease.token + 1
-    back = await world.leases.get_resource(owner, dock.id)
+    back = await world.leases.get_leasable_resource(owner, dock.id)
     assert (back.available, back.labels, back.max_term_seconds) == (True, ("cold",), 600)
 
 

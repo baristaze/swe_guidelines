@@ -11,14 +11,14 @@ from uuid import UUID
 from pydantic import Field, model_validator
 
 from acme.om.base import FrozenMapping, Identifiable, OmBase, Trackable
-from acme.om.leases.types.lease import Lease
-from acme.om.leases.types.resource import (
+from acme.om.leases.types.leasable_resource import (
     MAX_LABELS,
     MAX_TERM_SECONDS,
     Label,
-    Resource,
-    ResourceKind,
+    LeasableResource,
+    LeasableResourceKind,
 )
+from acme.om.leases.types.lease import Lease
 
 
 class RequestStatus(StrEnum):
@@ -63,9 +63,9 @@ class LeaseRequest(Identifiable, Trackable):
 
     # The ask's own key: an ask asked again by it answers this request.
     idempotency_key: UUID
-    kind: ResourceKind
+    kind: LeasableResourceKind
     # One resource, or a selector: the labels a resource of the kind offers.
-    resource_id: UUID | None = None
+    leasable_resource_id: UUID | None = None
     labels: tuple[Label, ...] | None = Field(default=None, max_length=MAX_LABELS)
     # The dump of ASK_PAYLOADS[kind]: what the grant starts, in the kind's shape.
     payload: FrozenMapping = Field(default_factory=dict, validate_default=True)
@@ -88,7 +88,7 @@ class LeaseRequest(Identifiable, Trackable):
 
     @model_validator(mode="after")
     def _names_one_target(self) -> Self:
-        if (self.resource_id is None) == (self.labels is None):
+        if (self.leasable_resource_id is None) == (self.labels is None):
             raise ValueError("a request names one resource or a selector's labels, not both")
         if (self.waiter_kind is None) != (self.waiter_id is None):
             raise ValueError("a waiter is a kind and an id together")
@@ -99,8 +99,8 @@ class NoopAsk(OmBase):
     """The `noop` kind's ask carries nothing."""
 
 
-ASK_PAYLOADS: dict[ResourceKind, type[OmBase]] = {
-    ResourceKind.NOOP: NoopAsk,
+ASK_PAYLOADS: dict[LeasableResourceKind, type[OmBase]] = {
+    LeasableResourceKind.NOOP: NoopAsk,
 }
 """The shape of what each kind's ask carries; the ask validates it."""
 
@@ -130,7 +130,7 @@ class Line(OmBase):
     place and estimate in the same order, replayed from the one read the
     line makes."""
 
-    resource: Resource
+    leasable_resource: LeasableResource
     requests: tuple[LeaseRequest, ...]
     places: tuple[Place, ...] = ()
 
