@@ -485,7 +485,7 @@ async def drain(w: Any, label: str = "", most: int = 100) -> None:
         rows = await w.sql(f"SELECT status FROM queue.work_items WHERE id = '{item.id}'")
         w.record(
             "worker",
-            f"{item.kind.value}{label}",
+            f"{item.kind}{label}",
             rows[0][0] if rows else "?",
             w.since(mark),
             note="claim, handle, and settle",

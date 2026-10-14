@@ -656,7 +656,7 @@ async def work_requeue_command(
         finally:
             await sign_out(client, minted.token)
     print(
-        f"requeued {item.id} ({item.kind.value}) in org {args.org}: {item.status.value}, "
+        f"requeued {item.id} ({item.kind}) in org {args.org}: {item.status.value}, "
         f"{item.attempts} of {item.max_attempts} attempts spent, available now"
     )
     return OK
