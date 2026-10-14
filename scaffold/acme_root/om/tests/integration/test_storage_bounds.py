@@ -22,14 +22,14 @@ from sqlalchemy.exc import DBAPIError
 from sqlalchemy.exc import TimeoutError as PoolTimeoutError
 
 from acme.om.base import EMPTY_UUID, new_id
-from acme.om.events.storage.tables.events import Events
+from acme.om.change_events.storage.tables.change_events import ChangeEvents
 from acme.om.exceptions import Unavailable
 from acme.om.media.storage.tables.files import Files
 from acme.om.storage.impl.pg_base import LoginSessions, PgStorageBase
 from acme.om.storage.impl.postgres import login_sessions
 from acme.om.storage.roles import DatabaseRole
 from acme.om.storage.settings import MigrationSettings, RolePool
-from acme.om.tenancy.storage.tables.platform_sizes import PlatformSizes
+from acme.om.tenancy.storage.tables.system_sizes import SystemSizes
 from acme.om.work.storage.tables.work_items import WorkItems
 
 pytestmark = pytest.mark.integration
@@ -99,9 +99,9 @@ async def test_a_checkout_past_the_pool_waits_its_bound_and_fails(
 
 A_TABLE_OF: dict[DatabaseRole, type[Any]] = {
     DatabaseRole.CORE: Files,
-    DatabaseRole.ACTIVITY: Events,
+    DatabaseRole.ACTIVITY: ChangeEvents,
     DatabaseRole.QUEUE: WorkItems,
-    DatabaseRole.ADMIN: PlatformSizes,
+    DatabaseRole.ADMIN: SystemSizes,
 }
 """A table of each role, which is what routes a session to that role's pool.
 The worker's claim is the queue role under the system login, and the outbox

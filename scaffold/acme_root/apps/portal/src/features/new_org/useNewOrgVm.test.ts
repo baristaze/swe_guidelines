@@ -7,8 +7,8 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, createElement, useEffect } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { ApiError, type IssuedSessionView, type MembershipChoiceView } from "@acme/client";
-import { useSessionStore } from "../../store/session";
+import { ApiError, type IssuedAuthSessionView, type MembershipChoiceView } from "@acme/client";
+import { useAuthSessionStore } from "../../store/authSession";
 import { useNewOrgVm } from "./useNewOrgVm";
 
 interface Sent {
@@ -38,7 +38,7 @@ let root: ReturnType<typeof createRoot>;
 const org = { id: "o2", name: "Dee's Bakery", slug: "dee-s-bakery-1a2b", kind: "team" as const, created_at: "2026-09-01T00:00:00Z" };
 const user = { id: "u2", email: "dee@example.test", display_name: "Dee", created_at: "2026-09-01T00:00:00Z" };
 const place: MembershipChoiceView = { org, user, role: "owner" };
-const session: IssuedSessionView = { token: "ses_team", expires_at: "2026-09-02T00:00:00Z", org, user, role: "owner" };
+const session: IssuedAuthSessionView = { token: "ses_team", expires_at: "2026-09-02T00:00:00Z", org, user, role: "owner" };
 
 const held: { vm?: ReturnType<typeof useNewOrgVm> } = {};
 const vm = () => held.vm!;
@@ -66,7 +66,7 @@ beforeEach(() => {
   net.sent.length = 0;
   net.answers.clear();
   net.navigate.mockReset();
-  useSessionStore.getState().setSession("ses_home", "dee-9z8y");
+  useAuthSessionStore.getState().setAuthSession("ses_home", "dee-9z8y");
 });
 
 afterEach(async () => {
@@ -85,7 +85,7 @@ it("creates the org under a key, switches into it, and lands on its home page", 
     ["/v1/auth/sessions", { org_id: "o2" }],
   ]);
   expect(net.sent[0]!.options?.idempotencyKey).toBeTruthy();
-  expect(useSessionStore.getState().token).toBe("ses_team");
+  expect(useAuthSessionStore.getState().token).toBe("ses_team");
   expect(net.navigate).toHaveBeenCalledWith("/", { replace: true });
 });
 
@@ -111,6 +111,6 @@ it("says a taken short name and stays where it was", async () => {
   await act(async () => vm().submit());
   expect(vm().error).toBe("Org slug 'bakery' is taken.");
   expect(net.sent.map((s) => s.path)).toEqual(["/v1/orgs"]);
-  expect(useSessionStore.getState().token).toBe("ses_home");
+  expect(useAuthSessionStore.getState().token).toBe("ses_home");
   expect(net.navigate).not.toHaveBeenCalled();
 });

@@ -104,14 +104,14 @@ async def test_a_session_walks_every_step_in_order() -> None:
         "PATCH /v1/me",
         "POST /v1/api-keys",
         "DELETE /v1/api-keys/{id}",
-        "GET /v1/events",
+        "GET /v1/change-events",
     ]
     assert not any(r.url.path in AUTH_ROUTES for r in api.requests)
     create = next(r for r in api.requests if r.method == "POST" and r.url.path == "/v1/api-keys")
     assert create.headers["idempotency-key"]
     assert all(r.headers["x-app"] == "portal" for r in api.requests)
     assert all(r.headers["authorization"] == "Bearer ses_1" for r in api.requests)
-    events = next(r for r in api.requests if r.url.path == "/v1/events")
+    events = next(r for r in api.requests if r.url.path == "/v1/change-events")
     assert events.url.params["after_seq"] == "10"  # where the stream stood at the hello
     assert len(outcome.write_request_ids) == 1
     assert len(samples) == len(api.requests)

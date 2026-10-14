@@ -90,9 +90,9 @@ TABLE_SCOPES: dict[str, TableScope] = {
     # sign-in delay is keyed on an email before any identity is known.
     "identities": TableScope(ScopeKind.SYSTEM),
     "sign_in_delays": TableScope(ScopeKind.SYSTEM),
-    # The operator plane's own: the platform's size as the sweep last counted
+    # The operator plane's own: the system's size as the sweep last counted
     # it, one row that is no tenant's.
-    "platform_sizes": TableScope(ScopeKind.SYSTEM),
+    "system_sizes": TableScope(ScopeKind.SYSTEM),
     # A tenant's own rows. An org's `org_id` is its own id.
     "orgs": TableScope(ScopeKind.ORG),
     "invitations": TableScope(ScopeKind.ORG),
@@ -102,10 +102,10 @@ TABLE_SCOPES: dict[str, TableScope] = {
     # planner must see how many there are to walk its index in order.
     "work_items": TableScope(ScopeKind.ORG, by_login=True),
     "tenant_caps": TableScope(ScopeKind.ORG),
-    "events": TableScope(ScopeKind.ORG),
-    "event_cursors": TableScope(ScopeKind.ORG),
+    "change_events": TableScope(ScopeKind.ORG),
+    "change_event_cursors": TableScope(ScopeKind.ORG),
     "orchestrations": TableScope(ScopeKind.ORG),
-    "resources": TableScope(ScopeKind.ORG),
+    "leasable_resources": TableScope(ScopeKind.ORG),
     "leases": TableScope(ScopeKind.ORG),
     "lease_requests": TableScope(ScopeKind.ORG),
     # A tenant's rows that also belong to one person in it. A user's person
@@ -113,7 +113,7 @@ TABLE_SCOPES: dict[str, TableScope] = {
     # other row here names the user and narrows on `app.user_id`.
     "users": TableScope(ScopeKind.BOTH, identity_column="identity_id"),
     "memberships": TableScope(ScopeKind.BOTH, person_column="user_id"),
-    "sessions": TableScope(ScopeKind.BOTH, person_column="user_id"),
+    "auth_sessions": TableScope(ScopeKind.BOTH, person_column="user_id"),
     "api_keys": TableScope(ScopeKind.BOTH, person_column="user_id"),
     "socket_tickets": TableScope(ScopeKind.BOTH, person_column="user_id"),
     "idempotency_records": TableScope(ScopeKind.BOTH, person_column="user_id"),

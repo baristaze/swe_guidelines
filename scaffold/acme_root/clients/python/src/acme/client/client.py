@@ -15,39 +15,39 @@ import httpx
 import truststore
 
 from acme.client.types import (
+    ChangeEventView,
     DeviceSignInView,
-    EventView,
     FilePageView,
     FileView,
     InvitationPageView,
     InvitationView,
+    IssuedAuthSessionView,
     IssuedDownloadView,
     IssuedLoginView,
-    IssuedSessionView,
     IssuedTicketView,
     IssuedUploadView,
     LeasePageView,
     LeaseRequestView,
     LeaseView,
-    LineView,
     MembershipChoicePageView,
     MembershipChoiceView,
     MeView,
-    OperatorEventView,
+    OperatorChangeEventView,
     OperatorTokenPageView,
     OperatorTokenView,
     OperatorView,
     OperatorWorkItemView,
     OrgView,
-    PlatformSizeView,
     Role,
     SignedOutView,
     SignInStartView,
     SsoLinkView,
     StandingView,
     StorageUsageView,
+    SystemSizeView,
     UserPageView,
     UserView,
+    WaitLineView,
 )
 
 APP_HEADER = "X-App"
@@ -419,11 +419,11 @@ class ApiClient:
         )
         return IssuedLoginView.model_validate(answer)
 
-    async def exchange_session(self, login_token: str, org_id: UUID) -> IssuedSessionView:
+    async def exchange_auth_session(self, login_token: str, org_id: UUID) -> IssuedAuthSessionView:
         body = await self.request(
             "POST", "/v1/auth/sessions", json={"org_id": str(org_id)}, token=login_token
         )
-        return IssuedSessionView.model_validate(body)
+        return IssuedAuthSessionView.model_validate(body)
 
     async def create_org(
         self, name: str, slug: str | None = None, *, idempotency_key: str | None = None
@@ -460,11 +460,11 @@ class ApiClient:
                 return found
             cursor = page.next_cursor
 
-    async def switch_session(self, org_id: UUID) -> IssuedSessionView:
+    async def switch_auth_session(self, org_id: UUID) -> IssuedAuthSessionView:
         """The exchange presented with the session the client holds: the API
         ends that session in the same write, and the client carries the new
         one from here on, so it never holds two."""
-        issued = await self.exchange_session(self._require_token(), org_id)
+        issued = await self.exchange_auth_session(self._require_token(), org_id)
         self.token = issued.token
         return issued
 
@@ -545,14 +545,14 @@ class ApiClient:
             if cursor is None:
                 return users
 
-    # Leases: a resource's line, and the holder's lease. The holder's own
+    # Leases: a leasable resource's wait line, and the holder's lease. The holder's own
     # side, its clock and its fence, is `acme.client.leases`.
 
     async def ask_lease(
         self,
         *,
         kind: str = "noop",
-        resource_id: UUID | None = None,
+        leasable_resource_id: UUID | None = None,
         labels: list[str] | None = None,
         payload: dict[str, Any] | None = None,
         term_seconds: int = 60,
@@ -572,8 +572,8 @@ class ApiClient:
         }
         if start_seconds is not None:
             body["start_seconds"] = start_seconds
-        if resource_id is not None:
-            body["resource_id"] = str(resource_id)
+        if leasable_resource_id is not None:
+            body["leasable_resource_id"] = str(leasable_resource_id)
         if labels is not None:
             body["labels"] = labels
         asked = await self.request(
@@ -601,20 +601,27 @@ class ApiClient:
         moved = await self.request("POST", f"/v1/leases/requests/{request_id}/reorder", json=body)
         return LeaseRequestView.model_validate(moved)
 
-    async def resource_line(self, resource_id: UUID) -> LineView:
-        """A resource's line, first first, with each place and estimate."""
-        line = await self.request("GET", f"/v1/leases/resources/{resource_id}/line")
-        return LineView.model_validate(line)
+    async def leasable_resource_wait_line(self, leasable_resource_id: UUID) -> WaitLineView:
+        """A leasable resource's wait line, first first, with each place and
+        estimate."""
+        line = await self.request(
+            "GET", f"/v1/leases/leasable-resources/{leasable_resource_id}/wait-line"
+        )
+        return WaitLineView.model_validate(line)
 
     async def lease_history(
-        self, resource_id: UUID | None = None, *, cursor: str | None = None, limit: int = LIMIT_MAX
+        self,
+        leasable_resource_id: UUID | None = None,
+        *,
+        cursor: str | None = None,
+        limit: int = LIMIT_MAX,
     ) -> LeasePageView:
         """One page of the org's leases, or one resource's, newest first,
         ended ones too, each with the request it answered; `cursor` is the
         previous page's `next_cursor`."""
         params: dict[str, Any] = {"limit": limit}
-        if resource_id is not None:
-            params["resource_id"] = str(resource_id)
+        if leasable_resource_id is not None:
+            params["leasable_resource_id"] = str(leasable_resource_id)
         if cursor:
             params["cursor"] = cursor
         page = await self.request("GET", "/v1/leases", params=params)
@@ -737,13 +744,15 @@ class ApiClient:
             raise ApiError(fetched.status_code, "download_refused", fetched.text[:200], None)
         return fetched.content
 
-    # Events and the channel
+    # Change events and the channel
 
-    async def events_after(self, after_seq: int, limit: int = LIMIT_MAX) -> list[EventView]:
+    async def change_events_after(
+        self, after_seq: int, limit: int = LIMIT_MAX
+    ) -> list[ChangeEventView]:
         body = await self.request(
-            "GET", "/v1/events", params={"after_seq": after_seq, "limit": limit}
+            "GET", "/v1/change-events", params={"after_seq": after_seq, "limit": limit}
         )
-        return [EventView.model_validate(e) for e in cast(list[Any], body)]
+        return [ChangeEventView.model_validate(e) for e in cast(list[Any], body)]
 
     async def ticket(self) -> IssuedTicketView:
         return IssuedTicketView.model_validate(await self.request("POST", "/v1/realtime/tickets"))
@@ -773,8 +782,8 @@ class ApiClient:
         body = await self.request("DELETE", f"/v1/admin/me/tokens/{token_id}")
         return OperatorTokenView.model_validate(body)
 
-    async def admin_size(self) -> PlatformSizeView:
-        return PlatformSizeView.model_validate(await self.request("GET", "/v1/admin/size"))
+    async def admin_size(self) -> SystemSizeView:
+        return SystemSizeView.model_validate(await self.request("GET", "/v1/admin/size"))
 
     async def admin_create_org(
         self,
@@ -834,15 +843,15 @@ class ApiClient:
         body = await self.request("GET", f"/v1/admin/orgs/{org_id}/members", params=params)
         return UserPageView.model_validate(body)
 
-    async def admin_events(
+    async def admin_change_events(
         self, org_id: UUID, after_seq: int = 0, limit: int = LIMIT_MAX
-    ) -> list[OperatorEventView]:
+    ) -> list[OperatorChangeEventView]:
         body = await self.request(
             "GET",
-            f"/v1/admin/orgs/{org_id}/events",
+            f"/v1/admin/orgs/{org_id}/change-events",
             params={"after_seq": after_seq, "limit": limit},
         )
-        return [OperatorEventView.model_validate(e) for e in cast(list[Any], body)]
+        return [OperatorChangeEventView.model_validate(e) for e in cast(list[Any], body)]
 
     async def admin_requeue_work(self, org_id: UUID, item_id: UUID) -> OperatorWorkItemView:
         """One failed work item back to the queue, with its attempts reset; a

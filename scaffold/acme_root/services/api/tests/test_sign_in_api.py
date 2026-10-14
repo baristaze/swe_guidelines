@@ -267,7 +267,7 @@ async def test_a_sign_out_answers_where_the_browser_ends_the_providers_session(
     out = await client.post("/v1/auth/logout", json={"return_to": SIGNED_OUT}, headers=headers)
     assert out.status_code == 200, out.text
     body = out.json()
-    assert body["revoked_at"] is not None and body["credential_kind"] == "session_token"
+    assert body["revoked_at"] is not None and body["credential_kind"] == "auth_session_token"
     url = urlparse(body["provider_logout_url"])
     assert f"{url.scheme}://{url.netloc}{url.path}" == TWIN_LOGOUT
     query = parse_qs(url.query)

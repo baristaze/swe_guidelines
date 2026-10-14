@@ -1,7 +1,7 @@
 from datetime import timedelta
 from uuid import UUID
 
-from acme.om.base import EMPTY_UUID, Platform, new_id, utcnow
+from acme.om.base import EMPTY_UUID, OmBase, new_id, utcnow
 from acme.om.context import OperatorContext, OperatorPermission, Permission, TenantContext
 from acme.om.exceptions import (
     DuplicateIdempotencyKey,
@@ -16,7 +16,7 @@ from acme.om.idempotency.types.attempt import lease_bound
 from acme.om.idempotency.types.record import IdempotencyRecord
 
 
-class IdempotencyOptions(Platform):
+class IdempotencyOptions(OmBase):
     pending_ttl: timedelta = timedelta(minutes=2)
     """The pending lease, run from the attempt and never from the marker: an
     attempt older than this was abandoned by a crash between the marker and its

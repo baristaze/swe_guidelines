@@ -7,7 +7,7 @@ allowed-tools: Read, Grep, Glob, Write, Edit, Bash(uv run:*), Bash(git:*), Bash(
 # audit-provider-calls
 
 A call to a provider is the slowest thing a request does and the one
-the platform controls least. This audit lists every one, flow by flow,
+the system controls least. This audit lists every one, flow by flow,
 says what each costs a request in the worst case, and ranks what to do
 about it.
 
@@ -51,7 +51,7 @@ calls no real provider.
      `om/src` for `httpx`, `aiohttp`, `urllib`, `boto`, `workos`, and
      `sentry_sdk`, and read the exporters in
      `infra/src/acme/infra/observability.py`. The cache and the
-     database are the platform's own and not in scope.
+     database are the system's own and not in scope.
    For each client: the timeout and where it is set
    (`integrations/src/acme/integrations/settings.py`, `aws_clients.py`),
    and the timeout the SDK actually sends, which it may override; the

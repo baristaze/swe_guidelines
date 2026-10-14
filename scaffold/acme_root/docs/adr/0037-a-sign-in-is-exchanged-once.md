@@ -5,23 +5,23 @@
 ## Context
 
 A sign-in answers a login credential (`lgn_`) and the person's places.
-`POST /v1/auth/sessions` exchanges it for a session in one of them. The
+`POST /v1/auth/sessions` exchanges it for an auth session in one of them. The
 login lives ten minutes (`ACME_LOGIN_LIFETIME_SECONDS`). An exchange
-that leaves the login standing makes another session on every click of
+that leaves the login standing makes another auth session on every click of
 the org picker, and on every replayed request.
 
-In the guideline, the app "holds one session and drops the sign-in
+In the guideline, the app "holds one auth session and drops the sign-in
 credential" ("One Tenant at a Time"), and a creating `POST` accepts an
 `Idempotency-Key` whose marker owns the retry ("The Gateway"). The
-exchange leaves a session row behind, so the question is what a retry
+exchange leaves an auth session row behind, so the question is what a retry
 after a lost answer gets.
 
 ## Decision
 
-**The exchange ends the sign-in in the write that makes the session.**
+**The exchange ends the sign-in in the write that makes the auth session.**
 `exchange_sign_in` is one named atomic write. In one transaction, the
 login row is locked, refused when it is already ended, and marked
-revoked, and the new session is inserted. The login lives in the system
+revoked, and the new auth session is inserted. The login lives in the system
 scope, so the write runs on the system login and sets the scope to the
 tenant before the insert, as a switch does. Of two exchanges at once,
 one lands. A second exchange answers `401` ("this sign-in was used
@@ -31,15 +31,15 @@ not in, ends nothing.
 **The exchange takes no `Idempotency-Key`.** The sign-in is the key. It
 is single-use, minted by the server, and ended in the same write as the
 effect: the idempotent consumer's shape. So no retry, replay, or second
-click can make a second session.
+click can make a second auth session.
 
 A marker's other job, replaying the answer, cannot work here. The
-answer is the session token, and the idempotency records keep no
-secret: a replay would hand back a session without its token. Handing
-back the same session would mean keeping its token in the clear, and
+answer is the auth session token, and the idempotency records keep no
+secret: a replay would hand back an auth session without its token. Handing
+back the same auth session would mean keeping its token in the clear, and
 the tenancy namespace never keeps a credential it can be handed.
 
-**A retry after a lost answer signs in again.** The session the lost
+**A retry after a lost answer signs in again.** The auth session the lost
 answer made reached nobody. Its token was never shown, so it can never
 be presented, and it ends at its absolute lifetime like any other.
 
@@ -60,5 +60,5 @@ A sign-in exchanged into a tenant is ended, so the operator plane
 refuses it too. An operator who needs the plane and a tenant signs in
 twice.
 
-An ended sign-in is `revoked_at`, as an ended session is. The row keeps
+An ended sign-in is `revoked_at`, as an ended auth session is. The row keeps
 its columns.

@@ -1,14 +1,14 @@
 ---
 name: ops-investigate
-description: "Investigate one environment of the platform with a read-only credential: the alarms, the error rate, the latency, the worker outcomes and the work items that failed for good, the pool, the queue and its dead letter, the identity provider (the sign-in and its webhook), the cost against the budget, and the platform's size, then report what is wrong and what to do next. Every read goes through the signals' own APIs (CloudWatch, X-Ray, the error tracker in the cloud; Prometheus, Jaeger, GlitchTip locally). Use when something looks off, when an alarm fires, or as the daily look. Never writes."
+description: "Investigate one environment of the system with a read-only credential: the alarms, the error rate, the latency, the worker outcomes and the work items that failed for good, the pool, the queue and its dead letter, the identity provider (the sign-in and its webhook), the cost against the budget, and the system's size, then report what is wrong and what to do next. Every read goes through the signals' own APIs (CloudWatch, X-Ray, the error tracker in the cloud; Prometheus, Jaeger, GlitchTip locally). Use when something looks off, when an alarm fires, or as the daily look. Never writes."
 allowed-tools: Read, Grep, Glob, Bash(aws:*), Bash(curl:*), Bash(docker compose:*), Bash(uv run acme-ops size:*), Bash(sleep:*)
 ---
 
 # ops-investigate
 
 One environment, one window, one credential that can only read. The
-skill looks at every signal the platform emits and says what is wrong,
-how big the platform is, and which skill runs next. It changes
+skill looks at every signal the system emits and says what is wrong,
+how big the system is, and which skill runs next. It changes
 nothing.
 
 Read `../_shared/ops-preamble.md`, a path from this skill's folder,
@@ -22,7 +22,7 @@ file are there.
 `--env` is required; ask for it when missing. `--since` is the window,
 a duration ending now, one hour by default. `--request-id` narrows the
 look to one request across every signal. `--alarm` starts from one
-alarm by name and reads the platform's size before anything else.
+alarm by name and reads the system's size before anything else.
 
 `local` reads the compose stack's twins (Prometheus, Jaeger, GlitchTip,
 `docker compose logs`) and needs no cloud. The skill is testable with
@@ -61,7 +61,7 @@ and their handling is in `/acme/<env>/maintenance`.
 1. Verify the credential as Role and credential states. Compute the
    window: `--since` back from now, as epoch seconds
    for the cloud and as a Prometheus range for local.
-2. Read the platform's size first:
+2. Read the system's size first:
 
    ```bash
    uv run acme-ops size --env <env>
@@ -69,7 +69,7 @@ and their handling is in `/acme/<env>/maintenance`.
 
    When it refuses the env file for holding the provisioner's token,
    stop, and give the person the line it printed: no later step runs,
-   and none sources the file. It prints tenants, users, and the events
+   and none sources the file. It prints tenants, users, and the change events
    produced in the last day,
    through `GET /v1/admin/size`
    with the env file's operator token (`uv run acme-ops size --env <env>`,
@@ -78,7 +78,7 @@ and their handling is in `/acme/<env>/maintenance`.
    the command prints how long ago it counted. A count older than ten
    minutes says the worker's sweep has stopped counting, which is a
    finding of its own; a `404` says no worker has counted in this
-   environment yet. A platform of one tenant and one user is the
+   environment yet. A system of one tenant and one user is the
    developer. Every finding below is read against this number and
    against whose traffic it was.
 3. Alarms. Cloud:
@@ -198,14 +198,15 @@ and their handling is in `/acme/<env>/maintenance`.
    `ERROR` with the record's id and the org's (`<kind> <id> in org
    <org> failed: defect ...`), so step 7 finds it. A running record
    whose `_succeeded` never follows is a step the queue keeps retrying:
-   read the worker's `failed` outcomes beside it. A lease on a resource
-   counts `leases`/`granted`, then `released`, `expired`, or `revoked`;
-   a request that left its line without one counts `request_expired` or
-   `request_<why>` (`asked`, `waiter_gone`, `refused`). The work queue and the outbox are Postgres
-   tables, and each sweep pass reads four numbers of them across every
-   tenant: `acme_work_oldest_ready_seconds` (how long the item ready
-   longest has waited), `acme_work_failed_recently` (items failed in the
-   last fifteen minutes and still failed),
+   read the worker's `failed` outcomes beside it. A lease on a leasable
+   resource counts `leases`/`granted`, then `released`, `expired`, or
+   `revoked`; a request that left its line without one counts
+   `request_expired` or `request_<why>` (`asked`, `waiter_gone`,
+   `refused`). The work queue and the outbox are Postgres tables, and
+   each sweep pass reads four numbers of them across every tenant:
+   `acme_work_oldest_ready_seconds` (how long the item ready longest has
+   waited), `acme_work_failed_recently` (items failed in the last
+   fifteen minutes and still failed),
    `acme_outbox_oldest_pending_seconds` (how long ago the oldest row not
    yet relayed landed), and `acme_outbox_failed_recently` (rows failed
    for good in the last fifteen minutes). Locally they are gauges on
@@ -477,7 +478,7 @@ and their handling is in `/acme/<env>/maintenance`.
 # Investigation: <env>, last <since>
 
 **Credential.** <profile and the Arn it resolved to, or local>
-**Size.** <tenants> tenants, <users> users, <n> events in the last day, counted <age> ago
+**Size.** <tenants> tenants, <users> users, <n> change events in the last day, counted <age> ago
 
 ## Alarms
 

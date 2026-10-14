@@ -2,8 +2,8 @@
 // saw, and how a replayed record becomes the envelope it would have been.
 // The socket is a hint; the stream in storage is the truth, so a gap is
 // closed by fetching after the cursor rather than by trusting the frame.
-import { ApiError, type EventView } from "@acme/client";
-import type { EventEnvelope } from "./envelopes";
+import { ApiError, type ChangeEventView } from "@acme/client";
+import type { ChangeEventEnvelope } from "./envelopes";
 
 // The last contiguous seq the client applied; null until the first push.
 export type Cursor = number | null;
@@ -35,9 +35,9 @@ export function truncatedHead(error: unknown): number | null {
   return error.stream?.head ?? null;
 }
 
-export function eventEnvelope(event: EventView): EventEnvelope {
+export function changeEventEnvelope(event: ChangeEventView): ChangeEventEnvelope {
   return {
-    type: "event",
+    type: "change_event",
     topic: "entity_changed",
     sent_at: null,
     payload: {
@@ -72,7 +72,7 @@ export function readsBegan(helloSentAt: string, waitedMs: number, marginMs = FIR
 // began reading then may not have seen. Null when the tail cannot tell: it
 // was read from a seq past the stream's start and its first record is
 // already that recent, so older records since then may lie before it.
-export function tailSince(tail: EventView[], after: number, since: number): EventView[] | null {
+export function tailSince(tail: ChangeEventView[], after: number, since: number): ChangeEventView[] | null {
   const recent = tail.filter((event) => Date.parse(event.produced_at) >= since);
   if (after > 0 && tail.length > 0 && recent.length === tail.length) return null;
   return recent;

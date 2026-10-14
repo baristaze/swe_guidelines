@@ -16,7 +16,7 @@ support credential delete an org.
 `OperatorRole | None`: `read` or `write`, and write includes read.
 `admit_operator` fills `OperatorContext.permissions` from it, and every
 operator operation requires one. The reads (`get_orgs`, `get_org`,
-`get_members`, `get_events`, `size`) require read. The writes
+`get_members`, `get_change_events`, `size`) require read. The writes
 (`create_org`, `add_member`, `delete_org`, a work item's requeue)
 require write.
 
@@ -37,7 +37,7 @@ then the plane admits the enrolment and nothing else. A sign-in that
 verified a code mints one operator token and does nothing else
 ([ADR 0068](0068-an-operator-credential-ends-by-itself.md)).
 
-**An agent holds an operator token.** A token is a `sessions` row of
+**An agent holds an operator token.** A token is a `auth_sessions` row of
 kind `operator_token` under the system scope: one permission, an hour
 at most, stored as its digest, capped by the entry on every request. A
 person mints one from a sign-in with a code. The grant job mints the
@@ -53,7 +53,7 @@ file, so none of them holds a write token.
 every creating route. Their markers have no tenant, so they live under
 the system scope, keyed by the operator's identity id, through
 `begin_for_operator`, `finish_for_operator`, and `release_for_operator`.
-The system-scope sweep purges them with the platform's own markers. The
+The system-scope sweep purges them with the system's own markers. The
 seeding commands and the operator's creates share one private path,
 `tenancy/impl/creates.py`, so the seed and the API make the same rows.
 
@@ -66,7 +66,7 @@ Every operator read of a tenant's rows logs one line with the org id
 and the operator's identity id, and no tenant data.
 
 An operator credential produces an identity stage, never a tenant one.
-It lives in `sessions` under the system scope, never in a tenant's
+It lives in `auth_sessions` under the system scope, never in a tenant's
 `api_keys`.
 
 An operator namespace of its own would move the operator markers out

@@ -173,7 +173,7 @@
         "description": "An ask for a lease: one resource by its id, or a selector, the labels\na resource of `kind` must offer. `payload` is in the shape the kind\nfixes; the term is bounded by the resource's, and the ask expires in line\nafter `wait_seconds`. When the grant starts a job, `start_seconds` is the\nwindow the job has to start in, bounded the same way; none gives it the\nterm.",
         "properties": {
           "kind": {
-            "$ref": "#/components/schemas/ResourceKind"
+            "$ref": "#/components/schemas/LeasableResourceKind"
           },
           "labels": {
             "anyOf": [
@@ -193,12 +193,7 @@
             ],
             "title": "Labels"
           },
-          "payload": {
-            "additionalProperties": true,
-            "title": "Payload",
-            "type": "object"
-          },
-          "resource_id": {
+          "leasable_resource_id": {
             "anyOf": [
               {
                 "format": "uuid",
@@ -208,7 +203,12 @@
                 "type": "null"
               }
             ],
-            "title": "Resource Id"
+            "title": "Leasable Resource Id"
+          },
+          "payload": {
+            "additionalProperties": true,
+            "title": "Payload",
+            "type": "object"
           },
           "start_seconds": {
             "anyOf": [
@@ -242,6 +242,87 @@
           "kind"
         ],
         "title": "AskRequest",
+        "type": "object"
+      },
+      "AuthSessionView": {
+        "description": "Only the hash of a token is ever kept, so a session view carries no secret.",
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "credential_kind": {
+            "$ref": "#/components/schemas/CredentialKind"
+          },
+          "expires_at": {
+            "format": "date-time",
+            "title": "Expires At",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "revoked_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Revoked At"
+          }
+        },
+        "required": [
+          "id",
+          "credential_kind",
+          "created_at",
+          "expires_at",
+          "revoked_at"
+        ],
+        "title": "AuthSessionView",
+        "type": "object"
+      },
+      "ChangeEventView": {
+        "description": "One record of the tenant's append-only stream, paged by `after_seq`.\n`kind` is \"<namespace>.<entity>.<action>\", or an audit kind; the payload\nstays inside, an event is a record and not a second read path.",
+        "properties": {
+          "actor_id": {
+            "format": "uuid",
+            "title": "Actor Id",
+            "type": "string"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "produced_at": {
+            "format": "date-time",
+            "title": "Produced At",
+            "type": "string"
+          },
+          "seq": {
+            "title": "Seq",
+            "type": "integer"
+          },
+          "target_id": {
+            "format": "uuid",
+            "title": "Target Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "seq",
+          "kind",
+          "target_id",
+          "produced_at",
+          "actor_id"
+        ],
+        "title": "ChangeEventView",
         "type": "object"
       },
       "ConfirmTotpRequest": {
@@ -331,7 +412,7 @@
       "CredentialKind": {
         "enum": [
           "api_key",
-          "session_token",
+          "auth_session_token",
           "login",
           "socket_ticket",
           "operator_token",
@@ -547,44 +628,7 @@
         "title": "ErrorResponse",
         "type": "object"
       },
-      "EventView": {
-        "description": "One record of the tenant's append-only stream, paged by `after_seq`.\n`kind` is \"<namespace>.<entity>.<action>\", or an audit kind; the payload\nstays inside, an event is a record and not a second read path.",
-        "properties": {
-          "actor_id": {
-            "format": "uuid",
-            "title": "Actor Id",
-            "type": "string"
-          },
-          "kind": {
-            "title": "Kind",
-            "type": "string"
-          },
-          "produced_at": {
-            "format": "date-time",
-            "title": "Produced At",
-            "type": "string"
-          },
-          "seq": {
-            "title": "Seq",
-            "type": "integer"
-          },
-          "target_id": {
-            "format": "uuid",
-            "title": "Target Id",
-            "type": "string"
-          }
-        },
-        "required": [
-          "seq",
-          "kind",
-          "target_id",
-          "produced_at",
-          "actor_id"
-        ],
-        "title": "EventView",
-        "type": "object"
-      },
-      "ExchangeSessionRequest": {
+      "ExchangeAuthSessionRequest": {
         "additionalProperties": false,
         "description": "The org to enter. Presented with the sign-in credential, it opens the\nfirst session; presented with a session, it is a switch, and that session\nends in the same write.",
         "properties": {
@@ -597,7 +641,7 @@
         "required": [
           "org_id"
         ],
-        "title": "ExchangeSessionRequest",
+        "title": "ExchangeAuthSessionRequest",
         "type": "object"
       },
       "FilePageView": {
@@ -935,6 +979,37 @@
         "title": "IssuedApiKeyView",
         "type": "object"
       },
+      "IssuedAuthSessionView": {
+        "properties": {
+          "expires_at": {
+            "format": "date-time",
+            "title": "Expires At",
+            "type": "string"
+          },
+          "org": {
+            "$ref": "#/components/schemas/OrgView"
+          },
+          "role": {
+            "$ref": "#/components/schemas/Role"
+          },
+          "token": {
+            "title": "Token",
+            "type": "string"
+          },
+          "user": {
+            "$ref": "#/components/schemas/UserView"
+          }
+        },
+        "required": [
+          "token",
+          "expires_at",
+          "org",
+          "user",
+          "role"
+        ],
+        "title": "IssuedAuthSessionView",
+        "type": "object"
+      },
       "IssuedDownloadView": {
         "description": "A link to the file's bytes that works until `expires_at`. A null `url`\nmeans the store cannot sign one: the bytes come from\n`GET /v1/media/files/{id}/content`.",
         "properties": {
@@ -1025,37 +1100,6 @@
           "permission"
         ],
         "title": "IssuedOperatorTokenView",
-        "type": "object"
-      },
-      "IssuedSessionView": {
-        "properties": {
-          "expires_at": {
-            "format": "date-time",
-            "title": "Expires At",
-            "type": "string"
-          },
-          "org": {
-            "$ref": "#/components/schemas/OrgView"
-          },
-          "role": {
-            "$ref": "#/components/schemas/Role"
-          },
-          "token": {
-            "title": "Token",
-            "type": "string"
-          },
-          "user": {
-            "$ref": "#/components/schemas/UserView"
-          }
-        },
-        "required": [
-          "token",
-          "expires_at",
-          "org",
-          "user",
-          "role"
-        ],
-        "title": "IssuedSessionView",
         "type": "object"
       },
       "IssuedTicketView": {
@@ -1150,6 +1194,107 @@
         "title": "LastOwnerDetail",
         "type": "object"
       },
+      "LeasableResourceKind": {
+        "description": "A product adds its kinds here, each with the shape of what its ask\ncarries (`ASK_PAYLOADS`) and its hooks (`LeasableResourceKindInterface`).",
+        "enum": [
+          "noop"
+        ],
+        "title": "LeasableResourceKind",
+        "type": "string"
+      },
+      "LeasableResourceView": {
+        "description": "A resource and its anchor: the highest token granted on it, and the\nlease that holds it until when.",
+        "properties": {
+          "available": {
+            "title": "Available",
+            "type": "boolean"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "fencing_token": {
+            "title": "Fencing Token",
+            "type": "integer"
+          },
+          "held_until": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Held Until"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/LeasableResourceKind"
+          },
+          "labels": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Labels",
+            "type": "array"
+          },
+          "lease_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lease Id"
+          },
+          "max_term_seconds": {
+            "title": "Max Term Seconds",
+            "type": "integer"
+          },
+          "ref_id": {
+            "format": "uuid",
+            "title": "Ref Id",
+            "type": "string"
+          },
+          "retired_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Retired At"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "ref_id",
+          "labels",
+          "max_term_seconds",
+          "available",
+          "retired_at",
+          "fencing_token",
+          "lease_id",
+          "held_until",
+          "created_at"
+        ],
+        "title": "LeasableResourceView",
+        "type": "object"
+      },
       "LeaseEntryView": {
         "description": "One lease of a history, with the request it answered; none when the\nrequest was purged first.",
         "properties": {
@@ -1231,7 +1376,7 @@
             "type": "string"
           },
           "kind": {
-            "$ref": "#/components/schemas/ResourceKind"
+            "$ref": "#/components/schemas/LeasableResourceKind"
           },
           "labels": {
             "anyOf": [
@@ -1246,6 +1391,18 @@
               }
             ],
             "title": "Labels"
+          },
+          "leasable_resource_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Leasable Resource Id"
           },
           "lease_id": {
             "anyOf": [
@@ -1262,18 +1419,6 @@
           "rank": {
             "title": "Rank",
             "type": "number"
-          },
-          "resource_id": {
-            "anyOf": [
-              {
-                "format": "uuid",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Resource Id"
           },
           "start_seconds": {
             "anyOf": [
@@ -1331,7 +1476,7 @@
         "required": [
           "id",
           "kind",
-          "resource_id",
+          "leasable_resource_id",
           "labels",
           "waiter_kind",
           "waiter_id",
@@ -1401,14 +1546,14 @@
             "title": "Id",
             "type": "string"
           },
+          "leasable_resource_id": {
+            "format": "uuid",
+            "title": "Leasable Resource Id",
+            "type": "string"
+          },
           "request_id": {
             "format": "uuid",
             "title": "Request Id",
-            "type": "string"
-          },
-          "resource_id": {
-            "format": "uuid",
-            "title": "Resource Id",
             "type": "string"
           },
           "started_at": {
@@ -1433,7 +1578,7 @@
         },
         "required": [
           "id",
-          "resource_id",
+          "leasable_resource_id",
           "request_id",
           "holder_id",
           "fencing_token",
@@ -1446,35 +1591,6 @@
           "created_at"
         ],
         "title": "LeaseView",
-        "type": "object"
-      },
-      "LineView": {
-        "description": "A resource and the requests in its line, first first, with each one's\nplace and estimate in the same order.",
-        "properties": {
-          "places": {
-            "items": {
-              "$ref": "#/components/schemas/PlaceView"
-            },
-            "title": "Places",
-            "type": "array"
-          },
-          "requests": {
-            "items": {
-              "$ref": "#/components/schemas/LeaseRequestView"
-            },
-            "title": "Requests",
-            "type": "array"
-          },
-          "resource": {
-            "$ref": "#/components/schemas/ResourceView"
-          }
-        },
-        "required": [
-          "resource",
-          "requests",
-          "places"
-        ],
-        "title": "LineView",
         "type": "object"
       },
       "LogoutRequest": {
@@ -1669,7 +1785,7 @@
         "title": "MintOperatorTokenRequest",
         "type": "object"
       },
-      "OperatorEventView": {
+      "OperatorChangeEventView": {
         "description": "The same record as an operator reads it, with the two provenance fields\na tenant's own feed leaves out: the request that produced it and the app\nit came from, which is what a support investigation correlates on.",
         "properties": {
           "actor_id": {
@@ -1714,7 +1830,7 @@
           "request_id",
           "app"
         ],
-        "title": "OperatorEventView",
+        "title": "OperatorChangeEventView",
         "type": "object"
       },
       "OperatorRole": {
@@ -1887,22 +2003,22 @@
         "type": "object"
       },
       "OrgDeletedView": {
-        "description": "The org is gone for everyone in it: `deleted_at` is when. `session` is\nthe owner's new session in their personal org, which replaces the one\nthat asked, as a switch's does; null when none could be made, and the\nowner signs in again.",
+        "description": "The org is gone for everyone in it: `deleted_at` is when. `auth_session` is\nthe owner's new session in their personal org, which replaces the one\nthat asked, as a switch's does; null when none could be made, and the\nowner signs in again.",
         "properties": {
-          "deleted_at": {
-            "format": "date-time",
-            "title": "Deleted At",
-            "type": "string"
-          },
-          "session": {
+          "auth_session": {
             "anyOf": [
               {
-                "$ref": "#/components/schemas/IssuedSessionView"
+                "$ref": "#/components/schemas/IssuedAuthSessionView"
               },
               {
                 "type": "null"
               }
             ]
+          },
+          "deleted_at": {
+            "format": "date-time",
+            "title": "Deleted At",
+            "type": "string"
           }
         },
         "required": [
@@ -2070,42 +2186,6 @@
         "title": "PlaceView",
         "type": "object"
       },
-      "PlatformSizeView": {
-        "description": "How big the platform is, what the first responder to an alarm reads\nbefore it escalates: live tenants and users, and the events produced in\nthe twenty-four hours from `since` to `counted_at`. The maintenance\nworker counts it every few minutes, and this is its latest count:\n`counted_at` says how old the answer is.",
-        "properties": {
-          "counted_at": {
-            "format": "date-time",
-            "title": "Counted At",
-            "type": "string"
-          },
-          "events_last_24h": {
-            "title": "Events Last 24H",
-            "type": "integer"
-          },
-          "since": {
-            "format": "date-time",
-            "title": "Since",
-            "type": "string"
-          },
-          "tenants": {
-            "title": "Tenants",
-            "type": "integer"
-          },
-          "users": {
-            "title": "Users",
-            "type": "integer"
-          }
-        },
-        "required": [
-          "tenants",
-          "users",
-          "events_last_24h",
-          "since",
-          "counted_at"
-        ],
-        "title": "PlatformSizeView",
-        "type": "object"
-      },
       "PurposeUsageView": {
         "properties": {
           "count": {
@@ -2189,107 +2269,6 @@
         "title": "RequestStatus",
         "type": "string"
       },
-      "ResourceKind": {
-        "description": "A product adds its kinds here, each with the shape of what its ask\ncarries (`ASK_PAYLOADS`) and its hooks (`ResourceKindInterface`).",
-        "enum": [
-          "noop"
-        ],
-        "title": "ResourceKind",
-        "type": "string"
-      },
-      "ResourceView": {
-        "description": "A resource and its anchor: the highest token granted on it, and the\nlease that holds it until when.",
-        "properties": {
-          "available": {
-            "title": "Available",
-            "type": "boolean"
-          },
-          "created_at": {
-            "format": "date-time",
-            "title": "Created At",
-            "type": "string"
-          },
-          "fencing_token": {
-            "title": "Fencing Token",
-            "type": "integer"
-          },
-          "held_until": {
-            "anyOf": [
-              {
-                "format": "date-time",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Held Until"
-          },
-          "id": {
-            "format": "uuid",
-            "title": "Id",
-            "type": "string"
-          },
-          "kind": {
-            "$ref": "#/components/schemas/ResourceKind"
-          },
-          "labels": {
-            "items": {
-              "type": "string"
-            },
-            "title": "Labels",
-            "type": "array"
-          },
-          "lease_id": {
-            "anyOf": [
-              {
-                "format": "uuid",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Lease Id"
-          },
-          "max_term_seconds": {
-            "title": "Max Term Seconds",
-            "type": "integer"
-          },
-          "ref_id": {
-            "format": "uuid",
-            "title": "Ref Id",
-            "type": "string"
-          },
-          "retired_at": {
-            "anyOf": [
-              {
-                "format": "date-time",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Retired At"
-          }
-        },
-        "required": [
-          "id",
-          "kind",
-          "ref_id",
-          "labels",
-          "max_term_seconds",
-          "available",
-          "retired_at",
-          "fencing_token",
-          "lease_id",
-          "held_until",
-          "created_at"
-        ],
-        "title": "ResourceView",
-        "type": "object"
-      },
       "Role": {
         "enum": [
           "owner",
@@ -2316,50 +2295,6 @@
           "totp_code"
         ],
         "title": "SecondFactorRequest",
-        "type": "object"
-      },
-      "SessionView": {
-        "description": "Only the hash of a token is ever kept, so a session view carries no secret.",
-        "properties": {
-          "created_at": {
-            "format": "date-time",
-            "title": "Created At",
-            "type": "string"
-          },
-          "credential_kind": {
-            "$ref": "#/components/schemas/CredentialKind"
-          },
-          "expires_at": {
-            "format": "date-time",
-            "title": "Expires At",
-            "type": "string"
-          },
-          "id": {
-            "format": "uuid",
-            "title": "Id",
-            "type": "string"
-          },
-          "revoked_at": {
-            "anyOf": [
-              {
-                "format": "date-time",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Revoked At"
-          }
-        },
-        "required": [
-          "id",
-          "credential_kind",
-          "created_at",
-          "expires_at",
-          "revoked_at"
-        ],
-        "title": "SessionView",
         "type": "object"
       },
       "SetTenantCapRequest": {
@@ -2699,6 +2634,42 @@
         "title": "StreamTruncatedDetail",
         "type": "object"
       },
+      "SystemSizeView": {
+        "description": "How big the system is, what the first responder to an alarm reads\nbefore it escalates: live tenants and users, and the events produced in\nthe twenty-four hours from `since` to `counted_at`. The maintenance\nworker counts it every few minutes, and this is its latest count:\n`counted_at` says how old the answer is.",
+        "properties": {
+          "change_events_last_24h": {
+            "title": "Change Events Last 24H",
+            "type": "integer"
+          },
+          "counted_at": {
+            "format": "date-time",
+            "title": "Counted At",
+            "type": "string"
+          },
+          "since": {
+            "format": "date-time",
+            "title": "Since",
+            "type": "string"
+          },
+          "tenants": {
+            "title": "Tenants",
+            "type": "integer"
+          },
+          "users": {
+            "title": "Users",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "tenants",
+          "users",
+          "change_events_last_24h",
+          "since",
+          "counted_at"
+        ],
+        "title": "SystemSizeView",
+        "type": "object"
+      },
       "TenantCapView": {
         "description": "An org's own cap on a lane, with who last set it and when.",
         "properties": {
@@ -2912,6 +2883,35 @@
           "type"
         ],
         "title": "ValidationError",
+        "type": "object"
+      },
+      "WaitLineView": {
+        "description": "A leasable resource and the requests in its wait line, first first, with\neach one's place and estimate in the same order.",
+        "properties": {
+          "leasable_resource": {
+            "$ref": "#/components/schemas/LeasableResourceView"
+          },
+          "places": {
+            "items": {
+              "$ref": "#/components/schemas/PlaceView"
+            },
+            "title": "Places",
+            "type": "array"
+          },
+          "requests": {
+            "items": {
+              "$ref": "#/components/schemas/LeaseRequestView"
+            },
+            "title": "Requests",
+            "type": "array"
+          }
+        },
+        "required": [
+          "leasable_resource",
+          "requests",
+          "places"
+        ],
+        "title": "WaitLineView",
         "type": "object"
       },
       "WaiterKind": {
@@ -3891,9 +3891,9 @@
         ]
       }
     },
-    "/v1/admin/orgs/{org_id}/events": {
+    "/v1/admin/orgs/{org_id}/change-events": {
       "get": {
-        "operationId": "list_events_v1_admin_orgs__org_id__events_get",
+        "operationId": "list_change_events_v1_admin_orgs__org_id__change_events_get",
         "parameters": [
           {
             "in": "path",
@@ -3981,9 +3981,9 @@
               "application/json": {
                 "schema": {
                   "items": {
-                    "$ref": "#/components/schemas/OperatorEventView"
+                    "$ref": "#/components/schemas/OperatorChangeEventView"
                   },
-                  "title": "Response List Events V1 Admin Orgs  Org Id  Events Get",
+                  "title": "Response List Change Events V1 Admin Orgs  Org Id  Change Events Get",
                   "type": "array"
                 }
               }
@@ -4001,7 +4001,7 @@
             "description": "Validation Error"
           }
         },
-        "summary": "List Events",
+        "summary": "List Change Events",
         "tags": [
           "admin"
         ]
@@ -4654,8 +4654,8 @@
     },
     "/v1/admin/size": {
       "get": {
-        "description": "The platform's size as the maintenance worker last counted it, with\nthe moment it did; the route counts nothing. `404` until the first\ncount.",
-        "operationId": "platform_size_v1_admin_size_get",
+        "description": "The system's size as the maintenance worker last counted it, with\nthe moment it did; the route counts nothing. `404` until the first\ncount.",
+        "operationId": "system_size_v1_admin_size_get",
         "parameters": [
           {
             "in": "header",
@@ -4711,7 +4711,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/PlatformSizeView"
+                  "$ref": "#/components/schemas/SystemSizeView"
                 }
               }
             },
@@ -4728,7 +4728,7 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Platform Size",
+        "summary": "System Size",
         "tags": [
           "admin"
         ]
@@ -5626,8 +5626,101 @@
       }
     },
     "/v1/auth/sessions": {
+      "get": {
+        "operationId": "list_auth_sessions_v1_auth_sessions_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-app",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-App"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-app-version",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-App-Version"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/AuthSessionView"
+                  },
+                  "title": "Response List Auth Sessions V1 Auth Sessions Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Auth Sessions",
+        "tags": [
+          "tenancy"
+        ]
+      },
       "post": {
-        "operationId": "exchange_session_v1_auth_sessions_post",
+        "operationId": "exchange_auth_session_v1_auth_sessions_post",
         "parameters": [
           {
             "in": "header",
@@ -5682,7 +5775,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/ExchangeSessionRequest"
+                "$ref": "#/components/schemas/ExchangeAuthSessionRequest"
               }
             }
           },
@@ -5693,7 +5786,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/IssuedSessionView"
+                  "$ref": "#/components/schemas/IssuedAuthSessionView"
                 }
               }
             },
@@ -5710,7 +5803,98 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Exchange Session",
+        "summary": "Exchange Auth Session",
+        "tags": [
+          "tenancy"
+        ]
+      }
+    },
+    "/v1/auth/sessions/{auth_session_id}": {
+      "delete": {
+        "operationId": "revoke_auth_session_v1_auth_sessions__auth_session_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "auth_session_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Auth Session Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-app",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-App"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-app-version",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-App-Version"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthSessionView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Revoke Auth Session",
         "tags": [
           "tenancy"
         ]
@@ -5791,9 +5975,9 @@
         ]
       }
     },
-    "/v1/events": {
+    "/v1/change-events": {
       "get": {
-        "operationId": "list_events_v1_events_get",
+        "operationId": "list_change_events_v1_change_events_get",
         "parameters": [
           {
             "in": "query",
@@ -5871,9 +6055,9 @@
               "application/json": {
                 "schema": {
                   "items": {
-                    "$ref": "#/components/schemas/EventView"
+                    "$ref": "#/components/schemas/ChangeEventView"
                   },
-                  "title": "Response List Events V1 Events Get",
+                  "title": "Response List Change Events V1 Change Events Get",
                   "type": "array"
                 }
               }
@@ -5891,9 +6075,9 @@
             "description": "Validation Error"
           }
         },
-        "summary": "List Events",
+        "summary": "List Change Events",
         "tags": [
-          "events"
+          "change_events"
         ]
       }
     },
@@ -6403,7 +6587,7 @@
         "parameters": [
           {
             "in": "query",
-            "name": "resource_id",
+            "name": "leasable_resource_id",
             "required": false,
             "schema": {
               "anyOf": [
@@ -6415,7 +6599,7 @@
                   "type": "null"
                 }
               ],
-              "title": "Resource Id"
+              "title": "Leasable Resource Id"
             }
           },
           {
@@ -6516,6 +6700,97 @@
           }
         },
         "summary": "List Leases",
+        "tags": [
+          "leases"
+        ]
+      }
+    },
+    "/v1/leases/leasable-resources/{leasable_resource_id}/wait-line": {
+      "get": {
+        "operationId": "wait_line_v1_leases_leasable_resources__leasable_resource_id__wait_line_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "leasable_resource_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Leasable Resource Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-app",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-App"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-app-version",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-App-Version"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WaitLineView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Wait Line",
         "tags": [
           "leases"
         ]
@@ -6921,97 +7196,6 @@
           }
         },
         "summary": "Reorder",
-        "tags": [
-          "leases"
-        ]
-      }
-    },
-    "/v1/leases/resources/{resource_id}/line": {
-      "get": {
-        "operationId": "line_v1_leases_resources__resource_id__line_get",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "resource_id",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "title": "Resource Id",
-              "type": "string"
-            }
-          },
-          {
-            "in": "header",
-            "name": "authorization",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Authorization"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-app",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-App"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-app-version",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-App-Version"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/LineView"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Line",
         "tags": [
           "leases"
         ]
@@ -9621,192 +9805,6 @@
         "summary": "Mint Ticket",
         "tags": [
           "realtime"
-        ]
-      }
-    },
-    "/v1/sessions": {
-      "get": {
-        "operationId": "list_sessions_v1_sessions_get",
-        "parameters": [
-          {
-            "in": "query",
-            "name": "limit",
-            "required": false,
-            "schema": {
-              "default": 50,
-              "title": "Limit",
-              "type": "integer"
-            }
-          },
-          {
-            "in": "header",
-            "name": "authorization",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Authorization"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-app",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-App"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-app-version",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-App-Version"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "items": {
-                    "$ref": "#/components/schemas/SessionView"
-                  },
-                  "title": "Response List Sessions V1 Sessions Get",
-                  "type": "array"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "List Sessions",
-        "tags": [
-          "tenancy"
-        ]
-      }
-    },
-    "/v1/sessions/{session_id}": {
-      "delete": {
-        "operationId": "revoke_session_v1_sessions__session_id__delete",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "session_id",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "title": "Session Id",
-              "type": "string"
-            }
-          },
-          {
-            "in": "header",
-            "name": "authorization",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Authorization"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-app",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-App"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-app-version",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-App-Version"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/SessionView"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Revoke Session",
-        "tags": [
-          "tenancy"
         ]
       }
     },

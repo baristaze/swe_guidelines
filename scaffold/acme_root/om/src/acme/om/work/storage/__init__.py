@@ -73,7 +73,7 @@ class WorkStorageInterface(ABC):
         """Cross-tenant claim, one statement: the row on the lane that has been
         ready longest (the earliest `available_at`, then the lowest id),
         skipping locked ones, stamped with the claim, a freshly minted claim
-        token, and the lease. The claim is the platform's write, so it signs
+        token, and the lease. The claim is the system's write, so it signs
         `updated_by` with EMPTY_UUID.
 
         The same statement passes over every tenant that already holds its
@@ -125,7 +125,7 @@ class WorkStorageInterface(ABC):
         spread out as they did when the sweep ran per tenant. Returns each
         item it changed with its tenant, by id. The caller picks the bound:
         the sweep passes its batch size and calls again while a batch comes
-        back full. The requeue is the platform's write, like the claim, so it
+        back full. The requeue is the system's write, like the claim, so it
         signs `updated_by` with EMPTY_UUID and takes no principal."""
         ...
 

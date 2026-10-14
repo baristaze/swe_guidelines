@@ -8,7 +8,7 @@
 // query, or through none.
 import type { QueryClient, QueryKey } from "@tanstack/react-query";
 import { keys } from "../queries/keys";
-import { entityOf, isEntityChanged, type Envelope, type EventEnvelope } from "./envelopes";
+import { entityOf, isEntityChanged, type Envelope, type ChangeEventEnvelope } from "./envelopes";
 import type { Hints } from "./hints";
 
 export interface RouteOutcome {
@@ -25,14 +25,14 @@ export type HintReaders = Readonly<Record<string, Hints>>;
 // of places the org chip reads, and as the role beside each member in
 // Settings; a user is read twice, as a row of the member list and as the name
 // and the email in `me`, so a user push reaches both: its reader places the
-// member in both (`userCache.ts`). A revoked session is
-// nobody's query: this session's own revocation arrives as a 4401 close, not
-// as a push. No screen reads an orchestration's record; a screen that does
+// member in both (`userCache.ts`). A revoked auth session is nobody's
+// query: this auth session's own revocation arrives as a 4401 close, not as
+// a push. No screen reads an orchestration's record; a screen that does
 // keys its queries under the entity and drops its line here.
 const CARRIED_BY: Readonly<Record<string, readonly QueryKey[]>> = {
   membership: [keys.me, keys.myMemberships.all, keys.memberships.all],
   user: [keys.users.all, keys.me],
-  session: [],
+  auth_session: [],
   orchestration: [],
 };
 
@@ -44,11 +44,11 @@ function targetsOf(entity: string): readonly QueryKey[] {
 // the kinds the service sends.
 export const PUSHED_ENTITIES = [
   "api_key",
+  "auth_session",
   "file",
   "invitation",
   "membership",
   "orchestration",
-  "session",
   "user",
 ] as const;
 
@@ -86,7 +86,7 @@ export function routeEnvelope(
 /** What a page read back from the stream keeps one push of, the last: the
  * record, for an entity whose reader reads each record, and the entity for
  * any other, since one invalidation reads all of it again. */
-export function replayKey(envelope: EventEnvelope, readers: HintReaders = {}): string {
+export function replayKey(envelope: ChangeEventEnvelope, readers: HintReaders = {}): string {
   const entity = entityOf(envelope.payload.kind);
   return readers[entity] ? `${entity}/${envelope.payload.target_id}` : entity;
 }

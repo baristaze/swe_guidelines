@@ -9,7 +9,7 @@ from uuid import UUID
 
 from pydantic import Field
 
-from acme.om.base import FrozenMapping, Identifiable, Platform, Trackable
+from acme.om.base import FrozenMapping, Identifiable, OmBase, Trackable
 from acme.om.context import Permission
 from acme.om.orchestrations.types.orchestration import ParkReason
 
@@ -55,7 +55,7 @@ class WorkItem(Identifiable, Trackable):
     # the two the run names as its cause and links its spans to. Both are the
     # item's, not the enqueue's: the relay takes them off the outbox row of
     # the write, a direct create off its caller's context, and either enqueue
-    # leaves them as constructed. EMPTY_UUID is the platform's marker for no
+    # leaves them as constructed. EMPTY_UUID is the system's marker for no
     # principal and names a producer that knew no request; an empty
     # traceparent is a producer that ran with no tracer configured, and the
     # run then starts a trace of its own.
@@ -81,11 +81,11 @@ class WorkItem(Identifiable, Trackable):
     last_error: str | None = None
 
 
-class NoopPayload(Platform):
+class NoopPayload(OmBase):
     """The NOOP kind carries nothing."""
 
 
-class ScheduledPayload(Platform):
+class ScheduledPayload(OmBase):
     """A payload that says when its work may run. The relayed enqueue makes
     the item available at `not_before`, or at once when that has passed, so
     work that waits for a time waits in the queue and no timer holds it."""
@@ -101,12 +101,12 @@ class OrchestrationPayload(ScheduledPayload):
     record at once."""
 
 
-class WakeParkedPayload(Platform):
+class WakeParkedPayload(OmBase):
     """The reason the org's parked records waited for is gone (a provider
     that answers again clears `provider_unavailable`); the item's target is
     the org. Every record parked for it is resumed when the item runs, or
     the one `record_id` names, when the reason was that record's alone (a
-    grant, or its request's end without one, clears `resource` for the
+    grant, or its request's end without one, clears `leasable_resource` for the
     record it was for). A park that knows when its reason may clear (a
     provider marked out until a retry time) asks for the org's wake then:
     the item waits in the queue until `not_before`, and the parks that name
@@ -117,7 +117,7 @@ class WakeParkedPayload(Platform):
     not_before: datetime | None = None
 
 
-class DeleteAccountPayload(Platform):
+class DeleteAccountPayload(OmBase):
     """What is left of an account once its own rows are gone: the person's
     name at the identity provider, when they signed in through it, since the
     identity that held it is gone. It is an id, never a personal field. The
@@ -127,7 +127,7 @@ class DeleteAccountPayload(Platform):
     provider_user_id: str | None = None
 
 
-class DeleteOrgPayload(Platform):
+class DeleteOrgPayload(OmBase):
     """What is left of a team org its owner or an operator deleted: its
     organization at the identity provider, when it had one, since the org row
     no longer names it (so no sign-in through it finds the org). It is an id.
@@ -137,7 +137,7 @@ class DeleteOrgPayload(Platform):
     provider_org_id: str | None = None
 
 
-WORK_PAYLOADS: dict[WorkKind, type[Platform]] = {
+WORK_PAYLOADS: dict[WorkKind, type[OmBase]] = {
     WorkKind.NOOP: NoopPayload,
     WorkKind.ORCHESTRATION: OrchestrationPayload,
     WorkKind.WAKE_PARKED: WakeParkedPayload,

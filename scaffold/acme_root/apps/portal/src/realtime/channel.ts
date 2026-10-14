@@ -3,7 +3,7 @@
 // tab, the stream cursor, and the notices it hands over.
 // Everything it reaches for is handed in, so the loop runs in a test over a
 // fake socket and fake timers. The provider owns one of these per session.
-import type { EventView } from "@acme/client";
+import type { ChangeEventView } from "@acme/client";
 import type { ConnectionState } from "../store/connection";
 import {
   entityOf,
@@ -11,11 +11,11 @@ import {
   parseEnvelope,
   type ClientCommand,
   type Envelope,
-  type EventEnvelope,
+  type ChangeEventEnvelope,
 } from "./envelopes";
 import {
   behind,
-  eventEnvelope,
+  changeEventEnvelope,
   isLastPage,
   place,
   readsBegan,
@@ -44,7 +44,7 @@ export interface SocketLike {
 export interface ChannelDeps {
   requestTicket(): Promise<string>;
   openSocket(ticket: string): SocketLike;
-  fetchEventsAfter(after: number, limit: number): Promise<EventView[]>;
+  fetchChangeEventsAfter(after: number, limit: number): Promise<ChangeEventView[]>;
   /** Hands one envelope to the router; the query cache is behind it. A
    * record read back from the stream (a replay, the first catch-up) comes
    * here too, only the last record of each entity. It tells the person
@@ -52,19 +52,19 @@ export interface ChannelDeps {
   route(envelope: Envelope): void;
   /** What a page read back from the stream routes one push of, the last
    * (`replayKey` in `router.ts`); the entity when none is handed in. */
-  replayKey?(envelope: EventEnvelope): string;
+  replayKey?(envelope: ChangeEventEnvelope): string;
   /** Whether a record is a notice: one the person is told about, not only
    * refreshed by. None is when none is handed in. */
-  isAnnounced?(envelope: EventEnvelope): boolean;
+  isAnnounced?(envelope: ChangeEventEnvelope): boolean;
   /** Hands over notices in stream order, each once, as the cursor passes
    * it: a push at once, and what a replay or the first catch-up read in one
    * call when it ends, every page of it, however it ends. Never after
    * `stop`, so a switch shows no notice of the tenant it left. */
-  announce?(envelopes: EventEnvelope[]): void;
+  announce?(envelopes: ChangeEventEnvelope[]): void;
   /** Refreshes every query, for a first catch-up the stream's tail cannot answer. */
   refreshAll(): Promise<unknown>;
   connection: { getState(): ConnectionState };
-  /** Records per replay page; the production size is EVENTS_PAGE. */
+  /** Records per replay page; the production size is CHANGE_EVENTS_PAGE. */
   pageSize: number;
   /** The server closed with 4401: the session is gone; sign out instead of reconnecting. */
   onUnauthenticated?(): void;
@@ -90,7 +90,7 @@ export function openChannel(deps: ChannelDeps): Channel {
   // The store's actions, which never change; its state changes on every set,
   // so a read of it goes through deps.connection.getState() each time.
   const connection = deps.connection.getState();
-  const keyOf = deps.replayKey ?? ((envelope: EventEnvelope) => entityOf(envelope.payload.kind));
+  const keyOf = deps.replayKey ?? ((envelope: ChangeEventEnvelope) => entityOf(envelope.payload.kind));
   let socket: SocketLike | null = null;
   let pingTimer: ReturnType<typeof setInterval> | null = null;
   let pollTimer: ReturnType<typeof setInterval> | null = null;
@@ -118,7 +118,7 @@ export function openChannel(deps: ChannelDeps): Channel {
 
   // Hands notices over unless the channel stopped: a switch of tenant and a
   // sign-out stop it, so nothing read before the stop is told after it.
-  const announce = (notices: EventEnvelope[]) => {
+  const announce = (notices: ChangeEventEnvelope[]) => {
     if (!stopped && notices.length > 0) deps.announce?.(notices);
   };
 
@@ -131,7 +131,7 @@ export function openChannel(deps: ChannelDeps): Channel {
   const apply = (
     envelope: Envelope,
     route: (routed: Envelope) => void = deps.route,
-    tell: (notice: EventEnvelope) => void = (notice) => announce([notice]),
+    tell: (notice: ChangeEventEnvelope) => void = (notice) => announce([notice]),
   ): number | null => {
     if (!isEntityChanged(envelope)) {
       route(envelope);
@@ -169,13 +169,13 @@ export function openChannel(deps: ChannelDeps): Channel {
   // ends, however it ends: a failed fetch included, since the cursor has
   // passed them and no later replay reads them again.
   const replay = async (after: number): Promise<void> => {
-    const kept: EventEnvelope[] = [];
+    const kept: ChangeEventEnvelope[] = [];
     try {
       let from = after;
       while (!stopped) {
-        let page: EventView[];
+        let page: ChangeEventView[];
         try {
-          page = await deps.fetchEventsAfter(from, deps.pageSize);
+          page = await deps.fetchChangeEventsAfter(from, deps.pageSize);
         } catch (error) {
           const head = truncatedHead(error);
           if (head !== null) await resync(head);
@@ -191,7 +191,7 @@ export function openChannel(deps: ChannelDeps): Channel {
         // record still moves the cursor.
         const last = new Map<string, Envelope>();
         for (const event of page) {
-          const envelope = eventEnvelope(event);
+          const envelope = changeEventEnvelope(event);
           apply(
             envelope,
             (routed) => last.set(keyOf(envelope), routed),
@@ -255,9 +255,9 @@ export function openChannel(deps: ChannelDeps): Channel {
     }
     if (head <= 0) return;
     const after = Math.max(0, head - deps.pageSize);
-    let tail: EventView[];
+    let tail: ChangeEventView[];
     try {
-      tail = await deps.fetchEventsAfter(after, deps.pageSize);
+      tail = await deps.fetchChangeEventsAfter(after, deps.pageSize);
     } catch {
       await deps.refreshAll();
       return;
@@ -269,9 +269,9 @@ export function openChannel(deps: ChannelDeps): Channel {
       return;
     }
     const last = new Map<string, Envelope>();
-    const kept: EventEnvelope[] = [];
+    const kept: ChangeEventEnvelope[] = [];
     for (const event of recent) {
-      const envelope = eventEnvelope(event);
+      const envelope = changeEventEnvelope(event);
       last.set(keyOf(envelope), envelope);
       if (isAnnounced(envelope)) kept.push(envelope);
     }

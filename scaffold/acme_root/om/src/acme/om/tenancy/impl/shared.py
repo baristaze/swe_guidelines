@@ -29,10 +29,10 @@ from acme.om.exceptions import (
 from acme.om.tenancy.impl.creates import users_of
 from acme.om.tenancy.rules import PREFIX_FOR_KIND, hash_token
 from acme.om.tenancy.storage import TenancyStorageInterface
+from acme.om.tenancy.types.auth_session import AuthSession
 from acme.om.tenancy.types.issued import IssuedOperatorToken, OrgMembership
 from acme.om.tenancy.types.membership import Membership
 from acme.om.tenancy.types.org import Org
-from acme.om.tenancy.types.session import Session
 from acme.om.tenancy.types.user import User
 
 log = logging.getLogger(__name__)
@@ -44,7 +44,7 @@ REVOKED_MESSAGE: Mapping[CredentialKind, str] = {
     CredentialKind.LOGIN: "this sign-in has ended (used or signed out); sign in again",
     CredentialKind.OPERATOR_TOKEN: "operator token revoked",
 }
-"""The refusal of an ended credential, by kind; a session's is "session revoked"."""
+"""The refusal of an ended credential, by kind; an auth session's is "auth session revoked"."""
 
 
 def mint_token(kind: CredentialKind) -> str:
@@ -56,7 +56,7 @@ def new_operator_token(
     operator_role: OperatorRole,
     expires_in: timedelta | None,
     most: timedelta,
-) -> tuple[IssuedOperatorToken, Session]:
+) -> tuple[IssuedOperatorToken, AuthSession]:
     """An operator token for one identity and the row that keeps it: one
     permission, an hour at most, a session of kind `operator_token` under the
     system scope, kept as its digest. The two entry points, a signed-in
@@ -70,7 +70,7 @@ def new_operator_token(
         )
     now = utcnow()
     token = mint_token(CredentialKind.OPERATOR_TOKEN)
-    session = Session(
+    session = AuthSession(
         id=new_id(),
         created_at=now,
         updated_at=now,
@@ -88,22 +88,22 @@ def new_operator_token(
     return issued, session
 
 
-def ended_by(credential: Session, by: UUID, at: datetime) -> Session:
+def ended_by(credential: AuthSession, by: UUID, at: datetime) -> AuthSession:
     """A credential as it is once `by` ended it at `at`: the identity that
     ended a sign-in or an operator token, the user that ended a session."""
     return credential.model_copy(update={"revoked_at": at, "updated_at": at, "updated_by": by})
 
 
 async def exchange_sign_in(
-    storage: TenancyStorageInterface, org_id: UUID, session: Session, ended: Session
+    storage: TenancyStorageInterface, org_id: UUID, auth_session: AuthSession, ended: AuthSession
 ) -> None:
     """Lands `session` in `org_id` and the sign-in it came from, ended, in one
-    write, so a sign-in is exchanged once: for a tenant session, for the
+    write, so a sign-in is exchanged once: for a tenant auth session, for the
     sign-in its second factor verified, or for an operator token. A second
     exchange of it, a retry after a lost answer among them, is refused, and
     the person signs in again."""
     try:
-        await storage.exchange_sign_in(org_id, session, ended)
+        await storage.exchange_sign_in(org_id, auth_session, ended)
     except NotFound:
         raise InvalidCredential("the sign-in behind the exchange is gone") from None
     except UniqueKeyTaken:
@@ -116,37 +116,41 @@ def clamp(limit: int, most: int) -> int:
     return max(1, min(limit, most))
 
 
-def session_payload(session: Session) -> Mapping[str, Any]:
-    # Ids only: the row names the session by its target, and never carries
+def auth_session_payload(auth_session: AuthSession) -> Mapping[str, Any]:
+    # Ids only: the row names the auth session by its target, and never carries
     # the hash; the event is a record, not a credential.
-    return {"user_id": str(session.user_id)}
+    return {"user_id": str(auth_session.user_id)}
 
 
-async def create_session(storage: TenancyStorageInterface, org_id: UUID, session: Session) -> None:
+async def create_auth_session(
+    storage: TenancyStorageInterface, org_id: UUID, auth_session: AuthSession
+) -> None:
     """Lands a new credential's row through the insert that reports. Its id
     is minted with its secret, so an id already written is never a retry
     of this call: the row there keeps another digest, and the secret is
     refused rather than handed out as one that opens nothing."""
-    if not await storage.create_session(org_id, session):
-        raise Conflict(f"session {session.id} is already written")
+    if not await storage.create_auth_session(org_id, auth_session):
+        raise Conflict(f"auth session {auth_session.id} is already written")
 
 
-def check_session(session: Session, kind: CredentialKind, idle_ttl: timedelta) -> None:
-    if session.credential_kind is not kind:
+def check_auth_session(
+    auth_session: AuthSession, kind: CredentialKind, idle_ttl: timedelta
+) -> None:
+    if auth_session.credential_kind is not kind:
         raise InvalidCredential("credential kind does not match its prefix")
-    if session.revoked_at is not None:
+    if auth_session.revoked_at is not None:
         # A sign-in ends at its exchange or its sign-out, an operator
         # token at its revoke or its sign-out.
-        raise CredentialExpired(REVOKED_MESSAGE.get(kind, "session revoked"))
+        raise CredentialExpired(REVOKED_MESSAGE.get(kind, "auth session revoked"))
     now = utcnow()
-    if session.expires_at <= now:
-        raise CredentialExpired("session expired")
-    # The idle lifetime beside the absolute one. A session no request has
+    if auth_session.expires_at <= now:
+        raise CredentialExpired("auth session expired")
+    # The idle lifetime beside the absolute one. An auth session no request has
     # touched yet starts its idle clock at its first use here, not at its
     # creation.
-    seen = session.last_seen_at
+    seen = auth_session.last_seen_at
     if seen is not None and seen + idle_ttl <= now:
-        raise CredentialExpired("session idle")
+        raise CredentialExpired("auth session idle")
 
 
 async def live_user(storage: TenancyStorageInterface, ctx: TenantScope, user_id: UUID) -> User:
@@ -193,7 +197,7 @@ async def memberships_of(
 
 
 def provider_logout_url(
-    provider: IdentityProviderInterface, ended: Session, return_to: str | None
+    provider: IdentityProviderInterface, ended: AuthSession, return_to: str | None
 ) -> str | None:
     """Where the browser goes to end the provider's session behind the one
     that ended here. Acme's session is over whatever this answers: a

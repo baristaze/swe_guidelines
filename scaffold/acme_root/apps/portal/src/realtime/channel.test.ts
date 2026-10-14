@@ -1,12 +1,12 @@
 // The socket loop over a fake socket and fake timers: what it sends, when it
 // reconnects, and how it moves the stream cursor.
-import { ApiError, type EventView } from "@acme/client";
+import { ApiError, type ChangeEventView } from "@acme/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useConnectionStore } from "../store/connection";
 import { CLOSE_UNAUTHENTICATED, openChannel, SOCKET_OPEN, type Channel, type SocketLike } from "./channel";
-import type { Envelope, EventEnvelope } from "./envelopes";
+import type { Envelope, ChangeEventEnvelope } from "./envelopes";
 import { watchPage, type PageLike } from "./pageVisibility";
-import { eventEnvelope } from "./stream";
+import { changeEventEnvelope } from "./stream";
 import { backoffDelay, DEGRADED_POLL_INTERVAL_MS, HIDDEN_PAUSE_MS, PING_INTERVAL_MS, STABLE_OPEN_MS } from "./timeouts";
 
 class FakeSocket implements SocketLike {
@@ -40,12 +40,12 @@ class FakeSocket implements SocketLike {
   }
 }
 
-function event(seq: number): EventView {
+function event(seq: number): ChangeEventView {
   return { seq, kind: "tenancy.user.updated", target_id: `u${seq}`, produced_at: "2026-09-16T12:00:00Z", actor_id: "u1" };
 }
 
 function push(seq: number): Envelope {
-  return { type: "event", topic: "entity_changed", sent_at: null, payload: { kind: "tenancy.user.updated", target_id: `u${seq}`, seq, actor_id: "u1" } };
+  return { type: "change_event", topic: "entity_changed", sent_at: null, payload: { kind: "tenancy.user.updated", target_id: `u${seq}`, seq, actor_id: "u1" } };
 }
 
 const seqOf = (e: Envelope) => (e as { payload: { seq: number } }).payload.seq;
@@ -53,14 +53,14 @@ const seqOf = (e: Envelope) => (e as { payload: { seq: number } }).payload.seq;
 const hello = (seq: number) => ({ type: "hello", sent_at: null, org_id: "o1", user_id: "u1", seq, ping_interval_seconds: 25 });
 
 /** The stream in storage, as pages after a seq. */
-type Pages = (after: number) => EventView[];
+type Pages = (after: number) => ChangeEventView[];
 
 function harness(
   pages: Pages = () => [],
   pageSize = 200,
   clock?: () => number,
-  replayKey?: (envelope: EventEnvelope) => string,
-  isAnnounced?: (envelope: EventEnvelope) => boolean,
+  replayKey?: (envelope: ChangeEventEnvelope) => string,
+  isAnnounced?: (envelope: ChangeEventEnvelope) => boolean,
 ) {
   const sockets: FakeSocket[] = [];
   const routed: Envelope[] = [];
@@ -78,7 +78,7 @@ function harness(
       sockets.push(socket);
       return socket;
     },
-    fetchEventsAfter: (after) => {
+    fetchChangeEventsAfter: (after) => {
       fetches.push(after);
       return Promise.resolve(pages(after));
     },
@@ -298,7 +298,7 @@ describe("stream cursor", () => {
     h.sockets[0]!.receive(push(7));
     await flush();
     expect(channel.cursor()).toBe(7);
-    expect(h.routed.filter((e) => e.type === "event")).toHaveLength(2);
+    expect(h.routed.filter((e) => e.type === "change_event")).toHaveLength(2);
     expect(h.fetches).toEqual([]);
   });
 
@@ -318,14 +318,14 @@ describe("stream cursor", () => {
     // One route per entity per page, the last record of it: routing a record
     // invalidates every query the entity is read from, so routing all three
     // would refetch the same lists three times over.
-    expect(h.routed.filter((e) => e.type === "event").map(seqOf)).toEqual([7, 8]);
+    expect(h.routed.filter((e) => e.type === "change_event").map(seqOf)).toEqual([7, 8]);
   });
 
   it("routes a replay page once per entity, however many records it carries", async () => {
     // A tab that wakes far behind replays a full page at a time. Each record
     // routed cancels and restarts the refetch of every query its entity is
     // read from, so one route per record would read the same list per record.
-    const stream: EventView[] = [];
+    const stream: ChangeEventView[] = [];
     for (let seq = 6; seq <= 25; seq += 1) {
       stream.push({ ...event(seq), kind: seq % 2 === 0 ? "media.file.updated" : "tenancy.user.deleted" });
     }
@@ -340,7 +340,7 @@ describe("stream cursor", () => {
     await flush();
     expect(channel.cursor()).toBe(25);
     const kinds = h.routed
-      .filter((e) => e.type === "event")
+      .filter((e) => e.type === "change_event")
       .map((e) => (e as { payload: { kind: string } }).payload.kind);
     expect(kinds).toEqual(["media.file.updated", "tenancy.user.deleted"]);
   });
@@ -349,7 +349,7 @@ describe("stream cursor", () => {
     // A reader gathers what it is handed, so every member changed while the
     // tab was away is read or placed, not only the last one.
     const stream = [event(6), { ...event(7), target_id: "u6" }, event(8), { ...event(9), kind: "media.file.updated" }];
-    const byRecord = (envelope: EventEnvelope) =>
+    const byRecord = (envelope: ChangeEventEnvelope) =>
       envelope.payload.kind.startsWith("tenancy.user.") ? `user/${envelope.payload.target_id}` : "file";
     const h = harness((after) => stream.filter((e) => e.seq > after), 200, undefined, byRecord);
     channel = h.channel;
@@ -360,7 +360,7 @@ describe("stream cursor", () => {
     await flush();
     h.sockets[0]!.receive(push(9));
     await flush();
-    expect(h.routed.filter((e) => e.type === "event").map(seqOf)).toEqual([7, 8, 9]);
+    expect(h.routed.filter((e) => e.type === "change_event").map(seqOf)).toEqual([7, 8, 9]);
   });
 
   it("stops paging when a page moves the cursor nowhere", async () => {
@@ -383,7 +383,7 @@ describe("stream cursor", () => {
     expect(h.fetches).toEqual([5]);
     expect(channel.cursor()).toBe(5);
     // The push is still worth routing: the entity did change.
-    expect(h.routed.filter((e) => e.type === "event").map(seqOf)).toEqual([9]);
+    expect(h.routed.filter((e) => e.type === "change_event").map(seqOf)).toEqual([9]);
   });
 
   it("never moves the cursor past seqs that were not replayed", async () => {
@@ -397,7 +397,7 @@ describe("stream cursor", () => {
     await flush();
     h.sockets[0]!.receive(push(8));
     await flush();
-    expect(h.routed.filter((e) => e.type === "event").map(seqOf)).toEqual([8]);
+    expect(h.routed.filter((e) => e.type === "change_event").map(seqOf)).toEqual([8]);
     expect(channel.cursor()).toBe(5);
 
     // Once 6 exists, the next push replays through it and the cursor catches up.
@@ -411,12 +411,12 @@ describe("stream cursor", () => {
 describe("a notice", () => {
   // A record the person is told about, not only refreshed by. Which records
   // are notices is a product's call; here, an invitation as it is accepted.
-  const accepted = (seq: number, invitation = `i${seq}`): EventView => ({
+  const accepted = (seq: number, invitation = `i${seq}`): ChangeEventView => ({
     ...event(seq),
     kind: "tenancy.invitation.updated",
     target_id: invitation,
   });
-  const isNotice = (envelope: EventEnvelope) => envelope.payload.kind === "tenancy.invitation.updated";
+  const isNotice = (envelope: ChangeEventEnvelope) => envelope.payload.kind === "tenancy.invitation.updated";
 
   /** An open channel at cursor 5 that tells of notices. */
   async function open(pages: Pages, pageSize = 200) {
@@ -431,7 +431,7 @@ describe("a notice", () => {
   }
 
   /** The same, then dropped and reconnected: the open replays from 5. */
-  async function reconnected(stream: EventView[], pageSize = 200) {
+  async function reconnected(stream: ChangeEventView[], pageSize = 200) {
     const h = await open((after) => stream.filter((e) => e.seq > after).slice(0, pageSize), pageSize);
     h.sockets[0]!.drop();
     await vi.advanceTimersByTimeAsync(1_000);
@@ -442,11 +442,11 @@ describe("a notice", () => {
 
   it("is handed over at once when its push arrives in order, and once", async () => {
     const h = await open(() => []);
-    h.sockets[0]!.receive(eventEnvelope(accepted(6)));
-    h.sockets[0]!.receive(eventEnvelope(accepted(6)));
+    h.sockets[0]!.receive(changeEventEnvelope(accepted(6)));
+    h.sockets[0]!.receive(changeEventEnvelope(accepted(6)));
     await flush();
     expect(h.announced).toEqual([[6]]);
-    expect(h.routed.filter((e) => e.type === "event").map(seqOf)).toEqual([6]);
+    expect(h.routed.filter((e) => e.type === "change_event").map(seqOf)).toEqual([6]);
   });
 
   it("is kept through the collapse: a later record of its entity does not hide it", async () => {
@@ -454,7 +454,7 @@ describe("a notice", () => {
     const h = await reconnected([accepted(6), created, event(8)]);
     expect(channel!.cursor()).toBe(8);
     // The cache is routed one record per entity, the last; the notice is told.
-    expect(h.routed.filter((e) => e.type === "event").map(seqOf)).toEqual([7, 8]);
+    expect(h.routed.filter((e) => e.type === "change_event").map(seqOf)).toEqual([7, 8]);
     expect(h.announced).toEqual([[6]]);
   });
 
@@ -489,7 +489,7 @@ describe("a notice", () => {
   it("is told once when its push lands past a gap the replay closes", async () => {
     const stream = [event(6), accepted(7)];
     const h = await open((after) => stream.filter((e) => e.seq > after));
-    h.sockets[0]!.receive(eventEnvelope(accepted(7)));
+    h.sockets[0]!.receive(changeEventEnvelope(accepted(7)));
     await flush();
     expect(channel!.cursor()).toBe(7);
     expect(h.announced).toEqual([[7]]);
@@ -499,10 +499,10 @@ describe("a notice", () => {
     // Storage answers a short page without 6: the push is routed, not told.
     let stream = [accepted(7)];
     const h = await open((after) => stream.filter((e) => e.seq > after));
-    h.sockets[0]!.receive(eventEnvelope(accepted(7)));
+    h.sockets[0]!.receive(changeEventEnvelope(accepted(7)));
     await flush();
     expect(channel!.cursor()).toBe(5);
-    expect(h.routed.filter((e) => e.type === "event").map(seqOf)).toEqual([7]);
+    expect(h.routed.filter((e) => e.type === "change_event").map(seqOf)).toEqual([7]);
     expect(h.announced).toEqual([]);
     // Once 6 is in storage, the replay that passes 7 tells it, once.
     stream = [event(6), accepted(7)];
@@ -527,7 +527,7 @@ describe("a notice", () => {
     clock += 3000;
     h.sockets[0]!.receive({ ...hello(5), sent_at: "2026-09-16T12:00:03Z" });
     await flush();
-    expect(h.routed.filter((e) => e.type === "event").map(seqOf)).toEqual([5]);
+    expect(h.routed.filter((e) => e.type === "change_event").map(seqOf)).toEqual([5]);
     expect(h.announced).toEqual([[4]]);
   });
 
@@ -535,18 +535,18 @@ describe("a notice", () => {
     // One place shows notices for every channel the app opens, as the
     // provider's would; the switch stops the old channel and opens a new one.
     const announced: number[][] = [];
-    const announce = (envelopes: EventEnvelope[]) => void announced.push(envelopes.map(seqOf));
+    const announce = (envelopes: ChangeEventEnvelope[]) => void announced.push(envelopes.map(seqOf));
     // The old replay read a page that holds a notice, and its next page is
     // still on its way when the switch stops the channel.
-    let resolvePage!: (page: EventView[]) => void;
+    let resolvePage!: (page: ChangeEventView[]) => void;
     const oldSocket = new FakeSocket();
     const old = openChannel({
       requestTicket: async () => "tkt",
       openSocket: () => oldSocket,
-      fetchEventsAfter: (after) =>
+      fetchChangeEventsAfter: (after) =>
         after === 0
           ? Promise.resolve([accepted(1), event(2)])
-          : new Promise<EventView[]>((resolve) => { resolvePage = resolve; }),
+          : new Promise<ChangeEventView[]>((resolve) => { resolvePage = resolve; }),
       route: vi.fn(),
       isAnnounced: isNotice,
       announce,
@@ -559,7 +559,7 @@ describe("a notice", () => {
     await flush();
     oldSocket.receive(hello(0));
     await flush();
-    oldSocket.receive(eventEnvelope(accepted(5)));
+    oldSocket.receive(changeEventEnvelope(accepted(5)));
     await flush();
     expect(old.cursor()).toBe(2);
     old.stop();
@@ -567,7 +567,7 @@ describe("a notice", () => {
     channel = openChannel({
       requestTicket: async () => "tkt",
       openSocket: () => newSocket,
-      fetchEventsAfter: async () => [],
+      fetchChangeEventsAfter: async () => [],
       route: vi.fn(),
       isAnnounced: isNotice,
       announce,
@@ -583,7 +583,7 @@ describe("a notice", () => {
     // The old tenant's next page lands after the switch.
     resolvePage([accepted(3), event(4)]);
     await flush();
-    newSocket.receive(eventEnvelope(accepted(41)));
+    newSocket.receive(changeEventEnvelope(accepted(41)));
     await flush();
     expect(announced).toEqual([[41]]);
   });
@@ -592,7 +592,7 @@ describe("a notice", () => {
 describe("a stream trimmed past the cursor", () => {
   // The trim took everything up to 7; the stream holds 8 and 9. A read after
   // a seq below 7 is refused as the API refuses it, naming the head.
-  const trimmed = (stream: EventView[], floor = 7) => (after: number) => {
+  const trimmed = (stream: ChangeEventView[], floor = 7) => (after: number) => {
     if (after < floor) {
       const head = stream[stream.length - 1]!.seq;
       throw new ApiError(410, "stream_truncated", "gone", null, undefined, { floor, head });
@@ -623,7 +623,7 @@ describe("a stream trimmed past the cursor", () => {
     expect(h.fetches).toEqual([5]);
     expect(h.refreshAll).toHaveBeenCalledTimes(1);
     expect(channel.cursor()).toBe(10);
-    expect(h.routed.filter((e) => e.type === "event").map(seqOf)).toEqual([10]);
+    expect(h.routed.filter((e) => e.type === "change_event").map(seqOf)).toEqual([10]);
   });
 
   it("resyncs from a pong too, when no push announced the trim", async () => {
@@ -693,7 +693,7 @@ describe("the first catch-up", () => {
   // The page began reading at 12:00:00 on the server's clock: the hello was
   // sent at 12:00:03, three seconds after the channel opened.
   const helloAt = (seq: number) => ({ ...hello(seq), sent_at: "2026-09-16T12:00:03Z" });
-  const at = (seq: number, time: string, kind = "tenancy.user.updated"): EventView => ({
+  const at = (seq: number, time: string, kind = "tenancy.user.updated"): ChangeEventView => ({
     ...event(seq),
     kind,
     produced_at: `2026-09-16T${time}Z`,
@@ -723,7 +723,7 @@ describe("the first catch-up", () => {
     await flush();
     expect(h.refreshAll).not.toHaveBeenCalled();
     expect(h.fetches).toEqual([0]);
-    expect(h.routed.filter((e) => e.type === "event").map(seqOf)).toEqual([5]);
+    expect(h.routed.filter((e) => e.type === "change_event").map(seqOf)).toEqual([5]);
     expect(channel.cursor()).toBe(5);
   });
 
@@ -738,7 +738,7 @@ describe("the first catch-up", () => {
     h.sockets[0]!.receive(helloAt(401));
     await flush();
     expect(h.fetches).toEqual([399]);
-    expect(h.routed.filter((e) => e.type === "event").map(seqOf)).toEqual([401]);
+    expect(h.routed.filter((e) => e.type === "change_event").map(seqOf)).toEqual([401]);
     expect(h.refreshAll).not.toHaveBeenCalled();
   });
 
@@ -753,7 +753,7 @@ describe("the first catch-up", () => {
     h.sockets[0]!.receive(helloAt(401));
     await flush();
     expect(h.refreshAll).toHaveBeenCalledTimes(1);
-    expect(h.routed.filter((e) => e.type === "event")).toEqual([]);
+    expect(h.routed.filter((e) => e.type === "change_event")).toEqual([]);
   });
 
   it("reads nothing for an empty stream", async () => {
@@ -828,13 +828,13 @@ it("ignores an old session's late authentication close after a new session opens
 });
 
 it("does not apply or continue a replay that finishes after stop", async () => {
-  let resolvePage!: (page: EventView[]) => void;
+  let resolvePage!: (page: ChangeEventView[]) => void;
   const socket = new FakeSocket();
   const route = vi.fn();
-  const fetchEventsAfter = vi.fn(() => new Promise<EventView[]>((resolve) => { resolvePage = resolve; }));
+  const fetchChangeEventsAfter = vi.fn(() => new Promise<ChangeEventView[]>((resolve) => { resolvePage = resolve; }));
   channel = openChannel({
     requestTicket: async () => "tkt", openSocket: () => socket,
-    fetchEventsAfter, route, refreshAll: async () => undefined,
+    fetchChangeEventsAfter, route, refreshAll: async () => undefined,
     connection: useConnectionStore, pageSize: 1,
   });
   await flush();
@@ -849,7 +849,7 @@ it("does not apply or continue a replay that finishes after stop", async () => {
   resolvePage([event(1)]);
   await flush();
   expect(route).not.toHaveBeenCalled();
-  expect(fetchEventsAfter).toHaveBeenCalledTimes(1);
+  expect(fetchChangeEventsAfter).toHaveBeenCalledTimes(1);
   expect(channel.cursor()).toBe(0);
 });
 

@@ -4,9 +4,9 @@
 
 Scale 1 is the shape the query audit measures against: 5,000 people, each
 with a personal org, and one heavy team org of 200 members and 150 who left,
-holding a million events and 20,000 files; beside them work items, outbox
+holding a million change events and 20,000 files; beside them work items, outbox
 rows, sessions, idempotency records, invitations, API keys, and settled
-orchestrations, each in the proportions a busy platform has. Every count
+orchestrations, each in the proportions a busy system has. Every count
 scales linearly with `--scale`, with a floor of one, so `--scale 0.01` is a
 quick run with the same shape. The heavy org's id is fixed, so a statement
 file can name it (see `FIXED`). A member who left the heavy org holds no
@@ -44,7 +44,7 @@ class Counts:
     people: int
     members: int
     left: int
-    events: int
+    change_events: int
     work_items: int
     outbox_rows: int
     idempotency: int
@@ -64,7 +64,7 @@ class Counts:
             people=people,
             members=members,
             left=min(n(150), people - members),
-            events=n(1000000),
+            change_events=n(1000000),
             work_items=n(50000),
             outbox_rows=n(100000),
             idempotency=n(50000),
@@ -177,14 +177,14 @@ def statements(c: Counts) -> list[tuple[str, str]]:
         ),
         (
             "tenant sessions",
-            f"""INSERT INTO core.sessions (id, org_id, created_at, updated_at, created_by,
+            f"""INSERT INTO core.auth_sessions (id, org_id, created_at, updated_at, created_by,
                 identity_id, user_id, token_hash,
                                        credential_kind, expires_at, updated_by, last_seen_at)
             SELECT uuidv7(-(interval '20 days') + (p.n * 2 + k) * interval '1 second'),
                 p.org_id, now() - interval '20 days',
                    now(), p.identity_id, p.identity_id, p.user_id,
                    encode(sha256(convert_to('s' || p.n || '-' || k, 'UTF8')), 'hex'),
-                       'session_token',
+                       'auth_session_token',
                    now() + interval '10 days', p.identity_id, now() - interval '5 minutes'
             FROM people p CROSS JOIN generate_series(1, 2) k
             UNION ALL
@@ -192,13 +192,13 @@ def statements(c: Counts) -> list[tuple[str, str]]:
                 now() - interval '20 days',
                    now(), m.identity_id, m.identity_id, m.user_id,
                    encode(sha256(convert_to('b' || m.n || '-' || k, 'UTF8')), 'hex'),
-                       'session_token',
+                       'auth_session_token',
                    now() + interval '10 days', m.identity_id, now() - interval '5 minutes'
             FROM members m CROSS JOIN generate_series(1, 2) k""",
         ),
         (
             "sign-in sessions",
-            f"""INSERT INTO core.sessions (id, org_id, created_at, updated_at, created_by,
+            f"""INSERT INTO core.auth_sessions (id, org_id, created_at, updated_at, created_by,
                 identity_id, user_id, token_hash,
                                        credential_kind, expires_at, updated_by)
             SELECT uuidv7(-(interval '20 days') + (p.n * 2 + k) * interval '1 second'), '{EMPTY}',
@@ -271,15 +271,15 @@ def statements(c: Counts) -> list[tuple[str, str]]:
             FROM people p CROSS JOIN generate_series(1, 10) k""",
         ),
         (
-            "events",
-            f"""INSERT INTO activity.events (id, org_id, seq, kind, target_id, produced_at,
+            "change_events",
+            f"""INSERT INTO activity.change_events (id, org_id, seq, kind, target_id, produced_at,
                 actor_id, request_id, app, payload)
-            SELECT uuidv7(-(interval '100 days') + g * (interval '100 days' / {c.events})),
+            SELECT uuidv7(-(interval '100 days') + g * (interval '100 days' / {c.change_events})),
                 {big}, g, 'tenancy.user.updated',
                    gen_random_uuid(),
-                       now() - interval '100 days' + g * (interval '100 days' / {c.events}),
+                       now() - interval '100 days' + g * (interval '100 days' / {c.change_events}),
                    gen_random_uuid(), gen_random_uuid(), 'portal', '{{}}'::jsonb
-            FROM generate_series(1, {c.events}) g
+            FROM generate_series(1, {c.change_events}) g
             UNION ALL
             SELECT uuidv7(-(interval '10 days') + (p.n * 10 + k) * interval '1 second'),
                 p.org_id, k, 'tenancy.api_key.created',
@@ -289,8 +289,8 @@ def statements(c: Counts) -> list[tuple[str, str]]:
         ),
         (
             "event cursors",
-            f"""INSERT INTO activity.event_cursors (org_id, head, floor)
-            SELECT {big}, {c.events}, 0 UNION ALL SELECT org_id, 10, 0 FROM people""",
+            f"""INSERT INTO activity.change_event_cursors (org_id, head, floor)
+            SELECT {big}, {c.change_events}, 0 UNION ALL SELECT org_id, 10, 0 FROM people""",
         ),
         (
             "work items",

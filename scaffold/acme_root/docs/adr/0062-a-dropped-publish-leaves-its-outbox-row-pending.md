@@ -4,16 +4,16 @@
 
 ## Context
 
-The relay turns an entity change's outbox row into an event in the
+The relay turns an entity change's outbox row into a change event in the
 tenant's stream and an `entity_changed` publish on the bus, then marks
 the row done. A topic is best effort: the Valkey impl logs and counts a
 publish the bus refuses, and the breaker in front of Valkey drops one
 while it is open. A relay that marked the row done anyway would leave it
 where the sweep never looks.
 
-For most kinds a lost publish costs a moment of staleness. The event is
+For most kinds a lost publish costs a moment of staleness. The change event is
 in the stream, and a client that misses a frame sees the gap at the next
-frame or pong. Four kinds cost more: `tenancy.session.revoked`,
+frame or pong. Four kinds cost more: `tenancy.auth_session.revoked`,
 `tenancy.api_key.deleted`, `tenancy.user.deleted`, and
 `tenancy.org.deleted` (`REVOCATIONS`). They tell the realtime service
 that a socket's authority ended, and no client replays them for the
@@ -37,7 +37,7 @@ catch one, a raise would fail a request after its write landed.
 Roles (STO-20) says. A row whose
 publish was dropped is not marked. It stays pending, and the sweep
 publishes it again, with the delay that doubles per attempt and the dead
-letter past `max_attempts` (10) that any failed row gets. Its event is
+letter past `max_attempts` (10) that any failed row gets. Its change event is
 not appended twice: the append is idempotent on the row's id.
 
 **One rule for every entity change**, a hint and a revocation alike,
@@ -54,7 +54,7 @@ seconds without it. An enqueue sent again finds the item by its key and
 publishes nothing, so keeping the row would not bring the wake-up back.
 
 **A batch marks the rows it published.** The relay appends a batch's
-events in one call, publishes each, and marks the rows the bus took in
+change events in one call, publishes each, and marks the rows the bus took in
 one statement, leaving out the rows it dropped. In the request path the
 relay then answers False, and the row waits for the sweep past its
 grace. In the sweep the row spends its attempt with the error `the bus
@@ -69,7 +69,7 @@ did. `topics` / `publish_failed` goes quiet while the breaker is open.
 the oldest row neither relayed nor failed, across tenants, past five
 minutes. A bus that drops every publish trips it as a failing event
 store does. A dead letter still logs `failed for good` and leaves an
-`outbox.row.failed` event in the org's stream.
+`outbox.row.failed` change event in the org's stream.
 
 ## Consequences
 
@@ -78,7 +78,7 @@ publishes each row every pass its delay allows, and each attempt is a
 warning in the worker's log. Once Valkey answers, the next pass
 publishes the backlog and marks it done. A row dropped on all ten
 attempts, about an hour and a quarter with the default delays, becomes a
-dead letter: its event is in the stream, and only the frame was never
+dead letter: its change event is in the stream, and only the frame was never
 sent.
 
 A revocation the bus drops reaches the sockets on the first pass its

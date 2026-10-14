@@ -8,10 +8,10 @@ from pydantic import ValidationError
 
 from acme.infra.observability import OUTCOMES
 from acme.infra.topics import EntityChangedPayload, Topics, TopicsInterface, WorkAvailablePayload
-from acme.om.base import EMPTY_UUID, Platform, derived_id, new_id, utcnow
+from acme.om.base import EMPTY_UUID, OmBase, derived_id, new_id, utcnow
+from acme.om.change_events import ChangeEventsManagerInterface
+from acme.om.change_events.manager import audit_change_event
 from acme.om.context import Permission, RequestContext, TenantContext
-from acme.om.events import EventsManagerInterface
-from acme.om.events.manager import audit_event
 from acme.om.exceptions import (
     InvalidCredential,
     LeaseLost,
@@ -43,7 +43,7 @@ DEAD_LETTER_KIND = "work.item.failed"
 """The audit event a dead letter leaves in the tenant's stream."""
 
 
-class WorkOptions(Platform):
+class WorkOptions(OmBase):
     base_retry_delay: timedelta = timedelta(seconds=30)
     max_retry_delay: timedelta = timedelta(minutes=15)
     stale_stagger: timedelta = timedelta(seconds=5)
@@ -100,13 +100,13 @@ class WorkManagerImpl(WorkManagerInterface):
         self,
         storage: WorkStorageInterface,
         tenancy: TenancyManagerInterface,
-        events: EventsManagerInterface,
+        change_events: ChangeEventsManagerInterface,
         topics: TopicsInterface,
         options: WorkOptions,
     ) -> None:
         self._storage = storage
         self._tenancy = tenancy
-        self._events = events
+        self._change_events = change_events
         self._topics = topics
         self._options = options
 
@@ -382,7 +382,7 @@ class WorkManagerImpl(WorkManagerInterface):
         The copy starts from the stored row, so what a worker sends back cannot
         rewrite who asked for the work, when it was asked for, or what it is;
         the note a hand-back carries is the one field the caller supplies. And
-        every write here is the platform's, so it signs `updated_by` with
+        every write here is the system's, so it signs `updated_by` with
         EMPTY_UUID and never with `ctx.user_id`: the context the work runs
         under is the attribution of the work, never of the bookkeeping on its
         row."""
@@ -470,9 +470,9 @@ class WorkManagerImpl(WorkManagerInterface):
             ctx.org_id,
             item.last_error,
         )
-        event = await self._events.append_event(
+        event = await self._change_events.append_change_event(
             ctx,
-            audit_event(
+            audit_change_event(
                 ctx,
                 new_id(),
                 DEAD_LETTER_KIND,

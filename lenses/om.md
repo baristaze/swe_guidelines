@@ -55,7 +55,7 @@ cross-tenant sweep may instead get the tenant back beside each row
 JSON; an entity carrying an attribute that exists only for a
 column's sake; `org_id` on an entity every reader of which holds a
 context; an entity a reader without one takes, such as an `OutboxRow`
-or an `Event`, declared without it.
+or a `ChangeEvent`, declared without it.
 
 **Severity.** medium
 
@@ -129,7 +129,7 @@ the rest is judged.
 **Principle.** Each mixin is a promise, composed only where a manager
 operation exercises it: `Trackable` where an update exists,
 `SoftDeletable` where a delete does, `Created` and never `Trackable`
-on a row the platform writes for itself (the outbox row, the marker, the socket
+on a row the system writes for itself (the outbox row, the marker, the socket
 ticket), whose later stamp is a field named for what happened.
 Inheritance in the OM never shares code.
 
@@ -157,7 +157,7 @@ entity-to-entity inheritance; the rest is judged.
 ## OM-06 Append-only records carry identity and a time of their own
 
 **Principle.** A record that is never updated and never hidden (an
-audit entry, a ledger line, an event) is `Identifiable` and carries
+audit entry, a ledger line, a change event) is `Identifiable` and carries
 its time in a field of its own, `created_at` or a name of its own such
 as `produced_at`: no `updated_at`, no `deleted_at`. Its time is never
 read out of its id.
@@ -167,7 +167,7 @@ read out of its id.
 **Look for.** Entities whose managers only ever create them; the mixins
 those entities compose; where a record's time is read from.
 
-**Violation.** An audit or event entity composed with `Trackable` or
+**Violation.** An audit or change event entity composed with `Trackable` or
 `SoftDeletable`; an `updated_at` on a record no code path updates; a
 record's time taken from the timestamp inside its id.
 
@@ -319,11 +319,11 @@ marker, ahead of the entity, is that protocol and not a breach (NET-24).
 **Check.** `arch-check` decides every id factory but `new_id()` and
 `derived_id()` above storage; the rest is judged.
 
-## OM-13 EMPTY_UUID means the platform, and optional means None
+## OM-13 EMPTY_UUID means the system, and optional means None
 
-**Principle.** `EMPTY_UUID` is the platform's reference: the system
+**Principle.** `EMPTY_UUID` is the system's reference: the system
 scope on infra calls and the value of a required reference no tenant and
-no person owns (`updated_by` on an item the platform claimed), which
+no person owns (`updated_by` on an item the system claimed), which
 keeps the column `NOT NULL` and the index simple. A reference that is
 optional is `None`, never `EMPTY_UUID`. Its use as the system scope is
 judged by `context`.
@@ -332,14 +332,14 @@ judged by `context`.
 Queue.
 
 **Look for.** The constant defined once in the base module; required
-reference fields on rows the platform writes; every write to a work
+reference fields on rows the system writes; every write to a work
 item after its enqueue, the claim, the completion, the requeue, the
 failure, the hand-back, and the lease renewal, and what each puts in
 `updated_by`; optional references and how they express absence;
 ad-hoc sentinel constants elsewhere in the OM.
 
 **Violation.** A second sentinel constant invented for "no warehouse";
-a required reference column made nullable for platform-written rows;
+a required reference column made nullable for system-written rows;
 a write to a work item row after its enqueue signed from the context,
 so the enqueuer appears to have run the work; an optional reference
 filled with `EMPTY_UUID` instead of `None`.
@@ -418,10 +418,10 @@ functions of a rules module; the rest is judged.
 **Principle.** Tenancy (organizations, users, memberships,
 credentials) is a first-class swimlane with its own types, manager, and
 storage, not a utility hanging off the root. Audit (who did what, when,
-from which app) is a kind of event: an audit entry is an `Event` with an
-audit kind, appended to the events namespace's stream. Audit becomes a
-namespace of its own when it gains a reader of its own, or must be kept
-longer than the stream.
+from which app) is a kind of change event: an audit entry is a
+`ChangeEvent` with an audit kind, appended to the change events
+namespace's stream. Audit becomes a namespace of its own when it gains a
+reader of its own, or must be kept longer than the stream.
 
 **Source.** Namespaces as Swimlanes.
 
@@ -432,11 +432,11 @@ kinds that mark one.
 
 **Violation.** User and organization classes in `base.py` or a `utils`
 module; audit rows written by a helper function with no storage
-interface, or kept anywhere but the event stream while it is still a
-kind of event; credential handling
+interface, or kept anywhere but the change event stream while it is still a
+kind of change event; credential handling
 spread across services with no owning namespace; audit that has a
 screen or an export of its own, or must be kept longer than the stream,
-while it is still a kind of event.
+while it is still a kind of change event.
 
 **Severity.** medium
 
@@ -491,3 +491,32 @@ together; a rule decided before or after the statement re-implemented
 instead of calling the function.
 
 **Severity.** medium
+
+## OM-19 A scaffold noun is qualified; the bare noun is the product's
+
+**Principle.** A noun the scaffold brings is qualified by what it does,
+and the bare everyday noun is the product's, since a copy shares one
+codebase, one database, one API, and one portal with its product:
+`AuthSession`, `ChangeEvent`, `LeasableResource`, `WaitLine`,
+`OrchestrationStep`, with `OmBase` at the root. A noun stays bare when
+no product gives it a meaning of its own, since it names a mechanism or
+means the same in every product: `Org`, `User`, `Membership`,
+`Identity`, `Invitation`, `Lease`, `File`, and `Orchestration`. The
+qualifier names the mechanism, never the product that adopts it, and no
+name says "domain". It holds on every surface the noun reaches.
+
+**Source.** Naming Entities.
+
+**Look for.** The classes, tables, routes, kinds, stored values,
+settings, and labels a scaffold namespace declares, and whether each
+names its mechanism or takes a bare everyday noun a product would need.
+
+**Violation.** A scaffold class, table, route, or kind named by a bare
+everyday noun, such as a session, an event, a resource, a step, or a
+line; a name that says "domain" or names the adopting product; a
+rename that left the old name on one surface. A noun the Principle
+keeps bare is none.
+
+**Severity.** medium
+
+**Shape.** `scaffold/acme_root/om/src/acme/om/change_events/`

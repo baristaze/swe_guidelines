@@ -8,7 +8,7 @@ from acme.integrations.root import IntegrationsInterface
 from acme.om.root import Managers
 from acme.services.api.services import (
     AdminServiceInterface,
-    EventsServiceInterface,
+    ChangeEventsServiceInterface,
     FlagsServiceInterface,
     LeasesServiceInterface,
     MediaServiceInterface,
@@ -18,7 +18,7 @@ from acme.services.api.services import (
     WebhooksServiceInterface,
 )
 from acme.services.api.services.impl.admin import AdminServiceImpl
-from acme.services.api.services.impl.events import EventsServiceImpl
+from acme.services.api.services.impl.change_events import ChangeEventsServiceImpl
 from acme.services.api.services.impl.flags import FlagsServiceImpl
 from acme.services.api.services.impl.leases import LeasesServiceImpl
 from acme.services.api.services.impl.media import MediaServiceImpl
@@ -32,7 +32,7 @@ class ServicesImpl(ServicesInterface):
         self,
         tenancy: TenancyServiceInterface,
         admin: AdminServiceInterface,
-        events: EventsServiceInterface,
+        change_events: ChangeEventsServiceInterface,
         media: MediaServiceInterface,
         flags: FlagsServiceInterface,
         realtime: RealtimeServiceInterface,
@@ -41,7 +41,7 @@ class ServicesImpl(ServicesInterface):
     ) -> None:
         self._tenancy = tenancy
         self._admin = admin
-        self._events = events
+        self._change_events = change_events
         self._media = media
         self._flags = flags
         self._realtime = realtime
@@ -54,8 +54,8 @@ class ServicesImpl(ServicesInterface):
     def get_admin_service(self) -> AdminServiceInterface:
         return self._admin
 
-    def get_events_service(self) -> EventsServiceInterface:
-        return self._events
+    def get_change_events_service(self) -> ChangeEventsServiceInterface:
+        return self._change_events
 
     def get_media_service(self) -> MediaServiceInterface:
         return self._media
@@ -84,11 +84,11 @@ def build_services(
     return ServicesImpl(
         tenancy=TenancyServiceImpl(managers.tenancy),
         admin=AdminServiceImpl(managers.tenancy_operator, managers.work_operator),
-        events=EventsServiceImpl(managers.events),
+        change_events=ChangeEventsServiceImpl(managers.change_events),
         media=MediaServiceImpl(managers.media),
         flags=FlagsServiceImpl(infra.get_flags()),
         realtime=RealtimeServiceImpl(
-            managers.tenancy, managers.events, infra.get_topics(), head_max_age
+            managers.tenancy, managers.change_events, infra.get_topics(), head_max_age
         ),
         webhooks=WebhooksServiceImpl(integrations.get_identity_provider(), infra.get_queues()),
         leases=LeasesServiceImpl(managers.leases),

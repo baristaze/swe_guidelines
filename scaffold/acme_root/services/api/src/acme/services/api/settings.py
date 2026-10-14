@@ -21,7 +21,7 @@ class ApiSettings(StorageSettings, InfraSettings, IntegrationsSettings):
 
     service_name: str = "api"
     # The namespaces whose routers this process mounts; empty mounts every one
-    # the image hosts (tenancy, events, media). Naming a subset is how
+    # the image hosts (tenancy, change_events, media). Naming a subset is how
     # one namespace becomes a service of its own: the same image, another
     # value, and no code change. A name the image does not host refuses the
     # boot.
@@ -93,8 +93,8 @@ class ApiSettings(StorageSettings, InfraSettings, IntegrationsSettings):
     # session ends at whichever passes first: 30 days from its exchange, or 14
     # days without a request (ADR 0063).
     login_lifetime_seconds: int = Field(default=600, gt=0)
-    session_lifetime_seconds: int = Field(default=2592000, gt=0)
-    session_idle_lifetime_seconds: int = Field(default=1209600, gt=0)
+    auth_session_lifetime_seconds: int = Field(default=2592000, gt=0)
+    auth_session_idle_lifetime_seconds: int = Field(default=1209600, gt=0)
     # The longest an operator token lives, and what a mint that names no
     # lifetime gets. An hour at most, whoever mints it.
     operator_token_max_lifetime_seconds: int = Field(default=3600, gt=0, le=3600)

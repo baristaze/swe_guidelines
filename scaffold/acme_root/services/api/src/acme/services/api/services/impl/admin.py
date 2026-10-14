@@ -4,7 +4,7 @@ from uuid import UUID
 from acme.om.context import OperatorContext, OperatorPermission, OperatorRole
 from acme.om.idempotency.types.attempt import Attempt
 from acme.om.tenancy import TenancyOperatorManagerInterface
-from acme.om.tenancy.types.session import Session
+from acme.om.tenancy.types.auth_session import AuthSession
 from acme.om.work import WorkOperatorManagerInterface
 from acme.services.api.services.admin import AdminServiceInterface
 from acme.services.api.services.impl.tenancy import decode_cursor, encode_cursor
@@ -19,13 +19,13 @@ from acme.services.api.types.admin import (
     OperatorTokenView,
     OperatorView,
     OperatorWorkItemView,
-    PlatformSizeView,
     SetTenantCapRequest,
+    SystemSizeView,
     TenantCapView,
     TotpConfirmedView,
 )
+from acme.services.api.types.change_events import OperatorChangeEventView
 from acme.services.api.types.common import clamp_limit
-from acme.services.api.types.events import OperatorEventView
 from acme.services.api.types.tenancy import OrgPageView, OrgView, UserPageView, UserView
 
 
@@ -92,8 +92,8 @@ class AdminServiceImpl(AdminServiceInterface):
     async def revoke_token(self, admin: OperatorContext, token_id: UUID) -> OperatorTokenView:
         return token_view(await self._tenancy.revoke_operator_token(admin, token_id))
 
-    async def size(self, admin: OperatorContext) -> PlatformSizeView:
-        return PlatformSizeView.model_validate(await self._tenancy.size(admin))
+    async def size(self, admin: OperatorContext) -> SystemSizeView:
+        return SystemSizeView.model_validate(await self._tenancy.size(admin))
 
     async def create_org(
         self, admin: OperatorContext, body: CreateOrgRequest, attempt: Attempt
@@ -130,11 +130,11 @@ class AdminServiceImpl(AdminServiceInterface):
         )
         return UserView.model_validate(user)
 
-    async def get_events(
+    async def get_change_events(
         self, admin: OperatorContext, org_id: UUID, after_seq: int, limit: int
-    ) -> list[OperatorEventView]:
-        events = await self._tenancy.get_events(admin, org_id, after_seq, clamp_limit(limit))
-        return [OperatorEventView.model_validate(e) for e in events]
+    ) -> list[OperatorChangeEventView]:
+        events = await self._tenancy.get_change_events(admin, org_id, after_seq, clamp_limit(limit))
+        return [OperatorChangeEventView.model_validate(e) for e in events]
 
     async def delete_org(self, admin: OperatorContext, org_id: UUID) -> OrgView:
         return OrgView.model_validate(await self._tenancy.delete_org(admin, org_id))
@@ -161,7 +161,7 @@ class AdminServiceImpl(AdminServiceInterface):
         return TenantCapView.model_validate(await self._work.clear_tenant_cap(admin, org_id, lane))
 
 
-def token_view(token: Session) -> OperatorTokenView:
+def token_view(token: AuthSession) -> OperatorTokenView:
     """A row of kind `operator_token` as the wire reads it: its one permission
     under the name the mint takes it by, and never its digest."""
     assert token.operator_role is not None, "an operator token names its permission"

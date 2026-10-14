@@ -195,7 +195,7 @@ def test_a_binary_frame_is_a_bad_command_and_the_socket_stays_open(tmp_path: Pat
             assert ws.receive_json()["type"] == "pong"
 
 
-def session_token(container: AppContainer) -> str:
+def auth_session_token(container: AppContainer) -> str:
     """Signs the owner in and returns the session token."""
     _, org = run(
         container.managers.tenancy.bootstrap(
@@ -212,14 +212,14 @@ def session_token(container: AppContainer) -> str:
     return run(issue())
 
 
-def expire_session_in(container: AppContainer, token: str, seconds: float) -> None:
+def expire_auth_session_in(container: AppContainer, token: str, seconds: float) -> None:
     """Shortens the session behind the token in storage."""
     storage = container.storage.get_tenancy_storage()
-    found = run(storage.read_session_by_digest(hash_token(token)))
+    found = run(storage.read_auth_session_by_digest(hash_token(token)))
     assert found is not None
     org_id, session = found
     shortened = session.model_copy(update={"expires_at": utcnow() + timedelta(seconds=seconds)})
-    run(storage.write_session(org_id, shortened))
+    run(storage.write_auth_session(org_id, shortened))
 
 
 def test_a_socket_is_closed_with_4401_when_the_session_behind_it_expires(tmp_path: Path) -> None:
@@ -227,11 +227,11 @@ def test_a_socket_is_closed_with_4401_when_the_session_behind_it_expires(tmp_pat
     The session is shortened once the app is up and the ticket issued, so a
     slow start does not spend the lifetime before the socket opens."""
     container = build_container(tmp_path)
-    token = session_token(container)
+    token = auth_session_token(container)
     with TestClient(create_app(container)) as tc:
         headers = {"Authorization": f"Bearer {token}"}
         ticket = tc.post("/v1/realtime/tickets", headers=headers).json()["ticket"]
-        expire_session_in(container, token, 1.0)
+        expire_auth_session_in(container, token, 1.0)
         with tc.websocket_connect(f"/v1/realtime?ticket={ticket}") as ws:
             assert ws.receive_json()["type"] == "hello"
             with pytest.raises(WebSocketDisconnect) as closed:
@@ -383,7 +383,7 @@ def test_a_revocation_during_the_hello_still_closes_the_socket(
         if not revoked:
             revoked.append(True)
             assert ctx.credential_id is not None
-            await container.managers.tenancy.credentials.revoke_session(ctx, ctx.credential_id)
+            await container.managers.tenancy.credentials.revoke_auth_session(ctx, ctx.credential_id)
         return await working(ctx)
 
     monkeypatch.setattr(service, "head", head_while_revoked)
@@ -523,17 +523,17 @@ def revoke_in_storage(container: AppContainer, token: str) -> None:
     """Revokes the session behind the token in storage alone: no outbox row,
     so no message on the bus, as when the bus lost it."""
     storage = container.storage.get_tenancy_storage()
-    found = run(storage.read_session_by_digest(hash_token(token)))
+    found = run(storage.read_auth_session_by_digest(hash_token(token)))
     assert found is not None
     org_id, session = found
-    run(storage.write_session(org_id, session.model_copy(update={"revoked_at": utcnow()})))
+    run(storage.write_auth_session(org_id, session.model_copy(update={"revoked_at": utcnow()})))
 
 
 def test_a_revocation_the_bus_lost_closes_the_socket_within_the_recheck(tmp_path: Path) -> None:
     """The session is revoked and no message is sent: the socket's own
     recheck finds it and closes with 4401 within one interval."""
     container = build_container(tmp_path, realtime_recheck_seconds=RECHECK)
-    token = session_token(container)
+    token = auth_session_token(container)
     with TestClient(create_app(container)) as tc:
         headers = {"Authorization": f"Bearer {token}"}
         with open_socket(tc, headers) as ws:
@@ -549,7 +549,7 @@ def test_a_socket_whose_credential_holds_stays_open_through_its_rechecks(
     tmp_path: Path,
 ) -> None:
     container = build_container(tmp_path, realtime_recheck_seconds=RECHECK)
-    token = session_token(container)
+    token = auth_session_token(container)
     with TestClient(create_app(container)) as tc:
         with open_socket(tc, {"Authorization": f"Bearer {token}"}) as ws:
             assert ws.receive_json()["type"] == "hello"
@@ -657,11 +657,11 @@ def test_a_recheck_that_cannot_be_made_closes_the_socket(
     service = container.services.get_realtime_service()
 
     async def unreachable(principal: object) -> str | None:
-        raise BackendFailed("postgres", "read_session", "connection refused")
+        raise BackendFailed("postgres", "read_auth_session", "connection refused")
 
     monkeypatch.setattr(service, "recheck", unreachable)
     registered = registrations(service, monkeypatch)
-    token = session_token(container)
+    token = auth_session_token(container)
     with TestClient(create_app(container)) as tc:
         with open_socket(tc, {"Authorization": f"Bearer {token}"}) as ws:
             assert ws.receive_json()["type"] == "hello"

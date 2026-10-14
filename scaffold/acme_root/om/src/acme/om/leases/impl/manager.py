@@ -6,7 +6,7 @@ from uuid import UUID
 from pydantic import ValidationError
 
 from acme.infra.observability import OUTCOMES
-from acme.om.base import EMPTY_UUID, Platform, new_id, utcnow
+from acme.om.base import EMPTY_UUID, OmBase, new_id, utcnow
 from acme.om.context import Permission, RequestContext, TenantContext
 from acme.om.exceptions import (
     InvalidCredential,
@@ -16,12 +16,11 @@ from acme.om.exceptions import (
     TenantMismatch,
     ValidationFailed,
 )
-from acme.om.leases.hooks import AskCheckInterface, ResourceKindInterface, WaiterInterface
+from acme.om.leases.hooks import AskCheckInterface, LeasableResourceKindInterface, WaiterInterface
 from acme.om.leases.manager import LeasesManagerInterface
 from acme.om.leases.rules import (
     holds_lapsed,
     is_grantable,
-    line_of,
     measured_hold,
     place_of,
     places_of,
@@ -31,9 +30,15 @@ from acme.om.leases.rules import (
     replay_all,
     stands_in,
     term_of,
+    wait_line_of,
     window_of,
 )
 from acme.om.leases.storage import LeasesStorageInterface
+from acme.om.leases.types.leasable_resource import (
+    LeasableResource,
+    LeasableResourceKind,
+    LeasableResourceUpdate,
+)
 from acme.om.leases.types.lease import Grant, JobClaim, Lease, LeaseStatus
 from acme.om.leases.types.request import (
     ASK_PAYLOADS,
@@ -41,15 +46,14 @@ from acme.om.leases.types.request import (
     HistoryMark,
     LeasePage,
     LeaseRequest,
-    Line,
     Place,
     RequestStatus,
     Standing,
     WaiterKind,
+    WaitLine,
 )
-from acme.om.leases.types.resource import Resource, ResourceKind, ResourceUpdate
-from acme.om.orchestrations.steps import step_rows
-from acme.om.orchestrations.types.orchestration import Step
+from acme.om.orchestrations.steps import orchestration_step_rows
+from acme.om.orchestrations.types.orchestration import OrchestrationStep
 from acme.om.outbox import OutboxRelayInterface
 from acme.om.outbox.types.row import OutboxRow, outbox_row
 from acme.om.tenancy import TenancyManagerInterface
@@ -58,20 +62,20 @@ from acme.om.work.types.work_item import asks_for_work
 
 log = logging.getLogger(__name__)
 
-RESOURCE_CREATED = "leases.resource.created"
-RESOURCE_UPDATED = "leases.resource.updated"
+LEASABLE_RESOURCE_CREATED = "leases.leasable_resource.created"
+LEASABLE_RESOURCE_UPDATED = "leases.leasable_resource.updated"
 REQUEST_CREATED = "leases.request.created"
 REQUEST_UPDATED = "leases.request.updated"
 LEASE_CREATED = "leases.lease.created"
 LEASE_UPDATED = "leases.lease.updated"
 
 
-class LeasesOptions(Platform):
+class LeasesOptions(OmBase):
     # The skew margin: a lease ends this long after its expiry, so a holder
     # whose clock runs slow has stopped before the resource is granted again.
     margin: timedelta = timedelta(seconds=30)
     line_limit: int = 1000  # waiting requests of a kind one offer or estimate reads
-    resource_limit: int = 200  # resources of a kind one ask or estimate reads
+    leasable_resource_limit: int = 200  # resources of a kind one ask or estimate reads
     history_limit: int = 200  # the most leases one page of a history answers
     # Heads one offer looks at, cancelling those that may no longer be
     # granted, before it leaves the rest to the next freeing or the sweep.
@@ -90,10 +94,10 @@ class LeasesManagerImpl(LeasesManagerInterface):
         relay: OutboxRelayInterface,
         options: LeasesOptions,
         *,
-        kinds: Mapping[ResourceKind, ResourceKindInterface],
+        kinds: Mapping[LeasableResourceKind, LeasableResourceKindInterface],
         waiters: Mapping[WaiterKind, WaiterInterface],
         work: WorkManagerInterface,
-        asks: Mapping[ResourceKind, AskCheckInterface] | None = None,
+        asks: Mapping[LeasableResourceKind, AskCheckInterface] | None = None,
         clock: Callable[[], datetime] = utcnow,
     ) -> None:
         self._storage = storage
@@ -110,9 +114,9 @@ class LeasesManagerImpl(LeasesManagerInterface):
         self._work = work
         self._clock = clock
 
-    # Resources.
+    # LeasableResources.
 
-    async def register(self, ctx: TenantContext, resource: Resource) -> Resource:
+    async def register(self, ctx: TenantContext, resource: LeasableResource) -> LeasableResource:
         ctx.require(Permission.WRITE)
         self._kind(resource.kind)
         now = self._clock()
@@ -130,11 +134,11 @@ class LeasesManagerImpl(LeasesManagerInterface):
                 "mean_hold_seconds": None,
             }
         )
-        rows = (outbox_row(ctx, RESOURCE_CREATED, created.id, {}),)
-        if not await self._storage.create_resource(ctx.org_id, created, rows):
-            stored = await self._storage.read_resource_by_ref(
+        rows = (outbox_row(ctx, LEASABLE_RESOURCE_CREATED, created.id, {}),)
+        if not await self._storage.create_leasable_resource(ctx.org_id, created, rows):
+            stored = await self._storage.read_leasable_resource_by_ref(
                 ctx.org_id, created.kind, created.ref_id
-            ) or await self._storage.read_resource(ctx.org_id, created.id)
+            ) or await self._storage.read_leasable_resource(ctx.org_id, created.id)
             if stored is None:
                 raise TenantMismatch(f"resource {created.id} is not in {ctx.org_id}")
             return stored
@@ -144,50 +148,52 @@ class LeasesManagerImpl(LeasesManagerInterface):
         return created
 
     async def update(
-        self, ctx: TenantContext, resource_id: UUID, change: ResourceUpdate
-    ) -> Resource:
+        self, ctx: TenantContext, leasable_resource_id: UUID, change: LeasableResourceUpdate
+    ) -> LeasableResource:
         ctx.require(Permission.WRITE)
-        rows = (outbox_row(ctx, RESOURCE_UPDATED, resource_id, {}),)
-        written = await self._storage.update_resource(
-            ctx.org_id, resource_id, change, self._clock(), ctx.user_id, rows
+        rows = (outbox_row(ctx, LEASABLE_RESOURCE_UPDATED, leasable_resource_id, {}),)
+        written = await self._storage.update_leasable_resource(
+            ctx.org_id, leasable_resource_id, change, self._clock(), ctx.user_id, rows
         )
         if written is None:
-            raise NotFound(f"resource {resource_id} not found")
+            raise NotFound(f"resource {leasable_resource_id} not found")
         await self._relay.relay_all(ctx.org_id, rows)
-        await self._offer(ctx, resource_id)
+        await self._offer(ctx, leasable_resource_id)
         return written
 
-    async def offer(self, ctx: TenantContext, resource_id: UUID) -> Lease | None:
+    async def offer(self, ctx: TenantContext, leasable_resource_id: UUID) -> Lease | None:
         ctx.require(Permission.WRITE)
-        return await self._offer(ctx, resource_id)
+        return await self._offer(ctx, leasable_resource_id)
 
-    async def get_resource(self, ctx: TenantContext, resource_id: UUID) -> Resource:
+    async def get_leasable_resource(
+        self, ctx: TenantContext, leasable_resource_id: UUID
+    ) -> LeasableResource:
         ctx.require(Permission.READ)
-        return await self._resource(ctx, resource_id)
+        return await self._leasable_resource(ctx, leasable_resource_id)
 
     async def set_available(
-        self, ctx: TenantContext, resource_id: UUID, available: bool
-    ) -> Resource:
+        self, ctx: TenantContext, leasable_resource_id: UUID, available: bool
+    ) -> LeasableResource:
         ctx.require(Permission.WRITE)
-        rows = (outbox_row(ctx, RESOURCE_UPDATED, resource_id, {}),)
+        rows = (outbox_row(ctx, LEASABLE_RESOURCE_UPDATED, leasable_resource_id, {}),)
         written = await self._storage.write_availability(
-            ctx.org_id, resource_id, available, self._clock(), ctx.user_id, rows
+            ctx.org_id, leasable_resource_id, available, self._clock(), ctx.user_id, rows
         )
         if written is None:
-            raise NotFound(f"resource {resource_id} not found")
+            raise NotFound(f"resource {leasable_resource_id} not found")
         await self._relay.relay_all(ctx.org_id, rows)
         if available:
-            await self._offer(ctx, resource_id)
+            await self._offer(ctx, leasable_resource_id)
         return written
 
-    async def retire(self, ctx: TenantContext, resource_id: UUID) -> Resource:
+    async def retire(self, ctx: TenantContext, leasable_resource_id: UUID) -> LeasableResource:
         ctx.require(Permission.WRITE)
-        rows = (outbox_row(ctx, RESOURCE_UPDATED, resource_id, {}),)
-        retired = await self._storage.retire_resource(
-            ctx.org_id, resource_id, self._clock(), ctx.user_id, rows
+        rows = (outbox_row(ctx, LEASABLE_RESOURCE_UPDATED, leasable_resource_id, {}),)
+        retired = await self._storage.retire_leasable_resource(
+            ctx.org_id, leasable_resource_id, self._clock(), ctx.user_id, rows
         )
         if retired is None:
-            stored = await self._resource(ctx, resource_id)
+            stored = await self._leasable_resource(ctx, leasable_resource_id)
             return stored  # retired already
         await self._relay.relay_all(ctx.org_id, rows)
         await self._cancel_stranded(ctx)
@@ -196,7 +202,7 @@ class LeasesManagerImpl(LeasesManagerInterface):
     # The line.
 
     async def ask(
-        self, ctx: TenantContext, request: LeaseRequest, park: Step | None = None
+        self, ctx: TenantContext, request: LeaseRequest, park: OrchestrationStep | None = None
     ) -> Standing:
         ctx.require(Permission.WRITE)
         self._kind(request.kind)
@@ -206,11 +212,13 @@ class LeasesManagerImpl(LeasesManagerInterface):
             raise ValidationFailed(f"a {request.kind.value} ask is not {error}") from None
         if request.waiter_kind is not None and request.waiter_kind not in self._waiters:
             raise ValidationFailed(f"no waiter of kind {request.waiter_kind.value} is registered")
-        named: Resource | None = None
-        if request.resource_id is not None:
-            named = await self._resource(ctx, request.resource_id)
+        named: LeasableResource | None = None
+        if request.leasable_resource_id is not None:
+            named = await self._leasable_resource(ctx, request.leasable_resource_id)
             if named.retired_at is not None or named.kind is not request.kind:
-                raise NotFound(f"no live {request.kind.value} resource {request.resource_id}")
+                raise NotFound(
+                    f"no live {request.kind.value} resource {request.leasable_resource_id}"
+                )
         now = self._clock()
         asked = request.model_copy(
             update={
@@ -241,7 +249,7 @@ class LeasesManagerImpl(LeasesManagerInterface):
                 await self._offer(ctx, resource.id)
             stored = await self._storage.read_request(ctx.org_id, stored.id) or stored
         if stored.status is RequestStatus.WAITING and park is not None:
-            parked_rows = step_rows(ctx, park.record)
+            parked_rows = orchestration_step_rows(ctx, park.record)
             stood = await self._storage.park_waiting(ctx.org_id, stored.id, park, parked_rows)
             if stood is not None and stood.status is RequestStatus.WAITING:
                 await self._relay.relay_all(ctx.org_id, parked_rows)
@@ -253,24 +261,24 @@ class LeasesManagerImpl(LeasesManagerInterface):
         ctx.require(Permission.READ)
         return await self._standing(ctx, await self._request(ctx, request_id))
 
-    async def line(self, ctx: TenantContext, resource_id: UUID) -> Line:
+    async def wait_line(self, ctx: TenantContext, leasable_resource_id: UUID) -> WaitLine:
         """Each place and estimate comes from one replay over the reads the
         line makes, whatever its length, never a read per request."""
         ctx.require(Permission.READ)
-        resource = await self._resource(ctx, resource_id)
-        resources = await self._storage.read_resources(
-            ctx.org_id, resource.kind, self._options.resource_limit
+        resource = await self._leasable_resource(ctx, leasable_resource_id)
+        resources = await self._storage.read_leasable_resources(
+            ctx.org_id, resource.kind, self._options.leasable_resource_limit
         )
         if all(r.id != resource.id for r in resources):
             resources = [*resources, resource]
         waiting = await self._storage.read_waiting(
             ctx.org_id, resource.kind, self._options.line_limit
         )
-        requests = line_of(resource, waiting)
+        requests = wait_line_of(resource, waiting)
         places = places_of(resources, waiting)
         estimates = replay_all(resources, waiting, self._clock())
-        return Line(
-            resource=resource,
+        return WaitLine(
+            leasable_resource=resource,
             requests=tuple(requests),
             places=tuple(
                 Place(request_id=r.id, place=places.get(r.id), estimate_seconds=estimates.get(r.id))
@@ -344,7 +352,7 @@ class LeasesManagerImpl(LeasesManagerInterface):
     async def list_leases(
         self,
         ctx: TenantContext,
-        resource_id: UUID | None = None,
+        leasable_resource_id: UUID | None = None,
         after: HistoryMark | None = None,
         limit: int = 50,
     ) -> LeasePage:
@@ -352,7 +360,7 @@ class LeasesManagerImpl(LeasesManagerInterface):
         bounded = max(1, min(limit, self._options.history_limit))
         # One entry past the page, kept out of it: `has_more` is then a fact
         # about the rows, so no lease in retention is left unreachable.
-        rows = await self._storage.read_leases(ctx.org_id, resource_id, after, bounded + 1)
+        rows = await self._storage.read_leases(ctx.org_id, leasable_resource_id, after, bounded + 1)
         return LeasePage(items=tuple(rows[:bounded]), has_more=len(rows) > bounded)
 
     async def renew(
@@ -366,7 +374,9 @@ class LeasesManagerImpl(LeasesManagerInterface):
         if seconds is not None and seconds < 1:
             raise ValidationFailed(f"a renewal runs at least a second, not {seconds}")
         lease = await self._held(ctx, lease_id, job)
-        resource = await self._storage.read_resource(ctx.org_id, lease.resource_id)
+        resource = await self._storage.read_leasable_resource(
+            ctx.org_id, lease.leasable_resource_id
+        )
         now = self._clock()
         expires_at = now + renewal_of(lease, resource, seconds)
         renewed = await self._storage.renew_lease(
@@ -451,14 +461,14 @@ class LeasesManagerImpl(LeasesManagerInterface):
 
     # The grant.
 
-    async def _offer(self, ctx: TenantContext, resource_id: UUID) -> Lease | None:
+    async def _offer(self, ctx: TenantContext, leasable_resource_id: UUID) -> Lease | None:
         """Offers a resource to its line: the head is granted when it still
         waits, its waiter still waits, and its kind still allows it; a head
         that fails one of those leaves the line, and the next is asked. A
         grant that loses to another writer of the resource stops here: that
         writer offers it in turn."""
         for _ in range(self._options.offer_tries):
-            resource = await self._storage.read_resource(ctx.org_id, resource_id)
+            resource = await self._storage.read_leasable_resource(ctx.org_id, leasable_resource_id)
             if resource is None:
                 return None
             now = self._clock()
@@ -473,7 +483,7 @@ class LeasesManagerImpl(LeasesManagerInterface):
             waiting = await self._storage.read_waiting(
                 ctx.org_id, resource.kind, self._options.line_limit
             )
-            line = line_of(resource, waiting)
+            line = wait_line_of(resource, waiting)
             if not line:
                 return None
             head = line[0]
@@ -495,7 +505,7 @@ class LeasesManagerImpl(LeasesManagerInterface):
         return None
 
     async def _grant(
-        self, ctx: TenantContext, resource: Resource, request: LeaseRequest, now: datetime
+        self, ctx: TenantContext, resource: LeasableResource, request: LeaseRequest, now: datetime
     ) -> Lease | None:
         lease = Lease(
             id=new_id(),
@@ -503,7 +513,7 @@ class LeasesManagerImpl(LeasesManagerInterface):
             updated_at=now,
             created_by=ctx.user_id,
             updated_by=ctx.user_id,
-            resource_id=resource.id,
+            leasable_resource_id=resource.id,
             request_id=request.id,
             holder_id=request.created_by,
             token=resource.token + 1,
@@ -522,7 +532,7 @@ class LeasesManagerImpl(LeasesManagerInterface):
         rows: tuple[OutboxRow, ...] = (
             outbox_row(ctx, LEASE_CREATED, lease.id, {}),
             outbox_row(ctx, REQUEST_UPDATED, request.id, {}),
-            outbox_row(ctx, RESOURCE_UPDATED, resource.id, {}),
+            outbox_row(ctx, LEASABLE_RESOURCE_UPDATED, resource.id, {}),
             *started,
         )
         if request.waiter_kind is not None and request.waiter_id is not None:
@@ -557,13 +567,15 @@ class LeasesManagerImpl(LeasesManagerInterface):
         """Ends an active lease and frees its resource, then offers it to its
         line. None when another writer ended it first."""
         now = self._clock()
-        resource = await self._storage.read_resource(ctx.org_id, lease.resource_id)
+        resource = await self._storage.read_leasable_resource(
+            ctx.org_id, lease.leasable_resource_id
+        )
         mean = measured_hold(
             None if resource is None else resource.mean_hold_seconds, now - lease.created_at
         )
         rows: tuple[OutboxRow, ...] = (
             outbox_row(ctx, LEASE_UPDATED, lease.id, {}),
-            outbox_row(ctx, RESOURCE_UPDATED, lease.resource_id, {}),
+            outbox_row(ctx, LEASABLE_RESOURCE_UPDATED, lease.leasable_resource_id, {}),
         )
         if status is LeaseStatus.REVOKED:
             request = await self._storage.read_request(ctx.org_id, lease.request_id)
@@ -579,7 +591,7 @@ class LeasesManagerImpl(LeasesManagerInterface):
         await self._relay.relay_all(ctx.org_id, rows)
         OUTCOMES.labels(subsystem="leases", outcome=status.value).inc()
         if offer:
-            await self._offer(ctx, lease.resource_id)
+            await self._offer(ctx, lease.leasable_resource_id)
         return ended
 
     async def _end_or_refuse(self, ctx: TenantContext, lease: Lease, status: LeaseStatus) -> Lease:
@@ -650,8 +662,8 @@ class LeasesManagerImpl(LeasesManagerInterface):
             if await self._settle(ctx, request, RequestStatus.EXPIRED, None):
                 ended += 1
         ended += await self._cancel_stranded(ctx)
-        free = await self._storage.read_free(ctx.org_id, self._options.resource_limit)
-        lines: dict[ResourceKind, list[LeaseRequest]] = {}
+        free = await self._storage.read_free(ctx.org_id, self._options.leasable_resource_limit)
+        lines: dict[LeasableResourceKind, list[LeaseRequest]] = {}
         for resource in free:
             if resource.kind not in lines:
                 lines[resource.kind] = await self._storage.read_waiting(
@@ -669,11 +681,15 @@ class LeasesManagerImpl(LeasesManagerInterface):
             return Standing(request=request, lease=lease)
         if request.status is not RequestStatus.WAITING:
             return Standing(request=request)
-        resources = await self._storage.read_resources(
-            ctx.org_id, request.kind, self._options.resource_limit
+        resources = await self._storage.read_leasable_resources(
+            ctx.org_id, request.kind, self._options.leasable_resource_limit
         )
-        if request.resource_id is not None and all(r.id != request.resource_id for r in resources):
-            named = await self._storage.read_resource(ctx.org_id, request.resource_id)
+        if request.leasable_resource_id is not None and all(
+            r.id != request.leasable_resource_id for r in resources
+        ):
+            named = await self._storage.read_leasable_resource(
+                ctx.org_id, request.leasable_resource_id
+            )
             resources = [*resources, *([] if named is None else [named])]
         waiting = await self._storage.read_waiting(
             ctx.org_id, request.kind, self._options.line_limit
@@ -684,14 +700,18 @@ class LeasesManagerImpl(LeasesManagerInterface):
             estimate_seconds=replay(request, resources, waiting, self._clock()),
         )
 
-    async def _candidates(self, ctx: TenantContext, request: LeaseRequest) -> list[Resource]:
+    async def _candidates(
+        self, ctx: TenantContext, request: LeaseRequest
+    ) -> list[LeasableResource]:
         """The free resources a waiting request may take."""
-        if request.resource_id is not None:
-            named = await self._storage.read_resource(ctx.org_id, request.resource_id)
+        if request.leasable_resource_id is not None:
+            named = await self._storage.read_leasable_resource(
+                ctx.org_id, request.leasable_resource_id
+            )
             found = [] if named is None else [named]
         else:
-            found = await self._storage.read_resources(
-                ctx.org_id, request.kind, self._options.resource_limit
+            found = await self._storage.read_leasable_resources(
+                ctx.org_id, request.kind, self._options.leasable_resource_limit
             )
         return [r for r in found if is_grantable(r) and stands_in(request, r)]
 
@@ -701,7 +721,7 @@ class LeasesManagerImpl(LeasesManagerInterface):
         waiter = self._waiters.get(request.waiter_kind)
         return waiter is not None and await waiter.still_waits(ctx, request.waiter_id)
 
-    def _kind(self, kind: ResourceKind) -> ResourceKindInterface:
+    def _kind(self, kind: LeasableResourceKind) -> LeasableResourceKindInterface:
         hooks = self._kinds.get(kind)
         if hooks is None:
             raise ValidationFailed(f"no resource kind {kind.value} is registered")
@@ -726,10 +746,12 @@ class LeasesManagerImpl(LeasesManagerInterface):
             raise NotAuthorized(f"lease {lease_id} is not held by this claim of its job")
         return lease
 
-    async def _resource(self, ctx: TenantContext, resource_id: UUID) -> Resource:
-        resource = await self._storage.read_resource(ctx.org_id, resource_id)
+    async def _leasable_resource(
+        self, ctx: TenantContext, leasable_resource_id: UUID
+    ) -> LeasableResource:
+        resource = await self._storage.read_leasable_resource(ctx.org_id, leasable_resource_id)
         if resource is None:
-            raise NotFound(f"resource {resource_id} not found")
+            raise NotFound(f"resource {leasable_resource_id} not found")
         return resource
 
     async def _request(self, ctx: TenantContext, request_id: UUID) -> LeaseRequest:

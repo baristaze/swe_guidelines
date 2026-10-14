@@ -1,7 +1,7 @@
 """What an integration raises. Every leaf is an infra exception, so a
 boundary presents it the way it presents any other (ADR 0005); a provider's
 own error type never crosses the integration boundary. The tenancy manager,
-the one caller, translates the sign-in leaves into the platform's own."""
+the one caller, translates the sign-in leaves into the system's own."""
 
 from acme.infra.exceptions import InfraException, InfraUnavailable
 

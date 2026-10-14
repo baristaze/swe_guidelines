@@ -24,7 +24,7 @@ OM_ROOT = Path(acme.om.__path__[0])
 IMPL_INTERFACES: dict[str, str] = {
     "TenancyStoragePostgresImpl": "TenancyStorageInterface",
     "WorkStoragePostgresImpl": "WorkStorageInterface",
-    "EventStoragePostgresImpl": "EventStorageInterface",
+    "ChangeEventStoragePostgresImpl": "ChangeEventStorageInterface",
     "OutboxStoragePostgresImpl": "OutboxStorageInterface",
     "IdempotencyStoragePostgresImpl": "IdempotencyStorageInterface",
     "MediaStoragePostgresImpl": "MediaStorageInterface",
@@ -143,7 +143,9 @@ def test_every_enumerated_exception_takes_the_system_scope(interface: str, metho
     primitive or read one row by a hash, and the source they pass through is
     read by the test above."""
     impl = next(name for name, value in IMPL_INTERFACES.items() if value == interface)
-    path = next(p for p in impl_modules() if impl.lower().startswith(p.parent.parts[-3]))
+    path = next(
+        p for p in impl_modules() if impl.lower().startswith(p.parent.parts[-3].replace("_", ""))
+    )
     tree = ast.parse(path.read_text())
     calls = [
         call

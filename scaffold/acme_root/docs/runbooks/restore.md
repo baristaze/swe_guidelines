@@ -59,7 +59,7 @@ When one role comes back earlier than `core` (its schema copied from a
 restored instance into the running one), the outbox rows `core` relayed
 to it since that point are marked done, and what they relayed is gone.
 Clearing `done_at` on those rows makes the sweep relay them again. The
-relay is idempotent on the row's id, so a row whose event or work item
+relay is idempotent on the row's id, so a row whose change event or work item
 survived changes nothing.
 
 A row's kind names its destination: `work.<kind>` feeds `queue`, and
@@ -85,8 +85,8 @@ login's URL, so the statement runs as a one-off task on it, started by
 the person who holds the administrator.
 
 When `core` itself comes back earlier than the others, nothing is
-relayed. A work item whose record is gone fails as not found, and an
-event names a record a read cannot find. Rows that failed for good
+relayed. A work item whose record is gone fails as not found, and a
+change event names a record a read cannot find. Rows that failed for good
 (`failed_at` set) are not relayed by this step; each is named in its
 org's stream, and a person decides them one by one.
 

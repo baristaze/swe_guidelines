@@ -3,7 +3,7 @@ from uuid import UUID
 
 from acme.infra.buckets import Buckets, BucketsInterface
 from acme.infra.flags import Flag, FlagsInterface
-from acme.om.base import Platform, utcnow
+from acme.om.base import OmBase, utcnow
 from acme.om.context import Permission, TenantContext
 from acme.om.exceptions import (
     FeatureOff,
@@ -28,7 +28,7 @@ BUCKET = Buckets.USER_FILE_UPLOADS
 tenant's prefix and then `media/<purpose>/`."""
 
 
-class MediaOptions(Platform):
+class MediaOptions(OmBase):
     max_limit: int = 200
     # A form lives long enough for a slow link to post a file at the ceiling,
     # and a link long enough for a download to start; neither longer.

@@ -27,7 +27,7 @@ The one caller is the identity provider's webhook. The maintenance
 worker records each delivery that names an org as an audit entry,
 `identity.event.received`
 ([ADR 0011](0011-audit-entries-are-events.md)), under the derived id.
-The append is idempotent on the event's id, so a copy the queue hands
+The append is idempotent on the change event's id, so a copy the queue hands
 over again appends nothing.
 
 OM-12 names these ids, and those an orchestration step makes
@@ -40,7 +40,7 @@ The effect carries its own key, with no marker table and no column. The
 id still sorts by time and reads as a v7.
 
 The id's random bits are not random: anyone who knew a delivery's key
-and its time could compute the id. Neither leaves the platform, and an
+and its time could compute the id. Neither leaves the system, and an
 id is never a credential.
 
 A new provider whose deliveries create records uses the same function

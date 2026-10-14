@@ -26,10 +26,10 @@ it with its kinds. Each declares an input shape in
 `ORCHESTRATION_INPUTS` and a step in the namespace whose rows it
 changes.
 
-**A step is one commit.** A step's effect, the record's next cursor,
-and the work row that asks for the next step land in one transaction.
-The record rides it as a companion statement (`Step`), as an outbox row
-rides a core write: the namespace's storage runs the record's
+**A step is one commit.** A step's effect, the record's next cursor, and
+the work row that asks for the next step land in one transaction. The
+record rides it as a companion statement (`OrchestrationStep`), as an
+outbox row rides a core write: the namespace's storage runs the record's
 compare-and-set on its version in its own transaction, and rolls back
 the effect with it when the record moved. So a worker that dies leaves
 the record at its last committed step. A stale worker's step, one that
@@ -45,7 +45,7 @@ record at its cursor, in the step's own commit, and keeps what it made.
 A park reason says what wakes it: `provider_unavailable`, a provider a
 step calls did not answer or is marked out
 ([ADR 0088](0088-a-providers-outage-is-a-shared-signal.md)), and
-`resource`, the record waits in line for a lease ([ADR
+`leasable_resource`, the record waits in line for a lease ([ADR
 0086](0086-a-scarce-resource-is-leased-under-a-fencing-token.md)). The
 work item `WAKE_PARKED` clears a reason: it resumes the org's records
 parked for it, two seconds apart, or the one record it names, when the

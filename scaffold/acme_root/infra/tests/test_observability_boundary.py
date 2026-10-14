@@ -1,5 +1,5 @@
 """The request id in the log lines is ambient state, and ambient state is what
-the context exists to replace. So the one context variable the platform keeps
+the context exists to replace. So the one context variable the system keeps
 is held to a boundary, checked here rather than written down: it is read only
 by the sinks that need it for free, and an entry point that sets it gives the
 token back in a `finally`, so it never outlives the unit of work.

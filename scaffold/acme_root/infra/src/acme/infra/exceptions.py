@@ -1,6 +1,6 @@
 """The infra family of exceptions, rooted here and not in the object model,
 because infra imports nothing from it (ADR 0005). The root carries the same status and
-stable code the platform's root does, so a boundary presents both alike. A
+stable code the system's root does, so a boundary presents both alike. A
 driver's own error type never crosses the infra boundary: every impl
 translates it into one of these."""
 
@@ -30,7 +30,7 @@ class InfraValidationFailed(InfraException):
 
 
 class InfraUnavailable(InfraException):
-    """Not right now, on the infra side: the mirror of the platform's
+    """Not right now, on the infra side: the mirror of the system's
     `Unavailable`. A leaf under it names what happened for the log and keeps
     this code, so an open breaker, a refused admission, and a backend that is
     down reach a caller as one code."""

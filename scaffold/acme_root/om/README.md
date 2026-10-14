@@ -30,7 +30,7 @@ The sign-in provider sends the email.
 
 ## How a person proves who they are
 
-A **session** is a signed-in visit to one org. It ends when the person
+An **auth session** is a signed-in visit to one org. It ends when the person
 signs out, when it sits idle too long, or when it reaches its lifetime.
 
 An **API key** is a named, expiring credential for a program, with a
@@ -40,7 +40,7 @@ the key is shown once.
 A **socket ticket** is a one-use pass that opens the live channel, the
 connection through which changes reach a screen as they happen.
 
-An **operator** is a person on the platform's own allowlist. An
+An **operator** is a person on the system's own allowlist. An
 operator works across orgs with an **operator token**: one permission,
 an hour at most.
 
@@ -50,18 +50,18 @@ A **file** is a record of something an org keeps in the object store:
 its name, type, size, who uploaded it, and why. The bytes live in the
 store, never in the record.
 
-## What the platform writes for itself
+## What the system writes for itself
 
 No person creates these and no screen shows them, but each belongs to
 an org like everything else.
 
-An **event** is a line in the org's diary: what changed, how, by whom,
-and when. The lines are numbered with no gaps. An **audit entry** is an
-event the platform records about itself, such as a job that failed for
+A **change event** is a line in the org's diary: what changed, how, by whom,
+and when. The lines are numbered with no gaps. An **audit entry** is a
+change event the system records about itself, such as a job that failed for
 good.
 
 An **outbox row** is a note written in the same stroke as a change,
-saying "tell everyone about this". The event and the live push come
+saying "tell everyone about this". The change event and the live push come
 from it, so no change goes unannounced.
 
 A **work item** is a job for later. It waits in a queue until a worker
@@ -82,11 +82,11 @@ arrive twice, so the second copy gets the first one's answer.
 
 - An org has users. A user is one identity's place in the org, held by
   a membership with a role.
-- A session or an API key belongs to a user, so everything done with
+- An auth session or an API key belongs to a user, so everything done with
   it is done as that user in that org.
-- Every change a screen acts on writes an outbox row, which becomes an
-  event in the org's diary, which reaches every open screen of the org.
-- A work item, an orchestration, an idempotency record, an event, and
+- Every change a screen acts on writes an outbox row, which becomes a
+  change event in the org's diary, which reaches every open screen of the org.
+- A work item, an orchestration, an idempotency record, a change event, and
   an outbox row each name their org, so the fence between orgs holds
   for them too.
 
@@ -94,9 +94,9 @@ arrive twice, so the second copy gets the first one's answer.
 
 - [Orgs, identities, users, memberships, and credentials](src/acme/om/tenancy/README.md)
 - [Files](src/acme/om/media/README.md)
-- [Events](src/acme/om/events/README.md)
+- [Change events](src/acme/om/change_events/README.md)
 - [Outbox rows](src/acme/om/outbox/README.md)
 - [Work items](src/acme/om/work/README.md)
 - [Orchestrations](src/acme/om/orchestrations/README.md)
-- [Resources, leases, and the line](src/acme/om/leases/README.md)
+- [Leasable resources, leases, and the wait line](src/acme/om/leases/README.md)
 - [Idempotency records](src/acme/om/idempotency/README.md)

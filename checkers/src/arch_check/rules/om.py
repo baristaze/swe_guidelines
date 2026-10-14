@@ -1,7 +1,7 @@
 """The object model: the base chain, the mixins, immutability, ids, namespaces, pure rules.
 
 Most rules here read the OM base chain: the root class of
-`<pkg>.om.base` (a direct `BaseModel` subclass, `Platform` in the
+`<pkg>.om.base` (a direct `BaseModel` subclass, `OmBase` in the
 guideline) and every class whose bases reach it, resolved through
 imports (see `_om_util`). The mixins are the classes of the base module
 on the chain: `Identifiable`, `Named`, `Created`, `Trackable`,
@@ -174,15 +174,15 @@ def org_id_only_where_no_tenant(project: Project) -> Iterator[Violation]:
     """A class on the chain under a namespace's `types/` declares `org_id`
     only when a reader with no tenant takes it, and each such class carries
     it. The tenancy namespace is left out of the first half: a membership,
-    a session, or an API key is resolved before any tenant is held, so its
+    an auth session, or an API key is resolved before any tenant is held, so its
     `org_id` is the answer. Whether a field exists only for a response or a
     column is judged.
 
     Option `[tool.arch-check.options.OM-02]`: `tenantless`, the class names
-    of those entities (default `["OutboxRow", "Event"]`, the guideline's).
+    of those entities (default `["OutboxRow", "ChangeEvent"]`, the guideline's).
     The tenancy namespace is OM-16's `namespace` option (default `"tenancy"`).
     """
-    tenantless = set(project.option("OM-02", "tenantless", ["OutboxRow", "Event"], {"tenantless"}))
+    tenantless = set(project.option("OM-02", "tenantless", ["OutboxRow", "ChangeEvent"], {"tenantless"}))
     tenancy = project.sub(f"om.{project.option('OM-16', 'namespace', 'tenancy', {'namespace'})}")
     idx = index(project)
 
@@ -880,7 +880,7 @@ def tenancy_is_a_namespace(project: Project) -> Iterator[Violation]:
     """`<pkg>.om` has a tenancy namespace, and neither the base module nor
     any `util*` or `helper*` module of the OM defines `User`, `Org`,
     `Organization`, `Membership`, `Credential`, `ApiKey`, `AuditEntry`, or
-    `AuditRecord`. An audit entry is an event with an audit kind, so no
+    `AuditRecord`. An audit entry is a change event with an audit kind, so no
     audit namespace is asked for. Where audit is appended, and whether it
     has gained a reader of its own, is judged.
 

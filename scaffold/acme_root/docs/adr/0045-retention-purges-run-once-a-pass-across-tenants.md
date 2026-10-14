@@ -45,15 +45,15 @@ Namespace by namespace:
   since each row costs a request to the store.
 - **Tenancy**: in one transaction, ended users with their
   memberships, ended memberships, revoked and expired keys, expired
-  sessions (the system scope's sign-ins among them), expired tickets,
+  auth sessions (the system scope's sign-ins among them), expired tickets,
   and closed invitations, then the sign-in delays.
 - **Idempotency** and **orchestrations**: a statement per table.
-- **Events**: the trim, in one statement. The `limit` events produced
+- **Change events**: the trim, in one statement. The `limit` change events produced
   longest ago, read on `(produced_at)`, name the tenants and each one's
   share of the batch. Each tenant's cursor row is locked as an append
   locks it, but a row an append holds is skipped, not waited on. Each
   tenant's run is the stretch of its window below its first young
-  event. The events of each run go, and each floor moves to its run's
+  change event. The change events of each run go, and each floor moves to its run's
   top, in the same statement
   ([ADR 0040](0040-the-event-stream-has-a-floor.md)).
 - **Outbox** and **work**: the done outbox rows and the settled work
@@ -69,7 +69,7 @@ The indexes follow the reads. Each purge across tenants has an index
 that leads with its retention column, and each tenant keeps an index
 that `org_id` leads, for the purge of a tenant past its retention.
 
-The trim's batch is picked by age. An old event that sits above a young
+The trim's batch is picked by age. An old change event that sits above a young
 one, because the relay numbered it late, holds a share of the batch
 without a run, at most for the relay's delay.
 

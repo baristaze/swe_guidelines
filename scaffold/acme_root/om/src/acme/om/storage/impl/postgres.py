@@ -9,8 +9,8 @@ from typing import Any
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker, create_async_engine
 
-from acme.om.events.storage import EventStorageInterface
-from acme.om.events.storage.impl.postgres import EventStoragePostgresImpl
+from acme.om.change_events.storage import ChangeEventStorageInterface
+from acme.om.change_events.storage.impl.postgres import ChangeEventStoragePostgresImpl
 from acme.om.idempotency.storage import IdempotencyStorageInterface
 from acme.om.idempotency.storage.impl.postgres import IdempotencyStoragePostgresImpl
 from acme.om.leases.storage import LeasesStorageInterface
@@ -137,7 +137,7 @@ class StoragePostgresImpl(StorageInterface):
         self._work = WorkStoragePostgresImpl(sessions)
         self._media = MediaStoragePostgresImpl(sessions)
         self._idempotency = IdempotencyStoragePostgresImpl(sessions)
-        self._events = EventStoragePostgresImpl(sessions)
+        self._change_events = ChangeEventStoragePostgresImpl(sessions)
         self._outbox = OutboxStoragePostgresImpl(sessions)
         self._orchestrations = OrchestrationsStoragePostgresImpl(sessions)
         self._leases = LeasesStoragePostgresImpl(sessions)
@@ -154,8 +154,8 @@ class StoragePostgresImpl(StorageInterface):
     def get_idempotency_storage(self) -> IdempotencyStorageInterface:
         return self._idempotency
 
-    def get_event_storage(self) -> EventStorageInterface:
-        return self._events
+    def get_change_event_storage(self) -> ChangeEventStorageInterface:
+        return self._change_events
 
     def get_outbox_storage(self) -> OutboxStorageInterface:
         return self._outbox

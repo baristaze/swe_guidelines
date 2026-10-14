@@ -29,7 +29,7 @@ eight times with a backlog and then idle on the same connection:
 | outbox, done rows (100,000) | Seq Scan | 4.7 ms |
 | work items (50,000) | Seq Scan | 4.8 ms |
 | invitations (20,000) | Seq Scan | 0.99 ms |
-| sessions (20,000) | Seq Scan | 0.79 ms |
+| auth sessions (20,000) | Seq Scan | 0.79 ms |
 | api keys, tickets, orchestrations | generic, still on their indexes | under 0.07 ms |
 | files, idempotency records, the trim | generic, still on their indexes | under 0.1 ms |
 

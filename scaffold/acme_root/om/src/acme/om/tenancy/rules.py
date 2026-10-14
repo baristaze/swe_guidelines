@@ -23,7 +23,7 @@ MAX_API_KEY_TTL = timedelta(days=90)
 defaults to it and the wire type bounds its request field by it."""
 
 CREDENTIAL_PREFIXES: dict[str, CredentialKind] = {
-    "ses_": CredentialKind.SESSION_TOKEN,
+    "ses_": CredentialKind.AUTH_SESSION_TOKEN,
     "key_": CredentialKind.API_KEY,
     "lgn_": CredentialKind.LOGIN,
     "tkt_": CredentialKind.SOCKET_TICKET,

@@ -1,8 +1,8 @@
-import { ApiError, type EventView } from "@acme/client";
+import { ApiError, type ChangeEventView } from "@acme/client";
 import { describe, expect, it } from "vitest";
 import {
   behind,
-  eventEnvelope,
+  changeEventEnvelope,
   FIRST_CATCH_UP_MARGIN_MS,
   isLastPage,
   place,
@@ -41,17 +41,17 @@ describe("behind", () => {
   });
 });
 
-describe("eventEnvelope", () => {
+describe("changeEventEnvelope", () => {
   it("turns a replayed record into the envelope the socket would have carried", () => {
-    const event: EventView = {
+    const event: ChangeEventView = {
       seq: 4,
       kind: "tenancy.user.updated",
       target_id: "u1",
       produced_at: "2026-09-16T12:00:00Z",
       actor_id: "u1",
     };
-    expect(eventEnvelope(event)).toEqual({
-      type: "event",
+    expect(changeEventEnvelope(event)).toEqual({
+      type: "change_event",
       topic: "entity_changed",
       sent_at: null,
       payload: { kind: "tenancy.user.updated", target_id: "u1", seq: 4, actor_id: "u1" },
@@ -66,7 +66,7 @@ describe("eventEnvelope", () => {
 });
 
 describe("the first catch-up's window", () => {
-  const at = (seq: number, time: string): EventView => ({
+  const at = (seq: number, time: string): ChangeEventView => ({
     seq,
     kind: "tenancy.user.updated",
     target_id: `u${seq}`,

@@ -11,7 +11,7 @@ living, and a contract case creates, deletes, and creates again.
 `api_keys` is soft-deletable: revoking a key sets `deleted_at`.
 
 A key hash is not a name anyone picks. It digests a fresh random secret
-the platform mints, so the same hash never comes up twice, and freeing
+the system mints, so the same hash never comes up twice, and freeing
 it on revocation buys nothing. Keeping the revoked row in the index
 buys something. The lookup, `read_api_key_by_digest`, reads living and
 revoked rows on purpose, so the manager refuses a revoked key as

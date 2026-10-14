@@ -4,18 +4,19 @@
 
 ## Context
 
-A holder often runs its work through a worker. It asks for a resource,
-such as a loading dock, and what the grant starts is a job on the work
-queue: unload the truck at the dock. By the time the job runs, the
-holder may be gone, and only the holder could renew the lease or end
-it ([ADR 0086](0086-a-scarce-resource-is-leased-under-a-fencing-token.md)).
-The job may wait in its lane past the lease's term, so the lease could
-lapse before the job started. A renewal ran the term again, so a job
-could not ask for the time it needs. A label was a short lower-case
-token, 32 to a resource, so a resource that says what it offers in
-words could not be registered. The guideline's "Leases on a Resource"
-lets the worker that claims the job act for the holder, and this
-records how Acme holds it.
+A holder often runs its work through a worker. It asks for a leasable
+resource, such as a loading dock, and what the grant starts is a job on
+the work queue: unload the truck at the dock. By the time the job runs,
+the holder may be gone, and only the holder could renew the lease or end
+it ([ADR
+0086](0086-a-scarce-resource-is-leased-under-a-fencing-token.md)). The
+job may wait in its lane past the lease's term, so the lease could lapse
+before the job started. A renewal ran the term again, so a job could not
+ask for the time it needs. A label was a short lower-case token, 32 to a
+leasable resource, so a leasable resource that says what it offers in
+words could not be registered. The guideline's "Leases on a Leasable
+Resource" lets the worker that claims the job act for the holder, and
+this records how Acme holds it.
 
 ## Decision
 
@@ -52,14 +53,15 @@ records how Acme holds it.
   sweep ends the lease as any lapsed one.
 - **A renewal names its length.** `renew` takes `seconds`, and its route
   the body `{"seconds": n}`; with none, the lease runs its term again.
-  Either is held within the resource's bound (`rules.renewal_of`), and a
-  renewal still needs an expiry after the clock.
-- **Labels and bounds fit real resources.** A `Label` is free text of 1
-  to 200 characters with no control character, matched as written, and
-  a resource offers up to `MAX_LABELS`, 160. A resource's bound on one
-  lease, a request's term, its window, and a renewal run up to
-  `MAX_TERM_SECONDS`, seven days. No column checks them, so only the
-  types change.
+  Either is held within the leasable resource's bound
+  (`rules.renewal_of`), and a renewal still needs an expiry after the
+  clock.
+- **Labels and bounds fit real leasable resources.** A `Label` is free
+  text of 1 to 200 characters with no control character, matched as
+  written, and a leasable resource offers up to `MAX_LABELS`, 160. A
+  leasable resource's bound on one lease, a request's term, its window,
+  and a renewal run up to `MAX_TERM_SECONDS`, seven days. No column
+  checks them, so only the types change.
 - **One migration on the `core` chain.**
   `202609280002_a_lease_kept_by_its_jobs_worker` adds `job_key` and
   `started_at` to `leases`, and `start_seconds` to `lease_requests`, all
@@ -80,9 +82,9 @@ records how Acme holds it.
   the margin, as a crashed holder does. The queue gives the item a new
   claim, and the next attempt's worker finds the lease started and keeps
   it under that claim.
-- A job that waits in its lane holds its resource idle until it starts
-  or its window and the margin pass. A window as long as the lane's
-  longest wait buys the job its start with that idle time.
+- A job that waits in its lane holds its leasable resource idle until it
+  starts or its window and the margin pass. A window as long as the
+  lane's longest wait buys the job its start with that idle time.
 - A label is matched as written, so `cold` and `Cold` are two labels.
 - A worker that renews or ends a lease reads the queue on each call: one
   read by the item's key, under the tenant fence.

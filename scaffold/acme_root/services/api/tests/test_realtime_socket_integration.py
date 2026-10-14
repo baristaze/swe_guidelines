@@ -131,7 +131,7 @@ async def test_a_flood_of_hints_drops_hints_and_not_the_pong(tmp_path: Path) -> 
     """The lanes on the wire. The tenant's stream is flooded while a ping is
     in flight: the stream lane overruns and the pong does not, so the client
     learns the head seq from the pong, sees the gap between it and the hints
-    that reached it, and replays the rest over `/v1/events`. The flood is the
+    that reached it, and replays the rest over `/v1/change-events`. The flood is the
     burst a sweep makes when it relays a batch of rows back to back, which is
     the one moment a socket is offered more than it can write. That control
     is drained first, and never evicted, is held frame by frame in
@@ -185,12 +185,14 @@ async def test_a_flood_of_hints_drops_hints_and_not_the_pong(tmp_path: Path) -> 
             # The pong is on the wire with the head seq, and the hints that
             # survived are the newest: the lane dropped the oldest of them.
             assert [frame["seq"] for frame in frames if frame["type"] == "pong"] == [FLOOD]
-            hints = [frame["payload"]["seq"] for frame in frames if frame["type"] == "event"]
+            hints = [frame["payload"]["seq"] for frame in frames if frame["type"] == "change_event"]
             assert hints == list(range(FLOOD - STREAM_LANE + 1, FLOOD + 1))
             # What the client does about the gap between what it knew and the
             # first hint it saw: it replays from the last seq it trusted.
             assert hints[0] > hello["seq"] + 1
             replayed = await client.get(
-                "/v1/events", headers=headers, params={"after_seq": hello["seq"], "limit": FLOOD}
+                "/v1/change-events",
+                headers=headers,
+                params={"after_seq": hello["seq"], "limit": FLOOD},
             )
             assert [event["seq"] for event in replayed.json()] == list(range(1, FLOOD + 1))

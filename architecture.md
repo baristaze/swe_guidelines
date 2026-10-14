@@ -176,7 +176,7 @@ These are the invariants. Each links the section that states it.
   - [Shape of a Worker](#shape-of-a-worker)
   - [Shutdown](#shutdown)
   - [Maintenance Without a Scheduler](#maintenance-without-a-scheduler)
-  - [Leases on a Resource](#leases-on-a-resource)
+  - [Leases on a Leasable Resource](#leases-on-a-leasable-resource)
   - [Implementation Options](#implementation-options)
 - [Apps](#apps)
   - [Apps as Products](#apps-as-products)
@@ -263,6 +263,24 @@ the OM to suit itself.
 
 Every entity in the domain is named by a class in the object model.
 
+A noun the scaffold brings is qualified by what it does, and the bare
+everyday noun is the product's. A system copies the scaffold, so the
+scaffold's nouns and the product's share one codebase, one database,
+one API, and one portal. A clinic needs its sessions, a ticketing
+product its events, a staffing tool its resources, and a factory its
+lines and steps. So the scaffold signs a person in with an
+`AuthSession`, records a change as a `ChangeEvent`, leases a
+`LeasableResource` to the head of its `WaitLine`, and lands what an
+orchestration writes as an `OrchestrationStep`; its root is `OmBase`.
+A noun stays bare when no product gives it a meaning of its own: it
+names a mechanism, or it means the same in every product. The
+scaffold's `Org`, `User`, `Membership`, `Identity`, `Invitation`,
+`Lease`, `File`, and `Orchestration` are bare by design.
+The qualifier names the mechanism, never the product that adopts it,
+and no name says "domain". It holds on every surface the noun reaches:
+the class, the table, the route, the kinds, the settings, and the
+labels.
+
 First comes a small set of mixins, each one trait. An entity composes
 the mixins it needs, in a fixed order, so its signature reads as a
 description. The base module holds them, with the root and the two
@@ -276,20 +294,20 @@ def new_id() -> UUID:
 def utcnow() -> datetime:
     return datetime.now(UTC)
 
-class Platform(BaseModel):  # the root; holds no fields
+class OmBase(BaseModel):  # the root; holds no fields
     model_config = ConfigDict(frozen=True, extra="forbid")
 
-class Identifiable(Platform):
+class Identifiable(OmBase):
     id: UUID  # uuid_v7, from new_id()
-class Named(Platform):
+class Named(OmBase):
     name: str
-class Created(Platform):
+class Created(OmBase):
     created_at: datetime
 class Trackable(Created):
     updated_at: datetime
     created_by: UUID
     updated_by: UUID
-class SoftDeletable(Platform):
+class SoftDeletable(OmBase):
     deleted_at: datetime | None = None
     deleted_by: UUID | None = None
 ```
@@ -308,19 +326,19 @@ does.
 | `Trackable`     | its lifecycle is recorded, by whom and when |
 | `SoftDeletable` | it can be hidden without being purged       |
 
-An append-only record, an event or a ledger line, is `Identifiable`
+An append-only record, a change event or a ledger line, is `Identifiable`
 and carries its time in a field of its own: `created_at` from `Created`,
-or a name of its own, as an event's `produced_at`. It is never updated,
+or a name of its own, as a change event's `produced_at`. It is never updated,
 so it has no `updated_at`, and never hidden, so no `deleted_at`. The one
 write it takes after its birth is erasure, which redacts a person's
 fields in place.
 
-A row the platform writes for its own bookkeeping composes `Created`,
+A row the system writes for its own bookkeeping composes `Created`,
 since no person made it. Two are touched by every namespace, and each is
 declared once, in its own namespace: the `OutboxRow` that announces a
 write and the `IdempotencyRecord` that owns a retry. A work item looks
 like bookkeeping and is `Trackable`: the person who enqueued it is its
-attribution, and the platform signs its later writes with `EMPTY_UUID`.
+attribution, and the system signs its later writes with `EMPTY_UUID`.
 
 The base module also names `PROVENANCE_FIELDS`, which no caller
 rewrites, and each entity declares `MANAGER_OWNED_FIELDS`, which its
@@ -402,10 +420,10 @@ as `part` ([`base.py`](scaffold/acme_root/om/src/acme/om/base.py)). A
 second run presents the same id, so its create meets the row already
 there and creates nothing.
 
-`EMPTY_UUID`, the zero UUID, means the platform: not a tenant and not a
+`EMPTY_UUID`, the zero UUID, means the system: not a tenant and not a
 person. It is the `org_id` of cross-tenant reference data, and the value
 of a required reference nobody owns, such as `updated_by` on a work
-item the platform claimed. A reference that is genuinely optional is
+item the system claimed. A reference that is genuinely optional is
 `None`.
 
 > **Principle:** Every id is `uuid_v7`, minted above storage with
@@ -443,10 +461,11 @@ caller asks for (`get_orders`), or the domain's own verb
 (`place_order`). A work handler is `<Kind>HandlerImpl`, its kind in
 CamelCase.
 
-Cross-cutting concerns are namespaces like any other: tenancy, events,
-the outbox, idempotency, work. None is a utility off the root. Audit,
-who did what and from which app, is a kind of event: an audit entry is
-an `Event` with an audit kind, in the events namespace's stream
+Cross-cutting concerns are namespaces like any other: tenancy, change
+events, the outbox, idempotency, work. None is a utility off the root.
+Audit, who did what and from which app, is a kind of change event: an
+audit entry is a `ChangeEvent` with an audit kind, in the change events
+namespace's stream
 ([Realtime at the Edge](#realtime-at-the-edge)). Audit becomes a
 namespace of its own when it gains a reader of its own, such as a
 screen that lists who did what, or an export, or when it must be kept
@@ -604,16 +623,16 @@ is a tenant operation's context, the one most operations take
 ([`context.py`](scaffold/acme_root/om/src/acme/om/context.py)):
 
 ``` python
-class SecurityContext(Platform):
+class SecurityContext(OmBase):
     user_id: UUID
     org_id: UUID
     role: Role
     permissions: tuple[Permission, ...]
     teams: tuple[UUID, ...] = ()
     credential_kind: CredentialKind
-    credential_id: UUID = EMPTY_UUID  # the session or key; EMPTY_UUID for internal contexts
+    credential_id: UUID = EMPTY_UUID  # the auth session or key; EMPTY_UUID for internal contexts
 
-class RequestContext(Platform):
+class RequestContext(OmBase):
     request_id: UUID
     app: AppContext
     trace_id: str | None = None
@@ -675,14 +694,14 @@ what it needs and never checks it again, and the type checker refuses a
 caller holding less. A sign-in route cannot reach a tenant manager.
 
 A stage lives as long as what minted it. A socket holds its `TenantContext`
-and closes when the evidence goes: at the session's expiry, on a change
-on the bus that ends it, such as `tenancy.session.revoked`, and on a
-recheck that finds the session or the membership ended or the role
+and closes when the evidence goes: at the auth session's expiry, on a change
+on the bus that ends it, such as `tenancy.auth_session.revoked`, and on a
+recheck that finds the auth session or the membership ended or the role
 changed. The recheck runs every `realtime_recheck_seconds`, a setting of
 the realtime service beside its other bounds. It is not activity and
 never moves `last_seen_at`. The server does not cap a connection's life,
 since the recheck bounds its trust, and closing a socket never ends its
-session.
+auth session.
 
 > **Principle:** A context stage is evidence. Only a transition
 > produces it, its type is the proof, and an operation takes the
@@ -712,7 +731,7 @@ never arrives in a constructor.
 
 `core`
 
-The people who run the platform ask what no tenant context answers:
+The people who run the system ask what no tenant context answers:
 usage across organizations, health, global configuration. That is a
 second plane with its own context, `OperatorContext`: the identity stage
 refined by `admit_operator` when the identity is on the operator
@@ -920,7 +939,7 @@ class OutboxRow(Identifiable, Created):
     kind: str       # "<namespace>.<entity>.<action>", or "work.<kind>"
     target_id: UUID
     payload: FrozenMapping = Field(default_factory=dict, validate_default=True)
-    actor_id: UUID  # the write's principal; EMPTY_UUID for the platform
+    actor_id: UUID  # the write's principal; EMPTY_UUID for the system
     request_id: UUID
     traceparent: str | None = None
     app: str
@@ -933,7 +952,7 @@ class OutboxRow(Identifiable, Created):
 
 A row the relay cannot carry keeps its error and waits a growing delay,
 so it stops nothing behind it, and past its last attempt it is failed, a
-dead letter that an audit event names.
+dead letter that an audit entry names.
 
 A few tables hold no tenant's rows. A global table's methods take no
 tenant, an identity table's take `identity_id`, a cross-tenant sweep
@@ -1024,7 +1043,7 @@ exactly one, named in one map
 | Role       | Holds                                                  |
 |------------|--------------------------------------------------------|
 | `core`     | the system of record: tenancy, catalog, orders, config |
-| `activity` | append-only streams: events, audit, ledgers            |
+| `activity` | append-only streams: change events, audit, ledgers     |
 | `queue`    | the work queue and the channels that wake workers      |
 | `admin`    | the operator plane's own state, global rows            |
 
@@ -1041,7 +1060,7 @@ Nothing crosses a role, so a handoff after a core write is never a
 second write a manager remembers. The manager writes the core row and
 its outbox rows in one atomic method, and the relay carries each row to
 where its `kind` says, at once or from the sweep, and marks it done. An
-entity change becomes an `Event` in `activity` and an `ENTITY_CHANGED`
+entity change becomes a `ChangeEvent` in `activity` and an `ENTITY_CHANGED`
 publish; a `work.<kind>` row becomes a work item in `queue` and a
 `WORK_AVAILABLE` wake-up. The relay is idempotent on the row's key. This
 is the transactional outbox
@@ -1051,7 +1070,7 @@ is the transactional outbox
 flowchart LR
     Mgr[Manager write] -->|one transaction| Core[(core: row + outbox rows)]
     Core --> Relay[Outbox relay: now, or the sweep]
-    Relay -->|append, seq| Act[(activity: Event)]
+    Relay -->|append, seq| Act[(activity: ChangeEvent)]
     Relay -->|publish| Bus[[Topic bus]]
     Relay -->|enqueue| Q[(queue: work item)]
     Bus --> Sock[Sockets on every replica]
@@ -1059,7 +1078,7 @@ flowchart LR
     Sock -.->|reconnect: after_seq| Act
 ```
 
-An entity change is done when its event is appended and the bus took the
+An entity change is done when its change event is appended and the bus took the
 publish, so a dropped push is relayed again. A work row is done once its
 item is queued: the wake-up is a hint, and workers also poll. Relaying
 from the sweep alone, every second or two, is the cheaper first step;
@@ -1075,7 +1094,7 @@ period to restore it, or gone at once: one atomic write deletes their
 identity and every user, membership, and credential it holds, outside
 the sweep, so the fields they asked to lose wait out no retention. What
 they made in a team org stays the org's, under their id. Payloads and
-events, audit entries among them, carry ids, never a personal value, so
+change events, audit entries among them, carry ids, never a personal value, so
 an erasure has nothing to redact in them.
 
 <!-- agents-only
@@ -1147,7 +1166,7 @@ Among them:
   `purge_items`, `purge_done`, and `purge_records`;
 - the five lookups before an identity is known:
   `read_identity_by_email_digest`, `read_identity_by_issuer_subject`,
-  `read_api_key_by_digest`, `read_session_by_digest`, and
+  `read_api_key_by_digest`, `read_auth_session_by_digest`, and
   `redeem_socket_ticket`;
 - the reads and writes of the global tables, the operator's size read
   among them.
@@ -1470,12 +1489,12 @@ imports. It owns the edge concerns, each done once.
 
 **Credentials.** Each credential kind has its own prefix, which decides
 who accepts it. A person signs in with a credential that names no
-tenant, then exchanges it for a tenant session. An agent presents a
+tenant, then exchanges it for an auth session in one tenant. An agent presents a
 membership-scoped, expiring API key. A socket opens with a single-use
 ticket, never a long-lived credential in a URL. A request id is
 accepted only as a UUID, or minted.
 
-**Error envelope.** One handler turns `PlatformException` and
+**Error envelope.** One handler turns `OmException` and
 `InfraException` into `{"error": {"code", "message", "request_id"}}`,
 and a catch-all makes anything else a 500 of that shape.
 
@@ -1509,14 +1528,14 @@ mounted.
 The operator plane has its own gate, for the routes under `/v1/admin/*`
 that the same process serves. It admits the person's own sign-in with a
 second factor, a TOTP code, or an operator token, and never an API key
-or a tenant session; then `admit_operator` checks the allowlist. A
+or a tenant's auth session; then `admit_operator` checks the allowlist. A
 tenant's sign-in needs no second factor, but the operator plane reads
 across tenants, so a password alone never admits to it. An agent never
 signs in with a password. It presents an operator token: minted by an
 operator with a second factor or by the grant job, naming one identity
 and one permission its entry grants (`write` implies `read`), expiring
 within the hour, and stored as its digest, found by
-`read_session_by_digest`. An operator with no confirmed second factor
+`read_auth_session_by_digest`. An operator with no confirmed second factor
 yet is admitted with `OperatorPermission.ENROL` alone, which reaches the
 two enrolment calls and nothing else.
 
@@ -1529,7 +1548,7 @@ refused, even inside its time step.
 ### Auth: the Gateway Verifies, the Tenancy Domain Owns
 
 The gateway verifies and owns nothing. The tenancy namespace owns the
-identity model, from organizations to sessions, and issues the tokens
+identity model, from organizations to auth sessions, and issues the tokens
 ([`tenancy/`](scaffold/acme_root/om/src/acme/om/tenancy/)). Sign-up,
 invitations, and roles are business logic in the OM.
 
@@ -1557,7 +1576,7 @@ An external identity provider is one more credential kind: the gateway
 verifies its token, and the tenancy manager finds or creates the
 identity by issuer and subject and produces the same `IdentityContext`
 a sign-in does. Nothing stored can be presented as a credential: a
-password is a memory-hard hash, and a key, a session, or a ticket a
+password is a memory-hard hash, and a key, an auth session, or a ticket a
 digest, shown once in the `Issued...View` that minted it. Failed
 sign-ins are throttled in storage, per email digest.
 
@@ -1571,7 +1590,7 @@ its audience. The callee rebuilds `TenantContext` from it and trusts no bare
 header.
 
 One key is one trust domain: any process holding it can speak for
-anyone. That is a decision, made for a platform whose processes are all
+anyone. That is a decision, made for a system whose processes are all
 its own and ship together. A process trusted less gets a key of its
 own, which attributes, and a declaration of what it may assert, which
 contains. Outbound TLS trusts the operating system's store.
@@ -1680,14 +1699,14 @@ subscribes, a producer publishes once, and each socket filters by tenant
 and stream, so no process needs to know which replica holds whom
 ([`realtime/`](scaffold/acme_root/services/api/src/acme/services/api/realtime/)).
 
-Every push is also a record: an `Event` in `activity`, with `org_id`,
+Every push is also a record: a `ChangeEvent` in `activity`, with `org_id`,
 `seq`, `kind`, `target_id`, `actor_id`, the request, and the app, and a
 payload of ids
-([`event.py`](scaffold/acme_root/om/src/acme/om/events/types/event.py)).
+([`change_event.py`](scaffold/acme_root/om/src/acme/om/change_events/types/change_event.py)).
 One atomic method appends it and takes `seq` from a cursor row per
 tenant, so the sequence is gapless and a client reads a gap as a loss.
-`seq` orders events, not writes. An audit entry is an event with an
-audit kind, so one stream records both.
+`seq` orders change events, not writes. An audit entry is a change
+event with an audit kind, so one stream records both.
 
 The stream is a stream of hints: a frame names the change, and its
 `version` when the entity has one, and nothing else of it, so a client
@@ -1710,8 +1729,8 @@ and ping; commands go over REST.
 Replay reaches back as far as the stream is kept. The stream's
 retention is a setting of the worker that trims it, longer than the
 backups and the outbox keep theirs, so a restore never needs a trimmed
-event. The trim deletes the oldest run of events past the retention
-and, in the same transaction, moves the tenant's floor to the last
+change event. The trim deletes the oldest run of change events past the
+retention and, in the same transaction, moves the tenant's floor to the last
 `seq` it deleted. The stream is gapless above the floor. A read below
 the floor is `410 stream_truncated`, naming the floor and the head.
 Asking again never succeeds, so the client reads afresh what it shows
@@ -1722,7 +1741,7 @@ and goes on from the head.
   of its own, and its overflow is logged as such, since it means the
   socket produces state faster than it can be written.
 - A change that ends a socket's evidence rides the stream like any
-  other: `tenancy.session.revoked` and `tenancy.api_key.deleted` name the
+  other: `tenancy.auth_session.revoked` and `tenancy.api_key.deleted` name the
   credential, `tenancy.user.deleted` the user,
   `tenancy.membership.updated` the membership, and `tenancy.org.deleted`
   the org, and each closes every socket it names
@@ -1874,11 +1893,11 @@ caller sets. A long-held item on a lane of its own counts against no
 cap of the lane of short items. A kind's own lane is a line in the
 registry, never an edit of the relay.
 
-Every write after the enqueue is the platform's, signed `EMPTY_UUID`.
+Every write after the enqueue is the system's, signed `EMPTY_UUID`.
 `created_by` is the person who asked, so the claim rebuilds their
 principal under the role reserved for services, and the run names the
 item's request as its `caused_by_request_id`. When the enqueuer holds no
-live membership, or is the platform, the claim builds the tenant's
+live membership, or is the system, the claim builds the tenant's
 service context instead. The person authorized the work once, at
 enqueue, so the permission that enqueues a kind covers every call its
 handler makes. The tenant arrives beside each item, and an item whose
@@ -1921,105 +1940,104 @@ no leader, lock, or scheduler. Resumes are staggered.
 
 Most of it runs across tenants: one call in the system scope finds what
 is due, whatever its tenant, a batch at a time. The requeue, the relay,
-a purge past retention, and the end of a
-[resource's lease](#leases-on-a-resource) past its expiry run so. Such
-a call that must act in the tenant of a row it found stays one call: it
-takes that tenant's context from the pass
-([Operations Without a Principal](#operations-without-a-principal)). A
-duty that needs a tenant's own context is a **chore**: a step per
-tenant, run under that tenant's service context, such as opening the
-next period of a record kept per period. One read across tenants names the tenants
-where a chore is due, so a tenant with none due costs a pass nothing.
-Each pass has a time budget. Past it, the pass takes no new tenant, but
-always takes one, and a cursor carries the next pass on from the last
-tenant it ran. So every tenant due is reached in turn, however many are
-due
+a purge past retention, and the end of a [leasable resource's
+lease](#leases-on-a-leasable-resource) past its expiry run so. Such a
+call that must act in the tenant of a row it found stays one call: it
+takes that tenant's context from the pass ([Operations Without a
+Principal](#operations-without-a-principal)). A duty that needs a
+tenant's own context is a **chore**: a step per tenant, run under that
+tenant's service context, such as opening the next period of a record
+kept per period. One read across tenants names the tenants where a chore
+is due, so a tenant with none due costs a pass nothing. Each pass has a
+time budget. Past it, the pass takes no new tenant, but always takes
+one, and a cursor carries the next pass on from the last tenant it ran.
+So every tenant due is reached in turn, however many are due
 ([`loop.py`](scaffold/acme_root/workers/maintenance/src/acme/workers/maintenance/loop.py)).
 
-### Leases on a Resource
+### Leases on a Leasable Resource
 
 `optional`
 
 Some things serve one holder at a time: a loading dock, a label
 printer. Work that needs one cannot carry it as it carries its own row,
-so the thing gets a lease, and whoever waits for it gets a line
+so the thing gets a lease, and whoever waits for it gets a wait line
 ([`leases/`](scaffold/acme_root/om/src/acme/om/leases/)). The trigger
 is the first such thing; until a kind registers, the code sits unused.
 
-A **resource** is one row per leasable thing. It stands for a row of
-another namespace by a registered kind and that row's id, unique with
-the org. It carries labels, free text that says what it offers, its
+A **leasable resource** is one row per leasable thing. It stands for a
+row of another namespace by a registered kind and that row's id, unique
+with the org. It carries labels, free text that says what it offers, its
 bound on one lease, its availability, and the **anchor**: the highest
 token granted on it, the lease that holds it, and until when. The
-namespace that owns the row registers the resource in the same commit,
-updates its labels, its bound, and its availability with the row, and
-retires it with the row. After a registration or an update, the owner
-offers the resource to its line: a request its labels now match may be
-granted, and one they no longer match leaves that line. A lease it
-holds keeps its term, and a new bound holds from the lease's next
-renewal.
+namespace that owns the row registers the leasable resource in the same
+commit, updates its labels, its bound, and its availability with the
+row, and retires it with the row. After a registration or an update, the
+owner offers the leasable resource to its wait line: a request its
+labels now match may be granted, and one they no longer match leaves
+that wait line. A lease it holds keeps its term, and a new bound holds
+from the lease's next renewal.
 
-A **lease** is one grant of one resource to one principal, under a
-fencing token one above the anchor's. Its holder renews it, for a length
-it names or for its term again, within the bound, and releases it. It
-ends when a manager revokes it, or once its expiry and a skew margin
-have passed, so a holder whose clock runs slow has stopped before the
-resource goes on. Whatever acts on the resource for a holder presents
-the token. A fence on the resource's own side keeps the highest token it
-has seen: it refuses a lower one, and stops and resets the resource
-before it admits a higher one
+A **lease** is one grant of one leasable resource to one principal,
+under a fencing token one above the anchor's. Its holder renews it, for
+a length it names or for its term again, within the bound, and releases
+it. It ends when a manager revokes it, or once its expiry and a skew
+margin have passed, so a holder whose clock runs slow has stopped before
+the leasable resource goes on. Whatever acts on the leasable resource
+for a holder presents the token. A fence on the leasable resource's own
+side keeps the highest token it has seen: it refuses a lower one, and
+stops and resets the leasable resource before it admits a higher one
 ([`leases.py`](scaffold/acme_root/clients/python/src/acme/client/leases.py)).
 
-A holder whose work runs through a [worker](#shape-of-a-worker) asks
-for a lease whose grant starts a **job**: a [work
-item](#the-work-queue) the grant writes in its own commit, carrying the
-lease's id and token. The worker that claims the job acts for the
-holder, who may be gone by then: it starts the lease, renews it, and
-ends it. It presents the lease's token and the item's claim token, so
-once the queue takes the item back, the old claim is refused. The
-holder keeps its own right to release, and no one else gains one. The
-grant gives the job a window to start in, and the lease runs to the
-window's end. From the job's start, the lease runs its full term. A
-job that waited in its lane still starts while the lease holds the
-resource, up to the skew margin past the window's end, since nothing
-has acted under the lease yet. A job that misses its window lets the
-lease lapse.
+A holder whose work runs through a [worker](#shape-of-a-worker) asks for
+a lease whose grant starts a **job**: a [work item](#the-work-queue) the
+grant writes in its own commit, carrying the lease's id and token. The
+worker that claims the job acts for the holder, who may be gone by then:
+it starts the lease, renews it, and ends it. It presents the lease's
+token and the item's claim token, so once the queue takes the item back,
+the old claim is refused. The holder keeps its own right to release, and
+no one else gains one. The grant gives the job a window to start in, and
+the lease runs to the window's end. From the job's start, the lease runs
+its full term. A job that waited in its lane still starts while the
+lease holds the leasable resource, up to the skew margin past the
+window's end, since nothing has acted under the lease yet. A job that
+misses its window lets the lease lapse.
 
-A **request** waits in line. It names one resource, or a selector: a
-kind and the labels it needs. One rank order serves every line of a
-tenant, so a selector request stands in each line it matches with one
-place, and a manager's reorder moves one request between two
-neighbours. A request answers its place, and an estimate of its wait
-replayed from each resource's measured holds, and a resource's line
-answers the same for each request in it, from one replay. An ask is
-idempotent by its [key](#idempotency), and a direct ask never passes
-anyone waiting. Before it waits, its kind may refuse it, for who asks
-or for what it asks, and nothing of it lands.
+A **request** waits in line. It names one leasable resource, or a
+selector: a kind and the labels it needs. One rank order serves every
+wait line of a tenant, so a selector request stands in each wait line it
+matches with one place, and a manager's reorder moves one request
+between two neighbours. A request answers its place, and an estimate of
+its wait replayed from each leasable resource's measured holds, and a
+leasable resource's wait line answers the same for each request in it,
+from one replay. An ask is idempotent by its [key](#idempotency), and a
+direct ask never passes anyone waiting. Before it waits, its kind may
+refuse it, for who asks or for what it asks, and nothing of it lands.
 
-A grant is a side effect of a resource freeing: a release, an expiry, a
-revocation, or its availability back. It goes to the head of the line,
-decided under the anchor's row lock, for a request still waiting that
-the resource, as its row stands then, still serves. The
-lease, the anchor, the request's answer, and what the grant starts land
-in one commit, as rows and their outbox rows. A unique index over a
-resource's active leases is a second fence. Before it grants, it asks
-the waiter whether it still waits, and the kind whether the request may
-still be granted; a no cancels the request, and the next is asked.
+A grant is a side effect of a leasable resource freeing: a release, an
+expiry, a revocation, or its availability back. It goes to the head of
+the wait line, decided under the anchor's row lock, for a request still
+waiting that the leasable resource, as its row stands then, still
+serves. The lease, the anchor, the request's answer, and what the grant
+starts land in one commit, as rows and their outbox rows. A unique index
+over a leasable resource's active leases is a second fence. Before it
+grants, it asks the waiter whether it still waits, and the kind whether
+the request may still be granted; a no cancels the request, and the next
+is asked.
 
 A kind registers as a work kind does, with its hooks: what a grant
 starts, whether a request may still be granted, and, when it needs one,
-a check at the ask. A **waiter**
-registers the same way. A [long-running
-record](#long-running-orchestrations) parks on the reason `resource`,
-and the grant wakes it with its lease. A request that leaves its line
-without one wakes its waiter too, which reads the end; a waiter that
-ends leaves every line. A kind keeps facts of its own about a lease in its own table,
-keyed by the lease's id. The [sweep](#maintenance-without-a-scheduler)
-ends each lease past its expiry and the margin, expires each request
-past its wait, and offers each free resource to its line; retention
-purges what settled. Until then a resource's leases, and the org's,
-are a history: newest first, a page at a time, ended ones included,
-each with the request it answered. A tenant reads only its own.
+a check at the ask. A **waiter** registers the same way. A [long-running
+record](#long-running-orchestrations) parks on the reason
+`leasable_resource`, and the grant wakes it with its lease. A request
+that leaves its wait line without one wakes its waiter too, which reads
+the end; a waiter that ends leaves every wait line. A kind keeps facts
+of its own about a lease in its own table, keyed by the lease's id. The
+[sweep](#maintenance-without-a-scheduler) ends each lease past its
+expiry and the margin, expires each request past its wait, and offers
+each free leasable resource to its wait line; retention purges what
+settled. Until then a leasable resource's leases, and the org's, are a
+history: newest first, a page at a time, ended ones included, each with
+the request it answered. A tenant reads only its own.
 
 > **Principle:** One holder at a time, under a token that only grows.
 > The row lock and the index fence the grant, and the token fences
@@ -2027,43 +2045,45 @@ each with the request it answered. A tenant reads only its own.
 
 <!-- agents-only
 - The anchor's row is locked first and the request's second, in every
-  write that moves a lease or a line, so two writers queue and never
-  deadlock. `grant` lands only while the anchor holds `expected_token`,
-  and while the request still stands in the anchor's line as the row
-  stands under the lock, with the lease's term and window within its
-  bound (`grant_fits`).
-- A kind is a `ResourceKind` with its ask's shape in `ASK_PAYLOADS` and
-  a `ResourceKindInterface`: `may_grant` reads the asker's standing
-  live, and `grant_rows` returns the rows the grant lands. A kind that
-  refuses some asks registers an `AskCheckInterface` beside them: its
-  `check_ask` runs at the ask under the asker's context, with the
-  request as it would land and the resource it names, before anything
-  lands, and refuses by raising `NotAuthorized` or `ValidationFailed`.
-  A kind with none accepts every ask. A waiter is
-  a `WaiterKind` with a `WaiterInterface`: `still_waits`, `wake_rows`,
-  `end_rows`, and `revoke_rows`. An orchestration waits as
-  `ParkReason.RESOURCE`.
-- The owner lands a resource with its row through `register_statement`,
-  updates it through `update_statement` with a `ResourceUpdate`, which
-  changes the fields it names and keeps the rest, and retires it through
-  `retire_statement` (`land_resource`, `land_update`, and
-  `land_retirement` in memory). After the commit that registered or
-  updated it, the owner calls the manager's `offer`; the manager's own
-  `register` and `update` offer at once, and the sweep offers what a
-  crash left. The owner's commit knows no waiter, so the requests that
-  name a retired resource leave their line through the manager, at once
-  or at the next sweep, each with its waiter's wake.
-- `list_leases` reads a resource's leases, or the org's, newest first by
-  `created_at` and then `id`, each with its request from one join, at
-  most `history_limit` a page; the next page starts after the last
-  lease's `HistoryMark`, which the route's opaque cursor carries. `line`
-  answers each request's `Place`, its place and estimate, from one
-  replay over the reads it makes.
+  write that moves a lease or a wait line, so two writers queue and
+  never deadlock. `grant` lands only while the anchor holds
+  `expected_token`, and while the request still stands in the anchor's
+  wait line as the row stands under the lock, with the lease's term and
+  window within its bound (`grant_fits`).
+- A kind is a `LeasableResourceKind` with its ask's shape in
+  `ASK_PAYLOADS` and a `LeasableResourceKindInterface`: `may_grant`
+  reads the asker's standing live, and `grant_rows` returns the rows the
+  grant lands. A kind that refuses some asks registers an
+  `AskCheckInterface` beside them: its `check_ask` runs at the ask under
+  the asker's context, with the request as it would land and the
+  leasable resource it names, before anything lands, and refuses by
+  raising `NotAuthorized` or `ValidationFailed`. A kind with none
+  accepts every ask. A waiter is a `WaiterKind` with a
+  `WaiterInterface`: `still_waits`, `wake_rows`, `end_rows`, and
+  `revoke_rows`. An orchestration waits as
+  `ParkReason.LEASABLE_RESOURCE`.
+- The owner lands a leasable resource with its row through
+  `register_statement`, updates it through `update_statement` with a
+  `LeasableResourceUpdate`, which changes the fields it names and keeps
+  the rest, and retires it through `retire_statement`
+  (`land_leasable_resource`, `land_update`, and `land_retirement` in
+  memory). After the commit that registered or updated it, the owner
+  calls the manager's `offer`; the manager's own `register` and `update`
+  offer at once, and the sweep offers what a crash left. The owner's
+  commit knows no waiter, so the requests that name a retired leasable
+  resource leave their wait line through the manager, at once or at the
+  next sweep, each with its waiter's wake.
+- `list_leases` reads a leasable resource's leases, or the org's, newest
+  first by `created_at` and then `id`, each with its request from one
+  join, at most `history_limit` a page; the next page starts after the
+  last lease's `HistoryMark`, which the route's opaque cursor carries.
+  `wait_line` answers each request's `Place`, its place and estimate,
+  from one replay over the reads it makes.
 - The sweep reads the due orgs in the order of their ids and reads on
   past a deleted one, so deleted orgs never fill its batch.
-- The client's `Fence` keeps the highest token per resource; its
-  `LeaseClock` counts on a monotonic clock from the send of the ask or
-  the renewal, never from the answer.
+- The client's `Fence` keeps the highest token per leasable resource;
+  its `LeaseClock` counts on a monotonic clock from the send of the ask
+  or the renewal, never from the answer.
 - A grant's job is the one `work.<kind>` row among the kind's
   `grant_rows`, and a grant starts one at most. The lease keeps the
   row's id as `job_key`, the key the relay gives the item. The worker
@@ -2072,13 +2092,13 @@ each with the request it answered. A tenant reads only its own.
   The job's acts are the manager's alone: a worker reaches the manager
   in process, so no route carries a claim token.
 - A request's `start_seconds` is its job's window, `term_seconds` its
-  term; both, and a renewal's length, stay within the resource's
-  `max_term_seconds`, at most seven days. `start` lands under the
-  anchor's lock while the lease is active, not started, and its expiry
-  is after the clock less the margin; a renewal needs an expiry after
-  the clock. A started lease is answered as it is.
+  term; both, and a renewal's length, stay within the leasable
+  resource's `max_term_seconds`, at most seven days. `start` lands under
+  the anchor's lock while the lease is active, not started, and its
+  expiry is after the clock less the margin; a renewal needs an expiry
+  after the clock. A started lease is answered as it is.
 - A `Label` is free text of 1 to 200 characters with no control
-  character, matched as written, and a resource offers up to
+  character, matched as written, and a leasable resource offers up to
   `MAX_LABELS`, 160.
 -->
 
@@ -2095,7 +2115,7 @@ the public surface. A worker that needs more compute gets a bigger box.
 
 Apps are products that consume the system: the portal, the CLI, the
 operator console. Each sits at the outermost layer and reaches the
-platform through the gateway and its own backing service.
+system through the gateway and its own backing service.
 
 ### Apps Are Dumb
 
@@ -2191,7 +2211,7 @@ what the hook gives it.
 
 Feature code never calls `fetch`. The transport client attaches the
 bearer, parses the envelope into a typed error with the request id, and
-clears the session on a 401. The bearer lives in memory and session
+clears the auth session on a 401. The bearer lives in memory and session
 storage, never local storage. The distribution sends a
 `Content-Security-Policy` that names only the origins the app uses.
 
@@ -2199,23 +2219,23 @@ storage, never local storage. The distribution sends a
 
 A person may hold several memberships, and the portal works in one at a
 time. It signs in once, picks a membership, and exchanges it for one
-tenant session. The org chip switches it with a second exchange, which
-ends the old session, and the app drops every cache of the old tenant
-and mounts afresh.
+auth session in that tenant. The org chip switches it with a second
+exchange, which ends the old auth session, and the app drops every
+cache of the old tenant and mounts afresh.
 
 > **Principle:** The app works in one tenant at a time. A switch is a
 > second exchange that drops the old tenant's caches. The app never
-> holds two sessions.
+> holds two auth sessions.
 
 ### Flags in the Client
 
-A browser app reads its session's flags from its own API, as one
+A browser app reads its auth session's flags from its own API, as one
 snapshot of the flags marked for clients
 ([Feature Flags](#feature-flags)). It reads the snapshot once the
 exchange is done and keeps it in the query cache under a key of its key
 factory, so a switch drops it with the old tenant's caches. It reads it
 again when the window regains focus and on an interval. It polls because
-no push names a flag's change, which is no event the system records, and
+no push names a flag's change, which is no change event the system records, and
 the snapshot's `ETag` turns a read that finds nothing new into a `304`.
 Until the snapshot arrives, a flag reads off.
 
@@ -2336,7 +2356,7 @@ at start by a `config.json`.
   `index.html`, caches hashed assets as immutable, and never caches
   `index.html` or `config.json`. Every response carries the security
   policy, `Strict-Transport-Security`, `frame-ancestors`, and
-  `X-Content-Type-Options: nosniff`. The platform sets no cookie on a
+  `X-Content-Type-Options: nosniff`. The system sets no cookie on a
   parent domain. The deployed edge serves no interactive API docs.
 - Each registry keeps a bounded number of images and never expires one
   production runs: the production deploy adds a tag under a prefix the
@@ -2419,7 +2439,7 @@ every local URL, and the steps it wraps run one at a time for a gate.
 
 ### Twins for External Services
 
-A hosted service the platform depends on has an interface, a real
+A hosted service the system depends on has an interface, a real
 client, and a deterministic twin that speaks its wire shapes, signs its
 own synthetic deliveries, and runs in-process or on disk
 ([`twin.py`](scaffold/acme_root/integrations/src/acme/integrations/identity/twin.py)).
@@ -2473,7 +2493,7 @@ lock under the deployer.
 
 ### Operator Roles
 
-Four roles operate a platform. The **administrator** creates and
+Four roles operate a system. The **administrator** creates and
 destroys an environment and nothing else, granted per run. The
 **deployer** is the pipeline, trusted only for one environment's jobs on
 that environment's branch. The **investigator** reads every signal and
@@ -2703,7 +2723,7 @@ instruction.
 ### The Knowledge Map
 
 One map at the root, `llms.txt`, names what each audience is served:
-the platform's developers, its operators, and the tenant's own users. A
+the system's developers, its operators, and the tenant's own users. A
 document is served by being listed, never by its folder. Every document
 speaks product, technology, or service, and nothing that would matter if
 it leaked.
@@ -2722,7 +2742,7 @@ the cloud. A filter stamps every line with the service, the environment,
 the request id, and the causing request, so no call site has to
 remember.
 
-> **Principle:** Python's `logging` is the platform logger. Every
+> **Principle:** Python's `logging` is the system logger. Every
 > module uses it. No module replaces it.
 
 ### Traces and Metrics
@@ -2761,18 +2781,18 @@ run starts a trace of its own.
 
 ### Exceptions
 
-Every exception inside the platform is rooted at `PlatformException`,
+Every exception inside the system is rooted at `OmException`,
 which carries an `http_status` and a stable `code`. Infra imports
 nothing from the OM, so it has its own root, `InfraException`, with the
 same two fields
 ([`exceptions.py`](scaffold/acme_root/om/src/acme/om/exceptions.py)):
 
 ``` python
-class PlatformException(Exception):
+class OmException(Exception):
     http_status: int = 500
-    code: str = "platform_error"
+    code: str = "om_error"
 
-class NotFound(PlatformException):
+class NotFound(OmException):
     http_status = 404
     code = "not_found"
 ```
@@ -2782,8 +2802,8 @@ The shapes cover almost every case: `NotFound` (404), `Conflict` (409),
 (401), `NotAuthorized` (403), and `Unavailable` (503), for what cannot
 be reached right now, each with its name in snake case as its code. A
 namespace's exception inherits a shape. One that no shape fits sets a
-status and a code of its own under the root, as a read of the event
-stream below its floor is `410 stream_truncated`. A boundary catches
+status and a code of its own under the root, as a read of the change
+event stream below its floor is `410 stream_truncated`. A boundary catches
 both roots and translates them in one place; managers never format
 HTTP.
 

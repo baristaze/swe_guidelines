@@ -278,7 +278,7 @@ async def test_the_grant_command_grants_disables_and_mints_into_the_secret_store
     ann = await storage.read_identity_by_email_digest(email_digest("ann@example.test"))
     assert ann is not None and ann.operator_role is None
 
-    # The platform's own identity is made by its first grant, and its token
+    # The system's own identity is made by its first grant, and its token
     # goes to the secret store in the cloud and nowhere else.
     provisioner = "provisioner@platform.acme.invalid"
     await api_main.granted(container, settings, grant_args(email=provisioner, permission="write"))

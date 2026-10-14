@@ -95,11 +95,11 @@ queues, so a replica can be killed and replaced at any time.
 
 **Look for.** A module-level or instance-level `dict`, `list`, or `set`
 in a domain service that one request mutates and a later request
-reads; in-memory maps of sessions, users, or in-flight work; anything
+reads; in-memory maps of auth sessions, users, or in-flight work; anything
 written to memory that is not also written to a durable source.
 
 **Violation.** A service that remembers a user's progress, a pending
-operation, or a session only in RAM; a process whose restart loses
+operation, or an auth session only in RAM; a process whose restart loses
 information; a warm cache or rollup that is the only copy of a
 computed result and is not rebuilt at boot. (The progress of a
 long-running record is ASY-20, and a chain across services ASY-27.)
@@ -155,7 +155,7 @@ below the gateway; the rest is judged.
 
 ## NET-07 One error handler, one envelope
 
-**Principle.** One handler translates `PlatformException` and
+**Principle.** One handler translates `OmException` and
 `InfraException` into `{"error": {"code", "message", "request_id"}}`
 with the status the exception carries, one catch-all turns anything
 else into a 500 in the same shape, and routers never set error status
@@ -286,8 +286,8 @@ add's commit.
 Domain Owns.
 
 **Look for.** Where sign-up, invitation, role management, key rotation,
-and session refresh are implemented (organizations, identities, users,
-memberships, teams, credentials, sessions, invitations); whether the
+and auth session refresh are implemented (organizations, identities, users,
+memberships, teams, credentials, auth sessions, invitations); whether the
 gateway holds its own user or token tables; the hashing in the tenancy
 rules, what the credential tables hold, and the `Issued...View` that
 shows a secret once. Every path that adds a member, whether it goes
@@ -310,7 +310,7 @@ written; a gate's rows written in a commit of their own.
 **Principle.** Service-to-service calls need no TLS on the private
 network, and that rests on the network being private: services and
 workers in private subnets, security groups that admit only the
-platform's own processes, only the gateway with a public address, all
+system's own processes, only the gateway with a public address, all
 in Terraform. Managed backends that require TLS get a connection
 string; outbound TLS verification uses the operating system's trust
 store.
@@ -326,7 +326,7 @@ system's.
 
 **Violation.** A service, a worker, or a database with a public
 address, which is an exposure and not a convention slip, or a security
-group open past the platform's own processes; an HTTP client pinned
+group open past the system's own processes; an HTTP client pinned
 to a bundled CA set so a corporate proxy or private CA fails; TLS
 configured per component instead of once at boot.
 
@@ -511,7 +511,7 @@ pages, after a failed read, and after a stop.
 component that opens its own socket; a polling endpoint or a poll on a
 timer used while the channel is up; envelopes without a type field or
 routed by ad hoc inspection. A poll of what no push names, since its
-change is no event the system records, is not one: the flags snapshot
+change is no change event the system records, is not one: the flags snapshot
 (DEL-52) is such a poll. A notice hidden by a replay's collapse to the
 last record of each entity, dropped when a later page fails, or told
 twice, by the route and by its hand-over (one handed over after a
@@ -541,33 +541,33 @@ idle timeout defined in two places that can drift in separate changes.
 
 **Severity.** medium
 
-## NET-22 The event row and its per-tenant seq
+## NET-22 The change event row and its per-tenant seq
 
-**Principle.** The record behind every push is an `Event` in the
+**Principle.** The record behind every push is a `ChangeEvent` in the
 `activity` role, appended by one named atomic method that assigns
 `seq`, per tenant and gapless above the tenant's floor, from a cursor
 row updated and returned inside the append's transaction, never from
-`MAX(seq) + 1` with a retry. A manager records one event per write
+`MAX(seq) + 1` with a retry. A manager records one change event per write
 through the outbox. The trim deletes the oldest run past the retention
 and moves the floor in the same transaction; a read below the floor is
 `410 stream_truncated`, naming the floor and the head.
 
 **Source.** The Network Layer, Realtime at the Edge.
 
-**Look for.** The `Event` type (`Identifiable` plus `org_id`, `seq`,
+**Look for.** The `ChangeEvent` type (`Identifiable` plus `org_id`, `seq`,
 `kind`, `target_id`, `actor_id`, the request id, the app, a typed
 payload) and its table's role; the audit kinds, which ride the same
 type; the append method, the cursor row it locks, and where the head
 `seq` the pong carries is read from; the trim, the floor on the cursor
 row, and the `after_seq` read that compares with it. (Whether the
-event row rides an outbox row of the core write is STO-20.)
+change event row rides an outbox row of the core write is STO-20.)
 
 **Violation.** `seq` minted in Python, global across tenants, or with
 gaps above the floor; `MAX(seq) + 1` computed in the append and retried
-on the collision; an event table in the `core` role; an event with no
-`actor_id`, request id, or app; an audit entry of a type or a table of
-its own while audit has no reader of its own and no retention longer
-than the stream's (OM-16); a trim that deletes
+on the collision; a change event table in the `core` role; a change
+event with no `actor_id`, request id, or app; an audit entry of a type
+or a table of its own while audit has no reader of its own and no
+retention longer than the stream's (OM-16); a trim that deletes
 without moving the floor, or moves it in another transaction; a read
 below the floor answered with a page, or a client that asks the same
 read again instead of reading afresh and going on from the head; code
@@ -650,7 +650,7 @@ fresh `Issued...View` with the same id.
 Layer, The Gateway (Edge idempotency).
 
 **Look for.** The create of every entity that issues a secret (an API
-key, a session token, a socket ticket) and what it does when the
+key, an auth session token, a socket ticket) and what it does when the
 insert reports an existing id; the atomic method that re-mints and
 what its statement is conditional on. A
 rerun is a retry whose marker holds no outcome; a replay, whose
@@ -890,7 +890,7 @@ configured.
 declaration behind it; a declaration the issuer supplies in its own
 token, so it widens its own reach; a declaration checked after the
 context is rebuilt. (One key shared by processes that are all the
-platform's own is a decision the guideline makes, not a breach.)
+system's own is a decision the guideline makes, not a breach.)
 
 **Severity.** high
 

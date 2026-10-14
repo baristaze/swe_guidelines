@@ -1,6 +1,6 @@
 ---
 name: ops-cloud-deployment-create
-description: "Create one cloud environment of the platform from nothing, in its own AWS account, as that account's administrator: the bootstrap root (state bucket, registry, OIDC trust, the deploy roles, the investigate role, the budget, the zones), the delegation of its public names at Cloudflare, the investigate profile, the GitHub environments and their variables, then the first deploy through the pipeline and the grants that follow it. Runs scripts/cloud_create.sh after checking the administrator profile, the account, and the GitHub login. Supports --dry-run. The one skill besides nuke that needs a credential that writes, so a person invokes it by name and approves each run of the script."
+description: "Create one cloud environment of the system from nothing, in its own AWS account, as that account's administrator: the bootstrap root (state bucket, registry, OIDC trust, the deploy roles, the investigate role, the budget, the zones), the delegation of its public names at Cloudflare, the investigate profile, the GitHub environments and their variables, then the first deploy through the pipeline and the grants that follow it. Runs scripts/cloud_create.sh after checking the administrator profile, the account, and the GitHub login. Supports --dry-run. The one skill besides nuke that needs a credential that writes, so a person invokes it by name and approves each run of the script."
 disable-model-invocation: true
 allowed-tools: Read, Grep, Glob, Bash(aws:*), Bash(gh:*), Bash(jq:*)
 ---
@@ -79,7 +79,7 @@ The script clears any `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, or
 `AWS_SESSION_TOKEN` exported in the shell, because Terraform prefers
 them to a profile, and prints a `note:` line naming the ones it
 cleared, dry run included. Put that line in the report: an exported
-key is a long-lived one, and this platform uses none.
+key is a long-lived one, and this system uses none.
 
 The GitHub login is `gh auth status`; it names a user who can write
 the repository's environments and their variables.

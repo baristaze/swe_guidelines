@@ -49,7 +49,7 @@ IDENTITY = "identity"
 """The identity provider, by the name its deliveries are queued under."""
 
 IDENTITY_CREDENTIAL = "ACME_WORKOS_API_KEY"
-"""The secret the worker's calls to it are made with: the platform's own, by
+"""The secret the worker's calls to it are made with: the system's own, by
 its name."""
 
 
@@ -94,7 +94,7 @@ def build_loop(container: WorkerContainer, lane: str | None = None) -> WorkerLoo
             # Every file's object, then its row.
             "media": managers.media.purge_tenant,
             "tenancy": managers.tenancy.purge_tenant,
-            "events": managers.events.purge_tenant,
+            "change_events": managers.change_events.purge_tenant,
             "orchestrations": managers.orchestrations.purge_tenant,
             "leases": managers.leases.purge_tenant,
             "work": managers.work.purge_tenant,
@@ -106,8 +106,8 @@ def build_loop(container: WorkerContainer, lane: str | None = None) -> WorkerLoo
             "media": unstaged(managers.media.purge_across_tenants),
             "tenancy": unstaged(managers.tenancy.purge_across_tenants),
             "idempotency": unstaged(managers.idempotency.purge_across_tenants),
-            # The trim: each tenant's floor moves with its events.
-            "events": unstaged(managers.events.purge_across_tenants),
+            # The trim: each tenant's floor moves with its change events.
+            "change_events": unstaged(managers.change_events.purge_across_tenants),
             "orchestrations": unstaged(managers.orchestrations.purge_across_tenants),
             "leases": unstaged(managers.leases.purge_across_tenants),
             # Not a purge: the leases past their expiry and the skew margin
@@ -126,7 +126,7 @@ def build_loop(container: WorkerContainer, lane: str | None = None) -> WorkerLoo
         # and the read of the tenants where it is due (ADR 0089).
         chores={},
         chore_tenants=None,
-        # The platform's size, counted across tenants once an interval and
+        # The system's size, counted across tenants once an interval and
         # kept as the tally the operator plane reads instead of counting.
         tally=managers.tenancy_operator.tally_size,
         handlers={
@@ -155,7 +155,7 @@ def build_consumer(container: WorkerContainer) -> DeliveryConsumer:
     return DeliveryConsumer(
         queues=container.infra.get_queues(),
         tenancy=container.managers.tenancy,
-        providers={"identity": IdentityDeliveriesImpl(container.managers.events)},
+        providers={"identity": IdentityDeliveriesImpl(container.managers.change_events)},
         options=DeliveryOptions(worker_id=container.settings.worker_id),
     )
 

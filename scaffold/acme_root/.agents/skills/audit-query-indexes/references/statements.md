@@ -95,7 +95,7 @@ Each statement is measured where its cost differs, not once:
 
 ## Contention, when `--contention` asks for it
 
-A lock held across round trips (the event cursor on every append, a
+A lock held across round trips (the change event cursor on every append, a
 claim) is measured by running the storage call from several coroutines
 at once, through the real storage impl on the run's database. Write the
 script into the evidence folder, never into the repository:

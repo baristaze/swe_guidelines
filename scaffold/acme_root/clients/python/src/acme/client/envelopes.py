@@ -8,7 +8,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, ValidationError
 
-from acme.client.types import EventView
+from acme.client.types import ChangeEventView
 
 
 class Frame(BaseModel):
@@ -59,15 +59,15 @@ class EntityChanged(Frame):
         return self.kind.rsplit(".", 1)[-1]
 
     @classmethod
-    def of_event(cls, event: EventView) -> EntityChanged:
+    def of_event(cls, event: ChangeEventView) -> EntityChanged:
         """A replayed record, as the push it would have been."""
         return cls(
             kind=event.kind, target_id=event.target_id, seq=event.seq, actor_id=event.actor_id
         )
 
 
-class EventEnvelope(Frame):
-    type: Literal["event"]
+class ChangeEventEnvelope(Frame):
+    type: Literal["change_event"]
     topic: str
     payload: EntityChanged
 
@@ -83,7 +83,7 @@ Envelope = Annotated[
     | PongEnvelope
     | SubscribedEnvelope
     | UnsubscribedEnvelope
-    | EventEnvelope
+    | ChangeEventEnvelope
     | ErrorEnvelope,
     Field(discriminator="type"),
 ]

@@ -12,7 +12,7 @@ from acme.infra.cache import CacheScope
 from acme.infra.impl.local import InfraLocalImpl
 from acme.integrations.identity import IdentityProviderInterface
 from acme.integrations.identity.absent import IdentityProviderAbsentImpl
-from acme.om.base import Platform, new_id, utcnow
+from acme.om.base import OmBase, new_id, utcnow
 from acme.om.context import AppContext, AppType, RequestContext, TenantContext
 from acme.om.media.types.file import File, FilePurpose
 from acme.om.orchestrations.types.orchestration import Orchestration, OrchestrationKind
@@ -129,7 +129,7 @@ def make_item(
     ctx: TenantContext,
     *,
     kind: WorkKind = WorkKind.NOOP,
-    payload: Platform | None = None,
+    payload: OmBase | None = None,
     target_id: UUID | None = None,
     traceparent: str | None = None,
 ) -> WorkItem:

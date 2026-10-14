@@ -2,7 +2,7 @@
 
 People sign in through WorkOS AuthKit: an email code or link, Google,
 GitHub, or their team's own single sign-on. WorkOS proves who the person
-is; the identity, its orgs, and its sessions are Acme's own
+is; the identity, its orgs, and its auth sessions are Acme's own
 ([ADR 0028](../../adr/0028-sign-in-is-the-identity-providers.md)). This
 page says what lives where, what is set by hand once, what a command
 checks, and what to do when it breaks.
@@ -61,7 +61,7 @@ revoked without the other.
    ([ADR 0036](../../adr/0036-sign-out-ends-the-providers-session.md)).
    Leave the sign-up, invitation, and password reset URLs unset.
 5. **Set the Sessions tab by hand**: maximum session length 30 days,
-   inactivity timeout 14 days, the same bounds as Acme's own session
+   inactivity timeout 14 days, the same bounds as Acme's own auth session
    ([ADR 0063](../../adr/0063-sessions-last-weeks.md)).
 6. **Turn on the sign-in methods**: email, Google, and GitHub, with
    passwords off. Production needs OAuth credentials of its own at Google

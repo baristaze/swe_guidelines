@@ -25,7 +25,7 @@ says; without it the skill only reports.
 
 ## Role and credential
 
-None of the platform's: the skill reads no environment and no database.
+None of the system's: the skill reads no environment and no database.
 It reads the tracker through the session's Linear connector, under the
 person's own sign-in, and the repository through `git` and `gh`. The
 connector's writes (a comment, a status) are not pre-approved: each one

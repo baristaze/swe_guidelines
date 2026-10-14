@@ -10,10 +10,10 @@ from fastapi import FastAPI
 
 from acme.infra.exceptions import BackendFailed, BackendUnreachable
 from acme.infra.observability import RequestIdFilter
-from acme.om.exceptions import PlatformException, Unavailable
+from acme.om.exceptions import OmException, Unavailable
 
 
-class Overloaded(PlatformException):
+class Overloaded(OmException):
     http_status = 503
     code = "overloaded"
 
@@ -32,7 +32,7 @@ async def test_a_5xx_message_stays_in_the_log(
     caplog.handler.addFilter(RequestIdFilter())
     with caplog.at_level(logging.ERROR):
         infra = await client.get("/infra-fails")
-        platform = await client.get("/overloaded")
+        om = await client.get("/overloaded")
 
     assert infra.status_code == 500
     assert infra.json()["error"] == {
@@ -40,14 +40,14 @@ async def test_a_5xx_message_stays_in_the_log(
         "message": "internal error",
         "request_id": infra.headers["x-request-id"],
     }
-    assert platform.status_code == 503
-    assert platform.json()["error"]["code"] == "overloaded"
-    assert platform.json()["error"]["message"] == "internal error"
+    assert om.status_code == 503
+    assert om.json()["error"]["code"] == "overloaded"
+    assert om.json()["error"]["message"] == "internal error"
 
     errors = [r for r in caplog.records if r.levelno >= logging.ERROR]
     assert [r.request_id for r in errors] == [  # type: ignore[attr-defined]
         infra.headers["x-request-id"],
-        platform.headers["x-request-id"],
+        om.headers["x-request-id"],
     ]
     assert "s3 get failed with AccessDenied" in errors[0].getMessage()
     assert "pool exhausted on db-7" in errors[1].getMessage()
@@ -102,7 +102,7 @@ async def test_a_404_and_a_405_answer_the_envelope(client: httpx.AsyncClient) ->
     assert body["code"] == "not_found"
     assert body["request_id"] == missing.headers["x-request-id"]
 
-    wrong_method = await client.delete("/v1/events")
+    wrong_method = await client.delete("/v1/change-events")
     assert wrong_method.status_code == 405
     assert wrong_method.json()["error"]["code"] == "method_not_allowed"
 
@@ -124,6 +124,6 @@ async def test_a_500_is_answered_inside_cors(app: FastAPI, client: httpx.AsyncCl
     assert "x-request-id" in failed.headers["access-control-expose-headers"].lower()
 
     # The same headers a refusal already carried.
-    refused = await client.get("/v1/events", headers=origin)
+    refused = await client.get("/v1/change-events", headers=origin)
     assert refused.status_code == 401
     assert refused.headers["access-control-allow-origin"] == "http://localhost:5173"

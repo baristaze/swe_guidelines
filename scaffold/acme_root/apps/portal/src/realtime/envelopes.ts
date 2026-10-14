@@ -52,8 +52,8 @@ export function entityOf(kind: string): string {
   return parts.length >= 2 ? parts[1]! : kind;
 }
 
-export interface EventEnvelope extends Base {
-  type: "event";
+export interface ChangeEventEnvelope extends Base {
+  type: "change_event";
   topic: string;
   payload: EntityChangedView;
 }
@@ -69,7 +69,7 @@ export type Envelope =
   | PongEnvelope
   | SubscribedEnvelope
   | UnsubscribedEnvelope
-  | EventEnvelope
+  | ChangeEventEnvelope
   | ErrorEnvelope;
 
 export type ClientCommand =
@@ -77,7 +77,7 @@ export type ClientCommand =
   | { op: "unsubscribe"; topic: string }
   | { op: "ping" };
 
-const TYPES = new Set(["hello", "pong", "subscribed", "unsubscribed", "event", "error"]);
+const TYPES = new Set(["hello", "pong", "subscribed", "unsubscribed", "change_event", "error"]);
 
 export function parseEnvelope(raw: string): Envelope | null {
   let parsed: unknown;
@@ -92,8 +92,8 @@ export function parseEnvelope(raw: string): Envelope | null {
   return parsed as Envelope;
 }
 
-export function isEntityChanged(envelope: Envelope): envelope is EventEnvelope {
-  if (envelope.type !== "event" || envelope.topic !== "entity_changed") return false;
+export function isEntityChanged(envelope: Envelope): envelope is ChangeEventEnvelope {
+  if (envelope.type !== "change_event" || envelope.topic !== "entity_changed") return false;
   const payload: unknown = envelope.payload;
   if (typeof payload !== "object" || payload === null) return false;
   const view = payload as Partial<EntityChangedView>;

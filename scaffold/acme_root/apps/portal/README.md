@@ -9,12 +9,12 @@ sign-in, the org chip and switch, settings, and one realtime channel.
 - `@acme/client`, from [clients/typescript/](../../clients/typescript/README.md):
   the one transport client and the types generated from the API's document.
   The portal calls `fetch` nowhere and never reads the generated schema.
-- `src/app/`: routes, the nav, the query cache, the session, and the one
+- `src/app/`: routes, the nav, the query cache, the auth session, and the one
   client instance the app shares.
 - `src/features/<name>/`: one folder per screen, a pure model, a
   view-model hook, and a page. `home/` is where the product's screens start.
 - `src/queries/`: query keys and hooks, one file per API namespace.
-  `flags.ts` reads the session's flags as one snapshot from the API, and a
+  `flags.ts` reads the auth session's flags as one snapshot from the API, and a
   view-model reads a flag with `useFlag`. No flag vendor's SDK is in the
   bundle.
 - `src/realtime/`: the socket and its router. A push about a user reads

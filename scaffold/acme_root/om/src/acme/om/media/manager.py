@@ -99,7 +99,7 @@ class MediaManagerInterface(ABC):
 
     @abstractmethod
     async def purge_across_tenants(self) -> int:
-        """Platform-internal: the sweep, across tenants, once a pass, one batch
+        """System-internal: the sweep, across tenants, once a pass, one batch
         at a time: removes the objects of files deleted past the retention
         and of uploads abandoned past the pending window, whatever their
         tenant, then their rows. Returns how many rows went. It takes no

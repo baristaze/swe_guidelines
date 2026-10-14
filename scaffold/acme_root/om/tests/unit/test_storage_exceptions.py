@@ -21,7 +21,7 @@ import inspect
 import pkgutil
 
 from contracts import (
-    event_storage,
+    change_event_storage,
     idempotency_storage,
     lease_storage,
     media_storage,
@@ -54,21 +54,21 @@ STORAGE_EXCEPTIONS: frozenset[tuple[str, str]] = frozenset(
         ("TenancyStorageInterface", "read_org_by_slug"),
         ("TenancyStorageInterface", "read_orgs"),
         ("TenancyStorageInterface", "count_orgs"),
-        # The sweep's tally of the platform's size: counts across every
+        # The sweep's tally of the system's size: counts across every
         # tenant, and the one global row they are kept in, which the operator
         # plane reads instead of counting in a request.
         ("TenancyStorageInterface", "count_orgs_and_users"),
-        ("EventStorageInterface", "count_since"),
-        ("TenancyStorageInterface", "write_platform_size"),
-        ("TenancyStorageInterface", "read_platform_size"),
+        ("ChangeEventStorageInterface", "count_since"),
+        ("TenancyStorageInterface", "write_system_size"),
+        ("TenancyStorageInterface", "read_system_size"),
         ("TenancyStorageInterface", "read_users_by_identity"),
         ("TenancyStorageInterface", "read_memberships_by_identity"),
         ("TenancyStorageInterface", "delete_person"),
-        ("TenancyStorageInterface", "read_session_by_id"),
+        ("TenancyStorageInterface", "read_auth_session_by_id"),
         # An operator's own live tokens, rows of the system scope.
         ("TenancyStorageInterface", "read_operator_tokens"),
-        ("TenancyStorageInterface", "read_session_by_digest"),
-        ("TenancyStorageInterface", "read_session_with_identity_by_digest"),
+        ("TenancyStorageInterface", "read_auth_session_by_digest"),
+        ("TenancyStorageInterface", "read_auth_session_with_identity_by_digest"),
         ("TenancyStorageInterface", "read_api_key_by_digest"),
         ("TenancyStorageInterface", "redeem_socket_ticket"),
         ("WorkStorageInterface", "claim_next"),
@@ -86,7 +86,7 @@ STORAGE_EXCEPTIONS: frozenset[tuple[str, str]] = frozenset(
         ("IdempotencyStorageInterface", "purge_records"),
         ("MediaStorageInterface", "read_purgeable"),
         ("MediaStorageInterface", "purge_files_across_tenants"),
-        ("EventStorageInterface", "trim"),
+        ("ChangeEventStorageInterface", "trim"),
         ("OrchestrationsStorageInterface", "purge_settled"),
         ("LeasesStorageInterface", "purge_settled"),
         # The leases' sweep finds the orgs with a lease lapsed, a request past
@@ -105,7 +105,7 @@ STORAGE_EXCEPTIONS: frozenset[tuple[str, str]] = frozenset(
 )
 
 CROSS_TENANT_CASES: dict[str, frozenset[str]] = {
-    "EventStorageInterface": event_storage.CROSS_TENANT_CASES,
+    "ChangeEventStorageInterface": change_event_storage.CROSS_TENANT_CASES,
     "IdempotencyStorageInterface": idempotency_storage.CROSS_TENANT_CASES,
     "LeasesStorageInterface": lease_storage.CROSS_TENANT_CASES,
     "MediaStorageInterface": media_storage.CROSS_TENANT_CASES,
@@ -141,13 +141,13 @@ MANAGER_EXCEPTIONS: frozenset[tuple[str, str]] = frozenset(
         ("MediaManagerInterface", "purge_across_tenants"),
         ("TenancyManagerInterface", "purge_across_tenants"),
         ("IdempotencyManagerInterface", "purge_across_tenants"),
-        ("EventsManagerInterface", "purge_across_tenants"),
+        ("ChangeEventsManagerInterface", "purge_across_tenants"),
         ("OrchestrationsManagerInterface", "purge_across_tenants"),
         ("LeasesManagerInterface", "purge_across_tenants"),
         # The sweep's gauges of the queue, read across tenants like the purge.
         ("WorkManagerInterface", "oldest_ready_age"),
         ("WorkManagerInterface", "failed_within"),
-        # And the sweep's tally of the platform's size, counted across tenants
+        # And the sweep's tally of the system's size, counted across tenants
         # for the operator plane's read: it counts for no tenant.
         ("TenancyOperatorManagerInterface", "tally_size"),
     }
@@ -288,7 +288,7 @@ def test_manager_methods_take_a_stage_first_except_the_documented_ones() -> None
             seen.add(key)
             assert key in MANAGER_EXCEPTIONS, f"{key} takes no context stage first"
             doc = getattr(interface, name).__doc__ or ""
-            assert "Platform-internal" in doc or name in ("relay", "relay_all"), (
+            assert "System-internal" in doc or name in ("relay", "relay_all"), (
                 f"{key} lacks its reason"
             )
     assert seen == MANAGER_EXCEPTIONS, f"stale entries: {MANAGER_EXCEPTIONS - seen}"
@@ -310,6 +310,6 @@ def test_the_transitions_are_the_only_methods_below_the_tenant_stage() -> None:
             else:
                 continue
             doc = getattr(interface, name).__doc__ or ""
-            assert doc.startswith("Platform-internal"), f"{key} lacks its reason"
+            assert doc.startswith("System-internal"), f"{key} lacks its reason"
     assert by_request == REQUEST_TRANSITIONS
     assert by_identity == IDENTITY_TRANSITIONS

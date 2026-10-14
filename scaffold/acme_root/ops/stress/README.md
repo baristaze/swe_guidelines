@@ -9,7 +9,7 @@ client does and reads the signals back when it ends.
 Each person signs in once per run, by the local sign-in, and out once at
 the end. A session opens the realtime channel, reads `/v1/me`, lists the
 members, writes the person's display name, creates an API key and revokes
-it, reads the events, and waits to see its own change on the socket. A
+it, reads the change events, and waits to see its own change on the socket. A
 person thinks between steps.
 
 ## The target
@@ -17,7 +17,7 @@ person thinks between steps.
 A p95 and an error ratio, stated in the file or on the run with
 `--p95-ms` and `--error-ratio`. The p95 judges the working requests; the
 sign-ins and sign-outs are reported beside it. After the run the
-platform's own request and 5xx counts are read back, and the run fails
+system's own request and 5xx counts are read back, and the run fails
 when they miss the target.
 
 ## The file

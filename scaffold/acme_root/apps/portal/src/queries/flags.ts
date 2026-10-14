@@ -19,7 +19,7 @@ export const FLAGS_REFRESH_MS = 5 * 60_000;
 /** The snapshot's key and its read. Its answer carries an `ETag` and
  * `Cache-Control: no-cache`, so the browser asks again with `If-None-Match`,
  * and a read that finds nothing new is a `304` with no body. A switch drops
- * it with every other answer of the old tenant (adoptSession). */
+ * it with every other answer of the old tenant (adoptAuthSession). */
 const snapshotQuery = queryOptions({
   queryKey: keys.flags,
   queryFn: ({ signal }) => api.get<FlagsView>("/v1/flags", { signal }),

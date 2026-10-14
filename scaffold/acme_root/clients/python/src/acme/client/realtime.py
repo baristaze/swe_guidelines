@@ -1,7 +1,7 @@
 """The one channel: a socket opened on a single-use ticket, one subscription
 to `entity_changed`, pings at the interval the hello names from a timer of
 their own, and an async iterator of changes in stream order. A push ahead of
-the cursor is a replay of `/v1/events` after it, never a skip; a dropped
+the cursor is a replay of `/v1/change-events` after it, never a skip; a dropped
 socket reconnects with backoff and replays the same way, so a consumer sees
 every change once. A replay refused because the stream is trimmed past the
 cursor is a resync: the consumer reads its state afresh, and the cursor goes
@@ -21,9 +21,9 @@ from acme.client.client import LIMIT_MAX, ApiClient, ApiError, trust_store
 from acme.client.envelopes import (
     ENTITY_CHANGED,
     PING_COMMAND,
+    ChangeEventEnvelope,
     EntityChanged,
     ErrorEnvelope,
-    EventEnvelope,
     HelloEnvelope,
     PongEnvelope,
     parse_envelope,
@@ -217,7 +217,7 @@ class Channel:
                     async for change in self._replay(after):
                         yield change
                 continue
-            if not isinstance(envelope, EventEnvelope) or envelope.topic != ENTITY_CHANGED:
+            if not isinstance(envelope, ChangeEventEnvelope) or envelope.topic != ENTITY_CHANGED:
                 continue
             match place(self.cursor, envelope.payload.seq):
                 case Next(cursor=cursor):
@@ -239,7 +239,7 @@ class Channel:
         follows each one so a crash mid-replay resumes where it stopped."""
         while True:
             try:
-                events = await self._client.events_after(after, LIMIT_MAX)
+                events = await self._client.change_events_after(after, LIMIT_MAX)
             except ApiError as error:
                 if error.code != "stream_truncated" or error.stream_head is None:
                     raise

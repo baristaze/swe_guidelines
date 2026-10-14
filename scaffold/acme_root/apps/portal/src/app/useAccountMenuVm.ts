@@ -4,7 +4,7 @@ import { useNoticesStore } from "../store/notices";
 import { usePreferencesStore } from "../store/preferences";
 import { noteSignedOut } from "../store/signInState";
 import { shortEmail } from "./accountModel";
-import { forgetSession } from "./forgetSession";
+import { forgetAuthSession } from "./forgetAuthSession";
 import { signOut } from "./signOut";
 import { THEME_CHOICES } from "./themeModel";
 
@@ -25,7 +25,7 @@ export function useAccountMenuVm() {
   // the person to ask rather than starting a sign-in.
   const forget = () => {
     noteSignedOut();
-    forgetSession();
+    forgetAuthSession();
   };
   const leave = () =>
     void signOut({

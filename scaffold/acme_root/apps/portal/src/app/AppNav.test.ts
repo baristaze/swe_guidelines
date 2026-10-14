@@ -10,7 +10,7 @@ import { createMemoryRouter, RouterProvider } from "react-router-dom";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import type { MeView, OrgView, UserView } from "@acme/client";
 import { PREFERENCES_STORAGE_KEY, usePreferencesStore } from "../store/preferences";
-import { useSessionStore } from "../store/session";
+import { useAuthSessionStore } from "../store/authSession";
 import { AppNav } from "./AppNav";
 import { queryClient } from "./queryClient";
 
@@ -65,7 +65,7 @@ beforeEach(async () => {
   net.logout = { provider_logout_url: null };
   localStorage.clear();
   usePreferencesStore.setState({ theme: "system" });
-  useSessionStore.getState().setSession("ses_ajax", "ajax");
+  useAuthSessionStore.getState().setAuthSession("ses_ajax", "ajax");
   router = createMemoryRouter(
     [
       { path: "/", Component: page("home") },
@@ -81,7 +81,7 @@ beforeEach(async () => {
 });
 afterEach(async () => {
   await act(async () => root.render(null));
-  useSessionStore.getState().clear();
+  useAuthSessionStore.getState().clear();
   vi.unstubAllGlobals();
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
 });
@@ -188,7 +188,7 @@ it("signs out: the server session first, then the token here", async () => {
   await act(async () => item("Sign out").click());
   await settle();
   expect(net.posts.map((post) => post.path)).toEqual(["/v1/auth/logout"]);
-  expect(useSessionStore.getState().token).toBeNull();
+  expect(useAuthSessionStore.getState().token).toBeNull();
 });
 
 it("goes to the identity provider's logout when the server names one", async () => {
@@ -199,6 +199,6 @@ it("goes to the identity provider's logout when the server names one", async () 
   await act(async () => item("Sign out").click());
   await settle();
   expect(net.posts[0]!.body).toEqual({ return_to: "http://localhost:5173/signed-out" });
-  expect(useSessionStore.getState().token).toBeNull();
+  expect(useAuthSessionStore.getState().token).toBeNull();
   expect(assign).toHaveBeenCalledWith("https://api.workos.com/user_management/sessions/logout?session_id=s1");
 });

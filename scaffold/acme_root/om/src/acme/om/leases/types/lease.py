@@ -10,7 +10,7 @@ from enum import StrEnum
 from typing import ClassVar
 from uuid import UUID
 
-from acme.om.base import Identifiable, Platform, Trackable
+from acme.om.base import Identifiable, OmBase, Trackable
 
 
 class LeaseStatus(StrEnum):
@@ -30,7 +30,7 @@ class Lease(Identifiable, Trackable):
     )
     """A lease is the grant's and its transitions'; no caller writes it."""
 
-    resource_id: UUID
+    leasable_resource_id: UUID
     request_id: UUID  # the request it answered; one lease per request
     holder_id: UUID  # the principal that asked, and the one that renews and releases
     token: int  # one above the anchor's when it was granted
@@ -49,7 +49,7 @@ class Lease(Identifiable, Trackable):
     started_at: datetime | None = None  # when its job started
 
 
-class JobClaim(Platform):
+class JobClaim(OmBase):
     """What the worker that runs a lease's job presents to act for its
     holder: the lease's token, and the claim token of the job's work item.
     A claim the queue has since taken back, or given to another worker, no
@@ -59,7 +59,7 @@ class JobClaim(Platform):
     claim_token: UUID
 
 
-class Grant(Platform):
+class Grant(OmBase):
     """What a grant writes in one commit: the lease, under the request it
     answers, and the token the anchor held when the grant was decided. The
     storage lands it only while the anchor still holds that token and no

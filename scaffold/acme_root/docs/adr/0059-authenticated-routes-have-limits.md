@@ -4,7 +4,7 @@
 
 ## Context
 
-A session or an API key that calls as fast as it likes costs a lookup
+An auth session or an API key that calls as fast as it likes costs a lookup
 of its credential in Postgres on every call, and so does every poll of
 an integration that polls with a key.
 
@@ -20,7 +20,7 @@ error envelope, and the limits fail open.
 
 ## Decision
 
-**Each credential has a budget of its own.** Every session and API key
+**Each credential has a budget of its own.** Every auth session and API key
 spends one unit per request, once the credential resolves. Reads (`GET`,
 `HEAD`) and writes have separate budgets, split the way admission splits
 its lanes. The key is the credential id under the credential's tenant
@@ -41,7 +41,7 @@ fails as `NotAuthenticated` (unknown, expired, revoked) answers 401 and
 counts one against the client address. A request with no bearer looks
 nothing up and counts nothing. The default is 1,000 failures a minute
 (`ACME_FAILED_AUTHENTICATION_LIMIT`). One address is often a crowd, and
-a crowd back from a weekend sends one expired session per open call of
+a crowd back from a weekend sends one expired auth session per open call of
 each tab.
 
 Once the budget is spent, every request from that address answers 429
@@ -88,10 +88,10 @@ request's database cost stays the same.
 
 A flood of dead tokens stops reaching the database once its address has
 spent the budget. Measured with `ops/audit/dbcalls.py` over a local
-database, 100 requests with a signed-out session and 100 with an
+database, 100 requests with a signed-out auth session and 100 with an
 unknown, well-formed token, from one address, with a budget of 10:
 
-| | Signed-out session | Unknown token |
+| | Signed-out auth session | Unknown token |
 |---|---|---|
 | No failure budget | 100 transactions, 300 round trips | 100 transactions, 300 round trips |
 | Budget of 10 | 10 transactions, 30 round trips; 90 answered 429 | 0; all 100 answered 429 |

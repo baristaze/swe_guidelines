@@ -6,21 +6,20 @@ Worker Roles, and the causing request a work item carries in Telemetry
 (Correlation Across a Handoff) of `architecture.md`.
 
 This group judges everything that happens off the request path: the
-infrastructure capabilities managers lean on, how work is handed off
-and picked up, how a worker behaves over its life, and what a
-long-running record does when it cannot continue. It owns the sweep's
-duties (requeue expired leases, resume parked records, relay what a
-crash left in the outbox, purge done outbox rows and soft-deleted rows
-past retention, idempotency markers past theirs, socket tickets
-redeemed or expired, and sessions ended or past their lifetime), the
-whole work queue, its table and statements included, and the leases on
-a resource, with their lock, their token, their line, and their
-waiters. It leaves the
-`org_id` and `EMPTY_UUID` keying rules, a tenant's secret among them,
-the provenance of a worker's context, and the permission that enqueues
-a kind to `context`, database roles, the
-retention periods, and the life of an outbox row to `storage`, and the
-realtime edge with its wait-versus-notify patterns to `network`.
+infrastructure capabilities managers lean on, how work is handed off and
+picked up, how a worker behaves over its life, and what a long-running
+record does when it cannot continue. It owns the sweep's duties (requeue
+expired leases, resume parked records, relay what a crash left in the
+outbox, purge done outbox rows and soft-deleted rows past retention,
+idempotency markers past theirs, socket tickets redeemed or expired, and
+auth sessions ended or past their lifetime), the whole work queue, its
+table and statements included, and the leases on a leasable resource,
+with their lock, their token, their wait line, and their waiters. It
+leaves the `org_id` and `EMPTY_UUID` keying rules, a tenant's secret
+among them, the provenance of a worker's context, and the permission
+that enqueues a kind to `context`, database roles, the retention
+periods, and the life of an outbox row to `storage`, and the realtime
+edge with its wait-versus-notify patterns to `network`.
 
 ## ASY-01 Infrastructure is never reached through ambient state
 
@@ -278,7 +277,7 @@ could have re-read; a consumer that breaks when `truncated` is set.
 
 ## ASY-12 Queues absorb outside producers; the consumer owns exactly-once
 
-**Principle.** Work whose producer is outside the platform and cannot
+**Principle.** Work whose producer is outside the system and cannot
 wait goes on a queue with the shape of a hosted queue service. The
 queue delivers at least once and does not deduplicate; the consumer
 dedupes. Dead letters are visible: an audit entry names them and a
@@ -466,7 +465,7 @@ resumes parked records (staggered), rolls periods, relays the outbox,
 and purges done outbox rows, done and failed work items past a
 retention setting (`purge_items(before)`), soft-deleted rows,
 idempotency markers, redeemed or expired socket tickets, and ended
-sessions. A chore, a duty per tenant such as rolling a period, runs
+auth sessions. A chore, a duty per tenant such as rolling a period, runs
 under the tenant's service context, only where one read across tenants
 names it due; a pass past its time budget leaves the next to carry on
 from the last tenant it ran.
@@ -485,7 +484,7 @@ housekeeping; a sweep that is not safe to run twice concurrently; a
 sweep only one elected instance runs; a sweep with no outbox relay,
 so a crash between the core write and its handoff is never repaired;
 a purge missing, so done rows, done or failed work items, idempotency
-markers, socket tickets, or sessions outlive their retention or their
+markers, socket tickets, or auth sessions outlive their retention or their
 lifetime; every parked record resumed in the same instant; a chore that
 asks every tenant on every pass whether it is due; a pass with no time
 budget, or one that starts again at the first tenant each time, so a
@@ -784,16 +783,16 @@ path token written to the access log in the clear.
 
 ## ASY-32 A grant is decided under the anchor's lock
 
-**Principle.** A grant of a resource locks the anchor's row first and
-the request's second, as every write that moves a lease or a line does.
-It lands only while the anchor holds the token it read and no live
-lease, the resource is available, and the request still waits and still
-fits the resource as its row stands under the lock: in its line, within
-its bound. The lease, the anchor, the request's answer, and the rows the
-grant starts land in one commit. A unique index over a resource's active
-leases is a second fence.
+**Principle.** A grant of a leasable resource locks the anchor's row
+first and the request's second, as every write that moves a lease or a
+wait line does. It lands only while the anchor holds the token it read
+and no live lease, the leasable resource is available, and the request
+still waits and still fits the leasable resource as its row stands under
+the lock: in its wait line, within its bound. The lease, the anchor, the
+request's answer, and the rows the grant starts land in one commit. A
+unique index over a leasable resource's active leases is a second fence.
 
-**Source.** Worker Roles, Leases on a Resource.
+**Source.** Worker Roles, Leases on a Leasable Resource.
 
 **Look for.** `grant` in both storage impls: its lock order, its
 conditions, and what it lands in one transaction; the index over the
@@ -803,13 +802,14 @@ namespace.
 **Violation.** A grant that reads the anchor and writes without a lock
 or a condition on `expected_token`, so two grants both land; a grant
 that lands on labels or a bound read before the lock, so an owner's
-update between the two is granted past (`grant_fits`); no unique
-index over a resource's active leases; the grant's outbox rows in a
+update between the two is granted past (`grant_fits`); no unique index
+over a leasable resource's active leases; the grant's outbox rows in a
 second commit; a write that locks the request before the anchor.
 
 **Severity.** high
 
-**Shape.** `scaffold/acme_root/om/src/acme/om/leases/storage/impl/postgres.py`
+**Shape.**
+`scaffold/acme_root/om/src/acme/om/leases/storage/impl/postgres.py`
 
 ## ASY-33 A token only grows, and a lease ends past the skew margin
 
@@ -820,11 +820,11 @@ the expiry is refused. A renewal runs the length it names, or the term,
 within the bound. Only the holder, or the worker whose claim on the
 lease's job still holds, renews or releases a lease. A job's start runs
 the full term, and lands until the job's window and the margin have
-passed. A fence on the resource's side refuses a token below the
-highest it has seen, and stops and resets the resource before it admits
-a higher one.
+passed. A fence on the leasable resource's side refuses a token below
+the highest it has seen, and stops and resets it before it admits a
+higher one.
 
-**Source.** Worker Roles, Leases on a Resource.
+**Source.** Worker Roles, Leases on a Leasable Resource.
 
 **Look for.** The token a grant writes and what an end does to the
 anchor; the bound the sweep and a grant use for a lapsed lease; the
@@ -845,29 +845,30 @@ counted from the answer instead of the send.
 
 **Shape.** `scaffold/acme_root/clients/python/src/acme/client/leases.py`
 
-## ASY-34 One rank order serves every line, and a request gets one lease
+## ASY-34 One rank order serves every wait line, and a request gets one lease
 
-**Principle.** A request names one resource or a selector, and one rank
-order serves every line of a tenant, so a selector request stands in
-each line it matches with one place. A reorder moves one request
-between two neighbours. Every ask is a request that joins the end of
-the line, idempotent by its key: a direct ask never passes anyone
-waiting, an ask asked again joins no line twice, and a request is
-granted once, whichever resource frees first. A resource's line answers
-each request's place and estimate from one replay over what it reads.
+**Principle.** A request names one leasable resource or a selector, and
+one rank order serves every wait line of a tenant, so a selector request
+stands in each wait line it matches with one place. A reorder moves one
+request between two neighbours. Every ask is a request that joins the
+end of the wait line, idempotent by its key: a direct ask never passes
+anyone waiting, an ask asked again joins no line twice, and a request is
+granted once, whichever leasable resource frees first. A leasable
+resource's wait line answers each request's place and estimate from one
+replay over what it reads.
 
-**Source.** Worker Roles, Leases on a Resource.
+**Source.** Worker Roles, Leases on a Leasable Resource.
 
-**Look for.** The rank an ask and a reorder write; how a resource's
-line is read, and how its places and estimates are replayed; the unique
-key on a request, and on the request a lease answers; the path of an
-ask when its resource is free.
+**Look for.** The rank an ask and a reorder write; how a leasable
+resource's wait line is read, and how its places and estimates are
+replayed; the unique key on a request, and on the request a lease
+answers; the path of an ask when its leasable resource is free.
 
-**Violation.** A queue per resource that a selector request joins once
-per line; a reorder that renumbers other requests; a direct ask granted
-ahead of one waiting; one request granted twice when two resources free
-at once; a second request for an ask's key; a line that reads the store
-again for each place it answers.
+**Violation.** A queue per leasable resource that a selector request
+joins once per line; a reorder that renumbers other requests; a direct
+ask granted ahead of one waiting; one request granted twice when two
+leasable resources free at once; a second request for an ask's key; a
+wait line that reads the store again for each place it answers.
 
 **Severity.** high
 
@@ -878,11 +879,12 @@ waits and the kind whether the request may still be granted. A no
 cancels the request, and the next in line is asked. The rows that wake
 the waiter land in the grant's commit, and in the commit of any end of
 its request without a lease. A record waits by parking on
-`ParkReason.RESOURCE`, landed under the request's lock only while the
-request still waits, and a waiter that ends leaves every line.
+`ParkReason.LEASABLE_RESOURCE`, landed under the request's lock only
+while the request still waits, and a waiter that ends leaves every wait
+line.
 
-**Source.** Worker Roles, Leases on a Resource; The Network Layer,
-Long-Running Orchestrations.
+**Source.** Worker Roles, Leases on a Leasable Resource; The Network
+Layer, Long-Running Orchestrations.
 
 **Look for.** The calls to `still_waits` and `may_grant` before a
 grant; `wake_rows` among the grant's rows, and `end_rows` among the
@@ -897,65 +899,65 @@ record asleep; a waiter's end that leaves its requests in line.
 
 **Severity.** high
 
-## ASY-36 A resource kind registers its hooks, and a lease holds no product fact
+## ASY-36 A kind registers its hooks, and a lease holds no product fact
 
-**Principle.** A resource stands for a row of another namespace by a
-registered kind and that row's id. Its owner lands, updates, and retires
-it in the commits of its own row. A kind registers the shape of its ask
-and its hooks as a work kind registers its handler; the ask validates
-its payload against the shape, and the kind may refuse an ask before
-anything of it lands. What a grant starts holds one job at most, a work
-item the lease names by its key. A kind keeps facts of its own about a
-lease in its own table, keyed by the lease's id, and a tenant's history
-lists each lease with the request it answered.
+**Principle.** A leasable resource stands for a row of another namespace
+by a registered kind and that row's id. Its owner lands, updates, and
+retires it in the commits of its own row. A kind registers the shape of
+its ask and its hooks as a work kind registers its handler; the ask
+validates its payload against the shape, and the kind may refuse an ask
+before anything of it lands. What a grant starts holds one job at most,
+a work item the lease names by its key. A kind keeps facts of its own
+about a lease in its own table, keyed by the lease's id, and a tenant's
+history lists each lease with the request it answered.
 
-**Source.** Worker Roles, Leases on a Resource.
+**Source.** Worker Roles, Leases on a Leasable Resource.
 
-**Look for.** `ResourceKind`, `ASK_PAYLOADS`, and the
-`ResourceKindInterface` impls the root registers, and the
+**Look for.** `LeasableResourceKind`, `ASK_PAYLOADS`, and the
+`LeasableResourceKindInterface` impls the root registers, and the
 `AskCheckInterface` checks beside them (`check_ask`); the work rows
 `grant_rows` returns and the `job_key` a grant keeps; where an owner
-registers, updates (`update_statement`), and retires its resources; the
-columns of the `resources` and `leases` tables; `list_leases` and the
-tenant its read is scoped to.
+registers, updates (`update_statement`), and retires its leasable
+resources; the columns of the `leasable_resources` and `leases` tables;
+`list_leases` and the tenant its read is scoped to.
 
-**Violation.** A resource registered or updated in a commit after its
-owner's row, so the two disagree in between, or left live after the
-row is gone; an update that changes a field it does not name; an ask's
-payload stored unchecked; a kind's refusal that leaves the request in
-line; a grant that starts two jobs, or a job its lease does not name; a
-product's column on a lease or a resource; an ask accepted for a kind
-with no hooks; a history read under another tenant's scope, or one read
-per lease.
+**Violation.** A leasable resource registered or updated in a commit
+after its owner's row, so the two disagree in between, or left live
+after the row is gone; an update that changes a field it does not name;
+an ask's payload stored unchecked; a kind's refusal that leaves the
+request in line; a grant that starts two jobs, or a job its lease does
+not name; a product's column on a lease or a leasable resource; an ask
+accepted for a kind with no hooks; a history read under another tenant's
+scope, or one read per lease.
 
 **Severity.** medium
 
-## ASY-37 A freed resource goes to its line, and the sweep catches the rest
+## ASY-37 What frees goes to its wait line; the sweep catches the rest
 
-**Principle.** A grant is a side effect of a resource freeing: a
-release, an expiry, a revocation, or its availability back offers the
-resource to its line at once, and so does its registration or an
-update of its labels. The sweep ends each lease past its expiry
+**Principle.** A grant is a side effect of a leasable resource freeing:
+a release, an expiry, a revocation, or its availability back offers the
+leasable resource to its wait line at once, and so does its registration
+or an update of its labels. The sweep ends each lease past its expiry
 and the margin, expires each request past its wait, takes each request
-for a retired resource out of its line, and offers each free resource,
-each org under its own service context; retention purges ended leases
-and settled requests.
+for a retired leasable resource out of its wait line, and offers each
+free leasable resource, each org under its own service context;
+retention purges ended leases and settled requests.
 
-**Source.** Worker Roles, Leases on a Resource; Maintenance Without a
-Scheduler.
+**Source.** Worker Roles, Leases on a Leasable Resource; Maintenance
+Without a Scheduler.
 
 **Look for.** What `release`, `revoke`, a change of availability,
 `register`, and an owner's update do after their commit, and the owner's
 `offer` after a companion statement; the leases step of the maintenance
 pass; the purge and its retention.
 
-**Violation.** A release that frees a resource and offers it to no one,
-so its line waits for the sweep; a registration or an update that a
-waiting request now matches, offered to no one; a sweep with no leases
-step, so a lapsed lease holds its resource for good; a sweep whose batch
-fills with orgs it skips, such as deleted ones, so a live org's lapsed
-lease never ends; a sweep that reads every org under one context;
-settled rows kept past their retention.
+**Violation.** A release that frees a leasable resource and offers it to
+no one, so its wait line waits for the sweep; a registration or an
+update that a waiting request now matches, offered to no one; a sweep
+with no leases step, so a lapsed lease holds its leasable resource for
+good; a sweep whose batch fills with orgs it skips, such as deleted
+ones, so a live org's lapsed lease never ends; a sweep that reads every
+org under one context; settled rows kept past their retention.
 
 **Severity.** medium
 

@@ -7,8 +7,8 @@ from typing import Any
 import pytest
 from pydantic import Field
 
-from acme.om.base import FrozenMapping, Platform
-from acme.om.events.types.event import Event
+from acme.om.base import FrozenMapping, OmBase
+from acme.om.change_events.types.change_event import ChangeEvent
 from acme.om.outbox.types.row import OutboxRow
 from acme.om.work.types.work_item import WorkItem
 
@@ -20,7 +20,7 @@ NESTED: dict[str, Any] = {
 }
 
 
-class Carrier(Platform):
+class Carrier(OmBase):
     payload: FrozenMapping = Field(default_factory=dict, validate_default=True)
 
 
@@ -92,8 +92,8 @@ def test_the_json_dump_round_trips_through_validation() -> None:
     assert Carrier.model_validate_json(carrier.model_dump_json()) == carrier
 
 
-@pytest.mark.parametrize("entity_type", [Event, OutboxRow, WorkItem])
-def test_every_payload_field_validates_its_default(entity_type: type[Platform]) -> None:
+@pytest.mark.parametrize("entity_type", [ChangeEvent, OutboxRow, WorkItem])
+def test_every_payload_field_validates_its_default(entity_type: type[OmBase]) -> None:
     # Pydantic does not validate a default, so the empty case is
     # Field(default_factory=dict, validate_default=True), or the default is
     # the one dict that escapes the freeze.
@@ -103,7 +103,7 @@ def test_every_payload_field_validates_its_default(entity_type: type[Platform]) 
 
 
 def test_an_entity_payload_is_frozen_all_the_way_down() -> None:
-    event = Event.model_validate(
+    event = ChangeEvent.model_validate(
         {
             "id": "00000000-0000-7000-8000-000000000001",
             "org_id": "00000000-0000-7000-8000-000000000005",
@@ -119,4 +119,4 @@ def test_an_entity_payload_is_frozen_all_the_way_down() -> None:
     assert isinstance(event.payload["who"], MappingProxyType)
     assert event.payload["tags"] == ("a", "b")
     assert event.model_dump(mode="json")["payload"] == NESTED
-    assert Event.model_validate(event.model_dump()) == event
+    assert ChangeEvent.model_validate(event.model_dump()) == event

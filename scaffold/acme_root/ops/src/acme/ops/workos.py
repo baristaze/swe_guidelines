@@ -70,11 +70,11 @@ LEFT_TO_AUTHKIT = (
     ("user invitation URL", "not set: AuthKit's page takes it, then the login initiation URI"),
     ("password reset URL", "not set: no password sign-in is on"),
 )
-# A Acme session's lifetimes, `ACME_SESSION_LIFETIME_SECONDS` and
-# `ACME_SESSION_IDLE_LIFETIME_SECONDS`: the Sessions tab's two bounds match them.
-SESSION_LIFETIME = timedelta(days=30)
+# A Acme session's lifetimes, `ACME_AUTH_SESSION_LIFETIME_SECONDS` and
+# `ACME_AUTH_SESSION_IDLE_LIFETIME_SECONDS`: the Sessions tab's two bounds match them.
+AUTH_SESSION_LIFETIME = timedelta(days=30)
 WEBHOOKS = "the environment's Webhooks page"
-SESSION_IDLE_LIFETIME = timedelta(days=14)
+AUTH_SESSION_IDLE_LIFETIME = timedelta(days=14)
 
 
 @dataclass(frozen=True)
@@ -324,11 +324,11 @@ async def reconcile(desired: Desired, workos: WorkOS, *, apply: bool) -> Outcome
     for field, why in LEFT_TO_AUTHKIT:
         say(f"{field}: {why}")
     say(
-        f"maximum session length: {SESSION_LIFETIME.days} days, a Acme session's absolute "
+        f"maximum session length: {AUTH_SESSION_LIFETIME.days} days, a Acme session's absolute "
         f"lifetime (check it on {tab(desired, 'Sessions')}; no API reads or writes it)"
     )
     say(
-        f"inactivity timeout: {SESSION_IDLE_LIFETIME.days} days, a Acme session's idle "
+        f"inactivity timeout: {AUTH_SESSION_IDLE_LIFETIME.days} days, a Acme session's idle "
         "lifetime (check it on the same tab)"
     )
     if not desired.webhooks:

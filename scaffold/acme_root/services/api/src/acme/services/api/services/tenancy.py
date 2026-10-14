@@ -14,20 +14,21 @@ from acme.services.api.types.tenancy import (
     AddApiKeyRequest,
     ApiKeyPageView,
     ApiKeyView,
+    AuthSessionView,
     CreateTeamOrgRequest,
     DeleteAccountRequest,
     DeleteOrgRequest,
     DeviceSignInView,
     DeviceTokenRequest,
     DevSignInRequest,
-    ExchangeSessionRequest,
+    ExchangeAuthSessionRequest,
     IdentityView,
     InvitationPageView,
     InvitationView,
     InviteMemberRequest,
     IssuedApiKeyView,
+    IssuedAuthSessionView,
     IssuedLoginView,
-    IssuedSessionView,
     LogoutRequest,
     MembershipChoicePageView,
     MembershipChoiceView,
@@ -37,7 +38,6 @@ from acme.services.api.types.tenancy import (
     OrgDeletedView,
     OrgView,
     SecondFactorRequest,
-    SessionView,
     SignedOutView,
     SignInCallbackRequest,
     SignInStartRequest,
@@ -57,7 +57,7 @@ class TenancyServiceInterface(ABC):
     async def start_sign_in(
         self, rctx: RequestContext, body: SignInStartRequest
     ) -> SignInStartView:
-        """Platform-internal: no principal exists yet; the answer is where the
+        """System-internal: no principal exists yet; the answer is where the
         browser goes."""
         ...
 
@@ -65,7 +65,7 @@ class TenancyServiceInterface(ABC):
     async def finish_sign_in(
         self, rctx: RequestContext, body: SignInCallbackRequest
     ) -> IssuedLoginView:
-        """Platform-internal: no principal exists yet; the code comes back."""
+        """System-internal: no principal exists yet; the code comes back."""
         ...
 
     @abstractmethod
@@ -78,7 +78,7 @@ class TenancyServiceInterface(ABC):
 
     @abstractmethod
     async def dev_sign_in(self, rctx: RequestContext, body: DevSignInRequest) -> IssuedLoginView:
-        """Platform-internal, local and test only."""
+        """System-internal, local and test only."""
         ...
 
     @abstractmethod
@@ -87,23 +87,23 @@ class TenancyServiceInterface(ABC):
     ) -> IssuedLoginView: ...
 
     @abstractmethod
-    async def exchange_session(
-        self, ictx: IdentityContext, body: ExchangeSessionRequest
-    ) -> IssuedSessionView:
-        """Platform-internal: the identity carries no tenant; the body chooses one."""
+    async def exchange_auth_session(
+        self, ictx: IdentityContext, body: ExchangeAuthSessionRequest
+    ) -> IssuedAuthSessionView:
+        """System-internal: the identity carries no tenant; the body chooses one."""
         ...
 
     @abstractmethod
     async def get_identity_memberships(
         self, ictx: IdentityContext, cursor: str | None, limit: int
     ) -> MembershipChoicePageView:
-        """Platform-internal: the identity's places, before or across tenants;
+        """System-internal: the identity's places, before or across tenants;
         `cursor` as on `get_users`."""
         ...
 
     @abstractmethod
     async def logout(self, ictx: IdentityContext, body: LogoutRequest | None) -> SignedOutView:
-        """Platform-internal: ending its own sign-in takes the identity stage.
+        """System-internal: ending its own sign-in takes the identity stage.
         Ends the credential presented: a session, a sign-in, or an operator
         token."""
         ...
@@ -197,10 +197,12 @@ class TenancyServiceInterface(ABC):
     async def sso_link(self, ctx: TenantContext, body: SsoLinkRequest) -> SsoLinkView: ...
 
     @abstractmethod
-    async def get_sessions(self, ctx: TenantContext, limit: int) -> list[SessionView]: ...
+    async def get_auth_sessions(self, ctx: TenantContext, limit: int) -> list[AuthSessionView]: ...
 
     @abstractmethod
-    async def revoke_session(self, ctx: TenantContext, session_id: UUID) -> SessionView: ...
+    async def revoke_auth_session(
+        self, ctx: TenantContext, auth_session_id: UUID
+    ) -> AuthSessionView: ...
 
     @abstractmethod
     async def get_api_keys(

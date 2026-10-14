@@ -5,10 +5,10 @@ held to the same bounds."""
 
 from datetime import datetime
 
-from acme.om.base import Platform
+from acme.om.base import OmBase
 
 
-class UploadForm(Platform):
+class UploadForm(OmBase):
     """A form POST of `fields`, in order, then the file, to `url`. The signed
     policy carries the file's content type and its size as the upper bound."""
 
@@ -17,6 +17,6 @@ class UploadForm(Platform):
     expires_at: datetime
 
 
-class DownloadLink(Platform):
+class DownloadLink(OmBase):
     url: str | None
     expires_at: datetime

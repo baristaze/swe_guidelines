@@ -35,6 +35,19 @@ class StartSeconds(RootModel[int]):
     root: Annotated[int, Field(ge=1, le=604800, title='Start Seconds')]
 
 
+class ChangeEventView(BaseModel):
+    """
+    One record of the tenant's append-only stream, paged by `after_seq`.
+    `kind` is "<namespace>.<entity>.<action>", or an audit kind; the payload
+    stays inside, an event is a record and not a second read path.
+    """
+    actor_id: Annotated[UUID, Field(title='Actor Id')]
+    kind: Annotated[str, Field(title='Kind')]
+    produced_at: Annotated[AwareDatetime, Field(title='Produced At')]
+    seq: Annotated[int, Field(title='Seq')]
+    target_id: Annotated[UUID, Field(title='Target Id')]
+
+
 class ConfirmTotpRequest(BaseModel):
     """
     The first code from the authenticator, which confirms the secret.
@@ -79,7 +92,7 @@ class CreateTeamOrgRequest(BaseModel):
 
 class CredentialKind(StrEnum):
     api_key = 'api_key'
-    session_token = 'session_token'
+    auth_session_token = 'auth_session_token'
     login = 'login'
     socket_ticket = 'socket_ticket'
     operator_token = 'operator_token'
@@ -175,20 +188,7 @@ class EndReason(StrEnum):
     retired = 'retired'
 
 
-class EventView(BaseModel):
-    """
-    One record of the tenant's append-only stream, paged by `after_seq`.
-    `kind` is "<namespace>.<entity>.<action>", or an audit kind; the payload
-    stays inside, an event is a record and not a second read path.
-    """
-    actor_id: Annotated[UUID, Field(title='Actor Id')]
-    kind: Annotated[str, Field(title='Kind')]
-    produced_at: Annotated[AwareDatetime, Field(title='Produced At')]
-    seq: Annotated[int, Field(title='Seq')]
-    target_id: Annotated[UUID, Field(title='Target Id')]
-
-
-class ExchangeSessionRequest(BaseModel):
+class ExchangeAuthSessionRequest(BaseModel):
     """
     The org to enter. Presented with the sign-in credential, it opens the
     first session; presented with a session, it is a switch, and that session
@@ -274,6 +274,32 @@ class IssuedTotpSecretView(BaseModel):
     otpauth_uri: Annotated[str | None, Field(title='Otpauth Uri')]
 
 
+class LeasableResourceKind(StrEnum):
+    """
+    A product adds its kinds here, each with the shape of what its ask
+    carries (`ASK_PAYLOADS`) and its hooks (`LeasableResourceKindInterface`).
+    """
+    noop = 'noop'
+
+
+class LeasableResourceView(BaseModel):
+    """
+    A resource and its anchor: the highest token granted on it, and the
+    lease that holds it until when.
+    """
+    available: Annotated[bool, Field(title='Available')]
+    created_at: Annotated[AwareDatetime, Field(title='Created At')]
+    fencing_token: Annotated[int, Field(title='Fencing Token')]
+    held_until: Annotated[AwareDatetime | None, Field(title='Held Until')]
+    id: Annotated[UUID, Field(title='Id')]
+    kind: LeasableResourceKind
+    labels: Annotated[list[str], Field(title='Labels')]
+    lease_id: Annotated[UUID | None, Field(title='Lease Id')]
+    max_term_seconds: Annotated[int, Field(title='Max Term Seconds')]
+    ref_id: Annotated[UUID, Field(title='Ref Id')]
+    retired_at: Annotated[AwareDatetime | None, Field(title='Retired At')]
+
+
 class LeaseStatus(StrEnum):
     active = 'active'
     released = 'released'
@@ -296,8 +322,8 @@ class LeaseView(BaseModel):
     fencing_token: Annotated[int, Field(title='Fencing Token')]
     holder_id: Annotated[UUID, Field(title='Holder Id')]
     id: Annotated[UUID, Field(title='Id')]
+    leasable_resource_id: Annotated[UUID, Field(title='Leasable Resource Id')]
     request_id: Annotated[UUID, Field(title='Request Id')]
-    resource_id: Annotated[UUID, Field(title='Resource Id')]
     started_at: Annotated[AwareDatetime | None, Field(title='Started At')]
     status: LeaseStatus
     term_seconds: Annotated[int, Field(title='Term Seconds')]
@@ -319,7 +345,7 @@ class ExpiresIn(RootModel[int]):
     root: Annotated[int, Field(ge=1, le=3600, title='Expires In')]
 
 
-class OperatorEventView(BaseModel):
+class OperatorChangeEventView(BaseModel):
     """
     The same record as an operator reads it, with the two provenance fields
     a tenant's own feed leaves out: the request that produced it and the app
@@ -416,21 +442,6 @@ class PlaceView(BaseModel):
     request_id: Annotated[UUID, Field(title='Request Id')]
 
 
-class PlatformSizeView(BaseModel):
-    """
-    How big the platform is, what the first responder to an alarm reads
-    before it escalates: live tenants and users, and the events produced in
-    the twenty-four hours from `since` to `counted_at`. The maintenance
-    worker counts it every few minutes, and this is its latest count:
-    `counted_at` says how old the answer is.
-    """
-    counted_at: Annotated[AwareDatetime, Field(title='Counted At')]
-    events_last_24h: Annotated[int, Field(title='Events Last 24H')]
-    since: Annotated[AwareDatetime, Field(title='Since')]
-    tenants: Annotated[int, Field(title='Tenants')]
-    users: Annotated[int, Field(title='Users')]
-
-
 class PurposeUsageView(BaseModel):
     count: Annotated[int, Field(title='Count')]
     pending_count: Annotated[int, Field(title='Pending Count')]
@@ -471,32 +482,6 @@ class RequestStatus(StrEnum):
     expired = 'expired'
 
 
-class ResourceKind(StrEnum):
-    """
-    A product adds its kinds here, each with the shape of what its ask
-    carries (`ASK_PAYLOADS`) and its hooks (`ResourceKindInterface`).
-    """
-    noop = 'noop'
-
-
-class ResourceView(BaseModel):
-    """
-    A resource and its anchor: the highest token granted on it, and the
-    lease that holds it until when.
-    """
-    available: Annotated[bool, Field(title='Available')]
-    created_at: Annotated[AwareDatetime, Field(title='Created At')]
-    fencing_token: Annotated[int, Field(title='Fencing Token')]
-    held_until: Annotated[AwareDatetime | None, Field(title='Held Until')]
-    id: Annotated[UUID, Field(title='Id')]
-    kind: ResourceKind
-    labels: Annotated[list[str], Field(title='Labels')]
-    lease_id: Annotated[UUID | None, Field(title='Lease Id')]
-    max_term_seconds: Annotated[int, Field(title='Max Term Seconds')]
-    ref_id: Annotated[UUID, Field(title='Ref Id')]
-    retired_at: Annotated[AwareDatetime | None, Field(title='Retired At')]
-
-
 class Role(StrEnum):
     owner = 'owner'
     admin = 'admin'
@@ -516,17 +501,6 @@ class SecondFactorRequest(BaseModel):
         extra='forbid',
     )
     totp_code: Annotated[str, Field(max_length=6, min_length=6, title='Totp Code')]
-
-
-class SessionView(BaseModel):
-    """
-    Only the hash of a token is ever kept, so a session view carries no secret.
-    """
-    created_at: Annotated[AwareDatetime, Field(title='Created At')]
-    credential_kind: CredentialKind
-    expires_at: Annotated[AwareDatetime, Field(title='Expires At')]
-    id: Annotated[UUID, Field(title='Id')]
-    revoked_at: Annotated[AwareDatetime | None, Field(title='Revoked At')]
 
 
 class SetTenantCapRequest(BaseModel):
@@ -668,6 +642,21 @@ class StreamTruncatedDetail(BaseModel):
     head: Annotated[int, Field(title='Head')]
 
 
+class SystemSizeView(BaseModel):
+    """
+    How big the system is, what the first responder to an alarm reads
+    before it escalates: live tenants and users, and the events produced in
+    the twenty-four hours from `since` to `counted_at`. The maintenance
+    worker counts it every few minutes, and this is its latest count:
+    `counted_at` says how old the answer is.
+    """
+    change_events_last_24h: Annotated[int, Field(title='Change Events Last 24H')]
+    counted_at: Annotated[AwareDatetime, Field(title='Counted At')]
+    since: Annotated[AwareDatetime, Field(title='Since')]
+    tenants: Annotated[int, Field(title='Tenants')]
+    users: Annotated[int, Field(title='Users')]
+
+
 class TenantCapView(BaseModel):
     """
     An org's own cap on a lane, with who last set it and when.
@@ -803,13 +792,24 @@ class AskRequest(BaseModel):
     model_config = ConfigDict(
         extra='forbid',
     )
-    kind: ResourceKind
+    kind: LeasableResourceKind
     labels: Annotated[Labels | None, Field(title='Labels')] = None
+    leasable_resource_id: Annotated[UUID | None, Field(title='Leasable Resource Id')] = None
     payload: Annotated[dict[str, Any] | None, Field(title='Payload')] = None
-    resource_id: Annotated[UUID | None, Field(title='Resource Id')] = None
     start_seconds: Annotated[StartSeconds | None, Field(title='Start Seconds')] = None
     term_seconds: Annotated[int | None, Field(ge=1, le=604800, title='Term Seconds')] = 60
     wait_seconds: Annotated[int | None, Field(ge=1, le=604800, title='Wait Seconds')] = 3600
+
+
+class AuthSessionView(BaseModel):
+    """
+    Only the hash of a token is ever kept, so a session view carries no secret.
+    """
+    created_at: Annotated[AwareDatetime, Field(title='Created At')]
+    credential_kind: CredentialKind
+    expires_at: Annotated[AwareDatetime, Field(title='Expires At')]
+    id: Annotated[UUID, Field(title='Id')]
+    revoked_at: Annotated[AwareDatetime | None, Field(title='Revoked At')]
 
 
 class FilePageView(BaseModel):
@@ -875,6 +875,14 @@ class IssuedApiKeyView(BaseModel):
     key: Annotated[str | None, Field(title='Key')]
 
 
+class IssuedAuthSessionView(BaseModel):
+    expires_at: Annotated[AwareDatetime, Field(title='Expires At')]
+    org: OrgView
+    role: Role
+    token: Annotated[str, Field(title='Token')]
+    user: UserView
+
+
 class IssuedOperatorTokenView(BaseModel):
     """
     The token in the clear, on this answer only; `id` names it afterwards,
@@ -886,14 +894,6 @@ class IssuedOperatorTokenView(BaseModel):
     id: Annotated[UUID, Field(title='Id')]
     permission: OperatorRole
     token: Annotated[str | None, Field(title='Token')]
-
-
-class IssuedSessionView(BaseModel):
-    expires_at: Annotated[AwareDatetime, Field(title='Expires At')]
-    org: OrgView
-    role: Role
-    token: Annotated[str, Field(title='Token')]
-    user: UserView
 
 
 class IssuedUploadView(BaseModel):
@@ -923,27 +923,17 @@ class LeaseRequestView(BaseModel):
     created_by: Annotated[UUID, Field(title='Created By')]
     end_reason: EndReason | None
     id: Annotated[UUID, Field(title='Id')]
-    kind: ResourceKind
+    kind: LeasableResourceKind
     labels: Annotated[list[str] | None, Field(title='Labels')]
+    leasable_resource_id: Annotated[UUID | None, Field(title='Leasable Resource Id')]
     lease_id: Annotated[UUID | None, Field(title='Lease Id')]
     rank: Annotated[float, Field(title='Rank')]
-    resource_id: Annotated[UUID | None, Field(title='Resource Id')]
     start_seconds: Annotated[int | None, Field(title='Start Seconds')]
     status: RequestStatus
     term_seconds: Annotated[int, Field(title='Term Seconds')]
     wait_until: Annotated[AwareDatetime | None, Field(title='Wait Until')]
     waiter_id: Annotated[UUID | None, Field(title='Waiter Id')]
     waiter_kind: WaiterKind | None
-
-
-class LineView(BaseModel):
-    """
-    A resource and the requests in its line, first first, with each one's
-    place and estimate in the same order.
-    """
-    places: Annotated[list[PlaceView], Field(title='Places')]
-    requests: Annotated[list[LeaseRequestView], Field(title='Requests')]
-    resource: ResourceView
 
 
 class MeView(BaseModel):
@@ -1007,13 +997,13 @@ class OperatorWorkItemView(BaseModel):
 
 class OrgDeletedView(BaseModel):
     """
-    The org is gone for everyone in it: `deleted_at` is when. `session` is
+    The org is gone for everyone in it: `deleted_at` is when. `auth_session` is
     the owner's new session in their personal org, which replaces the one
     that asked, as a switch's does; null when none could be made, and the
     owner signs in again.
     """
+    auth_session: IssuedAuthSessionView | None = None
     deleted_at: Annotated[AwareDatetime, Field(title='Deleted At')]
-    session: IssuedSessionView | None = None
 
 
 class OrgPageView(BaseModel):
@@ -1045,6 +1035,16 @@ class UserPageView(BaseModel):
     """
     items: Annotated[list[UserView], Field(title='Items')]
     next_cursor: Annotated[str | None, Field(title='Next Cursor')]
+
+
+class WaitLineView(BaseModel):
+    """
+    A leasable resource and the requests in its wait line, first first, with
+    each one's place and estimate in the same order.
+    """
+    leasable_resource: LeasableResourceView
+    places: Annotated[list[PlaceView], Field(title='Places')]
+    requests: Annotated[list[LeaseRequestView], Field(title='Requests')]
 
 
 class ApiKeyPageView(BaseModel):

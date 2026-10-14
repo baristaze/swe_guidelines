@@ -1,7 +1,8 @@
-"""Lease routes: an ask, where a request stands, its cancel, a manager's
-reorder, a resource's line, the history of leases, a lease, and its
-renewal, its release, and a manager's revocation. Each function is one call into the leases service;
-the ask runs under the idempotency record, whose id is the request's key."""
+"""Lease routes: an ask, where a request stands, its cancel, a manager's reorder,
+a leasable resource's wait line, the history of leases, a lease, and its
+renewal, its release, and a manager's revocation. Each function is one call
+into the leases service; the ask runs under the idempotency record, whose id
+is the request's key."""
 
 from uuid import UUID
 
@@ -16,10 +17,10 @@ from acme.services.api.types.leases import (
     LeasePageView,
     LeaseRequestView,
     LeaseView,
-    LineView,
     RenewRequest,
     ReorderRequest,
     StandingView,
+    WaitLineView,
 )
 
 router = APIRouter(prefix="/leases", tags=["leases"])
@@ -60,22 +61,22 @@ async def reorder(
     return await leases.reorder(ctx, request_id, body)
 
 
-@router.get("/resources/{resource_id}/line", response_model=LineView)
-async def line(ctx: Ctx, leases: LeasesService, resource_id: UUID) -> LineView:
-    return await leases.line(ctx, resource_id)
+@router.get("/leasable-resources/{leasable_resource_id}/wait-line", response_model=WaitLineView)
+async def wait_line(ctx: Ctx, leases: LeasesService, leasable_resource_id: UUID) -> WaitLineView:
+    return await leases.wait_line(ctx, leasable_resource_id)
 
 
 @router.get("", response_model=LeasePageView)
 async def list_leases(
     ctx: Ctx,
     leases: LeasesService,
-    resource_id: UUID | None = None,
+    leasable_resource_id: UUID | None = None,
     cursor: str | None = None,
     limit: int = LIMIT_DEFAULT,
 ) -> LeasePageView:
     """The history: the org's leases, or one resource's, newest first, ended
     ones included, each with the request it answered, a page at a time."""
-    return await leases.list_leases(ctx, resource_id, cursor, limit)
+    return await leases.list_leases(ctx, leasable_resource_id, cursor, limit)
 
 
 @router.get("/{lease_id}", response_model=LeaseView)

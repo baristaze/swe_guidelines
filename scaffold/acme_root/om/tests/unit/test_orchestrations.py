@@ -31,7 +31,7 @@ from acme.om.orchestrations.rules import (
     stagger,
     with_row_errors,
 )
-from acme.om.orchestrations.steps import UPDATED, step_rows
+from acme.om.orchestrations.steps import UPDATED, orchestration_step_rows
 from acme.om.orchestrations.types.orchestration import (
     FailReason,
     Orchestration,
@@ -117,7 +117,7 @@ def test_a_bound_fails_the_record_and_names_why() -> None:
 
 def test_a_cancel_settles_the_record_keeping_what_it_made() -> None:
     record = a_record(
-        status=OrchestrationStatus.PARKED, park_reason=ParkReason.RESOURCE,
+        status=OrchestrationStatus.PARKED, park_reason=ParkReason.LEASABLE_RESOURCE,
         cursor=7, total=9, applied=6, skipped=1, row_errors=[{"row": 3, "reason": "malformed"}],
     )  # fmt: skip
     now = utcnow()
@@ -257,7 +257,10 @@ async def test_the_parks_on_one_mark_land_one_wake_that_resumes_them_staggered(
             park=ParkReason.PROVIDER_UNAVAILABLE,
         )  # fmt: skip
         await storage.write_orchestration(
-            ctx.org_id, parked, record.version, step_rows(ctx, parked, wake_at=retry_at)
+            ctx.org_id,
+            parked,
+            record.version,
+            orchestration_step_rows(ctx, parked, wake_at=retry_at),
         )
         parks.append(parked)
     wake_rows = [r for r in written if r.kind == work_row_kind(WorkKind.WAKE_PARKED)]
@@ -286,7 +289,7 @@ async def test_the_parks_on_one_mark_land_one_wake_that_resumes_them_staggered(
     assert relayed_key(WorkKind.WAKE_PARKED, wake_rows[0], retry_at) == wake_rows[0].id
     # A park that names no time lands its hint alone, and a wake that names
     # none runs at once.
-    assert len(step_rows(ctx, parks[0])) == 1
+    assert len(orchestration_step_rows(ctx, parks[0])) == 1
     at_once = WakeParkedPayload(reason=ParkReason.PROVIDER_UNAVAILABLE)
     assert not_before(WorkKind.WAKE_PARKED, at_once.model_dump(mode="json")) is None
 
@@ -433,13 +436,13 @@ async def test_a_step_in_flight_lands_nothing_after_a_cancel(world: World) -> No
 async def test_no_wake_revives_a_cancelled_record(world: World) -> None:
     ctx = await world.org()
     orchestrations = world.managers.orchestrations
-    by_id = await parked_record(world, ctx, ParkReason.RESOURCE)
+    by_id = await parked_record(world, ctx, ParkReason.LEASABLE_RESOURCE)
     in_batch = await parked_record(world, ctx)
     ended = {
         record.id: await orchestrations.cancel(ctx, record.id, "gave up")
         for record in (by_id, in_batch)
     }
-    assert await orchestrations.wake(ctx, ParkReason.RESOURCE, by_id.id) == 0
+    assert await orchestrations.wake(ctx, ParkReason.LEASABLE_RESOURCE, by_id.id) == 0
     assert await orchestrations.wake(ctx, ParkReason.PROVIDER_UNAVAILABLE) == 0
     for record_id in ended:
         with pytest.raises(ValidationFailed):
@@ -457,7 +460,7 @@ async def test_a_cancel_takes_the_permission_a_resume_takes(world: World) -> Non
         org_id=ctx.org_id,
         role=Role.VIEWER,
         permissions=ROLE_PERMISSIONS[Role.VIEWER],
-        credential_kind=CredentialKind.SESSION_TOKEN,
+        credential_kind=CredentialKind.AUTH_SESSION_TOKEN,
     )
     with pytest.raises(NotAuthorized):
         await orchestrations.resume(viewer, parked.id)

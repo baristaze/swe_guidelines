@@ -1,0 +1,16 @@
+// Taking up a new session is one act too: every answer fetched under the
+// old one goes, and the new token replaces the old in one write. Signing in,
+// signing up, and switching orgs all land here, so no cache of the old tenant
+// is ever shown under the new one, and no moment passes with no token held:
+// a signed-in page never sees the tab signed out on its way to the new
+// session. The signed-in shell is keyed by the org (routes.tsx), so the new
+// org mounts it afresh: every screen reads again under the new session, and
+// the realtime provider opens a new socket.
+import type { IssuedAuthSessionView } from "@acme/client";
+import { useAuthSessionStore } from "../store/authSession";
+import { queryClient } from "./queryClient";
+
+export function adoptAuthSession(issued: Pick<IssuedAuthSessionView, "token" | "org">): void {
+  queryClient.clear();
+  useAuthSessionStore.getState().setAuthSession(issued.token, issued.org.slug);
+}

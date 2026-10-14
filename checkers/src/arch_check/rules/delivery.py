@@ -580,7 +580,7 @@ def query_and_zustand(project: Project) -> Iterator[Violation]:
 EXCEPTION_BUILTINS = frozenset(
     n for n in dir(builtins) if isinstance(getattr(builtins, n), type) and issubclass(getattr(builtins, n), BaseException)
 )
-ROOTS = frozenset({"PlatformException", "InfraException"})
+ROOTS = frozenset({"OmException", "InfraException"})
 
 
 def class_bases(project: Project, *prefixes: str) -> dict[str, set[str]]:
@@ -603,36 +603,34 @@ def reaches(name: str, bases: dict[str, set[str]], targets: frozenset[str], seen
     return any(reaches(b, bases, targets, seen) for b in bases.get(name, ()))
 
 
-def platform_prefixes(project: Project) -> tuple[str, ...]:
+def system_prefixes(project: Project) -> tuple[str, ...]:
     return tuple(project.sub(n) for n in ("om", "infra", "integrations", "gateway", "services", "workers"))
 
 
 @rule(
     "DEL-18",
     coverage="partial",
-    summary="Every platform exception roots at PlatformException or InfraException; the OM imports no web framework.",
+    summary="Every system exception roots at OmException or InfraException; the OM imports no web framework.",
 )
-def exceptions_root_at_the_platform(project: Project) -> Iterator[Violation]:
-    """Every platform exception carries a status and a code by its root, and the OM never formats HTTP.
+def exceptions_root_at_om_or_infra(project: Project) -> Iterator[Violation]:
+    """Every system exception carries a status and a code by its root, and the OM never formats HTTP.
 
     Every public class under `<pkg>.om`, `infra`, `integrations`,
     `gateway`, `services`, or `workers` that derives from a built-in
     exception (followed by name across those packages) derives from
-    `PlatformException` or `InfraException`. A class whose name starts
+    `OmException` or `InfraException`. A class whose name starts
     with `_` is private and exempt. Nothing under `<pkg>.om` imports
     `fastapi` or `starlette`. Shapes, and unavailable versus 500, are
     judged.
     """
-    prefixes = platform_prefixes(project)
+    prefixes = system_prefixes(project)
     bases = class_bases(project, *prefixes)
     for file, tree in project.trees(*prefixes):
         for cls in classes(tree):
             if cls.name.startswith("_") or cls.name in ROOTS:
                 continue
             if reaches(cls.name, bases, EXCEPTION_BUILTINS) and not reaches(cls.name, bases, ROOTS):
-                yield Violation.at(
-                    file.rel, cls, f"{cls.name} is an exception rooted at neither PlatformException nor InfraException"
-                )
+                yield Violation.at(file.rel, cls, f"{cls.name} is an exception rooted at neither OmException nor InfraException")
     for file in project.modules_under(project.sub("om")):
         for imp in project.imports(file):
             if any(is_under(imp.module, w) for w in ("fastapi", "starlette")):
@@ -772,7 +770,7 @@ def standard_logging(project: Project) -> Iterator[Violation]:
     for file, tree in project.trees():
         for imp in project.imports(file):
             if any(is_under(imp.module, lib) for lib in others):
-                yield Violation.at(file.rel, imp.node, f"imports {imp.module}; {library} is the platform logger")
+                yield Violation.at(file.rel, imp.node, f"imports {imp.module}; {library} is the system logger")
         if boot(project, file, patterns):
             continue
         names = imported_names(project, file)
@@ -809,7 +807,7 @@ def telemetry_used_directly(project: Project) -> Iterator[Violation]:
 
     Nothing imports `statsd`, `datadog`, or `newrelic`, and no class is
     named `*TracerInterface`, `*MetricsInterface`,
-    `*TelemetryInterface`, `PlatformTracer`, or `PlatformMetrics`. A
+    `*TelemetryInterface`, `SystemTracer`, or `SystemMetrics`. A
     branch on whether tracing is configured is judged.
 
     Option `[tool.arch-check.options.DEL-20]`: `metrics` (default
@@ -820,7 +818,7 @@ def telemetry_used_directly(project: Project) -> Iterator[Violation]:
     """
     metrics = project.option("DEL-20", "metrics", "prometheus_client", {"metrics"})
     others = [lib for lib in ("statsd", "datadog", "newrelic") if not is_under(lib, metrics) and not is_under(metrics, lib)]
-    wrapper = re.compile(r"^(\w*(Tracer|Metrics|Telemetry)Interface|Platform(Tracer|Metrics))$")
+    wrapper = re.compile(r"^(\w*(Tracer|Metrics|Telemetry)Interface|System(Tracer|Metrics))$")
     for file, tree in project.trees():
         for imp in project.imports(file):
             if any(is_under(imp.module, lib) for lib in others):

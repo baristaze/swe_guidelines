@@ -9,9 +9,9 @@ import { createRoot } from "react-dom/client";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { createMemoryRouter, RouterProvider } from "react-router-dom";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import type { FlagsView, IssuedSessionView, MeView, MembershipChoiceView, OrgView, UserView } from "@acme/client";
+import type { FlagsView, IssuedAuthSessionView, MeView, MembershipChoiceView, OrgView, UserView } from "@acme/client";
 import { keys } from "../queries/keys";
-import { useSessionStore } from "../store/session";
+import { useAuthSessionStore } from "../store/authSession";
 import { queryClient } from "./queryClient";
 import { routes } from "./routes";
 
@@ -74,12 +74,12 @@ function answer(path: string): unknown {
   throw new Error(`no read for ${path}`);
 }
 
-function exchange(orgId: string): IssuedSessionView {
+function exchange(orgId: string): IssuedAuthSessionView {
   const slug = (Object.keys(orgs) as Slug[]).find((key) => orgs[key].id === orgId)!;
-  return { token: tokenOf(slug), expires_at: "2099-01-01T00:00:00Z", org: orgs[slug], user, role: "owner" } as IssuedSessionView;
+  return { token: tokenOf(slug), expires_at: "2099-01-01T00:00:00Z", org: orgs[slug], user, role: "owner" } as IssuedAuthSessionView;
 }
 
-net.token = () => useSessionStore.getState().token;
+net.token = () => useAuthSessionStore.getState().token;
 net.get = (path) => {
   try {
     return Promise.resolve(answer(path));
@@ -128,12 +128,12 @@ async function open(path: string) {
 beforeEach(() => {
   queryClient.clear();
   net.calls.length = 0;
-  useSessionStore.getState().setSession(tokenOf("ajax"), "ajax");
+  useAuthSessionStore.getState().setAuthSession(tokenOf("ajax"), "ajax");
   root = createRoot(container);
 });
 afterEach(async () => {
   await act(async () => root.render(null));
-  useSessionStore.getState().clear();
+  useAuthSessionStore.getState().clear();
 });
 
 it("shows the new org's home after a switch from the chip, read once under the new session", async () => {

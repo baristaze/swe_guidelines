@@ -30,8 +30,8 @@ to answer, decide them as the conventions' step 4 says:
   composed only when an operation exercises it: `Trackable` needs an
   update, `SoftDeletable` a delete. "Append-only" means neither: the
   record is `Identifiable` and carries its time in a field of its own,
-  `created_at` or a name of its own like the event's `produced_at`
-  (`om/src/<name>/om/events/types/event.py`), never read out of its id.
+  `created_at` or a name of its own like the change event's `produced_at`
+  (`om/src/<name>/om/change_events/types/change_event.py`), never read out of its id.
   Unless `--role` says otherwise, its role is `activity`;
 - whether concurrent edits of a `Trackable` entity matter. When they
   do, the entity carries a `version`;
@@ -77,7 +77,7 @@ table's sibling by scope, with its policy in its role's first migration:
 | `om/tests/unit/test_session_scope.py` (when `<ns>` is new) | the Postgres impl in `IMPL_INTERFACES` |
 | `om/src/<name>/om/storage/roles.py`, `scopes.py` | the table in `TABLE_ROLES` and in `TABLE_SCOPES` |
 | `om/src/<name>/om/<ns>/README.md` | the noun, what can happen to it, the rules that hold |
-| `om/src/<name>/om/exceptions.py` (when a leaf is needed) | `<Ns>Exception(PlatformException)` once, then leaves that multiply-inherit a shape (`NotFound`, `Conflict`) |
+| `om/src/<name>/om/exceptions.py` (when a leaf is needed) | `<Ns>Exception(OmException)` once, then leaves that multiply-inherit a shape (`NotFound`, `Conflict`) |
 | `workers/maintenance/src/<name>/workers/maintenance/main.py` | the namespace in `purges`, and, for a `SoftDeletable` entity, its purge past retention in `across`, as `media` is |
 | `services/api/src/<name>/services/api/types/<ns>.py`, `services/<ns>.py`, `services/impl/<ns>.py`, `routers/<ns>.py` (unless `--no-api`) | the views and requests, the service interface, its impl, and the routes, shape `media` |
 | `services/api/src/<name>/services/api/services/__init__.py`, `services/impl/root.py`, `gateway/resolve.py`, `routers/__init__.py` (when `<ns>` is new to the API) | the service getter, its impl built over the managers, its `<Ns>Service` alias, and its router in `HOSTED` |

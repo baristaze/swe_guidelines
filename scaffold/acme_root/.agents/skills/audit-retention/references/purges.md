@@ -78,24 +78,24 @@ Across tenants, once a pass:
 
 | Purge | Storage method | Deletes | Kept for |
 |---|---|---|---|
-| tenancy | `purge_deleted` | removed users, then their memberships; removed memberships; revoked or expired API keys; expired sessions; closed or expired invitations | `tenancy_retention_days`, 30 |
+| tenancy | `purge_deleted` | removed users, then their memberships; removed memberships; revoked or expired API keys; expired auth sessions; closed or expired invitations | `tenancy_retention_days`, 30 |
 | tenancy | `purge_deleted` | expired socket tickets | `socket_ticket_retention_hours`, 24 |
 | tenancy | `purge_sign_in_delays` | the sign-in delays of addresses that stopped failing | `sign_in_delay_retention_hours`, 720 |
 | idempotency | `purge_records` | finished or released records; markers an abandoned attempt still holds | `idempotency_retention_hours`, 24; an attempt older than ten pending leases of two minutes |
-| events | `trim` | each living org's events older than the retention, moving its floor in the same statement | `event_retention_days`, 90; 0 keeps every event |
+| change_events | `trim` | each living org's change events older than the retention, moving its floor in the same statement | `change_event_retention_days`, 90; 0 keeps every change event |
 | orchestrations | `purge_settled` | settled records | the options' `retention`, 30 days |
-| leases | `purge_settled` | ended leases; settled requests; retired resources no lease holds | the options' `retention`, 30 days |
+| leases | `purge_settled` | ended leases; settled requests; retired leasable resources no lease holds | the options' `retention`, 30 days |
 | media | `read_purgeable`, then `purge_files_across_tenants` | a deleted file's object and row; an upload never confirmed | `media_retention_days`, 1; `media_pending_expiry_hours`, 24 |
 | outbox | `purge_done` | relayed rows, and rows that failed for good, in two statements | `outbox_retention_days`, 8 |
 | work | `purge_items` | done and failed items | `work_retention_days`, 30 |
 
-Per tenant, for an org deleted past `tenancy_retention_days` (a
-personal org goes at the next pass): `purge_tenant` of media (every
-file, the object first), tenancy (users, memberships, API keys,
-sessions, socket tickets, invitations), events (the stream, then its
-cursor), orchestrations, and leases (resources, leases, requests). The
-org row stays, marked purged, as the record.
+Per tenant, for an org deleted past `tenancy_retention_days` (a personal
+org goes at the next pass): `purge_tenant` of media (every file, the
+object first), tenancy (users, memberships, API keys, auth sessions,
+socket tickets, invitations), change events (the stream, then its
+cursor), orchestrations, and leases (leasable resources, leases,
+requests). The org row stays, marked purged, as the record.
 
 No purge reaches `core.orgs`, `core.identities` (erased with the
-person's account), `activity.event_cursors` beyond a purged tenant's,
-or `admin.platform_sizes` (one row the sweep's tally rewrites).
+person's account), `activity.change_event_cursors` beyond a purged tenant's,
+or `admin.system_sizes` (one row the sweep's tally rewrites).

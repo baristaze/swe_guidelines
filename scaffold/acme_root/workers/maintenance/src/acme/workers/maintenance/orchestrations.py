@@ -36,7 +36,7 @@ from acme.om.work.types.work_item import WakeParkedPayload, WorkItem
 
 log = logging.getLogger(__name__)
 
-StepFn = Callable[[TenantContext, Orchestration], Awaitable[Orchestration]]
+OrchestrationStepFn = Callable[[TenantContext, Orchestration], Awaitable[Orchestration]]
 """One step of a kind: `OrchestrationsManagerInterface.step_noop`, or the step
 of the namespace whose rows a product's kind changes."""
 
@@ -48,7 +48,7 @@ class OrchestrationHandlerImpl(WorkHandlerInterface):
     def __init__(
         self,
         orchestrations: OrchestrationsManagerInterface,
-        steps: Mapping[OrchestrationKind, StepFn],
+        steps: Mapping[OrchestrationKind, OrchestrationStepFn],
     ) -> None:
         self._orchestrations = orchestrations
         self._steps = steps

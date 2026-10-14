@@ -1,0 +1,21 @@
+from datetime import datetime
+
+from sqlalchemy import BigInteger
+from sqlalchemy.orm import Mapped, mapped_column
+
+from acme.om.storage.tables.base import Base, GlobalIdentifiableMixin
+
+
+class SystemSizes(GlobalIdentifiableMixin, Base):
+    """The system's size as the sweep last counted it: one row, the
+    system's own, whose id is `EMPTY_UUID`. It lives in the `admin` role,
+    which only this count writes, so the operator plane's read of it never
+    counts a role the application writes to. Derived: the next count
+    rebuilds it."""
+
+    __tablename__ = "system_sizes"
+    tenants: Mapped[int] = mapped_column(BigInteger)
+    users: Mapped[int] = mapped_column(BigInteger)
+    change_events_last_24h: Mapped[int] = mapped_column(BigInteger)
+    since: Mapped[datetime]
+    counted_at: Mapped[datetime]

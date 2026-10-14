@@ -79,7 +79,7 @@ class TenancyOrgManagerInterface(ABC):
 
     @abstractmethod
     async def delete_personal_org(self, ctx: TenantContext) -> Org | None:
-        """Platform-internal, the last step of `DELETE_ACCOUNT`: deletes the
+        """System-internal, the last step of `DELETE_ACCOUNT`: deletes the
         caller's tenant when it is a personal org whose person is gone, and
         announces it, so its sockets close. A deleted personal org keeps no
         retention, so the sweep purges every row of it at its next pass
@@ -109,7 +109,7 @@ class TenancyOrgManagerInterface(ABC):
 
     @abstractmethod
     async def delete_closed_org(self, ctx: TenantContext) -> Org | None:
-        """Platform-internal, the last step of `DELETE_ORG`, on the service
+        """System-internal, the last step of `DELETE_ORG`, on the service
         role only (NotAuthorized otherwise): soft-deletes the caller's closed
         team org, whoever closed it, and announces it, so its sockets close.
         The sweep purges it once the retention has passed. None, and nothing

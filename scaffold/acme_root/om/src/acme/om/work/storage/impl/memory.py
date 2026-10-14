@@ -112,7 +112,7 @@ class WorkStorageMemoryImpl(MemoryStorageBase, WorkStorageInterface):
                     "lease_expires_at": now + lease,
                     "attempts": attempts_after_claim(item.attempts),
                     "updated_at": now,
-                    "updated_by": EMPTY_UUID,  # the claim is the platform's write
+                    "updated_by": EMPTY_UUID,  # the claim is the system's write
                 }
             )
             self._items[item.id] = (org_id, claimed)

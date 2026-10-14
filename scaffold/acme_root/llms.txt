@@ -6,18 +6,18 @@ This file is the knowledge map. Each section lists the documents one
 audience is served; a document not listed under an audience is not
 served to it. Exposure is by listing, never by folder.
 
-## Platform developers
+## System developers
 
 - [README](README.md): what Acme is, the quick start with the local URLs and sign-ins, set up and check, deploy and operate, and the layout
 - [Architecture](specs/architecture.md): the guideline's pin, the substitutions, and the deviations, each linking its decision record under docs/adr/
 - [What Acme is made of](om/README.md): the nouns and how they relate, for a reader with no code
-- [Tenancy](om/src/acme/om/tenancy/README.md): orgs, identities, users, memberships, invitations, sessions, API keys, socket tickets, the operator plane, and deletion
-- [Events](om/src/acme/om/events/README.md): the org's stream, its gapless sequence above a floor, and audit entries
+- [Tenancy](om/src/acme/om/tenancy/README.md): orgs, identities, users, memberships, invitations, auth sessions, API keys, socket tickets, the operator plane, and deletion
+- [Change events](om/src/acme/om/change_events/README.md): the org's stream, its gapless sequence above a floor, and audit entries
 - [Outbox rows](om/src/acme/om/outbox/README.md): the note written beside every change, and its relay
 - [Idempotency records](om/src/acme/om/idempotency/README.md): the outcome of a request that may arrive twice
 - [Work items](om/src/acme/om/work/README.md): background jobs, the claim, the lease, and the dead letter
 - [Orchestrations](om/src/acme/om/orchestrations/README.md): long-running records, a step at a time, that park or fail
-- [Leases](om/src/acme/om/leases/README.md): a resource one holder uses at a time, its lease under a fencing token, and the line in front of it
+- [Leases](om/src/acme/om/leases/README.md): a leasable resource one holder uses at a time, its lease under a fencing token, and the wait line in front of it
 - [Files](om/src/acme/om/media/README.md): files as references, the bounded upload straight to the store, and the sweep
 - [Infrastructure](infra/README.md): cache, buckets, topics, queues, secrets, flags, outages, observability; what each promises and which twin runs where
 - [Integrations](integrations/README.md): the identity provider, its twin, the absent provider, and the webhook check
@@ -37,7 +37,7 @@ served to it. Exposure is by listing, never by folder.
 - [The TypeScript client](clients/typescript/README.md): the one client every browser app imports
 - [The Python client](clients/python/README.md): the one client every Python caller goes through
 
-## Platform operators
+## System operators
 
 - [Operations](ops/README.md): roles, profiles, credentials, signals, the ops binary, the skills, the audits, what an operator never does
 - [Audit tools](ops/audit/README.md): what the audit skills run
@@ -59,5 +59,5 @@ served to it. Exposure is by listing, never by folder.
 - [What Acme is made of](om/README.md): the nouns and how they relate, for a reader with no code
 - [Tenancy](om/src/acme/om/tenancy/README.md): orgs, people, roles, invitations, single sign-on, credentials, deleting a team org you own, and deleting your account
 - [Files](om/src/acme/om/media/README.md): the files an org keeps, their bounds, and the storage used
-- [Events](om/src/acme/om/events/README.md): the org's diary
+- [Change events](om/src/acme/om/change_events/README.md): the org's diary
 - [The command line](apps/cli/README.md): the terminal client and its exit codes

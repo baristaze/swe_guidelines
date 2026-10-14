@@ -146,7 +146,7 @@ class FakeApi:
                 200,
                 json={
                     "id": str(uuid4()),
-                    "credential_kind": "session_token",
+                    "credential_kind": "auth_session_token",
                     "created_at": NOW,
                     "expires_at": NOW,
                     "revoked_at": NOW,
@@ -179,7 +179,7 @@ class FakeApi:
             return httpx.Response(201, json={"api_key": key, "key": "key_1"})
         if (method, path) == ("POST", "/v1/realtime/tickets"):
             return httpx.Response(201, json={"ticket": "tkt_1", "expires_in_seconds": 30})
-        if (method, path) == ("GET", "/v1/events"):
+        if (method, path) == ("GET", "/v1/change-events"):
             after = int(request.url.params.get("after_seq", 0))
             return httpx.Response(200, json=[e for e in self.events if e["seq"] > after])
         parts = path.split("/")
@@ -213,7 +213,7 @@ class FakeSocket:
     def push(self, event: dict[str, Any]) -> None:
         payload = {k: event[k] for k in ("kind", "target_id", "seq", "actor_id")}
         self.frames.put_nowait(
-            json.dumps({"type": "event", "topic": "entity_changed", "payload": payload})
+            json.dumps({"type": "change_event", "topic": "entity_changed", "payload": payload})
         )
 
     async def recv(self) -> str | bytes:

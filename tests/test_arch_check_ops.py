@@ -147,12 +147,12 @@ MAP = """# Acme
 
 Each section lists what one audience is served.
 
-## Platform developers
+## System developers
 
 - [README](README.md): what Acme is
 - [Guide](https://example.com/guide): the public guide
 
-## Platform operators
+## System operators
 
 - [Ops](ops/README.md): roles and signals
 

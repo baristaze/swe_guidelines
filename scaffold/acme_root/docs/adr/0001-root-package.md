@@ -18,5 +18,5 @@ root.
 
 ## Consequences
 
-Imports read `from acme.om.base import Platform`. Every new distribution
+Imports read `from acme.om.base import OmBase`. Every new distribution
 uses the `src/acme/...` layout and never adds `acme/__init__.py`.

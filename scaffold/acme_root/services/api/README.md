@@ -15,7 +15,7 @@ A request passes four layers, each in its own folder under
   and the request's deadline, the credential, rate limits, idempotency,
   the error envelope, and the webhook's signed body.
 - **Routers** (`routers/`). One module per namespace: tenancy with the
-  operator plane, events, media, and webhooks. Each route makes one call
+  operator plane, change events, media, and webhooks. Each route makes one call
   into a service.
 - **Services** (`services/`). One interface per namespace, and its impl in
   `services/impl/`. An impl translates the request, calls a manager or a
@@ -37,10 +37,10 @@ app, and `main.py` is the `acme-api` command: `serve`, `migrate`,
   finish a device sign-in for the command line (`/v1/auth/device`,
   `/v1/auth/device/token`). Confirm an operator's second factor on a
   sign-in (`/v1/auth/second-factor`). List my places; exchange the
-  login, once, or switch a session, for a session in one org; sign out
+  login, once, or switch an auth session, for an auth session in one org; sign out
   (`/v1/auth/memberships`, `/v1/auth/sessions`, `/v1/auth/logout`).
   The sign-out ends the credential presented, whichever a person holds:
-  a session, a login (with or without its second factor), or an
+  an auth session, a login (with or without its second factor), or an
   operator token; an API key has none and is `401`. It takes an optional
   `return_to`, one of this environment's `ACME_SIGN_OUT_RETURN_URIS`,
   and answers the row it ended with `provider_logout_url`: WorkOS's
@@ -53,15 +53,15 @@ app, and `main.py` is the `acme-api` command: `serve`, `migrate`,
 - **Me.** The current org, my user, my identity, and my display name;
   a new team org I own. (`/v1/orgs/current`, `/v1/me`,
   `/v1/me/identity`, `/v1/orgs`)
-- **Delete my account.** From a session, with the account's email typed
+- **Delete my account.** From an auth session, with the account's email typed
   to confirm: the account goes at once, in every org, and the answer
   names the identity provider's logout, as a sign-out does. `409
   last_owner` names each team org the person is the last owner of, in
   the envelope's `last_owner.orgs`; `403 operator_role_held` refuses an
   operator. (`POST /v1/me/deletion`, ADR 0041)
-- **Delete this organization.** From an owner's session, with the
+- **Delete this organization.** From an owner's auth session, with the
   org's name typed to confirm: everyone in the team org loses it at
-  once, and the answer carries the owner's new session in their
+  once, and the answer carries the owner's new auth session in their
   personal org. `403 not_authorized` refuses an admin, a member, and an
   api key; `409 personal_org_fixed` refuses a personal org.
   (`POST /v1/orgs/current/deletion`, ADR 0042)
@@ -76,9 +76,9 @@ app, and `main.py` is the `acme-api` command: `serve`, `migrate`,
   sign-on or proves a domain. (`/v1/invitations`,
   `/v1/invitations/{invitation_id}/resend`,
   `/v1/invitations/{invitation_id}`, `/v1/orgs/current/sso-link`)
-- **Credentials.** My live sessions and revoking one; the org's API
+- **Credentials.** My live auth sessions and revoking one; the org's API
   keys, creating one, revoking one; a ticket for the live channel.
-  (`/v1/sessions`, `/v1/api-keys`, `/v1/realtime/tickets`)
+  (`/v1/auth/sessions`, `/v1/api-keys`, `/v1/realtime/tickets`)
 - **Files.** Starting an upload, under an Idempotency-Key; the org's
   stored files a page at a time; a file, and deleting it; the form that
   posts its bytes straight to the store, or the bytes through the API
@@ -87,17 +87,18 @@ app, and `main.py` is the `acme-api` command: `serve`, `migrate`,
   the org's storage used. (`/v1/media/files`,
   `/v1/media/files/{file_id}`, `.../upload`, `.../content`,
   `.../confirm`, `.../download`, `/v1/media/usage`)
-- **Events.** The org's diary after a sequence number. (`/v1/events`)
-- **Leases.** Ask for a resource, by its id or by a selector, under an
-  idempotency key; read where the request stands, its place and its
-  estimate, or its lease; cancel it; read a resource's line, with each
-  place and estimate, and the history of leases, newest first, a page
-  at a time; renew a lease, for a length it names or its term again,
-  and release it, as its holder. The worker that runs a lease's job
-  acts through the manager, not a route. A manager reorders a request
-  and revokes a lease. (`/v1/leases/requests`,
+- **Change events.** The org's diary after a sequence number. (`/v1/change-events`)
+- **Leases.** Ask for a leasable resource, by its id or by a selector,
+  under an idempotency key; read where the request stands, its place and
+  its estimate, or its lease; cancel it; read a leasable resource's
+  line, with each place and estimate, and the history of leases, newest
+  first, a page at a time; renew a lease, for a length it names or its
+  term again, and release it, as its holder. The worker that runs a
+  lease's job acts through the manager, not a route. A manager reorders
+  a request and revokes a lease. (`/v1/leases/requests`,
   `/v1/leases/requests/{request_id}`, `.../cancel`, `.../reorder`,
-  `/v1/leases/resources/{resource_id}/line`, `/v1/leases`,
+  `/v1/leases/leasable-resources/{leasable_resource_id}/wait-line`,
+  `/v1/leases`,
   `/v1/leases/{lease_id}`, `.../renew`, `.../release`, `.../revoke`,
   ADRs 0086, 0094, and 0098)
 - **The identity provider's deliveries.** Outside `/v1`, since their
@@ -109,18 +110,18 @@ app, and `main.py` is the `acme-api` command: `serve`, `migrate`,
   single-use ticket. (`/v1/realtime`)
 - **The operator plane.** For an identity on the operator allowlist,
   across every org: create an org with its owner, add a member, read
-  an org, its members, and its events, list every org a page at a
+  an org, its members, and its change events, list every org a page at a
   time, delete a team org as its owner does (closed for everyone in it
   at once; the worker ends its providers and then deletes it; a
   personal org is refused), send one of an org's failed work items back
   to the queue, set, read, or clear an org's own cap on a lane (the
   most items it holds claimed there at once, in place of the lane's
-  cap; `404` where it has none), and read the platform's size: the
-  tenant count, the user count, and the events of twenty-four hours,
+  cap; `404` where it has none), and read the system's size: the
+  tenant count, the user count, and the change events of twenty-four hours,
   as the maintenance worker last counted them, with the moment it did
   (`404` before its first count; the route counts nothing).
   (`/v1/admin/orgs`, `/v1/admin/orgs/{org_id}`,
-  `/v1/admin/orgs/{org_id}/members`, `/v1/admin/orgs/{org_id}/events`,
+  `/v1/admin/orgs/{org_id}/members`, `/v1/admin/orgs/{org_id}/change-events`,
   `/v1/admin/orgs/{org_id}/work/{item_id}/requeue`,
   `/v1/admin/orgs/{org_id}/work/lanes/{lane}/cap`, `/v1/admin/size`). A read route
   needs an operator who may read; a write route one who may write.
@@ -160,8 +161,8 @@ app, and `main.py` is the `acme-api` command: `serve`, `migrate`,
   status. A 5xx says `internal error` and the real message goes to the
   log under the request id; the admission 503 alone says which bound it
   hit, with a `Retry-After`.
-- **Bearer by prefix.** The credential's prefix says what it is: a
-  session token, an API key, a login, a ticket, or an operator token. A missing or
+- **Bearer by prefix.** The credential's prefix says what it is: an
+  auth session token, an API key, a login, a ticket, or an operator token. A missing or
   invalid one is a 401; a route asked with the wrong kind is refused.
 - **The answer never waits for the relay.** A write commits its
   outbox rows before it answers. Their relay, the push and the queued
@@ -186,7 +187,7 @@ app, and `main.py` is the `acme-api` command: `serve`, `migrate`,
   shares one budget. Past a budget the answer is a 429,
   `rate_limited`, in the one envelope, with a `Retry-After` in
   seconds: the time left on the window. There are three budgets.
-  - **Per credential.** Every session and API key has a budget of
+  - **Per credential.** Every auth session and API key has a budget of
     reads (`GET`, `HEAD`) and one of writes, spent once the credential
     resolves (`ACME_CREDENTIAL_RATE_LIMIT_READS`, `_WRITES`, over
     `ACME_CREDENTIAL_RATE_WINDOW_SECONDS`). Two people behind one
@@ -221,7 +222,7 @@ app, and `main.py` is the `acme-api` command: `serve`, `migrate`,
   audience, and a narrower view is the client's filter. Every push carries the
   org's stream position, and each client holds a contiguous cursor, so
   a push the server withheld would be a gap. The replay of
-  `/v1/events` that fills a gap is unscoped, and it would hand back
+  `/v1/change-events` that fills a gap is unscoped, and it would hand back
   what was withheld. Filtering at the server needs a scoped replay and
   a frame counter per subscription, a second protocol, and it waits
   until the channel's traffic makes the filter worth that protocol.
@@ -238,7 +239,7 @@ container the server does.
 | `serve` | Runs the process. |
 | `migrate` | Applies every role's migration chain (`--all`) or one role's. Idempotent per revision. `migrate ensure-logins` makes the database logins, as the master, on each database a role lives on. |
 | `bootstrap` | Seeds a fresh local environment with one org and its owner; `--operator` puts the owner on the operator allowlist with write. Local only, like every seed. |
-| `grant-operator` | The grant job: `--email <e> --permission read\|write` puts an identity on the operator allowlist, `--email <e> --disable` takes it off, and `--email <e> --mint-token provisioner\|smoke [--expires-in N]` mints that identity's operator token into the secret store as `acme-<env>-<holder>-token`, never printed in the cloud. On a local database it prints the token instead, and `--mint-token operator` mints the local read operator's `read` token, which `make seed` writes into `~/.config/acme/ops/local.env`; a cloud refuses it. An operator signs up first; the platform's own identities (`@platform.acme.invalid`) are made by their first grant. |
+| `grant-operator` | The grant job: `--email <e> --permission read\|write` puts an identity on the operator allowlist, `--email <e> --disable` takes it off, and `--email <e> --mint-token provisioner\|smoke [--expires-in N]` mints that identity's operator token into the secret store as `acme-<env>-<holder>-token`, never printed in the cloud. On a local database it prints the token instead, and `--mint-token operator` mints the local read operator's `read` token, which `make seed` writes into `~/.config/acme/ops/local.env`; a cloud refuses it. An operator signs up first; the system's own identities (`@platform.acme.invalid`) are made by their first grant. |
 | `add-member` | Seeds a person into an existing org; a no-op for a member. |
 | `openapi` | Emits the OpenAPI document the clients are generated from. |
 

@@ -1,7 +1,7 @@
 """What the `om` rules share: the OM base chain, found by reading source.
 
 The root of the object model is a class of `<pkg>.om.base` that
-subclasses pydantic's `BaseModel` directly (`Platform` in the
+subclasses pydantic's `BaseModel` directly (`OmBase` in the
 guideline). A class is on the chain when one of its bases resolves to
 the root or to a class on the chain. A base name resolves the way
 Python binds it: a class of the same module, or a name an import binds,
@@ -147,7 +147,7 @@ class Index:
         return self.lookup(mod, name, depth)
 
     def resolve(self, module: str, name: str | None) -> Key | None:
-        """The class a dotted name written in `module` means: `Order`, `types.Order`, `acme.om.base.Platform`."""
+        """The class a dotted name written in `module` means: `Order`, `types.Order`, `acme.om.base.OmBase`."""
         if not name:
             return None
         head, _, rest = name.partition(".")

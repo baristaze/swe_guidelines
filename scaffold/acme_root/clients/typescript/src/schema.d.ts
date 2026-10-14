@@ -156,15 +156,15 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/v1/admin/orgs/{org_id}/events": {
+    "/v1/admin/orgs/{org_id}/change-events": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        /** List Events */
-        get: operations["list_events_v1_admin_orgs__org_id__events_get"];
+        /** List Change Events */
+        get: operations["list_change_events_v1_admin_orgs__org_id__change_events_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -254,12 +254,12 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Platform Size
-         * @description The platform's size as the maintenance worker last counted it, with
+         * System Size
+         * @description The system's size as the maintenance worker last counted it, with
          *     the moment it did; the route counts nothing. `404` until the first
          *     count.
          */
-        get: operations["platform_size_v1_admin_size_get"];
+        get: operations["system_size_v1_admin_size_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -429,11 +429,29 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** List Auth Sessions */
+        get: operations["list_auth_sessions_v1_auth_sessions_get"];
+        put?: never;
+        /** Exchange Auth Session */
+        post: operations["exchange_auth_session_v1_auth_sessions_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/auth/sessions/{auth_session_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
         get?: never;
         put?: never;
-        /** Exchange Session */
-        post: operations["exchange_session_v1_auth_sessions_post"];
-        delete?: never;
+        post?: never;
+        /** Revoke Auth Session */
+        delete: operations["revoke_auth_session_v1_auth_sessions__auth_session_id__delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -456,15 +474,15 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/v1/events": {
+    "/v1/change-events": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        /** List Events */
-        get: operations["list_events_v1_events_get"];
+        /** List Change Events */
+        get: operations["list_change_events_v1_change_events_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -568,6 +586,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/leases/leasable-resources/{leasable_resource_id}/wait-line": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Wait Line */
+        get: operations["wait_line_v1_leases_leasable_resources__leasable_resource_id__wait_line_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/leases/requests": {
         parameters: {
             query?: never;
@@ -642,23 +677,6 @@ export interface paths {
          * @description A manager's: the request moves in front of `before_id`, or to the end.
          */
         post: operations["reorder_v1_leases_requests__request_id__reorder_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/leases/resources/{resource_id}/line": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Line */
-        get: operations["line_v1_leases_resources__resource_id__line_get"];
-        put?: never;
-        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -1049,40 +1067,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/v1/sessions": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** List Sessions */
-        get: operations["list_sessions_v1_sessions_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/sessions/{session_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post?: never;
-        /** Revoke Session */
-        delete: operations["revoke_session_v1_sessions__session_id__delete"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/v1/users": {
         parameters: {
             query?: never;
@@ -1224,15 +1208,15 @@ export interface components {
          *     term.
          */
         AskRequest: {
-            kind: components["schemas"]["ResourceKind"];
+            kind: components["schemas"]["LeasableResourceKind"];
             /** Labels */
             labels?: string[] | null;
+            /** Leasable Resource Id */
+            leasable_resource_id?: string | null;
             /** Payload */
             payload?: {
                 [key: string]: unknown;
             };
-            /** Resource Id */
-            resource_id?: string | null;
             /** Start Seconds */
             start_seconds?: number | null;
             /**
@@ -1245,6 +1229,57 @@ export interface components {
              * @default 3600
              */
             wait_seconds: number;
+        };
+        /**
+         * AuthSessionView
+         * @description Only the hash of a token is ever kept, so a session view carries no secret.
+         */
+        AuthSessionView: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            credential_kind: components["schemas"]["CredentialKind"];
+            /**
+             * Expires At
+             * Format: date-time
+             */
+            expires_at: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Revoked At */
+            revoked_at: string | null;
+        };
+        /**
+         * ChangeEventView
+         * @description One record of the tenant's append-only stream, paged by `after_seq`.
+         *     `kind` is "<namespace>.<entity>.<action>", or an audit kind; the payload
+         *     stays inside, an event is a record and not a second read path.
+         */
+        ChangeEventView: {
+            /**
+             * Actor Id
+             * Format: uuid
+             */
+            actor_id: string;
+            /** Kind */
+            kind: string;
+            /**
+             * Produced At
+             * Format: date-time
+             */
+            produced_at: string;
+            /** Seq */
+            seq: number;
+            /**
+             * Target Id
+             * Format: uuid
+             */
+            target_id: string;
         };
         /**
          * ConfirmTotpRequest
@@ -1286,7 +1321,7 @@ export interface components {
          * CredentialKind
          * @enum {string}
          */
-        CredentialKind: "api_key" | "session_token" | "login" | "socket_ticket" | "operator_token" | "internal";
+        CredentialKind: "api_key" | "auth_session_token" | "login" | "socket_ticket" | "operator_token" | "internal";
         /**
          * DeleteAccountRequest
          * @description The account's email as the person typed it, which is how they say
@@ -1391,39 +1426,12 @@ export interface components {
             error: components["schemas"]["ErrorBody"];
         };
         /**
-         * EventView
-         * @description One record of the tenant's append-only stream, paged by `after_seq`.
-         *     `kind` is "<namespace>.<entity>.<action>", or an audit kind; the payload
-         *     stays inside, an event is a record and not a second read path.
-         */
-        EventView: {
-            /**
-             * Actor Id
-             * Format: uuid
-             */
-            actor_id: string;
-            /** Kind */
-            kind: string;
-            /**
-             * Produced At
-             * Format: date-time
-             */
-            produced_at: string;
-            /** Seq */
-            seq: number;
-            /**
-             * Target Id
-             * Format: uuid
-             */
-            target_id: string;
-        };
-        /**
-         * ExchangeSessionRequest
+         * ExchangeAuthSessionRequest
          * @description The org to enter. Presented with the sign-in credential, it opens the
          *     first session; presented with a session, it is a switch, and that session
          *     ends in the same write.
          */
-        ExchangeSessionRequest: {
+        ExchangeAuthSessionRequest: {
             /**
              * Org Id
              * Format: uuid
@@ -1602,6 +1610,19 @@ export interface components {
             /** Key */
             key: string | null;
         };
+        /** IssuedAuthSessionView */
+        IssuedAuthSessionView: {
+            /**
+             * Expires At
+             * Format: date-time
+             */
+            expires_at: string;
+            org: components["schemas"]["OrgView"];
+            role: components["schemas"]["Role"];
+            /** Token */
+            token: string;
+            user: components["schemas"]["UserView"];
+        };
         /**
          * IssuedDownloadView
          * @description A link to the file's bytes that works until `expires_at`. A null `url`
@@ -1654,19 +1675,6 @@ export interface components {
             /** Token */
             token: string | null;
         };
-        /** IssuedSessionView */
-        IssuedSessionView: {
-            /**
-             * Expires At
-             * Format: date-time
-             */
-            expires_at: string;
-            org: components["schemas"]["OrgView"];
-            role: components["schemas"]["Role"];
-            /** Token */
-            token: string;
-            user: components["schemas"]["UserView"];
-        };
         /**
          * IssuedTicketView
          * @description Carries the freshly minted socket ticket in the clear, once; redeeming
@@ -1717,6 +1725,50 @@ export interface components {
             orgs: components["schemas"]["OwnedOrgRef"][];
         };
         /**
+         * LeasableResourceKind
+         * @description A product adds its kinds here, each with the shape of what its ask
+         *     carries (`ASK_PAYLOADS`) and its hooks (`LeasableResourceKindInterface`).
+         * @enum {string}
+         */
+        LeasableResourceKind: "noop";
+        /**
+         * LeasableResourceView
+         * @description A resource and its anchor: the highest token granted on it, and the
+         *     lease that holds it until when.
+         */
+        LeasableResourceView: {
+            /** Available */
+            available: boolean;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Fencing Token */
+            fencing_token: number;
+            /** Held Until */
+            held_until: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            kind: components["schemas"]["LeasableResourceKind"];
+            /** Labels */
+            labels: string[];
+            /** Lease Id */
+            lease_id: string | null;
+            /** Max Term Seconds */
+            max_term_seconds: number;
+            /**
+             * Ref Id
+             * Format: uuid
+             */
+            ref_id: string;
+            /** Retired At */
+            retired_at: string | null;
+        };
+        /**
          * LeaseEntryView
          * @description One lease of a history, with the request it answered; none when the
          *     request was purged first.
@@ -1754,15 +1806,15 @@ export interface components {
              * Format: uuid
              */
             id: string;
-            kind: components["schemas"]["ResourceKind"];
+            kind: components["schemas"]["LeasableResourceKind"];
             /** Labels */
             labels: string[] | null;
+            /** Leasable Resource Id */
+            leasable_resource_id: string | null;
             /** Lease Id */
             lease_id: string | null;
             /** Rank */
             rank: number;
-            /** Resource Id */
-            resource_id: string | null;
             /** Start Seconds */
             start_seconds: number | null;
             status: components["schemas"]["RequestStatus"];
@@ -1815,32 +1867,20 @@ export interface components {
              */
             id: string;
             /**
+             * Leasable Resource Id
+             * Format: uuid
+             */
+            leasable_resource_id: string;
+            /**
              * Request Id
              * Format: uuid
              */
             request_id: string;
-            /**
-             * Resource Id
-             * Format: uuid
-             */
-            resource_id: string;
             /** Started At */
             started_at: string | null;
             status: components["schemas"]["LeaseStatus"];
             /** Term Seconds */
             term_seconds: number;
-        };
-        /**
-         * LineView
-         * @description A resource and the requests in its line, first first, with each one's
-         *     place and estimate in the same order.
-         */
-        LineView: {
-            /** Places */
-            places: components["schemas"]["PlaceView"][];
-            /** Requests */
-            requests: components["schemas"]["LeaseRequestView"][];
-            resource: components["schemas"]["ResourceView"];
         };
         /**
          * LogoutRequest
@@ -1919,12 +1959,12 @@ export interface components {
             permission: components["schemas"]["OperatorRole"];
         };
         /**
-         * OperatorEventView
+         * OperatorChangeEventView
          * @description The same record as an operator reads it, with the two provenance fields
          *     a tenant's own feed leaves out: the request that produced it and the app
          *     it came from, which is what a support investigation correlates on.
          */
-        OperatorEventView: {
+        OperatorChangeEventView: {
             /**
              * Actor Id
              * Format: uuid
@@ -2050,18 +2090,18 @@ export interface components {
         };
         /**
          * OrgDeletedView
-         * @description The org is gone for everyone in it: `deleted_at` is when. `session` is
+         * @description The org is gone for everyone in it: `deleted_at` is when. `auth_session` is
          *     the owner's new session in their personal org, which replaces the one
          *     that asked, as a switch's does; null when none could be made, and the
          *     owner signs in again.
          */
         OrgDeletedView: {
+            auth_session?: components["schemas"]["IssuedAuthSessionView"] | null;
             /**
              * Deleted At
              * Format: date-time
              */
             deleted_at: string;
-            session?: components["schemas"]["IssuedSessionView"] | null;
         };
         /**
          * OrgKind
@@ -2142,32 +2182,6 @@ export interface components {
              */
             request_id: string;
         };
-        /**
-         * PlatformSizeView
-         * @description How big the platform is, what the first responder to an alarm reads
-         *     before it escalates: live tenants and users, and the events produced in
-         *     the twenty-four hours from `since` to `counted_at`. The maintenance
-         *     worker counts it every few minutes, and this is its latest count:
-         *     `counted_at` says how old the answer is.
-         */
-        PlatformSizeView: {
-            /**
-             * Counted At
-             * Format: date-time
-             */
-            counted_at: string;
-            /** Events Last 24H */
-            events_last_24h: number;
-            /**
-             * Since
-             * Format: date-time
-             */
-            since: string;
-            /** Tenants */
-            tenants: number;
-            /** Users */
-            users: number;
-        };
         /** PurposeUsageView */
         PurposeUsageView: {
             /** Count */
@@ -2203,50 +2217,6 @@ export interface components {
          */
         RequestStatus: "waiting" | "granted" | "cancelled" | "expired";
         /**
-         * ResourceKind
-         * @description A product adds its kinds here, each with the shape of what its ask
-         *     carries (`ASK_PAYLOADS`) and its hooks (`ResourceKindInterface`).
-         * @enum {string}
-         */
-        ResourceKind: "noop";
-        /**
-         * ResourceView
-         * @description A resource and its anchor: the highest token granted on it, and the
-         *     lease that holds it until when.
-         */
-        ResourceView: {
-            /** Available */
-            available: boolean;
-            /**
-             * Created At
-             * Format: date-time
-             */
-            created_at: string;
-            /** Fencing Token */
-            fencing_token: number;
-            /** Held Until */
-            held_until: string | null;
-            /**
-             * Id
-             * Format: uuid
-             */
-            id: string;
-            kind: components["schemas"]["ResourceKind"];
-            /** Labels */
-            labels: string[];
-            /** Lease Id */
-            lease_id: string | null;
-            /** Max Term Seconds */
-            max_term_seconds: number;
-            /**
-             * Ref Id
-             * Format: uuid
-             */
-            ref_id: string;
-            /** Retired At */
-            retired_at: string | null;
-        };
-        /**
          * Role
          * @enum {string}
          */
@@ -2261,30 +2231,6 @@ export interface components {
         SecondFactorRequest: {
             /** Totp Code */
             totp_code: string;
-        };
-        /**
-         * SessionView
-         * @description Only the hash of a token is ever kept, so a session view carries no secret.
-         */
-        SessionView: {
-            /**
-             * Created At
-             * Format: date-time
-             */
-            created_at: string;
-            credential_kind: components["schemas"]["CredentialKind"];
-            /**
-             * Expires At
-             * Format: date-time
-             */
-            expires_at: string;
-            /**
-             * Id
-             * Format: uuid
-             */
-            id: string;
-            /** Revoked At */
-            revoked_at: string | null;
         };
         /**
          * SetTenantCapRequest
@@ -2458,6 +2404,32 @@ export interface components {
             head: number;
         };
         /**
+         * SystemSizeView
+         * @description How big the system is, what the first responder to an alarm reads
+         *     before it escalates: live tenants and users, and the events produced in
+         *     the twenty-four hours from `since` to `counted_at`. The maintenance
+         *     worker counts it every few minutes, and this is its latest count:
+         *     `counted_at` says how old the answer is.
+         */
+        SystemSizeView: {
+            /** Change Events Last 24H */
+            change_events_last_24h: number;
+            /**
+             * Counted At
+             * Format: date-time
+             */
+            counted_at: string;
+            /**
+             * Since
+             * Format: date-time
+             */
+            since: string;
+            /** Tenants */
+            tenants: number;
+            /** Users */
+            users: number;
+        };
+        /**
          * TenantCapView
          * @description An org's own cap on a lane, with who last set it and when.
          */
@@ -2563,6 +2535,18 @@ export interface components {
             msg: string;
             /** Error Type */
             type: string;
+        };
+        /**
+         * WaitLineView
+         * @description A leasable resource and the requests in its wait line, first first, with
+         *     each one's place and estimate in the same order.
+         */
+        WaitLineView: {
+            leasable_resource: components["schemas"]["LeasableResourceView"];
+            /** Places */
+            places: components["schemas"]["PlaceView"][];
+            /** Requests */
+            requests: components["schemas"]["LeaseRequestView"][];
         };
         /**
          * WaiterKind
@@ -2945,7 +2929,7 @@ export interface operations {
             };
         };
     };
-    list_events_v1_admin_orgs__org_id__events_get: {
+    list_change_events_v1_admin_orgs__org_id__change_events_get: {
         parameters: {
             query?: {
                 after_seq?: number;
@@ -2969,7 +2953,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["OperatorEventView"][];
+                    "application/json": components["schemas"]["OperatorChangeEventView"][];
                 };
             };
             /** @description Validation Error */
@@ -3209,7 +3193,7 @@ export interface operations {
             };
         };
     };
-    platform_size_v1_admin_size_get: {
+    system_size_v1_admin_size_get: {
         parameters: {
             query?: never;
             header?: {
@@ -3228,7 +3212,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["PlatformSizeView"];
+                    "application/json": components["schemas"]["SystemSizeView"];
                 };
             };
             /** @description Validation Error */
@@ -3601,7 +3585,42 @@ export interface operations {
             };
         };
     };
-    exchange_session_v1_auth_sessions_post: {
+    list_auth_sessions_v1_auth_sessions_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: {
+                authorization?: string | null;
+                "x-app"?: string | null;
+                "x-app-version"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthSessionView"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    exchange_auth_session_v1_auth_sessions_post: {
         parameters: {
             query?: never;
             header?: {
@@ -3614,7 +3633,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["ExchangeSessionRequest"];
+                "application/json": components["schemas"]["ExchangeAuthSessionRequest"];
             };
         };
         responses: {
@@ -3624,7 +3643,42 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["IssuedSessionView"];
+                    "application/json": components["schemas"]["IssuedAuthSessionView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    revoke_auth_session_v1_auth_sessions__auth_session_id__delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "x-app"?: string | null;
+                "x-app-version"?: string | null;
+            };
+            path: {
+                auth_session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthSessionView"];
                 };
             };
             /** @description Validation Error */
@@ -3674,7 +3728,7 @@ export interface operations {
             };
         };
     };
-    list_events_v1_events_get: {
+    list_change_events_v1_change_events_get: {
         parameters: {
             query?: {
                 after_seq?: number;
@@ -3696,7 +3750,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["EventView"][];
+                    "application/json": components["schemas"]["ChangeEventView"][];
                 };
             };
             /** @description Validation Error */
@@ -3899,7 +3953,7 @@ export interface operations {
     list_leases_v1_leases_get: {
         parameters: {
             query?: {
-                resource_id?: string | null;
+                leasable_resource_id?: string | null;
                 cursor?: string | null;
                 limit?: number;
             };
@@ -3920,6 +3974,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["LeasePageView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    wait_line_v1_leases_leasable_resources__leasable_resource_id__wait_line_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "x-app"?: string | null;
+                "x-app-version"?: string | null;
+            };
+            path: {
+                leasable_resource_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WaitLineView"];
                 };
             };
             /** @description Validation Error */
@@ -4076,41 +4165,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["LeaseRequestView"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    line_v1_leases_resources__resource_id__line_get: {
-        parameters: {
-            query?: never;
-            header?: {
-                authorization?: string | null;
-                "x-app"?: string | null;
-                "x-app-version"?: string | null;
-            };
-            path: {
-                resource_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["LineView"];
                 };
             };
             /** @description Validation Error */
@@ -5152,76 +5206,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["IssuedTicketView"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    list_sessions_v1_sessions_get: {
-        parameters: {
-            query?: {
-                limit?: number;
-            };
-            header?: {
-                authorization?: string | null;
-                "x-app"?: string | null;
-                "x-app-version"?: string | null;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["SessionView"][];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    revoke_session_v1_sessions__session_id__delete: {
-        parameters: {
-            query?: never;
-            header?: {
-                authorization?: string | null;
-                "x-app"?: string | null;
-                "x-app-version"?: string | null;
-            };
-            path: {
-                session_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["SessionView"];
                 };
             };
             /** @description Validation Error */

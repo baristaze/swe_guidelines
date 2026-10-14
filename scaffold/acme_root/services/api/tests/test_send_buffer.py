@@ -13,18 +13,18 @@ from fastapi import WebSocket
 
 from acme.infra.topics import Topics
 from acme.om.base import new_id
-from acme.services.api.realtime.envelopes import Envelope, EventEnvelope, PongEnvelope
+from acme.services.api.realtime.envelopes import ChangeEventEnvelope, Envelope, PongEnvelope
 from acme.services.api.realtime.send_buffer import SendBuffer
-from acme.services.api.types.events import EntityChangedView
+from acme.services.api.types.change_events import EntityChangedView
 
 LOGGER = "acme.services.api.realtime.send_buffer"
 
 ACTOR = new_id()
 
 
-def event(seq: int) -> EventEnvelope:
+def event(seq: int) -> ChangeEventEnvelope:
     """A push at `seq`: the stream lane's frame, and the one a burst is made of."""
-    return EventEnvelope(
+    return ChangeEventEnvelope(
         topic=Topics.ENTITY_CHANGED.value,
         payload=EntityChangedView(
             kind="media.file.created", target_id=new_id(), seq=seq, actor_id=ACTOR
@@ -79,14 +79,19 @@ async def test_a_control_frame_survives_a_stream_burst(
         offer_all(buffer, *(event(seq) for seq in (1, 2, 3, 4, 5)))
 
     assert (buffer.dropped, buffer.control_dropped) == (3, 0)
-    assert await drained(buffer, 3) == [("pong", 9), ("event", 4), ("event", 5)]
+    assert await drained(buffer, 3) == [("pong", 9), ("change_event", 4), ("change_event", 5)]
 
 
 async def test_the_drainer_writes_control_first_then_the_stream_in_arrival_order() -> None:
     buffer = SendBuffer(maxsize=4, control_maxsize=4)
     offer_all(buffer, event(1), PongEnvelope(seq=7), event(2), PongEnvelope(seq=8))
 
-    assert await drained(buffer, 4) == [("pong", 7), ("pong", 8), ("event", 1), ("event", 2)]
+    assert await drained(buffer, 4) == [
+        ("pong", 7),
+        ("pong", 8),
+        ("change_event", 1),
+        ("change_event", 2),
+    ]
 
 
 async def test_a_full_stream_lane_drops_the_oldest_frame_logs_and_counts_it(
@@ -98,9 +103,9 @@ async def test_a_full_stream_lane_drops_the_oldest_frame_logs_and_counts_it(
 
     assert (buffer.dropped, buffer.control_dropped) == (1, 0)
     assert [(record.levelno, record.getMessage()) for record in caplog.records] == [
-        (logging.WARNING, "send buffer full; dropped a EventEnvelope frame")
+        (logging.WARNING, "send buffer full; dropped a ChangeEventEnvelope frame")
     ]
-    assert await drained(buffer, 2) == [("event", 2), ("event", 3)]
+    assert await drained(buffer, 2) == [("change_event", 2), ("change_event", 3)]
 
 
 async def test_a_full_control_lane_drops_its_oldest_and_says_so_as_an_error(
@@ -126,4 +131,4 @@ async def test_a_buffer_with_room_drops_nothing(caplog: pytest.LogCaptureFixture
 
     assert (buffer.dropped, buffer.control_dropped) == (0, 0)
     assert caplog.records == []
-    assert await drained(buffer, 3) == [("pong", 3), ("event", 1), ("event", 2)]
+    assert await drained(buffer, 3) == [("pong", 3), ("change_event", 1), ("change_event", 2)]

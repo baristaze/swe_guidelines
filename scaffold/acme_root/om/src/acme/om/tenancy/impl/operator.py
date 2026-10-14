@@ -6,7 +6,9 @@ from uuid import UUID
 
 from pydantic import Field
 
-from acme.om.base import EMPTY_UUID, Platform, new_id, utcnow
+from acme.om.base import EMPTY_UUID, OmBase, new_id, utcnow
+from acme.om.change_events.storage import ChangeEventStorageInterface
+from acme.om.change_events.types.change_event import ChangeEvent
 from acme.om.context import (
     CredentialKind,
     OperatorContext,
@@ -14,8 +16,6 @@ from acme.om.context import (
     OperatorRole,
     Role,
 )
-from acme.om.events.storage import EventStorageInterface
-from acme.om.events.types.event import Event
 from acme.om.exceptions import (
     Conflict,
     InvalidCredential,
@@ -44,26 +44,26 @@ from acme.om.tenancy.rules import (
     otpauth_uri,
 )
 from acme.om.tenancy.storage import TenancyStorageInterface
+from acme.om.tenancy.types.auth_session import AuthSession
 from acme.om.tenancy.types.identity import Identity
 from acme.om.tenancy.types.issued import IssuedOperatorToken, IssuedTotpSecret
 from acme.om.tenancy.types.org import Org
 from acme.om.tenancy.types.page import OperatorTokenPage, OrgPage, UserPage
-from acme.om.tenancy.types.session import Session
-from acme.om.tenancy.types.size import PlatformSize
+from acme.om.tenancy.types.size import SystemSize
 from acme.om.tenancy.types.user import User
 from acme.om.work.types.work_item import WorkKind, work_row_kind
 
 log = logging.getLogger(__name__)
 
 SIZE_WINDOW = timedelta(hours=24)
-"""How far back from its count the traffic figures of the platform's size look."""
+"""How far back from its count the traffic figures of the system's size look."""
 
 
 TOTP_ISSUER = "Acme"
 """The name an authenticator app shows beside the operator's account."""
 
 
-class TenancyOperatorOptions(Platform):
+class TenancyOperatorOptions(OmBase):
     max_limit: int = 200
     max_orgs_per_identity: int = MAX_ORGS_PER_IDENTITY
     """The tenant manager's bound, held the same on this plane."""
@@ -82,13 +82,13 @@ class TenancyOperatorManagerImpl(TenancyOperatorManagerInterface):
     def __init__(
         self,
         storage: TenancyStorageInterface,
-        events: EventStorageInterface,
+        change_events: ChangeEventStorageInterface,
         relay: OutboxRelayInterface,
         options: TenancyOperatorOptions,
         clock: Callable[[], datetime] = utcnow,
     ) -> None:
         self._storage = storage
-        self._events = events
+        self._change_events = change_events
         self._relay = relay
         self._options = options
         self._totp = TotpSealer(options.totp_encryption_key)
@@ -140,7 +140,7 @@ class TenancyOperatorManagerImpl(TenancyOperatorManagerInterface):
             entry
         ):
             raise NotAuthorized(f"operator lacks {operator_role.value}")
-        found = await self._storage.read_session_by_id(admin.credential_id)
+        found = await self._storage.read_auth_session_by_id(admin.credential_id)
         if found is None:
             raise InvalidCredential("the sign-in behind the mint is gone")
         issued, token = new_operator_token(
@@ -166,9 +166,9 @@ class TenancyOperatorManagerImpl(TenancyOperatorManagerInterface):
         )
         return OperatorTokenPage(items=tuple(rows[:limit]), has_more=len(rows) > limit)
 
-    async def revoke_operator_token(self, admin: OperatorContext, token_id: UUID) -> Session:
+    async def revoke_operator_token(self, admin: OperatorContext, token_id: UUID) -> AuthSession:
         admin.require(OperatorPermission.READ)
-        found = await self._storage.read_session_by_id(token_id)
+        found = await self._storage.read_auth_session_by_id(token_id)
         # An operator ends their own tokens, and no other operator's: the
         # allowlist is the grant job's, and so is ending another identity's
         # credentials (its disable). Another's reads as no token at all.
@@ -183,7 +183,7 @@ class TenancyOperatorManagerImpl(TenancyOperatorManagerInterface):
         if token.revoked_at is not None:
             return token  # ended already: the same answer again
         revoked = ended_by(token, admin.identity_id, utcnow())
-        await self._storage.write_session(EMPTY_UUID, revoked)
+        await self._storage.write_auth_session(EMPTY_UUID, revoked)
         log.info(
             "operator %s revoked operator token %s by its %s %s",
             admin.identity_id,
@@ -207,30 +207,30 @@ class TenancyOperatorManagerImpl(TenancyOperatorManagerInterface):
         rows = await self._storage.read_orgs(limit + 1, after)
         return OrgPage(items=tuple(rows[:limit]), has_more=len(rows) > limit)
 
-    async def size(self, admin: OperatorContext) -> PlatformSize:
+    async def size(self, admin: OperatorContext) -> SystemSize:
         admin.require(OperatorPermission.READ)
         # The tally the sweep keeps: a count across tenants never runs in a
         # request (ADR 0074).
-        size = await self._storage.read_platform_size()
+        size = await self._storage.read_system_size()
         if size is None:
             raise NotFound(
-                "the platform's size is not counted yet; the maintenance worker counts it"
+                "the system's size is not counted yet; the maintenance worker counts it"
                 " on its first sweep"
             )
         return size
 
-    async def tally_size(self) -> PlatformSize:
+    async def tally_size(self) -> SystemSize:
         counted_at = utcnow()
         since = counted_at - SIZE_WINDOW
         tenants, users = await self._storage.count_orgs_and_users()
-        size = PlatformSize(
+        size = SystemSize(
             tenants=tenants,
             users=users,
-            events_last_24h=await self._events.count_since(since),
+            change_events_last_24h=await self._change_events.count_since(since),
             since=since,
             counted_at=counted_at,
         )
-        await self._storage.write_platform_size(size)
+        await self._storage.write_system_size(size)
         return size
 
     async def create_org(
@@ -316,13 +316,13 @@ class TenancyOperatorManagerImpl(TenancyOperatorManagerInterface):
             log.info("operator %s added user %s to org %s", admin.identity_id, user.id, org_id)
         return user
 
-    async def get_events(
+    async def get_change_events(
         self, admin: OperatorContext, org_id: UUID, after_seq: int, limit: int
-    ) -> list[Event]:
+    ) -> list[ChangeEvent]:
         admin.require(OperatorPermission.READ)
         await self._org(org_id)
-        events = await self._events.read_after(org_id, max(0, after_seq), self._clamp(limit))
-        self._trail(admin, org_id, "events")
+        events = await self._change_events.read_after(org_id, max(0, after_seq), self._clamp(limit))
+        self._trail(admin, org_id, "change_events")
         return events
 
     async def delete_org(self, admin: OperatorContext, org_id: UUID) -> Org:

@@ -41,7 +41,7 @@ never a default, spelled at the call site.
 it and is not an enumerated exception.
 
 **Three logins, none above the fence.** A superuser walks past every
-policy, and so does a role with `BYPASSRLS`. No login of the platform
+policy, and so does a role with `BYPASSRLS`. No login of the system
 is either, and `FORCE ROW LEVEL SECURITY` is on every fenced table, so
 the owner is held too.
 
@@ -78,16 +78,16 @@ Two choices go beyond the guideline's shape.
   identity is known. The tree also takes no tenant where a method reads
   or writes the two `system` tables (`identities`, `sign_in_delays`),
   reads across tenants for the operator plane, steps from an identity to
-  its tenants, keeps the platform's size, or erases a person
+  its tenants, keeps the system's size, or erases a person
   ([ADR 0041](0041-an-account-is-deleted-at-once-and-its-providers-by-the-queue.md)).
   Each says why in its docstring. `[tool.arch-check.options.CTX-12]` in
   `pyproject.toml` and `om/tests/unit/test_storage_exceptions.py` hold
   the same list.
-- **Sessions, API keys, and socket tickets are `both` tables**, where
+- **Auth sessions, API keys, and socket tickets are `both` tables**, where
   the guideline's scaffold makes them `identity` tables. Each belongs to
-  one person inside one org: a session is in one org at a time, and a
+  one person inside one org: an auth session is in one org at a time, and a
   switch ends it. So their policy is on `org_id`, narrowed by the
-  person. An operator token is a session under the system scope, which
+  person. An operator token is an auth session under the system scope, which
   only the system login finds.
 
 ## Consequences
@@ -113,5 +113,5 @@ then meets the primary key: a key the read did not see is a row this
 transaction may not see, so it raises the same `TenantMismatch`.
 
 `app.user_id` narrows a `both` table to one person when a call names
-one: the idempotency markers, the session list, the key page, the
+one: the idempotency markers, the auth session list, the key page, the
 membership read. Everywhere else only the tenant holds.

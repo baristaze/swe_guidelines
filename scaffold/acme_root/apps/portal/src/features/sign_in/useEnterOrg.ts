@@ -1,13 +1,13 @@
 import type { IssuedLoginView, MembershipChoiceView } from "@acme/client";
 import { useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { adoptSession } from "../../app/adoptSession";
+import { adoptAuthSession } from "../../app/adoptAuthSession";
 import { errorMessage } from "../../app/errorMessage";
 import { inFlight, oneAtATime } from "../../app/oneAtATime";
 import { takeUpSignIn } from "../../app/takeUpSignIn";
-import { useEndReplacedSession, useExchangeSession } from "../../queries/tenancy";
+import { useEndReplacedAuthSession, useExchangeAuthSession } from "../../queries/tenancy";
 import { useNoticesStore } from "../../store/notices";
-import { useSessionStore } from "../../store/session";
+import { useAuthSessionStore } from "../../store/authSession";
 import { chooseOrg, landingPath, type OrgChoice } from "./signInModel";
 
 /** The step every sign-in ends in: the person's places, one goes straight
@@ -16,8 +16,8 @@ import { chooseOrg, landingPath, type OrgChoice } from "./signInModel";
 export function useEnterOrg() {
   const navigate = useNavigate();
   const notify = useNoticesStore((s) => s.notify);
-  const exchange = useExchangeSession();
-  const endReplaced = useEndReplacedSession();
+  const exchange = useExchangeAuthSession();
+  const endReplaced = useEndReplacedAuthSession();
   const [choice, setChoice] = useState<OrgChoice>({ kind: "none" });
   const [held, setHeld] = useState<{ token: string; returnTo: string } | null>(null);
   const choosing = useRef(inFlight());
@@ -28,8 +28,8 @@ export function useEnterOrg() {
     // session here, so nothing fetched under it is shown under this one,
     // and the server ends it after, so it does not outlive the tab's hold.
     void takeUpSignIn(issued, {
-      held: () => useSessionStore.getState().token,
-      adopt: adoptSession,
+      held: () => useAuthSessionStore.getState().token,
+      adopt: adoptAuthSession,
       end: (held) => endReplaced.mutateAsync(held),
     });
     navigate(landingPath(returnTo), { replace: true });

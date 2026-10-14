@@ -7,7 +7,7 @@
 Staging and production are two environments. Cloud: AWS makes the
 account the boundary, not a set of fences inside one account. People
 sign in through IAM Identity Center, and an agent works inside a
-session a person opened.
+auth session a person opened.
 
 ## Decision
 

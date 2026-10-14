@@ -39,7 +39,7 @@ def context(role: Role = Role.MEMBER, org_id: UUID | None = None) -> TenantConte
         org_id=org_id or new_id(),
         role=role,
         permissions=permissions_of(role),
-        credential_kind=CredentialKind.SESSION_TOKEN,
+        credential_kind=CredentialKind.AUTH_SESSION_TOKEN,
     )
 
 

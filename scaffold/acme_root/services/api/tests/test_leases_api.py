@@ -27,8 +27,8 @@ from acme.om.context import Role, TenantContext
 from acme.om.exceptions import NotAuthorized, ValidationFailed
 from acme.om.leases.hooks import AskCheckInterface
 from acme.om.leases.impl.manager import LeasesManagerImpl
+from acme.om.leases.types.leasable_resource import LeasableResource, LeasableResourceKind
 from acme.om.leases.types.request import LeaseRequest
-from acme.om.leases.types.resource import Resource, ResourceKind
 from acme.services.api.container import AppContainer
 
 
@@ -36,15 +36,15 @@ async def org_of(client: httpx.AsyncClient, headers: dict[str, str]) -> UUID:
     return UUID((await client.get("/v1/me", headers=headers)).json()["org"]["id"])
 
 
-async def a_dock(container: AppContainer, org_id: UUID, *labels: str) -> Resource:
+async def a_dock(container: AppContainer, org_id: UUID, *labels: str) -> LeasableResource:
     """A resource its owner namespace registers, as no route does."""
     ctx = await container.managers.tenancy.service_context(seed_request(), org_id, EMPTY_UUID)
     now = utcnow()
     return await container.managers.leases.register(
         ctx,
-        Resource(
+        LeasableResource(
             id=new_id(), created_at=now, updated_at=now, created_by=EMPTY_UUID,
-            updated_by=EMPTY_UUID, kind=ResourceKind.NOOP, ref_id=new_id(), labels=labels,
+            updated_by=EMPTY_UUID, kind=LeasableResourceKind.NOOP, ref_id=new_id(), labels=labels,
         ),
     )  # fmt: skip
 
@@ -73,16 +73,16 @@ async def test_a_lease_is_granted_renewed_released_and_the_line_moves_on(
     dock = await a_dock(container, org_id)
     ann = await a_member(client, container, org_id, "kai", Role.MEMBER)
     mia = await a_member(client, container, org_id, "mia", Role.MEMBER)
-    first = await ask(client, ann, resource_id=str(dock.id))
+    first = await ask(client, ann, leasable_resource_id=str(dock.id))
     assert first.status_code == 201, first.text
     lease = first.json()["lease"]
     assert lease["fencing_token"] == 1 and 0 < lease["expires_in_seconds"] <= 60
-    second = await ask(client, mia, resource_id=str(dock.id))
+    second = await ask(client, mia, leasable_resource_id=str(dock.id))
     waits = second.json()
     assert waits["lease"] is None and waits["place"] == 1 and waits["estimate_seconds"] > 0
-    line = await client.get(f"/v1/leases/resources/{dock.id}/line", headers=ann)
+    line = await client.get(f"/v1/leases/leasable-resources/{dock.id}/wait-line", headers=ann)
     assert [r["id"] for r in line.json()["requests"]] == [waits["request"]["id"]]
-    assert line.json()["resource"]["lease_id"] == lease["id"]
+    assert line.json()["leasable_resource"]["lease_id"] == lease["id"]
     (place,) = line.json()["places"]
     assert (place["request_id"], place["place"]) == (waits["request"]["id"], 1)
     assert place["estimate_seconds"] > 0
@@ -111,9 +111,9 @@ async def test_a_manager_reorders_and_revokes_and_a_member_does_neither(
     org_id = await org_of(client, owner)
     dock = await a_dock(container, org_id)
     ann = await a_member(client, container, org_id, "kai", Role.MEMBER)
-    held = (await ask(client, ann, resource_id=str(dock.id))).json()["lease"]
-    a = (await ask(client, ann, resource_id=str(dock.id))).json()["request"]
-    b = (await ask(client, owner, resource_id=str(dock.id))).json()["request"]
+    held = (await ask(client, ann, leasable_resource_id=str(dock.id))).json()["lease"]
+    a = (await ask(client, ann, leasable_resource_id=str(dock.id))).json()["request"]
+    b = (await ask(client, owner, leasable_resource_id=str(dock.id))).json()["request"]
     reorder = f"/v1/leases/requests/{b['id']}/reorder"
     refused = await client.post(reorder, headers=ann, json={"before_id": a["id"]})
     assert refused.status_code == 403
@@ -137,26 +137,26 @@ async def test_a_malformed_ask_is_refused_and_a_replay_joins_no_line_twice(
         {"labels": ["x" * 201]},
         {"labels": ["a line\nbreak"]},
         {"labels": [str(n) for n in range(161)]},
-        {"resource_id": str(dock.id), "labels": ["cold"]},
+        {"leasable_resource_id": str(dock.id), "labels": ["cold"]},
         {},
-        {"resource_id": str(dock.id), "payload": {"run": "anything"}},
-        {"resource_id": str(dock.id), "term_seconds": 0},
-        {"resource_id": str(dock.id), "start_seconds": 0},
-        {"resource_id": str(dock.id), "term_seconds": 604_801},
+        {"leasable_resource_id": str(dock.id), "payload": {"run": "anything"}},
+        {"leasable_resource_id": str(dock.id), "term_seconds": 0},
+        {"leasable_resource_id": str(dock.id), "start_seconds": 0},
+        {"leasable_resource_id": str(dock.id), "term_seconds": 604_801},
         {"kind": "nothing", "labels": []},
-        {"resource_id": "not-an-id"},
+        {"leasable_resource_id": "not-an-id"},
     ]
     for body in refusals:
         answer = await ask(client, owner, **body)
         assert answer.status_code == 422, f"{body}: {answer.status_code} {answer.text}"
-    assert (await ask(client, owner, resource_id=str(uuid4()))).status_code == 404
+    assert (await ask(client, owner, leasable_resource_id=str(uuid4()))).status_code == 404
     held = await ask(client, owner, labels=["cold"])
     assert held.json()["lease"] is not None
     key = str(uuid4())
-    first = await ask(client, owner, key=key, resource_id=str(dock.id))
-    again = await ask(client, owner, key=key, resource_id=str(dock.id))
+    first = await ask(client, owner, key=key, leasable_resource_id=str(dock.id))
+    again = await ask(client, owner, key=key, leasable_resource_id=str(dock.id))
     assert again.json()["request"]["id"] == first.json()["request"]["id"]
-    line = await client.get(f"/v1/leases/resources/{dock.id}/line", headers=owner)
+    line = await client.get(f"/v1/leases/leasable-resources/{dock.id}/wait-line", headers=owner)
     assert len(line.json()["requests"]) == 1
 
 
@@ -165,7 +165,7 @@ class OwnersAlone(AskCheckInterface):
     resource by its id."""
 
     async def check_ask(
-        self, ctx: TenantContext, request: LeaseRequest, resource: Resource | None
+        self, ctx: TenantContext, request: LeaseRequest, resource: LeasableResource | None
     ) -> None:
         if ctx.role is not Role.OWNER:
             raise NotAuthorized(f"a {ctx.role.value} asks for no dock")
@@ -181,7 +181,9 @@ async def test_a_kinds_check_refuses_an_ask_and_the_route_answers_it(
     registers none, and takes the member's ask as before."""
 
     def with_the_check(*args: Any, **kwargs: Any) -> LeasesManagerImpl:
-        return LeasesManagerImpl(*args, **{**kwargs, "asks": {ResourceKind.NOOP: OwnersAlone()}})
+        return LeasesManagerImpl(
+            *args, **{**kwargs, "asks": {LeasableResourceKind.NOOP: OwnersAlone()}}
+        )
 
     monkeypatch.setattr(root, "LeasesManagerImpl", with_the_check)
     checked = build_container(tmp_path / "checked")
@@ -192,7 +194,7 @@ async def test_a_kinds_check_refuses_an_ask_and_the_route_answers_it(
             org_id = await org_of(client, owner)
             dock = await a_dock(container, org_id)
             mia = await a_member(client, container, org_id, "mia", Role.MEMBER)
-            asked = await ask(client, mia, resource_id=str(dock.id))
+            asked = await ask(client, mia, leasable_resource_id=str(dock.id))
             if not refuses:
                 assert asked.status_code == 201 and asked.json()["lease"] is not None
                 continue
@@ -200,9 +202,14 @@ async def test_a_kinds_check_refuses_an_ask_and_the_route_answers_it(
             assert asked.json()["error"]["code"] == "not_authorized"
             selector = await ask(client, owner, labels=[])
             assert selector.status_code == 422, selector.text
-            line = await client.get(f"/v1/leases/resources/{dock.id}/line", headers=owner)
-            assert line.json()["requests"] == [] and line.json()["resource"]["lease_id"] is None
-            held = await ask(client, owner, resource_id=str(dock.id))
+            line = await client.get(
+                f"/v1/leases/leasable-resources/{dock.id}/wait-line", headers=owner
+            )
+            assert (
+                line.json()["requests"] == []
+                and line.json()["leasable_resource"]["lease_id"] is None
+            )
+            held = await ask(client, owner, leasable_resource_id=str(dock.id))
             assert held.status_code == 201 and held.json()["lease"] is not None
 
 
@@ -212,10 +219,12 @@ async def test_the_history_lists_newest_first_with_requests_and_no_tenant_reads_
     org_id = await org_of(client, owner)
     dock = await a_dock(container, org_id)
     ann = await a_member(client, container, org_id, "kai", Role.MEMBER)
-    first = (await ask(client, ann, resource_id=str(dock.id))).json()["lease"]
+    first = (await ask(client, ann, leasable_resource_id=str(dock.id))).json()["lease"]
     await client.post(f"/v1/leases/{first['id']}/release", headers=ann)
-    second = (await ask(client, ann, resource_id=str(dock.id))).json()["lease"]
-    history = await client.get("/v1/leases", headers=owner, params={"resource_id": str(dock.id)})
+    second = (await ask(client, ann, leasable_resource_id=str(dock.id))).json()["lease"]
+    history = await client.get(
+        "/v1/leases", headers=owner, params={"leasable_resource_id": str(dock.id)}
+    )
     assert history.status_code == 200, history.text
     entries = history.json()["items"]
     assert [e["lease"]["id"] for e in entries] == [second["id"], first["id"]]
@@ -240,7 +249,9 @@ async def test_the_history_lists_newest_first_with_requests_and_no_tenant_reads_
     )
     eve = await sign_in_as(client, "eve@other.test", other.id)
     assert (await client.get("/v1/leases", headers=eve)).json()["items"] == []
-    mine = await client.get("/v1/leases", headers=eve, params={"resource_id": str(dock.id)})
+    mine = await client.get(
+        "/v1/leases", headers=eve, params={"leasable_resource_id": str(dock.id)}
+    )
     assert mine.status_code == 200 and mine.json()["items"] == []
     theirs = await client.get("/v1/leases", headers=eve, params={"cursor": cursor})
     assert theirs.status_code == 200 and theirs.json()["items"] == []
@@ -254,7 +265,7 @@ async def test_another_tenants_leases_answer_as_missing_ones(
     it was."""
     org_id = await org_of(client, owner)
     dock = await a_dock(container, org_id)
-    granted = (await ask(client, owner, resource_id=str(dock.id))).json()
+    granted = (await ask(client, owner, leasable_resource_id=str(dock.id))).json()
     _, other = await container.managers.tenancy.bootstrap(
         seed_request(), "Other", "other", "eve@other.test", "Eve"
     )
@@ -264,7 +275,7 @@ async def test_another_tenants_leases_answer_as_missing_ones(
         ("GET", f"/v1/leases/requests/{request_id}", {}),
         ("POST", f"/v1/leases/requests/{request_id}/cancel", {}),
         ("POST", f"/v1/leases/requests/{request_id}/reorder", {"json": {}}),
-        ("GET", f"/v1/leases/resources/{dock.id}/line", {}),
+        ("GET", f"/v1/leases/leasable-resources/{dock.id}/wait-line", {}),
         ("GET", f"/v1/leases/{lease_id}", {}),
         ("POST", f"/v1/leases/{lease_id}/renew", {}),
         ("POST", f"/v1/leases/{lease_id}/release", {}),
@@ -273,6 +284,6 @@ async def test_another_tenants_leases_answer_as_missing_ones(
     for method, path, extra in swept:
         answered = await client.request(method, path, headers=eve, **extra)
         assert answered.status_code == 404, f"{method} {path}: {answered.status_code}"
-    assert (await ask(client, eve, resource_id=str(dock.id))).status_code == 404
+    assert (await ask(client, eve, leasable_resource_id=str(dock.id))).status_code == 404
     kept = await client.get(f"/v1/leases/{lease_id}", headers=owner)
     assert kept.json()["status"] == "active"

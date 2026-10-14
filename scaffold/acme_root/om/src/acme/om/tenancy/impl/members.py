@@ -76,7 +76,7 @@ class TenancyMembersManagerImpl(TenancyMembersManagerInterface):
             raise NotAuthorized(f"cannot invite as {role.value}, above {ctx.security.role.value}")
         email = fold_email(email.strip())
         if is_platform_email(email):
-            raise ValidationFailed("that address belongs to the platform")
+            raise ValidationFailed("that address belongs to the system")
         try:
             check_email(email)
         except ValueError as error:
@@ -223,7 +223,7 @@ class TenancyMembersManagerImpl(TenancyMembersManagerInterface):
 
     async def _provider_call[T](self, call: Awaitable[T]) -> T:
         """A provider call of the principal's operations, its refusals said as
-        the platform's own."""
+        the system's own."""
         try:
             return await call
         except ProviderConflict as error:

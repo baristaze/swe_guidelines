@@ -64,8 +64,8 @@ def totp_key(settings: ApiSettings) -> str | None:
 def tenancy_options(settings: ApiSettings) -> TenancyOptions:
     return TenancyOptions(
         login_ttl=timedelta(seconds=settings.login_lifetime_seconds),
-        session_ttl=timedelta(seconds=settings.session_lifetime_seconds),
-        session_idle_ttl=timedelta(seconds=settings.session_idle_lifetime_seconds),
+        auth_session_ttl=timedelta(seconds=settings.auth_session_lifetime_seconds),
+        auth_session_idle_ttl=timedelta(seconds=settings.auth_session_idle_lifetime_seconds),
         sign_in_free_failures=settings.sign_in_free_failures,
         sign_in_delay_base=timedelta(seconds=settings.sign_in_delay_base_seconds),
         sign_in_delay_cap=timedelta(seconds=settings.sign_in_delay_cap_seconds),

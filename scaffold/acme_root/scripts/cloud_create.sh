@@ -166,7 +166,7 @@ unset AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_SESSION_TOKEN AWS_DEFAULT_PROF
 export AWS_PROFILE="$profile"
 export AWS_REGION="$region"
 if [ -n "$exported" ]; then
-  echo "note: the shell exported$exported; cleared for this run. An exported key is a long-lived one, and this platform uses none."
+  echo "note: the shell exported$exported; cleared for this run. An exported key is a long-lived one, and this system uses none."
 fi
 
 # Every command is printed before it runs; a dry run stops at the printing.

@@ -1,6 +1,6 @@
 """The one place botocore's error types are named. Every AWS impl runs its
 calls inside `translated()` and catches `ClientError` only through this
-module, so a caller only ever sees a platform exception: a service answer
+module, so a caller only ever sees a system exception: a service answer
 it cannot map is `BackendFailed`, a backend it could not reach or that did
 not answer in time is `BackendUnreachable`, and any other driver error is
 `BackendFailed` under the driver's error class."""

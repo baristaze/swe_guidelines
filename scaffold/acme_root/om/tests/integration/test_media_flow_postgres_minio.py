@@ -20,8 +20,8 @@ from acme.infra.flags.defaults import FlagsDefaultsImpl
 from acme.infra.impl.settings import InfraSettings
 from acme.infra.topics.memory import TopicsMemoryImpl
 from acme.om.base import new_id, utcnow
+from acme.om.change_events.storage.impl.postgres import ChangeEventStoragePostgresImpl
 from acme.om.context import Role, TenantContext
-from acme.om.events.storage.impl.postgres import EventStoragePostgresImpl
 from acme.om.exceptions import NotFound, ValidationFailed
 from acme.om.media.impl.manager import MediaManagerImpl, MediaOptions
 from acme.om.media.storage.impl.postgres import MediaStoragePostgresImpl
@@ -89,7 +89,9 @@ def manager(
 ) -> tuple[MediaManagerImpl, MediaStoragePostgresImpl]:
     storage = MediaStoragePostgresImpl(sessions)
     relay = OutboxRelayImpl(
-        OutboxStoragePostgresImpl(sessions), EventStoragePostgresImpl(sessions), TopicsMemoryImpl()
+        OutboxStoragePostgresImpl(sessions),
+        ChangeEventStoragePostgresImpl(sessions),
+        TopicsMemoryImpl(),
     )
     members = Members()  # pyright: ignore[reportAbstractUsage] (a partial double)
     flags = FlagsDefaultsImpl()

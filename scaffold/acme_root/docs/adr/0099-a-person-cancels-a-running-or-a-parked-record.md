@@ -37,10 +37,10 @@ its effect with it. The next step's work item finds the record no
 longer running and completes with nothing to do.
 
 **Nothing wakes it.** A wake reads only parked records, and `resume`
-refuses a settled one. A request the record waits on in a lease's line
-no longer waits: the waiter's `still_waits` reads the record settled,
-and the next grant passes the request as `waiter_gone`
-([ADR 0086](0086-a-scarce-resource-is-leased-under-a-fencing-token.md)).
+refuses a settled one. A request the record waits on in a lease's wait
+line no longer waits: the waiter's `still_waits` reads the record
+settled, and the next grant passes the request as `waiter_gone` ([ADR
+0086](0086-a-scarce-resource-is-leased-under-a-fencing-token.md)).
 
 **A client learns of it through the record's own push.** The cancel
 lands `orchestrations.orchestration.updated` with the version it wrote
@@ -61,11 +61,11 @@ period answers the open record through its unique key.
 
 A product's route for a person's cancel calls `cancel`, and maps the
 refusal of a finished record to its error. Where the record may wait in
-a lease's line, the route then makes it leave every line
+a lease's wait line, the route then makes it leave every wait line
 (`LeasesManagerInterface.leave`), since the leases depend on the
 orchestrations and not the other way. Without that call, the request
-stays in its line until a grant passes it or its wait ends, and the
-line's estimates count it until then.
+stays in its wait line until a grant passes it or its wait ends, and the
+wait line's estimates count it until then.
 
 Every transition still counts under `orchestrations`, and a cancel
 counts as `<kind>_cancelled`.

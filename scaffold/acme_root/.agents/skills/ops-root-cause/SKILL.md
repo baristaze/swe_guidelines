@@ -23,16 +23,16 @@ file are there.
 `--env` and `--org` are required; ask for them when missing. `--user`
 narrows to one member of the tenant. `--request-id` starts from a
 request, and may be given more than once; without it the skill finds
-the failing requests of the window in the tenant's events (step 3),
+the failing requests of the window in the tenant's change events (step 3),
 the one signal read by tenant: the error tracker holds no tenant
 (step 4). `--since` is the window, a day by default.
 
 A run follows at most 5 request ids, one pass each: the first five
 given, in the order given, or without `--request-id`, the five newest
-requests whose events step 3 ties to the symptom (the Y of "tenant X
-sees Y"), never the newest failures of any kind. An event tied to the
+requests whose change events step 3 ties to the symptom (the Y of "tenant X
+sees Y"), never the newest failures of any kind. A change event tied to the
 symptom is a failure the stream records or a write that landed, and
-either request is followed, so a run whose only such events are
+either request is followed, so a run whose only such change events are
 writes that landed still makes its passes: a request can land its
 write and fail its answer. Without `--request-id`, the
 symptom is the one the prompt or the investigation's report names;
@@ -41,7 +41,7 @@ no cause reports "not found" for its id. After the fifth pass the
 skill stops and writes the report. It lists every id past the fifth
 as not followed, for a second run to take.
 
-Without `--request-id`, when the window's events hold no request tied
+Without `--request-id`, when the window's change events hold no request tied
 to the symptom, the run makes no pass and writes the report. Its Requests line says none was
 found, and its Cause says "not found", with what the feed held. The
 report then names the second run that could find one: with the
@@ -101,7 +101,7 @@ runs once, before the passes. It is not a pass.
    The run goes on only on `operator_role: read`. A `write` stops it,
    and so do an `error` and an answer that is empty or not JSON, as in
    step 2. No sign-in runs: the operator plane admits the token, and
-   no tenant session is exchanged.
+   no tenant auth session is exchanged.
 2. Read the tenant, then its members, through the operator plane's
    read routes, every one under `/v1/admin/orgs/{org_id}/`:
 
@@ -148,8 +148,8 @@ runs once, before the passes. It is not a pass.
    there, as on a refusal: the report says the operator plane was not
    read, and which of the two it was. The read is not made a second
    time.
-3. Read the tenant's activity of the window, the operator's events
-   feed. The feed answers a bare list of events, never an object that
+3. Read the tenant's activity of the window, the operator's change events
+   feed. The feed answers a bare list of change events, never an object that
    wraps one, and a refusal with the error object. The operator's feed
    carries `request_id` and `app` beside the actor, which the tenant's
    own feed leaves out, so it is the map from what the tenant did to
@@ -158,8 +158,8 @@ runs once, before the passes. It is not a pass.
 
    The feed reads only forward from `after_seq`, with no time filter,
    so the skill first finds the window's first `seq`, and never reads
-   from `after_seq=0` unless the tenant's first event is inside the
-   window. An event's time is its `produced_at`. The window ends when
+   from `after_seq=0` unless the tenant's first change event is inside the
+   window. A change event's time is its `produced_at`. The window ends when
    this step starts and begins `--since` before it, both read once,
    here, and every later step reads the same two:
 
@@ -173,25 +173,25 @@ runs once, before the passes. It is not a pass.
 
    ```bash
    set -a; . ~/.config/acme/ops/<env>.env; set +a
-   curl -s -H "Authorization: Bearer $ACME_OPERATOR_TOKEN" "$ACME_API_URL/v1/admin/orgs/<org_id>/events?after_seq=<n>&limit=1" \
+   curl -s -H "Authorization: Bearer $ACME_OPERATOR_TOKEN" "$ACME_API_URL/v1/admin/orgs/<org_id>/change-events?after_seq=<n>&limit=1" \
      | jq -c 'if type == "array" then {seq: .[0].seq, produced_at: .[0].produced_at} else {error: .error.code} end'
    ```
 
-   A probe prints the event's `seq` and `produced_at`, both null when
+   A probe prints the change event's `seq` and `produced_at`, both null when
    none is returned. Probe `after_seq=0`, then 1, 2, 4, 8, doubling,
-   until the event returned is inside the window or none is returned.
+   until the change event returned is inside the window or none is returned.
    Then bisect between the last probe before the window and the first
-   one inside it or past the last event, until the two are one apart.
-   The probes take about twice the base-2 log of the tenant's event
-   count: about 28 calls for 10,000 events, about 40 for a million.
+   one inside it or past the last change event, until the two are one apart.
+   The probes take about twice the base-2 log of the tenant's change event
+   count: about 28 calls for 10,000 change events, about 40 for a million.
 
    Read the feed forward from `after_seq` at the later of the two, 200
-   events a page:
+   change events a page:
 
    ```bash
    set -a; . ~/.config/acme/ops/<env>.env; set +a
-   curl -s -H "Authorization: Bearer $ACME_OPERATOR_TOKEN" "$ACME_API_URL/v1/admin/orgs/<org_id>/events?after_seq=<seq>&limit=200" \
-     | jq -c 'if type == "array" then {count: length, last_seq: .[-1].seq, events: [.[] | {seq, produced_at, kind, target_id, actor_id, request_id, app}]} else {error: .error.code} end'
+   curl -s -H "Authorization: Bearer $ACME_OPERATOR_TOKEN" "$ACME_API_URL/v1/admin/orgs/<org_id>/change-events?after_seq=<seq>&limit=200" \
+     | jq -c 'if type == "array" then {count: length, last_seq: .[-1].seq, change_events: [.[] | {seq, produced_at, kind, target_id, actor_id, request_id, app}]} else {error: .error.code} end'
    ```
 
    The next page reads from the page's `last_seq`, until a page's
@@ -200,11 +200,11 @@ runs once, before the passes. It is not a pass.
    that is empty or not JSON, ends the run as in step 2.
 
    Without `--request-id`, pick the request ids here, at most five, the
-   newest first among the events tied to the symptom. A failure the
+   newest first among the change events tied to the symptom. A failure the
    stream records is `work.item.failed` or `outbox.row.failed`: a work
-   item or an outbox row that failed for good. Any other event tied to
+   item or an outbox row that failed for good. Any other change event tied to
    the symptom is a write that landed, whose request is followed for
-   what it did next. When no event is tied to the symptom, the run
+   what it did next. When no change event is tied to the symptom, the run
    makes no pass, as Input says.
 4. The error tracker, by the pass's request id. The tracker holds no
    tenant: an event's tags are `service`, `request_id`, and the SDK's
@@ -263,7 +263,7 @@ runs once, before the passes. It is not a pass.
 
    When the env file names no tracker, this step reads nothing and the
    report says "not read", never "no error event". The tenant's
-   events, the logs, and the trace still carry the request id, and the
+   change events, the logs, and the trace still carry the request id, and the
    cause is found in them.
 5. The logs, by request id. Cloud:
 
@@ -316,7 +316,7 @@ runs once, before the passes. It is not a pass.
    ignores attribute filters. An empty answer means the process ran
    with no `ACME_OTEL_ENDPOINT`, which is a finding, not an error.
    The trace says where the time went and which span failed.
-7. Or in one call, the same four reads through the platform's own
+7. Or in one call, the same four reads through the system's own
    binary, which holds the twins and the cloud behind one interface:
 
    ```bash
@@ -330,7 +330,7 @@ runs once, before the passes. It is not a pass.
    no log store of its own: without `--log-file` its log leg reports
    zero lines, which says nothing.
 
-8. Correlate. One request id ties the event row (what the tenant
+8. Correlate. One request id ties the change event row (what the tenant
    asked), the log lines (what the process decided), the trace (where
    it waited), and the error event (where it broke). The cause is the
    first of those that disagrees with the code's intent; read the
@@ -366,16 +366,16 @@ runs once, before the passes. It is not a pass.
 # Root cause: <env>, org <org_id>[, user <user_id>]
 
 **Credential.** <profile and Arn, or local>; operator <email domain only>, READ
-**Tenant.** <kind> org, <members> members, <n> events in the last <since>, from seq <seq> (<p> probes)
+**Tenant.** <kind> org, <members> members, <n> change events in the last <since>, from seq <seq> (<p> probes)
 **Requests.** <n> given or found, <m> followed (at most 5), or none
-found in the window's events
+found in the window's change events
 
 - <request id>, <route>, <status>, <when>: <cause found | not found>
 - <request id>: not followed, past the fifth
 
 ## Timeline
 
-- <time> event: <kind> by <actor id>
+- <time> change event: <kind> by <actor id>
 - <time> log: <line>
 - <time> trace: <span>, <ms>
 - <time> error: <exception> at <file>:<line>, or "error event: not read,

@@ -44,7 +44,7 @@ aws cloudwatch get-dashboard --dashboard-name acme-staging \
 
 All go to the topic `acme-<environment>-alarms`, from
 `deployment/terraform/modules/alarms`. The thresholds are the module's
-defaults, and a busier platform moves them.
+defaults, and a busier system moves them.
 
 | Alarm | Fires when |
 |-------|------------|
@@ -69,7 +69,7 @@ aws cloudwatch describe-alarms --alarm-name-prefix acme-staging- \
   --query 'MetricAlarms[].{name:AlarmName,state:StateValue,since:StateUpdatedTimestamp}' --output table
 ```
 
-Before escalating, read the platform's size: an alarm on a platform of
+Before escalating, read the system's size: an alarm on a system of
 one tenant is a developer at work.
 
 ```bash
@@ -87,7 +87,7 @@ aws ecs describe-services --cluster acme-staging --services api maintenance \
 
 An outbox lag is a relay that keeps failing. The worker's warning line
 names the row, its kind, and the error. `the bus dropped the publish`
-means Valkey refused the push or its breaker is open: the event is
+means Valkey refused the push or its breaker is open: the change event is
 already in the stream, and the row waits until the bus takes it
 ([ADR 0062](../adr/0062-a-dropped-publish-leaves-its-outbox-row-pending.md)).
 Fix Valkey, and the next pass sends the backlog.
@@ -122,7 +122,7 @@ aws logs tail /acme/staging/maintenance --since 24h --format short --filter-patt
 # work item <item id> (DELETE_ACCOUNT) in org <org id> failed for good: ...
 ```
 
-The org's stream holds it too, as a `work.item.failed` event. Fix the
+The org's stream holds it too, as a `work.item.failed` change event. Fix the
 cause first. Then a person with a `write` operator entry sends it back,
 in their own terminal; no agent runs it:
 
@@ -132,7 +132,7 @@ uv run acme-ops work requeue --env staging --org <org id> <item id>
 
 It signs the person in with the second factor, mints a `write` token for
 that one call, and signs the token out after. The item runs again with
-every attempt it had, and a `work.item.requeued` event names the
+every attempt it had, and a `work.item.requeued` change event names the
 operator. An item that is not failed is refused.
 
 ## The costs

@@ -16,7 +16,7 @@ DEFAULT_API_URL = "http://127.0.0.1:8000"
 DEFAULT_TIMEOUT_SECONDS = 30.0
 DEFAULT_RETRIES = 2
 DEFAULT_BACKOFF_SECONDS = 0.25
-SESSION_FILE = "session.json"
+AUTH_SESSION_FILE = "auth_session.json"
 
 
 class BadSetting(ValueError):
@@ -26,7 +26,7 @@ class BadSetting(ValueError):
 
 
 @dataclass(frozen=True)
-class Session:
+class AuthSession:
     api_url: str
     token: str
     email: str
@@ -40,33 +40,33 @@ def home() -> Path:
     return Path(override) if override else Path.home() / ".config" / "acme"
 
 
-def load_session() -> Session | None:
-    path = home() / SESSION_FILE
+def load_auth_session() -> AuthSession | None:
+    path = home() / AUTH_SESSION_FILE
     try:
-        return Session(**json.loads(path.read_text()))
+        return AuthSession(**json.loads(path.read_text()))
     except OSError, ValueError, TypeError:
         return None
 
 
-def save_session(session: Session) -> Path:
+def save_auth_session(auth_session: AuthSession) -> Path:
     """The token is a secret: the file is created owner-only, not created
     readable and locked down after, and so is the directory that holds it.
     A place that will not take the file is ACME_HOME's doing, so it is told
     as a setting and not as a traceback."""
-    path = home() / SESSION_FILE
+    path = home() / AUTH_SESSION_FILE
     try:
         path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
         descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
         with os.fdopen(descriptor, "w") as file:
-            file.write(json.dumps(asdict(session), indent=2) + "\n")
+            file.write(json.dumps(asdict(auth_session), indent=2) + "\n")
         path.chmod(0o600)  # a file an earlier version left readable
     except OSError as error:
         raise BadSetting(f"the session cannot be kept in {path.parent}: {error}") from None
     return path
 
 
-def clear_session() -> bool:
-    path = home() / SESSION_FILE
+def clear_auth_session() -> bool:
+    path = home() / AUTH_SESSION_FILE
     if not path.exists():
         return False
     try:
@@ -82,7 +82,7 @@ def api_url(option: str | None = None) -> str:
         return option
     if from_env := os.environ.get("ACME_API_URL"):
         return from_env
-    session = load_session()
+    session = load_auth_session()
     return session.api_url if session else DEFAULT_API_URL
 
 
@@ -139,7 +139,7 @@ def token() -> str | None:
         if not from_env.isascii():
             raise BadSetting("ACME_TOKEN has characters a request header cannot carry")
         return from_env
-    session = load_session()
+    session = load_auth_session()
     return session.token if session else None
 
 
@@ -152,7 +152,7 @@ def credentials(option: str | None = None) -> tuple[str, str | None]:
     explicit = option or os.environ.get("ACME_API_URL") or None
     if os.environ.get("ACME_TOKEN"):
         return explicit or DEFAULT_API_URL, token()
-    session = load_session()
+    session = load_auth_session()
     if session is None:
         return explicit or DEFAULT_API_URL, None
     if explicit is not None and explicit.rstrip("/") != session.api_url.rstrip("/"):

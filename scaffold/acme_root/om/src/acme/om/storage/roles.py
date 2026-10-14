@@ -17,7 +17,7 @@ TABLE_ROLES: dict[str, DatabaseRole] = {
     "sign_in_delays": DatabaseRole.CORE,
     "users": DatabaseRole.CORE,
     "memberships": DatabaseRole.CORE,
-    "sessions": DatabaseRole.CORE,
+    "auth_sessions": DatabaseRole.CORE,
     "api_keys": DatabaseRole.CORE,
     "socket_tickets": DatabaseRole.CORE,
     "invitations": DatabaseRole.CORE,
@@ -25,20 +25,26 @@ TABLE_ROLES: dict[str, DatabaseRole] = {
     "tenant_caps": DatabaseRole.QUEUE,
     "files": DatabaseRole.CORE,
     "idempotency_records": DatabaseRole.CORE,
-    "events": DatabaseRole.ACTIVITY,
-    "event_cursors": DatabaseRole.ACTIVITY,
+    "change_events": DatabaseRole.ACTIVITY,
+    "change_event_cursors": DatabaseRole.ACTIVITY,
     "outbox_rows": DatabaseRole.CORE,
     "orchestrations": DatabaseRole.CORE,
-    "resources": DatabaseRole.CORE,
+    "leasable_resources": DatabaseRole.CORE,
     "leases": DatabaseRole.CORE,
     "lease_requests": DatabaseRole.CORE,
-    "platform_sizes": DatabaseRole.ADMIN,
+    "system_sizes": DatabaseRole.ADMIN,
 }
 
-DROPPED_TABLE_ROLES: dict[str, DatabaseRole] = {}
-"""Tables the migration chain made and later dropped. No process reaches
-them, so `role_for` does not know them; only the chain names them, and its
-role check reads this map beside the live one."""
+DROPPED_TABLE_ROLES: dict[str, DatabaseRole] = {
+    "event_cursors": DatabaseRole.ACTIVITY,
+    "events": DatabaseRole.ACTIVITY,
+    "platform_sizes": DatabaseRole.ADMIN,
+    "resources": DatabaseRole.CORE,
+    "sessions": DatabaseRole.CORE,
+}
+"""Tables the migration chain made and later dropped or renamed, by the name
+they had. No process reaches them, so `role_for` does not know them; only the
+chain names them, and its role check reads this map beside the live one."""
 
 
 def role_for(table_name: str) -> DatabaseRole:

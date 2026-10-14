@@ -52,7 +52,7 @@ async def test_a_success_clears_the_mark() -> None:
 
 async def test_a_mark_is_keyed_by_provider_and_credential() -> None:
     """One org's credential failing is no outage of another's, nor of the
-    platform's, nor of another provider's."""
+    system's, nor of another provider's."""
     signal, _ = shared()
     org = new_id()
     await signal.mark(outage(org_id=org))

@@ -32,7 +32,7 @@ The substitution:
 
 | Choice in the guideline | Substitute | Reason | Rules it still satisfies |
 |-------------------------|------------|--------|--------------------------|
-| Browser apps are React on Vite (DEL-12) | The company site, `apps/site`: HTML and CSS on Vite, with no script | A page with no state, no API call, and no socket has nothing to render in a client | Vite builds it into static files behind CloudFront; it reaches no origin but its own; its look is the portal's `theme.css`; every app that holds state or calls the platform stays React on Vite |
+| Browser apps are React on Vite (DEL-12) | The company site, `apps/site`: HTML and CSS on Vite, with no script | A page with no state, no API call, and no socket has nothing to render in a client | Vite builds it into static files behind CloudFront; it reaches no origin but its own; its look is the portal's `theme.css`; every app that holds state or calls the system stays React on Vite |
 
 The company site is one page that says what Acme is, with a link into
 the portal, and a not-found page. React would bring a script to a page

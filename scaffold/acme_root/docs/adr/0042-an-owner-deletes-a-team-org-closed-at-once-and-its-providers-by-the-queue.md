@@ -16,17 +16,17 @@ connections and pending invitations.
 
 ## Decision
 
-**An owner deletes their team org, from a session.** `POST
+**An owner deletes their team org, from an auth session.** `POST
 /v1/orgs/current/deletion` carries the org's name as the owner typed
 it, forgiving surrounding space and nothing else. Only an owner's
-session is heard: an admin, a member, and an API key are refused (`403
+auth session is heard: an admin, a member, and an API key are refused (`403
 not_authorized`). A personal org is refused (`409 personal_org_fixed`):
 it goes only with its person's account.
 
 **The org closes in one commit.** One named atomic write,
 `TenancyStorageInterface.write_closed_org`, lands the org row with its
 provider organization cleared, soft-deletes every live user of the
-tenant with their membership, revokes every live session and API key,
+tenant with their membership, revokes every live auth session and API key,
 and revokes every pending invitation. Each ended user lands
 `tenancy.user.deleted`, and each credential its revocation row, so
 every socket closes. From the answer on, nobody reaches the org: no
@@ -58,9 +58,9 @@ worker has deleted it. A repeat before then answers the org as it
 stands and asks for nothing more. A personal org is refused.
 
 **The owner lands in their personal org.** The same request makes a
-session in the owner's personal org, as a switch does, carrying the
+auth session in the owner's personal org, as a switch does, carrying the
 provider session the asking one came from, and the portal takes it up.
-When that session cannot be made, the answer carries none and the owner
+When that auth session cannot be made, the answer carries none and the owner
 signs in again: the org is deleted either way.
 
 **Settings changes a member's role.** A member who manages members gets

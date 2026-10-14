@@ -32,7 +32,7 @@ ORG, USER = uuid4(), uuid4()
 def push(seq: int, kind: str = "tenancy.invitation.created") -> str:
     return json.dumps(
         {
-            "type": "event",
+            "type": "change_event",
             "sent_at": None,
             "topic": "entity_changed",
             "payload": {"kind": kind, "target_id": str(uuid4()), "seq": seq, "actor_id": str(USER)},
@@ -140,7 +140,7 @@ def transport(
                     raise failure
                 return httpx.Response(failure, json={"error": {"code": "down", "message": "x"}})
             return httpx.Response(201, json={"ticket": "tkt_1", "expires_in_seconds": 30})
-        if request.url.path == "/v1/events":
+        if request.url.path == "/v1/change-events":
             after = int(request.url.params["after_seq"])
             if asked is not None:
                 asked.append(after)

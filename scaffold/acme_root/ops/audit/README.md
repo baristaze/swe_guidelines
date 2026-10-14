@@ -8,7 +8,7 @@ every time, so a run is one command and its numbers compare with the
 last run's.
 
 They live beside the application, never in it: no process of the
-platform imports them. They run from the repository root with `uv run
+system imports them. They run from the repository root with `uv run
 python ops/audit/<tool>.py`, on the local stack (`make infra-up`, and
 `make migrate` once).
 

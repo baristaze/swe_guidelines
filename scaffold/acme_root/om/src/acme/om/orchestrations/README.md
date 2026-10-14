@@ -15,8 +15,8 @@ This is one of the kinds of thing [Acme is made of](../../../../README.md).
 - **Status**: running, parked, succeeded, failed, or cancelled. The
   last three are settled: a record never leaves them.
 - **Park reason**: why a parked record waits, and so what wakes it. The
-  core has two: `provider_unavailable`, and `resource`, for a record in
-  line for a [lease](../leases/README.md).
+  core has two: `provider_unavailable`, and `leasable_resource`, for a
+  record in line for a [lease](../leases/README.md).
 - **Fail reason**: why a record ended unfinished: a bound of its input,
   or `defect`, a step that still failed on its last attempt.
 - **Period**: for a record kept per period, such as a day, the org, the
@@ -42,12 +42,11 @@ This is one of the kinds of thing [Acme is made of](../../../../README.md).
   every park on one outage lands one wake of the org's records then
   ([ADR 0088](../../../../../docs/adr/0088-a-providers-outage-is-a-shared-signal.md)).
 - **Succeed** after the last step, or **fail** on a bound.
-- **Cancel.** A person ends a running or a parked record, and it
-  settles `cancelled`, keeping its cursor and what it made. No wake
-  revives it, and a step already under way lands nothing after it. A
-  request it waits on in a lease's line is passed over at the next
-  grant
-  ([ADR 0099](../../../../../docs/adr/0099-a-person-cancels-a-running-or-a-parked-record.md)).
+- **Cancel.** A person ends a running or a parked record, and it settles
+  `cancelled`, keeping its cursor and what it made. No wake revives it,
+  and a step already under way lands nothing after it. A request it
+  waits on in a lease's wait line is passed over at the next grant ([ADR
+  0099](../../../../../docs/adr/0099-a-person-cancels-a-running-or-a-parked-record.md)).
 - **Sweep.** A settled record goes thirty days later. A parked or a
   running one is kept.
 
@@ -71,11 +70,11 @@ This is one of the kinds of thing [Acme is made of](../../../../README.md).
 ## How another namespace composes it
 
 A product adds a kind to `OrchestrationKind` and its input shape to
-`ORCHESTRATION_INPUTS`. A kind a person starts says what a second
-start does while one is open: it answers the open record, it is
-refused, or it starts beside it. The step lives in the namespace whose
-rows it changes: it writes its rows and the record's `Step` in one commit, the
-record's rows from `steps.step_rows` among them. The worker's
-orchestration handler maps the kind to that step. A guard adds a
-`ParkReason`, and whatever clears it asks for `WAKE_PARKED`
-([ADR 0039](../../../../../docs/adr/0039-long-running-work-is-a-record-a-guard-parks-and-a-bound-fails.md)).
+`ORCHESTRATION_INPUTS`. A kind a person starts says what a second start
+does while one is open: it answers the open record, it is refused, or it
+starts beside it. The step lives in the namespace whose rows it changes:
+it writes its rows and the record's `OrchestrationStep` in one commit,
+the record's rows from `steps.orchestration_step_rows` among them. The
+worker's orchestration handler maps the kind to that step. A guard adds
+a `ParkReason`, and whatever clears it asks for `WAKE_PARKED` ([ADR
+0039](../../../../../docs/adr/0039-long-running-work-is-a-record-a-guard-parks-and-a-bound-fails.md)).

@@ -6,13 +6,13 @@ from uuid import UUID
 
 from acme.integrations.identity import DeviceAuthorization
 from acme.om.context import IdentityContext, RequestContext
-from acme.om.tenancy.types.issued import IssuedLogin, IssuedSession, SignedOut, SignInStart
+from acme.om.tenancy.types.issued import IssuedAuthSession, IssuedLogin, SignedOut, SignInStart
 from acme.om.tenancy.types.page import OrgMembershipPage
 
 
 class TenancySignInManagerInterface(ABC):
     """A delegate of `TenancyManagerInterface`, reached as `tenancy.sign_in`.
-    Every operation is platform-internal and runs before a tenant is chosen:
+    Every operation is system-internal and runs before a tenant is chosen:
     it takes the request stage, or the identity stage the manager's
     `authenticate_login` produces. None constructs a stage."""
 
@@ -26,7 +26,7 @@ class TenancySignInManagerInterface(ABC):
         invitation_token: str | None = None,
         sign_up: bool = False,
     ) -> SignInStart:
-        """Platform-internal: where a browser goes to sign in at the identity
+        """System-internal: where a browser goes to sign in at the identity
         provider, and the PKCE verifier the caller keeps and hands back with
         the code. It comes back to `redirect_uri` with a code and `state` as
         it was handed; the state is the caller's, which binds the round trip
@@ -45,7 +45,7 @@ class TenancySignInManagerInterface(ABC):
         *,
         code_verifier: str | None = None,
     ) -> IssuedLogin:
-        """Platform-internal: the identity provider's sign-in, finished. The code
+        """System-internal: the identity provider's sign-in, finished. The code
         the browser brought back is exchanged with the provider, server-side,
         with the verifier the sign-in started with, for the person it vouches
         for: an issuer, a subject, and a verified
@@ -66,7 +66,7 @@ class TenancySignInManagerInterface(ABC):
 
     @abstractmethod
     async def start_device_sign_in(self, rctx: RequestContext) -> DeviceAuthorization:
-        """Platform-internal: a sign-in for a device with no browser of its own,
+        """System-internal: a sign-in for a device with no browser of its own,
         the command line. The person confirms the code the answer names at the
         provider's address, in any browser; the device keeps the device code
         and finishes with it."""
@@ -74,7 +74,7 @@ class TenancySignInManagerInterface(ABC):
 
     @abstractmethod
     async def finish_device_sign_in(self, rctx: RequestContext, device_code: str) -> IssuedLogin:
-        """Platform-internal: asks whether the person confirmed the device
+        """System-internal: asks whether the person confirmed the device
         sign-in. When they did, it is finished as `sign_in_with_code` finishes
         a browser's. SignInPending (or SignInSlowDown) while they have not;
         SignInRefused when they declined or the code expired."""
@@ -84,7 +84,7 @@ class TenancySignInManagerInterface(ABC):
     async def dev_sign_in(
         self, rctx: RequestContext, email: str, display_name: str = ""
     ) -> IssuedLogin:
-        """Platform-internal, local and test only: a sign-in by address alone,
+        """System-internal, local and test only: a sign-in by address alone,
         for the seed, the demo recorders, the traffic generator, and the tests,
         which need people without a browser round trip. The identity is found
         by the email or made with its personal org, as a first sign-in makes
@@ -94,7 +94,7 @@ class TenancySignInManagerInterface(ABC):
 
     @abstractmethod
     async def verify_second_factor(self, ictx: IdentityContext, totp_code: str) -> IssuedLogin:
-        """Platform-internal: a sign-in's second factor. The login presented is
+        """System-internal: a sign-in's second factor. The login presented is
         answered with a new one that records the verified code, which the
         operator gate asks for, and ends in the write that lands it, so a
         person holds one sign-in at a time; a wrong code ends nothing. The
@@ -105,8 +105,8 @@ class TenancySignInManagerInterface(ABC):
         ...
 
     @abstractmethod
-    async def exchange_login(self, ictx: IdentityContext, org_id: UUID) -> IssuedSession:
-        """Platform-internal: exchanges the verified identity for a tenant-scoped
+    async def exchange_login(self, ictx: IdentityContext, org_id: UUID) -> IssuedAuthSession:
+        """System-internal: exchanges the verified identity for a tenant-scoped
         session token; NotAuthorized when the identity is not a member of
         `org_id`, and the credential presented still stands. A sign-in is
         exchanged once: it ends in the same write that lands the session, so
@@ -125,7 +125,7 @@ class TenancySignInManagerInterface(ABC):
     async def get_identity_memberships(
         self, ictx: IdentityContext, after: UUID | None, limit: int
     ) -> OrgMembershipPage:
-        """Platform-internal: no tenant is chosen, so the list is the identity's.
+        """System-internal: no tenant is chosen, so the list is the identity's.
         The places the verified identity holds, each its org, its user, and its
         role, the same choice a sign-in answers with; by user id, a page at a
         time as `TenancyMembersManagerInterface.get_users` pages. Deleted orgs
@@ -134,7 +134,7 @@ class TenancySignInManagerInterface(ABC):
 
     @abstractmethod
     async def logout(self, ictx: IdentityContext, return_to: str | None = None) -> SignedOut:
-        """Platform-internal: ending its own sign-in is an operation of the
+        """System-internal: ending its own sign-in is an operation of the
         identity stage. Ends the credential the stage came from, whichever
         it is: a session, announced so the socket it opened closes; a sign-in,
         with or without its second factor; an operator token, which is the

@@ -1,5 +1,5 @@
 """The operator plane over the live app: which permission each route asks
-for, the reads of one tenant and the trail they leave, the platform's size,
+for, the reads of one tenant and the trail they leave, the system's size,
 the two creates under the operator's idempotency record, the requeue
 of a failed work item, and an org's own cap on a lane."""
 
@@ -73,7 +73,7 @@ def routes(org_id: str) -> list[tuple[str, str, str, dict[str, Any]]]:
         ("read", "GET", "/v1/admin/orgs", {}),
         ("read", "GET", f"/v1/admin/orgs/{org_id}", {}),
         ("read", "GET", f"/v1/admin/orgs/{org_id}/members", {}),
-        ("read", "GET", f"/v1/admin/orgs/{org_id}/events", {}),
+        ("read", "GET", f"/v1/admin/orgs/{org_id}/change-events", {}),
         (
             "write",
             "POST",
@@ -156,7 +156,7 @@ async def test_an_operator_reads_one_tenant_and_leaves_a_trail(
         assert [m["email"] for m in members.json()["items"]] == [OWNER["email"]]
         assert members.json()["next_cursor"] is None
 
-        events = await client.get(f"/v1/admin/orgs/{org_id}/events", headers=reader)
+        events = await client.get(f"/v1/admin/orgs/{org_id}/change-events", headers=reader)
         assert events.status_code == 200, events.text
         assert [e["seq"] for e in events.json()] == [1, 2, 3, 4]
         # The operator's feed carries what the tenant's leaves out: the request
@@ -167,7 +167,7 @@ async def test_an_operator_reads_one_tenant_and_leaves_a_trail(
             "media.file.updated",
         }
         later = await client.get(
-            f"/v1/admin/orgs/{org_id}/events", headers=reader, params={"after_seq": 3}
+            f"/v1/admin/orgs/{org_id}/change-events", headers=reader, params={"after_seq": 3}
         )
         assert [e["seq"] for e in later.json()] == [4]
 
@@ -229,7 +229,7 @@ async def test_the_size_is_what_the_first_responder_reads(
     # The seeded tenant and the operator's own, and each owner's personal
     # org; the two owners, once in each.
     assert (body["tenants"], body["users"]) == (4, 4)
-    assert body["events_last_24h"] == 4
+    assert body["change_events_last_24h"] == 4
     for moment in (body["since"], body["counted_at"]):
         assert moment.endswith("Z") or "+" in moment
 
@@ -365,7 +365,7 @@ async def test_a_write_operator_requeues_a_failed_item_once(
 
     # The diary names the dead letter, then the requeue and the operator who made it.
     me = (await client.get("/v1/admin/me", headers=writer)).json()
-    events = (await client.get(f"/v1/admin/orgs/{org_id}/events", headers=reader)).json()
+    events = (await client.get(f"/v1/admin/orgs/{org_id}/change-events", headers=reader)).json()
     trail = [(e["kind"], e["target_id"]) for e in events if e["kind"].startswith("work.")]
     assert trail == [("work.item.failed", str(item_id)), ("work.item.requeued", str(item_id))]
     requeue = next(e for e in events if e["kind"] == "work.item.requeued")

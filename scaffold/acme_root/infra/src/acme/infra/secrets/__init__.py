@@ -5,7 +5,7 @@ secret and the store, never the value.
 A secret belongs to a tenant, as a cache entry and a bucket object do: every
 call takes the `org_id` first, and each tenant's secrets sit under a prefix
 of their own, so a name one tenant presents never resolves to another
-tenant's secret, or to one of the platform's. The platform's own credentials
+tenant's secret, or to one of the system's. The system's own credentials
 (the database URL, the error tracker's DSN) are not read through here: they
 reach the process at start."""
 

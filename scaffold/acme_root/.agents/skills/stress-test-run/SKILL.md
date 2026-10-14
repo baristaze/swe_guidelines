@@ -1,6 +1,6 @@
 ---
 name: stress-test-run
-description: "Run one stress test scenario of the platform against one environment with the platform's own generator, read the signals back through their own APIs, and report pass or fail against a target stated before the run: the scenario's p95 and error ratio, or the one the run states instead. A real run is the platform developer's choice; the CI sanity run is thirty seconds at the light profile and is never a stress test. Needs the read-only investigate profile to read the signals back."
+description: "Run one stress test scenario of the system against one environment with the system's own generator, read the signals back through their own APIs, and report pass or fail against a target stated before the run: the scenario's p95 and error ratio, or the one the run states instead. A real run is the system developer's choice; the CI sanity run is thirty seconds at the light profile and is never a stress test. Needs the read-only investigate profile to read the signals back."
 allowed-tools: Read, Bash(aws:*), Bash(uv run acme-ops:*)
 ---
 
@@ -30,7 +30,7 @@ run's table as JSON beside printing it; the verdict is printed, not
 written to the file. `local` runs
 against the compose stack and needs no cloud; it proves the scenario
 and the wiring, and its numbers are the developer's machine's, not
-the platform's.
+the system's.
 
 ## Role and credential
 
@@ -74,14 +74,14 @@ token, stop, and give the person the line it printed.
    through `acme-ops`, which refuses a file that is not, the
    provisioner's included; never read or print either.
 2. Say what is about to happen and wait for the person: a real run
-   is the platform developer's choice, because it costs money in the
+   is the system developer's choice, because it costs money in the
    cloud, writes rows, and can trip the alarms it is meant to test.
    The CI sanity run is `acme-ops traffic --profile light` for thirty
    seconds against the local stack, and it is a wiring check, never a
    stress test. Against `production`, refuse unless the person says
    so in this session. Against `local`, the invoking prompt's word is
    enough, and an unattended run does not wait.
-3. Note the start time and the size of the platform before the run
+3. Note the start time and the size of the system before the run
    (`uv run acme-ops size --env <env>`), so the report can say what
    the run added. The size is the worker's count every five minutes:
    the one that says what the run added is the first whose
@@ -102,7 +102,7 @@ token, stop, and give the person the line it printed.
    route and status, p50, p95, p99, and the error ratio, then two
    totals and the notes. The totals are the two groups the target
    reads: the working requests, the person, member, and API key
-   routes, the event stream, and the socket's ticket, whose p95 the
+   routes, the change event stream, and the socket's ticket, whose p95 the
    target judges, and the
    sign-in and sign-out beside them, one of each per person for the
    whole run, reported with their own p95 and judged by nothing. The
@@ -115,7 +115,7 @@ token, stop, and give the person the line it printed.
    sign-in is a note.
 4. Read the signals back for the run's window, through the same
    interface every other skill reads: the request counter's delta,
-   the p95 the platform measured (not the generator's), the worker
+   the p95 the system measured (not the generator's), the worker
    outcomes, the error count, and one request id of the run followed
    across the log, the trace, and the tracker:
 
@@ -133,7 +133,7 @@ token, stop, and give the person the line it printed.
    Cloud: the alarms that fired during the window,
    `aws cloudwatch describe-alarms --alarm-name-prefix acme-<env>-
    --profile acme-<env>-investigate`, are part of the result.
-5. Decide. Pass when the platform's p95 is at or under the target and
+5. Decide. Pass when the system's p95 is at or under the target and
    the error ratio is at or under the target, both over the run plus
    one scrape interval (the ramp cannot be cut out at a fifteen-second
    scrape). The p95 is the working requests'; the sign-in and the
@@ -155,7 +155,7 @@ token, stop, and give the person the line it printed.
   the generator removes them when the run ends, and the report names
   any it could not; no scaling, no apply, no change to the scenario.
 - No secret value printed.
-- No verdict from the generator's numbers alone: the platform's own
+- No verdict from the generator's numbers alone: the system's own
   signals decide.
 - No target moved to fit the result: a target stated before the run is
   the run's; one rewritten after the numbers are in is not a target,
@@ -184,7 +184,7 @@ set for this run>), error ratio <ratio> over every request (<source>)
 
 ## Signals over the soak
 
-- Platform p95: <ms> ms, error ratio <ratio>, requests <n>
+- System p95: <ms> ms, error ratio <ratio>, requests <n>
 - Workers: <outcomes per kind>, queue oldest <age>
 - Alarms during the window: <names, or none>
 - Request <id>: log <found>, trace <found>, error event <found | none>

@@ -9,16 +9,16 @@ from abc import ABC, abstractmethod
 from uuid import UUID
 
 from acme.om.context import TenantContext
+from acme.om.leases.types.leasable_resource import LeasableResource
 from acme.om.leases.types.lease import Lease
 from acme.om.leases.types.request import LeaseRequest
-from acme.om.leases.types.resource import Resource
 from acme.om.outbox.types.row import OutboxRow
 
 
-class ResourceKindInterface(ABC):
+class LeasableResourceKindInterface(ABC):
     @abstractmethod
     async def may_grant(
-        self, ctx: TenantContext, resource: Resource, request: LeaseRequest
+        self, ctx: TenantContext, resource: LeasableResource, request: LeaseRequest
     ) -> bool:
         """Asked just before a grant, under the context of whatever freed the
         resource: whether the request may still be granted, read live (the
@@ -27,7 +27,7 @@ class ResourceKindInterface(ABC):
 
     @abstractmethod
     def grant_rows(
-        self, ctx: TenantContext, resource: Resource, request: LeaseRequest, lease: Lease
+        self, ctx: TenantContext, resource: LeasableResource, request: LeaseRequest, lease: Lease
     ) -> tuple[OutboxRow, ...]:
         """What a grant starts: the rows it lands in the grant's own commit,
         a `work.<kind>` row among them for a job to enqueue. That row is the
@@ -44,7 +44,7 @@ class AskCheckInterface(ABC):
 
     @abstractmethod
     async def check_ask(
-        self, ctx: TenantContext, request: LeaseRequest, resource: Resource | None
+        self, ctx: TenantContext, request: LeaseRequest, resource: LeasableResource | None
     ) -> None:
         """Asked at the ask, under the asker's context, once its payload has
         its kind's shape and before anything lands: whether this asker may

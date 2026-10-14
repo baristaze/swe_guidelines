@@ -7,17 +7,17 @@
 // switch does, and lands there. When no session came back, the tab forgets
 // the old one and the owner signs in again. A refusal changes nothing, and
 // it is said; one that says the held session is gone signs the tab out.
-import { ApiError, type IssuedSessionView, type OrgDeletedView } from "@acme/client";
+import { ApiError, type IssuedAuthSessionView, type OrgDeletedView } from "@acme/client";
 import { errorMessage } from "../../app/errorMessage";
-import type { SessionHold } from "../../app/forgetSession";
+import type { AuthSessionHold } from "../../app/forgetAuthSession";
 
 export interface DeleteOrgEffects {
   /** The deletion, made with the token the session still holds. */
-  remove: () => Promise<Pick<OrgDeletedView, "session">>;
+  remove: () => Promise<Pick<OrgDeletedView, "auth_session">>;
   /** Holds back a refusal of the current session while the deletion runs. */
-  hold: () => SessionHold;
+  hold: () => AuthSessionHold;
   /** Drops the old tenant and takes up the session in the personal org. */
-  adopt: (issued: IssuedSessionView) => void;
+  adopt: (issued: IssuedAuthSessionView) => void;
   /** Drops the token and everything fetched under it. */
   forget: () => void;
   /** Sends the tab on: home to the personal org, or to sign in again. */
@@ -28,7 +28,7 @@ export type DeleteOrgOutcome = { deleted: true } | { deleted: false; refusal: st
 
 export async function deleteOrg(effects: DeleteOrgEffects): Promise<DeleteOrgOutcome> {
   const hold = effects.hold();
-  let deleted: Pick<OrgDeletedView, "session">;
+  let deleted: Pick<OrgDeletedView, "auth_session">;
   try {
     deleted = await effects.remove();
   } catch (caught) {
@@ -40,10 +40,10 @@ export async function deleteOrg(effects: DeleteOrgEffects): Promise<DeleteOrgOut
     }
     return { deleted: false, refusal: errorMessage(caught, "The organization was not deleted.") };
   }
-  if (deleted.session) {
+  if (deleted.auth_session) {
     // Taken up before the hold ends: a late refusal of the old session then
     // names a token the tab no longer holds, and is dropped.
-    effects.adopt(deleted.session);
+    effects.adopt(deleted.auth_session);
     hold.release();
     effects.land("home");
   } else {

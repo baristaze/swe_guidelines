@@ -13,7 +13,7 @@ DEL-32, DEL-39), the `devx` profile and the
 local URLs to `delivery` (DEL-33, DEL-34), the in-process suite and the
 deployed smoke test's place beside it to `delivery` (DEL-36), the
 operator plane's gate and its context to `context` (CTX-20), and the
-platform's own secrets, the ones the secret store holds, to `async`
+system's own secrets, the ones the secret store holds, to `async`
 (ASY-13, ASY-28).
 
 ## OPS-01 Every task is a skill, and the credential is the boundary
@@ -22,7 +22,7 @@ platform's own secrets, the ones the secret store holds, to `async`
 agent, and the boundary is the credential it holds, never the prompt.
 A cloud credential that writes is held by a pipeline, or by the
 administrator for creating and destroying an environment. On the
-platform, the one writing identity an agent runs under is the traffic
+system, the one writing identity an agent runs under is the traffic
 generator's.
 
 **Source.** Operations; Operational Skills; Traffic and Stress.
@@ -47,7 +47,7 @@ named choice that no skill runs under, is the one exception.
 
 ## OPS-02 Four roles; the administrator creates, destroys, and nothing else
 
-**Principle.** Four roles operate a platform. The administrator,
+**Principle.** Four roles operate a system. The administrator,
 deployer, and investigator are cloud roles under named profiles; the
 supporter is the investigator's plus an operator-plane identity. The
 administrator is a role a person holds, granted for the run: it creates
@@ -79,7 +79,7 @@ writes nothing.
 assumed by the workflow through the repository host's identity
 federation, never by a person. Production has two, one that plans and
 one that applies. An infrastructure change is a pull request the
-deployer applies; a data change is an operation of the platform, and
+deployer applies; a data change is an operation of the system, and
 the manager decides it.
 
 **Source.** Operations, Operator Roles.
@@ -122,7 +122,7 @@ shared by two environments.
 ## OPS-05 The supporter reads a named tenant through the operator plane
 
 **Principle.** The supporter is the investigator plus one thing: a read
-of a named tenant's rows through the platform's operator plane, never
+of a named tenant's rows through the system's operator plane, never
 a database login. The tenant is a parameter of every read. The
 credential is an identity on the operator allowlist whose entry says
 read. Every such read is logged with the tenant and the operator.
@@ -225,7 +225,7 @@ configuration, one per role per environment. Everything else an
 operator reaches lives in one owner-only file per environment outside
 the repository, but a `write` token, which lives in a file of its own
 beside it, read only by the command that needs it and never by a skill
-that reads. Neither an operator's credentials nor the platform's
+that reads. Neither an operator's credentials nor the system's
 secrets enter the repository, a skill's text, a log line, or a report.
 
 **Source.** Operations, Operator Credentials.
@@ -240,7 +240,7 @@ tracks (a public name or an account id in the environments' file is no
 credential, DEL-42); a credentials file readable by the group or the
 world; a report or a log line that prints what the file holds; a skill
 that reads a profile's key from anywhere but the cloud tool's
-configuration. (The platform's own secrets are ASY-13 and ASY-28.)
+configuration. (The system's own secrets are ASY-13 and ASY-28.)
 
 **Severity.** high
 
@@ -333,7 +333,7 @@ on an expired session instead of ending and saying so.
 ## OPS-13 The first responder reads whose traffic it was before it escalates
 
 **Principle.** The first responder to an alarm is an agent. Before it
-escalates, it reads the platform's size and whose traffic raised the
+escalates, it reads the system's size and whose traffic raised the
 alarm. Outside production, the team's own traffic may be suppressed,
 recorded with its reason; in production nothing is. What it cannot
 explain, it escalates with everything it read.
@@ -678,8 +678,8 @@ carries every detail itself.
 **Principle.** Documents are granular, one subject each. What each
 reader is served is written down in one map at the repository root,
 `llms.txt`: a title, a summary, and one section per audience with one
-line per link. Three audiences are named: platform developers,
-platform operators, and the tenant's users and admins. Exposure is by
+line per link. Three audiences are named: system developers,
+system operators, and the tenant's users and admins. Exposure is by
 listing, never by location.
 
 **Source.** Documentation as Code, The Knowledge Map.

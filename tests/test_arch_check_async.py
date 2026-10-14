@@ -477,7 +477,7 @@ def test_asy_09_a_publish_that_answers_a_boolean_passes(tmp_path):
 
 
 def test_asy_09_a_payload_base_on_the_om_root(tmp_path):
-    code, report = run(tmp_path, "ASY-09", edit(TOPICS, "class TopicPayload(BaseModel):", "class TopicPayload(Platform):"))
+    code, report = run(tmp_path, "ASY-09", edit(TOPICS, "class TopicPayload(BaseModel):", "class TopicPayload(OmBase):"))
     assert code == 1
     assert messages(report) == ["TopicPayload extends pydantic's BaseModel directly, never the OM root"]
 

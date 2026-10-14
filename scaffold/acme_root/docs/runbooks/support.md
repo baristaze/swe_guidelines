@@ -21,19 +21,19 @@ The supporter holds a `read` operator token and changes nothing.
    ```
 
    It reads, in this order:
-   - **The platform's size** (`acme-ops size`): one org's problem, or
+   - **The system's size** (`acme-ops size`): one org's problem, or
      everyone's.
    - **The alarms and the dashboard** for the window.
    - **The request id through every signal** (`acme-ops signals check`):
      the log lines, the metric, the trace, and the error event.
    - **The org's records on the plane**: the org, its members, and its
-     event stream around the time named. The stream is numbered without
+     change event stream around the time named. The stream is numbered without
      gaps, so a change that never reached a screen is either in the
      stream and not pushed, or not in it and never made.
    - **The errors** for the window, filtered on the environment
      (`environment:<env>`), since one tracker project holds them all.
 4. **Write the finding**: the cause in one line, its evidence, and whose
-   fix it is: the platform's (a pull request) or the tenant's (a refusal
+   fix it is: the system's (a pull request) or the tenant's (a refusal
    that was right).
 
 ## What is logged
@@ -55,7 +55,7 @@ The supporter holds a `read` operator token and changes nothing.
 - **The skill stops on its identity check.** The profile or the token is
   not the read one. Sign in again under the investigate profile, and
   write a fresh `read` token.
-- **The stream starts after the time named.** Its oldest events are
+- **The stream starts after the time named.** Its oldest change events are
   trimmed past the retention, 90 days by default
   ([ADR 0040](../adr/0040-the-event-stream-has-a-floor.md)). The org's
   rows still show the state as it is.

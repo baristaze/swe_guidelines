@@ -54,7 +54,7 @@ BASE: dict[str, str] = {
         "from datetime import UTC, datetime\nfrom uuid import UUID, uuid7\n\nfrom pydantic import BaseModel, ConfigDict\n\n\n"
         "def new_id() -> UUID:\n    return uuid7()\n\n\n"
         "def utcnow() -> datetime:\n    return datetime.now(UTC)\n\n\n"
-        'class Platform(BaseModel):\n    model_config = ConfigDict(frozen=True, extra="forbid")\n\n\n'
+        'class OmBase(BaseModel):\n    model_config = ConfigDict(frozen=True, extra="forbid")\n\n\n'
         'PROVENANCE_FIELDS = frozenset({"created_at", "created_by", "deleted_at", "deleted_by"})\n'
         "EMPTY_UUID = UUID(int=0)\n"
     ),
@@ -111,7 +111,7 @@ BASE: dict[str, str] = {
     ),
     # infra: its own exception root
     "infra/pyproject.toml": distribution("acme-infra"),
-    "infra/README.md": "# Infra\n\nThe clients of the platform services.\n",
+    "infra/README.md": "# Infra\n\nThe clients of the system services.\n",
     "infra/tests/__init__.py": "",
     "infra/src/acme/infra/__init__.py": (
         'class InfraException(Exception):\n    http_status = 500\n    code = "infra"\n\n\nclass InfraRoot:\n    pass\n'
@@ -143,8 +143,8 @@ BASE: dict[str, str] = {
     ),
     **{f".agents/skills/{name}/SKILL.md": f"---\nname: {name}\n---\n" for name in SKILLS},
     "llms.txt": (
-        "# acme\n\n> The acme platform.\n\n## Users\n\n- [Object model](om/README.md): the nouns\n\n"
-        "## Operators\n\n- [Infra](infra/README.md): the platform services\n\n"
+        "# acme\n\n> The acme system.\n\n## Users\n\n- [Object model](om/README.md): the nouns\n\n"
+        "## Operators\n\n- [Infra](infra/README.md): the system services\n\n"
         "## Developers\n\n- [API](services/api/README.md): the public API\n"
     ),
 }

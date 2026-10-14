@@ -9,19 +9,19 @@ from uuid import UUID
 
 from acme.infra.topics import EntityChangedPayload, TopicPayload, Topics, TopicsInterface
 from acme.om.base import utcnow
+from acme.om.change_events import ChangeEventsManagerInterface
 from acme.om.context import ActorScope, TenantContext
-from acme.om.events import EventsManagerInterface
 from acme.om.exceptions import NotAuthenticated, ValidationFailed
 from acme.om.tenancy import TenancyManagerInterface
 from acme.om.tenancy.types.socket_ticket import SocketPrincipal
-from acme.services.api.realtime.envelopes import EventEnvelope, IssuedTicketView
+from acme.services.api.realtime.envelopes import ChangeEventEnvelope, IssuedTicketView
 from acme.services.api.services.realtime import (
     CREDENTIAL_REVOKED,
     MEMBERSHIP_ENDED,
     RIGHTS_CHANGED,
     RealtimeServiceInterface,
 )
-from acme.services.api.types.events import EntityChangedView
+from acme.services.api.types.change_events import EntityChangedView
 
 PROJECTIONS: dict[Topics, Callable[[TopicPayload], EntityChangedView]] = {
     Topics.ENTITY_CHANGED: EntityChangedView.model_validate,
@@ -30,7 +30,7 @@ PROJECTIONS: dict[Topics, Callable[[TopicPayload], EntityChangedView]] = {
 onto before a frame is offered. A topic outside this map never reaches a client."""
 
 REVOCATIONS: dict[str, tuple[Literal["credential", "user", "membership", "org"], str]] = {
-    "tenancy.session.revoked": ("credential", CREDENTIAL_REVOKED),
+    "tenancy.auth_session.revoked": ("credential", CREDENTIAL_REVOKED),
     "tenancy.api_key.deleted": ("credential", CREDENTIAL_REVOKED),
     "tenancy.user.deleted": ("user", MEMBERSHIP_ENDED),
     "tenancy.membership.updated": ("membership", RIGHTS_CHANGED),
@@ -69,13 +69,13 @@ class RealtimeServiceImpl(RealtimeServiceInterface):
     def __init__(
         self,
         tenancy: TenancyManagerInterface,
-        events: EventsManagerInterface,
+        change_events: ChangeEventsManagerInterface,
         topics: TopicsInterface,
         head_max_age: timedelta = timedelta(seconds=60),
         clock: Callable[[], float] = time.monotonic,
     ) -> None:
         self._tenancy = tenancy
-        self._events = events
+        self._change_events = change_events
         self._topics = topics
         self._head_max_age = head_max_age.total_seconds()
         self._clock = clock
@@ -91,7 +91,7 @@ class RealtimeServiceImpl(RealtimeServiceInterface):
         self._topics.subscribe(Topics.ENTITY_CHANGED, "socket-revocations", self._on_change)
 
     async def head(self, ctx: TenantContext) -> int:
-        seq = await self._events.get_head(ctx)
+        seq = await self._change_events.get_head(ctx)
         self._learn(ctx.org_id, seq)
         return seq
 
@@ -133,7 +133,7 @@ class RealtimeServiceImpl(RealtimeServiceInterface):
         return IssuedTicketView(ticket=issued.ticket, expires_in_seconds=max(remaining, 0))
 
     def subscribe(
-        self, ctx: ActorScope, topic: Topics, deliver: Callable[[EventEnvelope], None]
+        self, ctx: ActorScope, topic: Topics, deliver: Callable[[ChangeEventEnvelope], None]
     ) -> Callable[[], None]:
         project = PROJECTIONS.get(topic)
         if project is None:
@@ -141,7 +141,7 @@ class RealtimeServiceImpl(RealtimeServiceInterface):
 
         async def forward(payload: TopicPayload) -> None:
             if payload.org_id == ctx.org_id:
-                deliver(EventEnvelope(topic=topic.value, payload=project(payload)))
+                deliver(ChangeEventEnvelope(topic=topic.value, payload=project(payload)))
 
         return self._topics.subscribe(topic, f"socket:{ctx.user_id}", forward)
 

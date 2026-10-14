@@ -8,23 +8,23 @@ from acme.om.base import utcnow
 from acme.om.context import TenantContext
 from acme.om.exceptions import ValidationFailed
 from acme.om.leases import LeasesManagerInterface
+from acme.om.leases.types.leasable_resource import LeasableResource
 from acme.om.leases.types.lease import Lease
 from acme.om.leases.types.request import HistoryMark, LeaseEntry, LeaseRequest, Standing
-from acme.om.leases.types.resource import Resource
 from acme.services.api.services.leases import LeasesServiceInterface
 from acme.services.api.types.common import clamp_limit
 from acme.services.api.types.leases import (
     AskRequest,
+    LeasableResourceView,
     LeaseEntryView,
     LeasePageView,
     LeaseRequestView,
     LeaseView,
-    LineView,
     PlaceView,
     RenewRequest,
     ReorderRequest,
-    ResourceView,
     StandingView,
+    WaitLineView,
 )
 
 
@@ -35,8 +35,10 @@ def lease_view(lease: Lease) -> LeaseView:
     )
 
 
-def resource_view(resource: Resource) -> ResourceView:
-    return ResourceView.model_validate({**resource.model_dump(), "fencing_token": resource.token})
+def leasable_resource_view(resource: LeasableResource) -> LeasableResourceView:
+    return LeasableResourceView.model_validate(
+        {**resource.model_dump(), "fencing_token": resource.token}
+    )
 
 
 def request_view(request: LeaseRequest) -> LeaseRequestView:
@@ -99,7 +101,7 @@ class LeasesServiceImpl(LeasesServiceInterface):
                 updated_by=ctx.user_id,
                 idempotency_key=request_id,
                 kind=body.kind,
-                resource_id=body.resource_id,
+                leasable_resource_id=body.leasable_resource_id,
                 labels=None if body.labels is None else tuple(body.labels),
                 payload=body.payload,
                 term_seconds=body.term_seconds,
@@ -121,10 +123,10 @@ class LeasesServiceImpl(LeasesServiceInterface):
     ) -> LeaseRequestView:
         return request_view(await self._leases.reorder(ctx, request_id, body.before_id))
 
-    async def line(self, ctx: TenantContext, resource_id: UUID) -> LineView:
-        line = await self._leases.line(ctx, resource_id)
-        return LineView(
-            resource=resource_view(line.resource),
+    async def wait_line(self, ctx: TenantContext, leasable_resource_id: UUID) -> WaitLineView:
+        line = await self._leases.wait_line(ctx, leasable_resource_id)
+        return WaitLineView(
+            leasable_resource=leasable_resource_view(line.leasable_resource),
             requests=[request_view(r) for r in line.requests],
             places=[PlaceView.model_validate(p) for p in line.places],
         )
@@ -133,10 +135,10 @@ class LeasesServiceImpl(LeasesServiceInterface):
         return lease_view(await self._leases.get_lease(ctx, lease_id))
 
     async def list_leases(
-        self, ctx: TenantContext, resource_id: UUID | None, cursor: str | None, limit: int
+        self, ctx: TenantContext, leasable_resource_id: UUID | None, cursor: str | None, limit: int
     ) -> LeasePageView:
         after = history_mark(cursor) if cursor else None
-        page = await self._leases.list_leases(ctx, resource_id, after, clamp_limit(limit))
+        page = await self._leases.list_leases(ctx, leasable_resource_id, after, clamp_limit(limit))
         last = HistoryMark.of(page.items[-1].lease) if page.has_more else None
         return LeasePageView(
             items=[entry_view(e) for e in page.items],

@@ -17,12 +17,12 @@ from acme.services.api.types.admin import (
     OperatorTokenView,
     OperatorView,
     OperatorWorkItemView,
-    PlatformSizeView,
     SetTenantCapRequest,
+    SystemSizeView,
     TenantCapView,
     TotpConfirmedView,
 )
-from acme.services.api.types.events import OperatorEventView
+from acme.services.api.types.change_events import OperatorChangeEventView
 from acme.services.api.types.tenancy import OrgPageView, OrgView, UserPageView, UserView
 
 
@@ -60,7 +60,7 @@ class AdminServiceInterface(ABC):
     async def revoke_token(self, admin: OperatorContext, token_id: UUID) -> OperatorTokenView: ...
 
     @abstractmethod
-    async def size(self, admin: OperatorContext) -> PlatformSizeView: ...
+    async def size(self, admin: OperatorContext) -> SystemSizeView: ...
 
     @abstractmethod
     async def create_org(
@@ -81,9 +81,9 @@ class AdminServiceInterface(ABC):
     ) -> UserView: ...
 
     @abstractmethod
-    async def get_events(
+    async def get_change_events(
         self, admin: OperatorContext, org_id: UUID, after_seq: int, limit: int
-    ) -> list[OperatorEventView]: ...
+    ) -> list[OperatorChangeEventView]: ...
 
     @abstractmethod
     async def delete_org(self, admin: OperatorContext, org_id: UUID) -> OrgView: ...

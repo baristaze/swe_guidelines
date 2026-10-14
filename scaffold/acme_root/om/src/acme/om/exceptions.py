@@ -1,14 +1,14 @@
-"""Every exception raised inside the platform is rooted here. The root
+"""Every exception raised inside the system is rooted here. The root
 carries the status and the stable code a boundary needs to present it."""
 
 from datetime import timedelta
 
 
-class PlatformException(Exception):
-    """Root of every exception raised inside the platform."""
+class OmException(Exception):
+    """Root of every exception raised inside the system."""
 
     http_status: int = 500
-    code: str = "platform_error"
+    code: str = "om_error"
 
     def __init__(self, message: str | None = None) -> None:
         super().__init__(message or self.code)
@@ -18,12 +18,12 @@ class PlatformException(Exception):
         return str(self.args[0]) if self.args else self.code
 
 
-class NotFound(PlatformException):
+class NotFound(OmException):
     http_status = 404
     code = "not_found"
 
 
-class Conflict(PlatformException):
+class Conflict(OmException):
     http_status = 409
     code = "conflict"
 
@@ -43,7 +43,7 @@ class MembershipLimitReached(Conflict):
     code = "membership_limit_reached"
 
 
-class PreconditionFailed(PlatformException):
+class PreconditionFailed(OmException):
     """The caller's expected version no longer matches: a compare-and-set
     found the row at another version, or gone. Another writer landed between
     the caller's read and this write, so the caller's snapshot is stale and
@@ -53,12 +53,12 @@ class PreconditionFailed(PlatformException):
     code = "precondition_failed"
 
 
-class ValidationFailed(PlatformException):
+class ValidationFailed(OmException):
     http_status = 422
     code = "validation_failed"
 
 
-class NotAuthorized(PlatformException):
+class NotAuthorized(OmException):
     http_status = 403
     code = "not_authorized"
 
@@ -70,12 +70,12 @@ class FeatureOff(NotAuthorized):
     code = "feature_off"
 
 
-class NotAuthenticated(PlatformException):
+class NotAuthenticated(OmException):
     http_status = 401
     code = "not_authenticated"
 
 
-class Unavailable(PlatformException):
+class Unavailable(OmException):
     """Not right now: a backend that is down, a breaker that is open, a
     request refused past this process's admission bound. The caller reads the
     code and comes back rather than reading a failure of its own request."""
@@ -84,7 +84,7 @@ class Unavailable(PlatformException):
     code = "unavailable"
 
 
-class StorageException(PlatformException): ...
+class StorageException(OmException): ...
 
 
 class TenantMismatch(StorageException, Conflict):
@@ -106,7 +106,7 @@ class RowDeleted(StorageException, Conflict):
     code = "row_deleted"
 
 
-class TenancyException(PlatformException): ...
+class TenancyException(OmException): ...
 
 
 class InvalidCredential(TenancyException, NotAuthenticated):
@@ -156,7 +156,7 @@ class LastOwner(TenancyException, Conflict):
 
 class OperatorRoleHeld(TenancyException, NotAuthorized):
     """An account on the operator allowlist is not deleted: the operator role
-    is taken off first, by the grant job, so the platform never loses an
+    is taken off first, by the grant job, so the system never loses an
     operator by a click."""
 
     code = "operator_role_held"
@@ -184,7 +184,7 @@ class OperatorTokenRequired(TenancyException, NotAuthorized):
     code = "operator_token_required"
 
 
-class WorkException(PlatformException): ...
+class WorkException(OmException): ...
 
 
 class LeaseLost(WorkException, Conflict):
@@ -198,7 +198,7 @@ class WorkNotFailed(WorkException, Conflict):
     code = "work_not_failed"
 
 
-class LeasesException(PlatformException): ...
+class LeasesException(OmException): ...
 
 
 class LeaseEnded(LeasesException, Conflict):
@@ -208,10 +208,10 @@ class LeaseEnded(LeasesException, Conflict):
     code = "lease_ended"
 
 
-class EventsException(PlatformException): ...
+class ChangeEventsException(OmException): ...
 
 
-class StreamTruncated(EventsException):
+class StreamTruncated(ChangeEventsException):
     """A read of the stream after a seq below the tenant's floor: the events
     between that seq and the floor are trimmed, so no page can close the gap.
     The caller stops replaying, reads afresh what it shows, and goes on from
@@ -226,7 +226,7 @@ class StreamTruncated(EventsException):
         self.head = head
 
 
-class IdempotencyException(PlatformException): ...
+class IdempotencyException(OmException): ...
 
 
 class DuplicateIdempotencyKey(IdempotencyException, Conflict):

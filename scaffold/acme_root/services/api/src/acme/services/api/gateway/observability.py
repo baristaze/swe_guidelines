@@ -129,7 +129,7 @@ class RequestIdMiddleware:
         # The span holds nothing the caller wrote: no path, no query string, no
         # header, as a name or as an attribute, and no text of an exception
         # that leaves it, which may quote what the caller sent. Whoever reads
-        # a trace under a request's id reads the platform's words alone.
+        # a trace under a request's id reads the system's words alone.
         with tracer.start_as_current_span(
             method,
             kind=SpanKind.SERVER,

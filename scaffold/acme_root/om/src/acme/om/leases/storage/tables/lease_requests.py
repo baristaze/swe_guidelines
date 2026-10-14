@@ -45,9 +45,9 @@ class LeaseRequests(IdentifiableMixin, TrackableMixin, Base):
             postgresql_where=text("status = 'waiting'"),
         ),
         Index(
-            "ix_lease_requests_org_id_resource_id_waiting",
+            "ix_lease_requests_org_id_leasable_resource_id_waiting",
             "org_id",
-            "resource_id",
+            "leasable_resource_id",
             postgresql_where=text("status = 'waiting'"),
         ),
         # The settled ones the purge takes, across tenants, by their last change.
@@ -59,7 +59,7 @@ class LeaseRequests(IdentifiableMixin, TrackableMixin, Base):
     )
     idempotency_key: Mapped[UUID]
     kind: Mapped[str]
-    resource_id: Mapped[UUID | None]
+    leasable_resource_id: Mapped[UUID | None]
     labels: Mapped[list[str] | None]
     payload: Mapped[dict[str, Any]]
     waiter_kind: Mapped[str | None]

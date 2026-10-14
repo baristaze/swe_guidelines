@@ -99,14 +99,14 @@ reason = "the unique index is (org_id, idempotency_key), led by the tenant as th
 rule = "DEL-12"
 path = "apps/site/package.json"
 adr = "docs/adr/0002-technology-choices.md"
-reason = "a static page with no script and no state; the portal and every app that calls the platform stay React on Vite"
+reason = "a static page with no script and no state; the portal and every app that calls the system stay React on Vite"
 
 # The storage methods that take no tenant, the same list
 # om/tests/unit/test_storage_exceptions.py holds.
 [tool.arch-check.options.CTX-12]
 tenantless = [
-    "EventStorageInterface.count_since",
-    "EventStorageInterface.trim",
+    "ChangeEventStorageInterface.count_since",
+    "ChangeEventStorageInterface.trim",
     "IdempotencyStorageInterface.purge_records",
     "LeasesStorageInterface.purge_settled",
     "LeasesStorageInterface.read_due_orgs",
@@ -133,17 +133,17 @@ tenantless = [
     "TenancyStorageInterface.read_operator_tokens",
     "TenancyStorageInterface.read_org_by_slug",
     "TenancyStorageInterface.read_orgs",
-    "TenancyStorageInterface.read_platform_size",
-    "TenancyStorageInterface.read_session_by_digest",
-    "TenancyStorageInterface.read_session_by_id",
-    "TenancyStorageInterface.read_session_with_identity_by_digest",
+    "TenancyStorageInterface.read_system_size",
+    "TenancyStorageInterface.read_auth_session_by_digest",
+    "TenancyStorageInterface.read_auth_session_by_id",
+    "TenancyStorageInterface.read_auth_session_with_identity_by_digest",
     "TenancyStorageInterface.read_sign_in_delay",
     "TenancyStorageInterface.read_users_by_identity",
     "TenancyStorageInterface.record_failed_sign_in",
     "TenancyStorageInterface.redeem_socket_ticket",
     "TenancyStorageInterface.use_totp_step",
     "TenancyStorageInterface.write_identity",
-    "TenancyStorageInterface.write_platform_size",
+    "TenancyStorageInterface.write_system_size",
     "TenancyStorageInterface.write_time_zone",
     "TenancyStorageInterface.write_totp_secret",
     "WorkStorageInterface.claim_next",

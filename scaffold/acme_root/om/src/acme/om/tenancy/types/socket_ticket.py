@@ -6,20 +6,20 @@ database, not by a cache."""
 from datetime import datetime
 from uuid import UUID
 
-from acme.om.base import Created, Identifiable, Platform
+from acme.om.base import Created, Identifiable, OmBase
 from acme.om.context import CredentialKind, TenantContext
 
 
 class SocketTicket(Identifiable, Created):
     user_id: UUID
     ticket_hash: str  # only the hash of the ticket is kept
-    credential_kind: CredentialKind  # session_token or api_key
+    credential_kind: CredentialKind  # auth_session_token or api_key
     credential_id: UUID
     expires_at: datetime
     redeemed_at: datetime | None = None
 
 
-class SocketPrincipal(Platform):
+class SocketPrincipal(OmBase):
     """What a redeemed ticket yields: the context the socket runs as and the
     instant its authority ends, which is the expiry of the session or api
     key behind the ticket. A socket is a request that stays open; it holds

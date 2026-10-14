@@ -45,7 +45,7 @@ class MaintenanceSettings(StorageSettings, InfraSettings, IntegrationsSettings):
     # at its budget and the next pass resumes at the tenant it stopped at.
     worker_purge_batch: int = Field(default=1000, gt=0)
     worker_sweep_budget_seconds: int = Field(default=20, gt=0)
-    # How often the sweep counts the platform's size, the tally the operator
+    # How often the sweep counts the system's size, the tally the operator
     # plane reads: a count across every tenant, so once an interval and not
     # every pass (ADR 0074).
     worker_tally_seconds: int = Field(default=300, gt=0)
@@ -68,4 +68,4 @@ class MaintenanceSettings(StorageSettings, InfraSettings, IntegrationsSettings):
     # How many days a living org's events are kept; the sweep trims what is
     # older, a batch per org per call. 0 keeps every event and never moves a
     # floor (ADR 0040).
-    event_retention_days: int = Field(default=90, ge=0)
+    change_event_retention_days: int = Field(default=90, ge=0)

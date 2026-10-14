@@ -115,7 +115,7 @@ async def test_not_found_codes_keep_their_shape() -> None:
     assert await (await secrets("ResourceNotFoundException")).has(new_id(), "token") is False
 
 
-async def test_every_other_code_becomes_a_platform_exception() -> None:
+async def test_every_other_code_becomes_an_infra_exception() -> None:
     with pytest.raises(BackendFailed) as raised:
         await (await buckets("AccessDenied")).get(new_id(), Buckets.EXPORTS, "k")
     assert isinstance(raised.value, InfraException)

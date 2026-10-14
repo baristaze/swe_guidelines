@@ -1,6 +1,6 @@
 ---
 name: ops-infra-as-code
-description: "Write or change the platform's Terraform in the shape the guideline prescribes: one module graph shared by every environment, a variable for everything that differs, the autoscaling switch, the destroyable switch, the budget, the alarms, and the tags; then plan it under the read-only investigate profile and open a pull request. Never applies. Use for a new resource, a new environment, a size change, or a lever flip."
+description: "Write or change the system's Terraform in the shape the guideline prescribes: one module graph shared by every environment, a variable for everything that differs, the autoscaling switch, the destroyable switch, the budget, the alarms, and the tags; then plan it under the read-only investigate profile and open a pull request. Never applies. Use for a new resource, a new environment, a size change, or a lever flip."
 allowed-tools: Read, Grep, Glob, Write, Edit, Bash(aws:*), Bash(terraform:*), Bash(gh:*), Bash(git checkout:*), Bash(git add:*), Bash(git commit:*), Bash(git push:*), Bash(git status:*)
 ---
 

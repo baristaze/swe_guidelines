@@ -65,14 +65,14 @@ class Stream:
         self._seq = 0
 
     async def latest(self) -> EntityChanged:
-        event = (await self._reader.events_after(self._seq))[-1]
+        event = (await self._reader.change_events_after(self._seq))[-1]
         self._seq = event.seq
         return EntityChanged.of_event(event)
 
 
 def test_every_change_becomes_one_line(stack: Stack) -> None:
-    owner = stack.session_token(OWNER["email"])
-    bob = stack.session_token(BOB["email"])
+    owner = stack.auth_session_token(OWNER["email"])
+    bob = stack.auth_session_token(BOB["email"])
     out, err = io.StringIO(), io.StringIO()
     targets: list[str] = []
 
@@ -116,7 +116,7 @@ def test_every_change_becomes_one_line(stack: Stack) -> None:
 def test_a_stream_trimmed_past_the_listener_is_said_and_the_listener_goes_on(
     stack: Stack,
 ) -> None:
-    owner = stack.session_token(OWNER["email"])
+    owner = stack.auth_session_token(OWNER["email"])
     out, err = io.StringIO(), io.StringIO()
 
     async def scripted(
@@ -147,7 +147,7 @@ def test_an_actor_whose_name_cannot_be_read_is_someone_and_the_stream_goes_on(
     invite) is looked up on their first change. A members read that fails at
     the wire on every attempt the client makes tells that change with someone
     as its actor; the next change looks again and names them."""
-    owner = stack.session_token(OWNER["email"])
+    owner = stack.auth_session_token(OWNER["email"])
     out = io.StringIO()
     flaky = Flaky(stack)
 
@@ -157,7 +157,7 @@ def test_an_actor_whose_name_cannot_be_read_is_someone_and_the_stream_goes_on(
         await add_member(stack.container, stack.org_id, CAROL["email"], Role.ADMIN)
         async with (
             stack.client(owner) as as_owner,
-            stack.client(stack.session_token(**CAROL)) as as_carol,
+            stack.client(stack.auth_session_token(**CAROL)) as as_carol,
         ):
             stream = Stream(as_owner)
             await as_carol.invite_member("dee@example.test")
@@ -192,14 +192,14 @@ def test_an_actor_whose_name_cannot_be_read_is_someone_and_the_stream_goes_on(
 def test_a_members_read_refused_with_401_ends_the_listener(stack: Stack) -> None:
     """A dead credential is not a change's failure: it ends the listener,
     which the command turns into exit 3."""
-    owner = stack.session_token(OWNER["email"])
+    owner = stack.auth_session_token(OWNER["email"])
     flaky = Flaky(stack)
 
     async def scripted(
         client: ApiClient, on_state: OnState, on_resync: OnResync
     ) -> AsyncIterator[EntityChanged]:
         await add_member(stack.container, stack.org_id, CAROL["email"], Role.ADMIN)
-        async with stack.client(stack.session_token(**CAROL)) as as_carol:
+        async with stack.client(stack.auth_session_token(**CAROL)) as as_carol:
             await as_carol.invite_member("dee@example.test")
         async with stack.client(owner) as as_owner:
             change = await Stream(as_owner).latest()

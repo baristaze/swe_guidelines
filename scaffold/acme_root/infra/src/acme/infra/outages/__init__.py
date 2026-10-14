@@ -5,9 +5,9 @@ dependency off for the process that holds it; the signal tells every other
 process at once.
 
 A mark is keyed by the provider and the credential the call is made with:
-the org that holds it (`SYSTEM_SCOPE` for the platform's own) and the
+the org that holds it (`SYSTEM_SCOPE` for the system's own) and the
 secret's name, never its value. One org's revoked key is no outage of
-another's, nor of the platform's. A caller marks the pair when its calls
+another's, nor of the system's. A caller marks the pair when its calls
 fail together, with the time to try again, and clears it when a call
 succeeds.
 
@@ -31,7 +31,7 @@ MAX_NAME = 200
 class Outage(InfraModel):
     """A provider known to be failing for one credential until `retry_at`."""
 
-    org_id: UUID  # whose credential: SYSTEM_SCOPE for the platform's own
+    org_id: UUID  # whose credential: SYSTEM_SCOPE for the system's own
     provider: str = Field(min_length=1, max_length=MAX_NAME)
     credential: str = Field(min_length=1, max_length=MAX_NAME)  # the secret's name
     retry_at: datetime

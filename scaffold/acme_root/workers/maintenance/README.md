@@ -14,12 +14,13 @@ side, started in `main.py`.
   where the API queues each provider's verified delivery, and applies it
   once in the org it names. A message that can never apply is dropped; any
   other failure comes back.
-- **The sweep** (`loop.py`) runs on a timer, within a budget. It requeues
-  expired leases, relays the outbox, runs the standing chores of the
-  tenants one read names as due, ends each resource's lease past its
-  expiry and the skew margin and offers the resource to its line, purges
-  every row past its retention (`settings.py`), counts the platform's
-  size, and logs the queue's gauges.
+- **The sweep** (`loop.py`) runs on a timer, within a budget. It
+  requeues expired leases, relays the outbox, runs the standing chores
+  of the tenants one read names as due, ends each leasable resource's
+  lease past its expiry and the skew margin and offers the leasable
+  resource to its line, purges every row past its retention
+  (`settings.py`), counts the system's size, and logs the queue's
+  gauges.
 
 `serve` runs the three; `health` asks the running process's `/healthz`.
 

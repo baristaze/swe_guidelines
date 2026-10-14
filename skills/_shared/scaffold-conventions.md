@@ -131,7 +131,7 @@ a copy of the shape still goes wrong.
   at once. A relay that fails is logged and left to the sweep, never
   raised, since the write has committed. Work that follows a write is a
   second row, of kind `work_row_kind(<kind>)`, in the same call, never
-  an enqueue the manager makes. A payload, an event, and a socket frame
+  an enqueue the manager makes. A payload, a change event, and a socket frame
   carry ids, never a personal field's value.
 - **Two fences.** The `org_id` in the query is the fence, and the
   table's row-level security policy is the second. Every table is in

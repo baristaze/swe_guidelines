@@ -16,7 +16,7 @@ def test_the_session_file_is_owner_only_from_creation(
     monkeypatch.setenv("ACME_HOME", str(tmp_path / "home" / "acme"))
     # A chmod after the write is too late to count; the mode must be right at creation.
     monkeypatch.setattr(Path, "chmod", lambda self, mode, **kwargs: None)
-    session = config.Session(
+    session = config.AuthSession(
         api_url="http://test",
         token="sess_secret",
         email="ann@example.test",
@@ -26,23 +26,23 @@ def test_the_session_file_is_owner_only_from_creation(
     )
     previous = os.umask(0o022)
     try:
-        path = config.save_session(session)
+        path = config.save_auth_session(session)
         assert path.stat().st_mode & 0o777 == 0o600
         assert path.parent.stat().st_mode & 0o777 == 0o700
         # Saving again truncates and rewrites the same owner-only file.
-        path = config.save_session(session)
+        path = config.save_auth_session(session)
         assert path.stat().st_mode & 0o777 == 0o600
     finally:
         os.umask(previous)
-    assert config.load_session() == session
+    assert config.load_auth_session() == session
 
 
 def kept_session(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("ACME_HOME", str(tmp_path / "home"))
     monkeypatch.delenv("ACME_TOKEN", raising=False)
     monkeypatch.delenv("ACME_API_URL", raising=False)
-    config.save_session(
-        config.Session(
+    config.save_auth_session(
+        config.AuthSession(
             api_url="https://api.example.test",
             token="ses_kept",
             email="ann@example.test",

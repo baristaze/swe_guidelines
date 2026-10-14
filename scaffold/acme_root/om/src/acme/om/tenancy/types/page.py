@@ -2,37 +2,37 @@
 The manager asks storage for one row more than the page and keeps it out, so
 `has_more` is a fact about the rows and not a guess about the count."""
 
-from acme.om.base import Platform
+from acme.om.base import OmBase
 from acme.om.tenancy.types.api_key import ApiKey
+from acme.om.tenancy.types.auth_session import AuthSession
 from acme.om.tenancy.types.invitation import Invitation
 from acme.om.tenancy.types.issued import OrgMembership
 from acme.om.tenancy.types.membership import Membership
 from acme.om.tenancy.types.org import Org
-from acme.om.tenancy.types.session import Session
 from acme.om.tenancy.types.user import User
 
 
-class UserPage(Platform):
+class UserPage(OmBase):
     items: tuple[User, ...]
     has_more: bool
 
 
-class ApiKeyPage(Platform):
+class ApiKeyPage(OmBase):
     items: tuple[ApiKey, ...]
     has_more: bool
 
 
-class MembershipPage(Platform):
+class MembershipPage(OmBase):
     items: tuple[Membership, ...]
     has_more: bool
 
 
-class OrgPage(Platform):
+class OrgPage(OmBase):
     items: tuple[Org, ...]
     has_more: bool
 
 
-class OrgMembershipPage(Platform):
+class OrgMembershipPage(OmBase):
     """The memberships of one identity across tenants, by user id: what a
     sign-in lists, a page at a time for a person already signed in."""
 
@@ -40,14 +40,14 @@ class OrgMembershipPage(Platform):
     has_more: bool
 
 
-class InvitationPage(Platform):
+class InvitationPage(OmBase):
     items: tuple[Invitation, ...]
     has_more: bool
 
 
-class OperatorTokenPage(Platform):
-    """One operator's live tokens, newest first: rows of `sessions` of kind
+class OperatorTokenPage(OmBase):
+    """One operator's live tokens, newest first: rows of `auth_sessions` of kind
     `operator_token`, never the token itself, which is kept as its digest."""
 
-    items: tuple[Session, ...]
+    items: tuple[AuthSession, ...]
     has_more: bool

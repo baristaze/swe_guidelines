@@ -1,5 +1,5 @@
 """The signal readers: one interface, two impls. A signal nothing reads is a
-claim, so every store the platform writes to is read back here by the request
+claim, so every store the system writes to is read back here by the request
 id the response carried: the log line that names it, the counter that moved,
 the trace that exists, the error event that carries it. The local impl reads
 the devx profile's stores; the cloud impl reads the cloud's. One test drives

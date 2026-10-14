@@ -75,21 +75,23 @@ class Fence:
         self._highest: dict[UUID, int] = dict(highest or {})
         self._locks: dict[UUID, asyncio.Lock] = {}
 
-    def highest(self, resource_id: UUID) -> int:
-        return self._highest.get(resource_id, 0)
+    def highest(self, leasable_resource_id: UUID) -> int:
+        return self._highest.get(leasable_resource_id, 0)
 
     def snapshot(self) -> dict[UUID, int]:
         return dict(self._highest)
 
-    async def admit(self, resource_id: UUID, token: int, stop_and_reset: StopAndReset) -> bool:
+    async def admit(
+        self, leasable_resource_id: UUID, token: int, stop_and_reset: StopAndReset
+    ) -> bool:
         """Whether a holder under `token` may act on the resource. Admits run
         one at a time per resource, so two new holders never reset it at once."""
-        lock = self._locks.setdefault(resource_id, asyncio.Lock())
+        lock = self._locks.setdefault(leasable_resource_id, asyncio.Lock())
         async with lock:
-            highest = self.highest(resource_id)
+            highest = self.highest(leasable_resource_id)
             if token < highest:
                 return False
             if token > highest:
                 await stop_and_reset()
-                self._highest[resource_id] = token
+                self._highest[leasable_resource_id] = token
             return True

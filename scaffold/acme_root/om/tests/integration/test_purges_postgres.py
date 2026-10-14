@@ -27,9 +27,9 @@ from typing import Any
 from uuid import UUID, uuid4
 
 import pytest
-from contracts.event_storage import append_one, make_event
-from contracts.event_storage import drained as drained_events
-from contracts.factories import make_session, make_socket_ticket
+from contracts.change_event_storage import append_one, make_change_event
+from contracts.change_event_storage import drained as drained_events
+from contracts.factories import make_auth_session, make_socket_ticket
 from contracts.idempotency_storage import drained as drained_records
 from contracts.idempotency_storage import make_record
 from contracts.orchestration_storage import drained as drained_orchestrations
@@ -42,7 +42,7 @@ from sqlalchemy import event, text
 from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 
 from acme.om.base import EMPTY_UUID, new_id, utcnow
-from acme.om.events.storage.impl.postgres import EventStoragePostgresImpl
+from acme.om.change_events.storage.impl.postgres import ChangeEventStoragePostgresImpl
 from acme.om.idempotency.storage.impl.postgres import IdempotencyStoragePostgresImpl
 from acme.om.idempotency.types.attempt import lease_bound
 from acme.om.media.storage.impl.postgres import MediaStoragePostgresImpl
@@ -201,7 +201,7 @@ async def test_every_purge_across_tenants_reads_an_index_led_by_its_retention(
     assert served(users, "ix_users_deleted_at"), users
     assert served(memberships, "ix_memberships_deleted_at"), memberships
     assert served(keys, "ix_api_keys_deleted_at") and "ix_api_keys_expires_at" in keys, keys
-    assert served(tenancy_sessions, "ix_sessions_expires_at"), tenancy_sessions
+    assert served(tenancy_sessions, "ix_auth_sessions_expires_at"), tenancy_sessions
     assert served(tickets, "ix_socket_tickets_expires_at"), tickets
     assert served(invitations, "ix_invitations_updated_at"), invitations
     assert "ix_invitations_expires_at" in invitations, invitations
@@ -212,10 +212,10 @@ async def test_every_purge_across_tenants_reads_an_index_led_by_its_retention(
     assert served(records, "ix_idempotency_records_created_at"), records
     assert "ix_idempotency_records_attempt_id" in records, records
     (trim,) = await across(
-        DatabaseRole.ACTIVITY, lambda: EventStoragePostgresImpl(sessions).trim(cut, 1000)
+        DatabaseRole.ACTIVITY, lambda: ChangeEventStoragePostgresImpl(sessions).trim(cut, 1000)
     )
-    assert served(trim, "ix_events_produced_at"), trim
-    assert "uq_events_org_id_seq" in trim and "pk_event_cursors" in trim, trim
+    assert served(trim, "ix_change_events_produced_at"), trim
+    assert "uq_change_events_org_id_seq" in trim and "pk_change_event_cursors" in trim, trim
     (settled,) = await across(
         DatabaseRole.CORE,
         lambda: OrchestrationsStoragePostgresImpl(sessions).purge_settled(cut, 1000),
@@ -274,17 +274,19 @@ async def test_the_trim_skips_a_stream_an_append_holds_and_trims_the_others(
     """An append holds its tenant's cursor row to its commit. The trim takes
     every other tenant's run in the meantime and leaves that one for its next
     call, never waiting on it; the floor of each tenant moves with its own."""
-    storage = EventStoragePostgresImpl(pg_sessions)
+    storage = ChangeEventStoragePostgresImpl(pg_sessions)
     now = await drained_events(storage)
     busy, idle = new_id(), new_id()
     for org in (busy, idle):
         for _ in range(2):
-            await append_one(storage, org, make_event(org, produced_at=now - timedelta(days=100)))
+            await append_one(
+                storage, org, make_change_event(org, produced_at=now - timedelta(days=100))
+            )
     before = now - timedelta(days=90)
     async with pg_sessions[DatabaseRole.ACTIVITY]() as holder:
         await set_scope(holder, busy, None, None)
         await holder.execute(
-            text("SELECT head FROM activity.event_cursors WHERE org_id = :org FOR UPDATE"),
+            text("SELECT head FROM activity.change_event_cursors WHERE org_id = :org FOR UPDATE"),
             {"org": busy},
         )
         assert await storage.trim(before, 1000) == 2, "the idle tenant's, not the busy one's"
@@ -377,14 +379,14 @@ async def test_a_session_purge_skips_a_row_another_transaction_holds(
     org = new_id()
     user = new_id()
     gone = before(cut, timedelta(days=1))
-    dead = [make_session(new_id(), user, uuid4().hex, ttl=gone) for _ in range(2)]
+    dead = [make_auth_session(new_id(), user, uuid4().hex, ttl=gone) for _ in range(2)]
     for session in dead:
-        await storage.write_session(org, session)
+        await storage.write_auth_session(org, session)
     await storage.create_socket_ticket(org, make_socket_ticket(user, uuid4().hex, ttl=gone))
     async with pg_sessions[DatabaseRole.CORE]() as holder:
         await set_scope(holder, org, None, None)
         await holder.execute(
-            text("SELECT id FROM core.sessions WHERE id = :id FOR UPDATE"), {"id": dead[0].id}
+            text("SELECT id FROM core.auth_sessions WHERE id = :id FOR UPDATE"), {"id": dead[0].id}
         )
         assert await storage.purge_deleted(cut, cut, 10) == 2, "a session and the ticket"
         await holder.rollback()
@@ -454,7 +456,7 @@ BACKLOG: dict[DatabaseRole, dict[str, dict[str, str]]] = {
             "role": "'member'",
             "expires_at": AGE,
         },
-        "sessions": TRACKED
+        "auth_sessions": TRACKED
         | {
             "identity_id": "gen_random_uuid()",
             "user_id": "gen_random_uuid()",
@@ -648,7 +650,7 @@ async def test_an_idle_pass_after_a_backlog_still_reads_each_purge_index(
     assert served(users, "ix_users_deleted_at"), users
     assert served(memberships, "ix_memberships_deleted_at"), memberships
     assert served(keys, "ix_api_keys_deleted_at") and "ix_api_keys_expires_at" in keys, keys
-    assert served(tenancy_sessions, "ix_sessions_expires_at"), tenancy_sessions
+    assert served(tenancy_sessions, "ix_auth_sessions_expires_at"), tenancy_sessions
     assert served(tickets, "ix_socket_tickets_expires_at"), tickets
     assert served(invitations, "ix_invitations_updated_at"), invitations
     assert "ix_invitations_expires_at" in invitations, invitations

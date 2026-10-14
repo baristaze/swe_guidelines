@@ -17,20 +17,21 @@ from acme.services.api.types.tenancy import (
     AddApiKeyRequest,
     ApiKeyPageView,
     ApiKeyView,
+    AuthSessionView,
     CreateTeamOrgRequest,
     DeleteAccountRequest,
     DeleteOrgRequest,
     DeviceSignInView,
     DeviceTokenRequest,
     DevSignInRequest,
-    ExchangeSessionRequest,
+    ExchangeAuthSessionRequest,
     IdentityView,
     InvitationPageView,
     InvitationView,
     InviteMemberRequest,
     IssuedApiKeyView,
+    IssuedAuthSessionView,
     IssuedLoginView,
-    IssuedSessionView,
     LogoutRequest,
     MembershipChoicePageView,
     MembershipChoiceView,
@@ -40,7 +41,6 @@ from acme.services.api.types.tenancy import (
     OrgDeletedView,
     OrgView,
     SecondFactorRequest,
-    SessionView,
     SignedOutView,
     SignInCallbackRequest,
     SignInStartRequest,
@@ -115,11 +115,11 @@ async def verify_second_factor(
 # the session, so the sign-in is the exchange's key and the route carries no
 # Idempotency-Key. A retry after a lost answer is refused and the person signs
 # in again (ADR 0037). Presented with a session, it is a switch.
-@router.post("/auth/sessions", response_model=IssuedSessionView)
-async def exchange_session(
-    identity: Identity, tenancy: TenancyService, body: ExchangeSessionRequest
-) -> IssuedSessionView:
-    return await tenancy.exchange_session(identity, body)
+@router.post("/auth/sessions", response_model=IssuedAuthSessionView)
+async def exchange_auth_session(
+    identity: Identity, tenancy: TenancyService, body: ExchangeAuthSessionRequest
+) -> IssuedAuthSessionView:
+    return await tenancy.exchange_auth_session(identity, body)
 
 
 @router.get("/auth/memberships", response_model=MembershipChoicePageView)
@@ -281,16 +281,18 @@ async def sso_link(ctx: Ctx, tenancy: TenancyService, body: SsoLinkRequest) -> S
     return await tenancy.sso_link(ctx, body)
 
 
-@router.get("/sessions", response_model=list[SessionView])
-async def list_sessions(
+@router.get("/auth/sessions", response_model=list[AuthSessionView])
+async def list_auth_sessions(
     ctx: Ctx, tenancy: TenancyService, limit: int = LIMIT_DEFAULT
-) -> list[SessionView]:
-    return await tenancy.get_sessions(ctx, limit)
+) -> list[AuthSessionView]:
+    return await tenancy.get_auth_sessions(ctx, limit)
 
 
-@router.delete("/sessions/{session_id}", response_model=SessionView)
-async def revoke_session(ctx: Ctx, tenancy: TenancyService, session_id: UUID) -> SessionView:
-    return await tenancy.revoke_session(ctx, session_id)
+@router.delete("/auth/sessions/{auth_session_id}", response_model=AuthSessionView)
+async def revoke_auth_session(
+    ctx: Ctx, tenancy: TenancyService, auth_session_id: UUID
+) -> AuthSessionView:
+    return await tenancy.revoke_auth_session(ctx, auth_session_id)
 
 
 @router.get("/api-keys", response_model=ApiKeyPageView)

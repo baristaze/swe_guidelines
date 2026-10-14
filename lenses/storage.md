@@ -528,25 +528,25 @@ method in the `core` role, an entity change one row and the work that
 follows a second, relayed at once or by the sweep. The relay is
 idempotent on the row's key (the transactional outbox). It marks a row
 done only when its side effect happened. An entity change's row waits
-for the event appended and the publish taken by the bus; a dropped
+for the change event appended and the publish taken by the bus; a dropped
 publish leaves it pending for the sweep. A work row is done once its
 item is queued: the wake-up is a hint a worker's poll stands in for.
 
 **Source.** The Storage Layer, Database Roles.
 
 **Look for.** The named atomic method that writes the core row and
-its outbox rows (the event row, and the work item that follows), the
+its outbox rows (the change event row, and the work item that follows), the
 relay after each, whether it dispatches on the row's `kind` to the
-event append or the enqueue, and whether it dedupes on the row's key.
+change event append or the enqueue, and whether it dedupes on the row's key.
 What marks each kind of row done: the publish for an entity change, the
 queued item for a work row. The row left pending, with `done_at` unset,
 for the sweep that `async` judges.
 
 **Violation.** A manager writes the core row and then, in a second
-statement, the event row or the work item; a storage signature that
+statement, the change event row or the work item; a storage signature that
 takes one outbox row, so a write that also starts work has nowhere to
 put the second. A relay that is not idempotent, so relaying a row
-twice duplicates an event; a relay that marks an entity change's row
+twice duplicates a change event; a relay that marks an entity change's row
 done when the bus refused its publish, or holds a work row pending on
 a wake-up that no rerun of the enqueue publishes again.
 
@@ -684,7 +684,7 @@ changes.
 Migrations.
 
 **Look for.** Every value object dumped into a JSON column, the
-work-item and event payload shapes among them, and the history of its
+work-item and change event payload shapes among them, and the history of its
 fields; for an added field, the release that began
 writing it and whether the release before it could read it, and
 whether the release that only reads it names it in its dump's
@@ -921,9 +921,9 @@ migration with no count check, or no test over two tenants.
 
 **Severity.** high
 
-## STO-34 Payloads and events carry ids, never a personal value
+## STO-34 Payloads and change events carry ids, never a personal value
 
-**Principle.** Outbox payloads and events, an audit entry among them,
+**Principle.** Outbox payloads and change events, an audit entry among them,
 carry ids, never the values of personal fields, so erasing a person
 never has to rewrite them: an erasure has nothing to redact in the
 stream. An append-only record that holds a personal field has it
@@ -933,12 +933,12 @@ takes, and the sweep states that write.
 **Source.** Naming Entities; The Storage Layer, Database Roles; The
 Network Layer, Realtime at the Edge.
 
-**Look for.** The payload of every outbox row kind and every event
+**Look for.** The payload of every outbox row kind and every change event
 kind, audit kinds included, and which fields it copies from the entity;
 the erasure sweep, the append-only records it reads for an erased
 subject, and the fields it redacts.
 
-**Violation.** An outbox payload or an event, an audit entry among
+**Violation.** An outbox payload or a change event, an audit entry among
 them, that carries a name, an email, an address, or another personal
 value instead of the id that reads it; an erasure that leaves an erased
 subject's values in an append-only record; a write to an append-only

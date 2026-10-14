@@ -69,8 +69,8 @@ LOCAL_DEFAULT_SERVES_THE_CLOUD = {
     "sign_in_delay_base_seconds": "the local delay is the delay",
     "sign_in_delay_cap_seconds": "the local cap is the cap",
     "login_lifetime_seconds": "the local lifetime is the lifetime",
-    "session_lifetime_seconds": "the local lifetime is the lifetime",
-    "session_idle_lifetime_seconds": "the local lifetime is the lifetime",
+    "auth_session_lifetime_seconds": "the local lifetime is the lifetime",
+    "auth_session_idle_lifetime_seconds": "the local lifetime is the lifetime",
     "operator_token_max_lifetime_seconds": "an hour, the guideline's bound, everywhere",
     "dev_sign_in_enabled": "off everywhere it is not set, and refused outside local and test",
     "invitation_lifetime_days": "the local lifetime is the lifetime",
@@ -184,8 +184,8 @@ def test_a_session_lasts_thirty_days_and_fourteen_idle() -> None:
     (ADR 0063)."""
     absolute, idle = timedelta(days=30), timedelta(days=14)
     fields = ApiSettings.model_fields
-    assert timedelta(seconds=fields["session_lifetime_seconds"].default) == absolute
-    assert timedelta(seconds=fields["session_idle_lifetime_seconds"].default) == idle
+    assert timedelta(seconds=fields["auth_session_lifetime_seconds"].default) == absolute
+    assert timedelta(seconds=fields["auth_session_idle_lifetime_seconds"].default) == idle
     documented = dict(
         re.findall(
             r"^([A-Z][A-Z0-9_]*)=(.*)$",
@@ -193,7 +193,7 @@ def test_a_session_lasts_thirty_days_and_fourteen_idle() -> None:
             flags=re.MULTILINE,
         )
     )
-    assert timedelta(seconds=int(documented[f"{PREFIX}SESSION_LIFETIME_SECONDS"])) == absolute
-    assert timedelta(seconds=int(documented[f"{PREFIX}SESSION_IDLE_LIFETIME_SECONDS"])) == idle
+    assert timedelta(seconds=int(documented[f"{PREFIX}AUTH_SESSION_LIFETIME_SECONDS"])) == absolute
+    assert timedelta(seconds=int(documented[f"{PREFIX}AUTH_SESSION_IDLE_LIFETIME_SECONDS"])) == idle
     options = TenancyOptions()
-    assert (options.session_ttl, options.session_idle_ttl) == (absolute, idle)
+    assert (options.auth_session_ttl, options.auth_session_idle_ttl) == (absolute, idle)

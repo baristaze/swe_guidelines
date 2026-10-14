@@ -13,16 +13,16 @@ import pytest
 from acme.om.base import new_id, utcnow
 from acme.om.context import AppContext, AppType, RequestContext, TenantContext
 from acme.om.exceptions import LeaseEnded, NotAuthorized
-from acme.om.leases.hooks import ResourceKindInterface
+from acme.om.leases.hooks import LeasableResourceKindInterface
 from acme.om.leases.impl.manager import LeasesManagerImpl
-from acme.om.leases.types.lease import JobClaim, Lease, LeaseStatus
-from acme.om.leases.types.request import LeaseRequest
-from acme.om.leases.types.resource import (
+from acme.om.leases.types.leasable_resource import (
     MAX_LABELS,
     MAX_TERM_SECONDS,
-    Resource,
-    ResourceKind,
+    LeasableResource,
+    LeasableResourceKind,
 )
+from acme.om.leases.types.lease import JobClaim, Lease, LeaseStatus
+from acme.om.leases.types.request import LeaseRequest
 from acme.om.outbox.types.row import OutboxRow, outbox_row
 from acme.om.root import Managers
 from acme.om.work.types.work_item import WorkItem, WorkKind, relayed_lane, work_row_kind
@@ -31,17 +31,17 @@ WORKER = AppContext(type=AppType.WORKER, version="worker@test")
 CLAIM = timedelta(minutes=5)
 
 
-class StartsAJob(ResourceKindInterface):
+class StartsAJob(LeasableResourceKindInterface):
     """A kind whose grant starts a job: one work item, which names the lease
     it runs for."""
 
     async def may_grant(
-        self, ctx: TenantContext, resource: Resource, request: LeaseRequest
+        self, ctx: TenantContext, resource: LeasableResource, request: LeaseRequest
     ) -> bool:
         return True
 
     def grant_rows(
-        self, ctx: TenantContext, resource: Resource, request: LeaseRequest, lease: Lease
+        self, ctx: TenantContext, resource: LeasableResource, request: LeaseRequest, lease: Lease
     ) -> tuple[OutboxRow, ...]:
         return (outbox_row(ctx, work_row_kind(WorkKind.NOOP), lease.id, {}),)
 
@@ -65,15 +65,15 @@ class JobWorld(Protocol):
 
 def a_dock(
     owner: TenantContext, labels: tuple[str, ...] = (), max_term_seconds: int = 600
-) -> Resource:
+) -> LeasableResource:
     now = utcnow()
-    return Resource(
+    return LeasableResource(
         id=new_id(),
         created_at=now,
         updated_at=now,
         created_by=owner.user_id,
         updated_by=owner.user_id,
-        kind=ResourceKind.NOOP,
+        kind=LeasableResourceKind.NOOP,
         ref_id=new_id(),
         labels=labels,
         max_term_seconds=max_term_seconds,
@@ -81,7 +81,7 @@ def a_dock(
 
 
 def an_ask(
-    resource: Resource | None = None,
+    resource: LeasableResource | None = None,
     *,
     labels: tuple[str, ...] | None = None,
     term_seconds: int = 60,
@@ -95,8 +95,8 @@ def an_ask(
         created_by=new_id(),
         updated_by=new_id(),
         idempotency_key=new_id(),
-        kind=ResourceKind.NOOP,
-        resource_id=None if resource is None else resource.id,
+        kind=LeasableResourceKind.NOOP,
+        leasable_resource_id=None if resource is None else resource.id,
         labels=labels,
         term_seconds=term_seconds,
         start_seconds=start_seconds,
@@ -239,11 +239,11 @@ async def a_resource_with_as_many_labels_as_a_real_one_is_matched(world: JobWorl
     dock = await world.leases.register(
         owner, a_dock(owner, labels=labels, max_term_seconds=MAX_TERM_SECONDS)
     )
-    assert (await world.leases.get_resource(owner, dock.id)).labels == labels
+    assert (await world.leases.get_leasable_resource(owner, dock.id)).labels == labels
     standing = await world.leases.ask(
         ann, an_ask(labels=labels[::-1], term_seconds=MAX_TERM_SECONDS)
     )
-    assert standing.lease is not None and standing.lease.resource_id == dock.id
+    assert standing.lease is not None and standing.lease.leasable_resource_id == dock.id
     assert standing.lease.expires_at == world.clock() + timedelta(days=7)
     run, item = await claim_job(world, standing.lease)
     await world.managers.work.complete(run, item)
