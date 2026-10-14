@@ -7,15 +7,16 @@ import filecmp
 import importlib
 import pkgutil
 import subprocess
-from enum import Enum
+from decimal import Decimal
+from enum import Enum, StrEnum
 from pathlib import Path
-from typing import Any
+from typing import Any, Generic, TypeVar
 
 import pytest
 from api_support import build_container
 from fastapi import APIRouter, FastAPI
 from fastapi.openapi.utils import validation_error_definition, validation_error_response_definition
-from pydantic import BaseModel
+from pydantic import BaseModel, computed_field
 
 import acme.om
 import acme.services.api.types
@@ -25,6 +26,7 @@ from acme.services.api.routers import HOSTED
 from acme.services.api.types.common import View
 
 ROOT = Path(__file__).resolve().parents[3]
+T = TypeVar("T")
 SCHEMAS = "#/components/schemas/"
 FRAMEWORK = {validation_error_definition["title"], validation_error_response_definition["title"]}
 
@@ -160,6 +162,78 @@ def test_two_namespaces_may_each_name_a_type_alike() -> None:
     held = emitted["leases"]["components"]["schemas"]["ProbeHolder"]["properties"]
     assert held["own"] == {"$ref": "#/components/schemas/Probe"}
     assert held["other"] == {"$ref": "media.json#/components/schemas/Probe"}
+
+
+def test_a_type_read_and_written_differently_has_a_schema_per_mode_in_its_document() -> None:
+    """A decimal is read as a number or a string and written as a string, so
+    pydantic names its holder's two schemas by mode, and by module as well
+    where another namespace names a type alike."""
+    media_money = view("Money", "media", amount=Decimal)
+    leases_money = view("Money", "leases", amount=Decimal, currency=str)
+    request = view("PriceRequest", "media", price=media_money)
+    answer = view("PriceView", "leases", own=leases_money, other=media_money)
+    media, leases = APIRouter(tags=["media"]), APIRouter(tags=["leases"])
+
+    def price(body: request) -> None:  # pyright: ignore[reportInvalidTypeForm] (a type built at run time)
+        return None
+
+    media.add_api_route("/media/price", price, methods=["POST"])
+    leases.add_api_route("/leases/price", lambda: None, response_model=answer)
+
+    emitted = documents(app_of(media, leases))
+
+    media_schemas = emitted["media"]["components"]["schemas"]
+    leases_schemas = emitted["leases"]["components"]["schemas"]
+    assert {"Money-Input", "Money-Output"} <= media_schemas.keys()
+    assert media_schemas["PriceRequest"]["properties"]["price"] == {
+        "$ref": "#/components/schemas/Money-Input"
+    }
+    assert leases_schemas["Money"]["properties"].keys() == {"amount", "currency"}
+    held = leases_schemas["PriceView"]["properties"]
+    assert held["own"] == {"$ref": "#/components/schemas/Money"}
+    assert held["other"] == {"$ref": "media.json#/components/schemas/Money-Output"}
+
+
+def test_a_generic_type_is_its_modules_under_the_name_its_parameters_give_it() -> None:
+    item = view("ItemView", "media", n=int)
+
+    class Page(View, Generic[T]):
+        __module__ = f"{acme.services.api.types.__name__}.media"
+        items: list[T]
+
+    router = APIRouter(tags=["media"])
+    router.add_api_route("/media/items", lambda: None, response_model=Page[item])
+
+    schemas = documents(app_of(router))["media"]["components"]["schemas"]
+
+    assert schemas.keys() == {"ItemView", "Page_ItemView_"}
+    assert schemas["Page_ItemView_"]["properties"]["items"]["items"] == {
+        "$ref": "#/components/schemas/ItemView"
+    }
+
+
+def test_an_enum_only_a_computed_field_returns_is_its_modules() -> None:
+    class Shade(StrEnum):
+        __module__ = f"{acme.om.__name__}.leases.probe"
+        DARK = "dark"
+
+    class TintView(View):
+        __module__ = f"{acme.services.api.types.__name__}.media"
+        n: int
+
+        @computed_field
+        @property
+        def shade(self) -> Shade:
+            return Shade.DARK
+
+    router = APIRouter(tags=["media"])
+    router.add_api_route("/media/tint", lambda: None, response_model=TintView)
+
+    emitted = documents(app_of(router))
+
+    assert emitted["leases"]["components"]["schemas"]["Shade"]["enum"] == ["dark"]
+    shade = emitted["media"]["components"]["schemas"]["TintView"]["properties"]["shade"]
+    assert shade["$ref"] == "leases.json#/components/schemas/Shade"
 
 
 def test_a_route_whose_tag_is_no_hosted_namespace_is_refused() -> None:

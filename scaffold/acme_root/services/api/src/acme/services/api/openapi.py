@@ -5,17 +5,15 @@ namespace whose module defines it: a wire type's `types/<namespace>.py`, or
 an enum of the object model's `om/<namespace>/`. What no namespace defines
 is `common`'s: the bases and the error envelope of `types/common.py`, the
 context's roles, and the framework's validation error. Each document holds
-its namespace's paths and schemas under the names their classes carry, and
-refers to another namespace's schema by a file `$ref` to that namespace's
-document. So each schema is defined once, a name need not be unique across
+its namespace's paths and schemas under the names the framework gives their
+types, less any module in them, and refers to another namespace's schema by
+a file `$ref` to that namespace's document. So each schema is defined once, a name need not be unique across
 namespaces, and a change to one namespace rewrites its own document alone."""
 
 import json
-from collections.abc import Iterator
-from enum import Enum
+import re
 from pathlib import Path
-from types import UnionType
-from typing import Any, get_args, get_origin
+from typing import Any
 
 from fastapi import FastAPI
 from fastapi.openapi.utils import (
@@ -23,7 +21,8 @@ from fastapi.openapi.utils import (
     validation_error_definition,
     validation_error_response_definition,
 )
-from pydantic import BaseModel
+from pydantic import TypeAdapter
+from pydantic.json_schema import GenerateJsonSchema
 
 import acme.om
 import acme.services.api.types
@@ -40,6 +39,12 @@ FRAMEWORK = frozenset(
 )
 """The schemas the framework adds for its own validation error, with no class
 of ours behind them."""
+MODES = {"": None, "-Input": "validation", "-Output": "serialization"}
+"""The suffix pydantic gives a type's schema where the schema it reads and
+the one it writes differ, and the mode each names."""
+WRITTEN = frozenset({"serialization", "computed_fields"})
+"""The parts of a core schema that only a written value takes."""
+_NAMING = GenerateJsonSchema()
 
 
 def namespace_of(model: type) -> str:
@@ -131,47 +136,79 @@ def _namespace_of_operation(method: str, path: str, operation: dict[str, Any]) -
 
 def _schema_owners(app: FastAPI, names: set[str]) -> tuple[dict[str, str], dict[str, str]]:
     """Each schema's namespace, and the name it takes in that namespace's
-    document. The framework names a schema by its class, or by its module and
-    its class where two classes share a name; the document takes the class's
-    name, since the file names the namespace."""
-    models = set(_models(app))
-    by_framework_name: dict[str, type] = {}
-    for model in models:
-        qualified = f"{model.__module__}.{model.__qualname__}".replace(".", "__")
-        candidate = model.__name__ if model.__name__ in names else qualified
-        if by_framework_name.setdefault(candidate, model) is not model:
-            raise ValueError(f"two types a route names are both {candidate}")
+    document. Pydantic names a schema after its type's core ref: by the type's
+    name, with its mode where the schema it reads and the one it writes
+    differ, and by its module and qualified name, with an occurrence index,
+    where two types would share a name. The document takes the short form,
+    since the file names the namespace."""
+    types = [(model, modes, *_framework_names(ref)) for ref, (model, modes) in _types(app).items()]
     owner: dict[str, str] = {}
     name: dict[str, str] = {}
     for schema in names:
         if schema in FRAMEWORK:
             owner[schema], name[schema] = COMMON, schema
             continue
-        model = by_framework_name.get(schema)
-        if model is None:
+        matches = {
+            model: local
+            for model, modes, short, qualified in types
+            if (local := _local_name(schema, modes, short, qualified)) is not None
+        }
+        if not matches:
             raise ValueError(f"no route's type is named {schema}; its namespace is unknown")
-        owner[schema], name[schema] = namespace_of(model), model.__name__
+        if len(matches) > 1:
+            raise ValueError(f"two types a route names are both {schema}")
+        ((model, local),) = matches.items()
+        owner[schema], name[schema] = namespace_of(model), local
     return owner, name
 
 
-def _models(app: FastAPI) -> Iterator[type]:
-    """Every model and enum the app's schema can name: each route's body,
-    parameters, answer, and declared responses, as the framework collects
-    them, and every model and enum they hold."""
-    stack: list[Any] = [field.field_info.annotation for field in get_fields_from_routes(app.routes)]
-    seen: set[int] = set()
+def _types(app: FastAPI) -> dict[str, tuple[type, set[str]]]:
+    """Every model and enum the app's schema can name, by its core ref, and
+    the modes it is read or written in: each one the core schema of a route's
+    body, parameters, answer, or declared responses holds, as the framework
+    collects them, a computed field's and a generic's included."""
+    roots = [
+        (TypeAdapter(field.field_info.annotation).core_schema, field.mode)
+        for field in get_fields_from_routes(app.routes)
+    ]
+    found: dict[str, tuple[type, set[str]]] = {}
+    stack: list[tuple[Any, str]] = list(roots)
+    seen: set[tuple[int, str]] = set()
     while stack:
-        hint = stack.pop()
-        if hint is None or id(hint) in seen:
+        node, mode = stack.pop()
+        if (id(node), mode) in seen:
             continue
-        seen.add(id(hint))
-        if isinstance(hint, type) and issubclass(hint, Enum):
-            yield hint
-        elif isinstance(hint, type) and issubclass(hint, BaseModel):
-            yield hint
-            stack.extend(field.annotation for field in hint.model_fields.values())
-        elif get_origin(hint) is not None or isinstance(hint, UnionType):
-            stack.extend(get_args(hint))
+        seen.add((id(node), mode))
+        if isinstance(node, dict):
+            if isinstance(node.get("ref"), str) and isinstance(node.get("cls"), type):
+                found.setdefault(node["ref"], (node["cls"], set()))[1].add(mode)
+            node = [v for k, v in node.items() if mode == "serialization" or k not in WRITTEN]
+        stack.extend((value, mode) for value in node if isinstance(value, dict | list | tuple))
+    return found
+
+
+def _framework_names(ref: str) -> tuple[str, str]:
+    """The short name and the module-qualified name pydantic derives from a
+    core ref (`GenerateJsonSchema.get_defs_ref`); a generic's names hold its
+    parameters'."""
+    components = [part.rsplit(":", 1)[0] for part in re.split(r"([\][,])", ref)]
+    short = "".join(re.sub(r"(?:[^.[\]]+\.)+((?:[^.[\]]+))", r"\1", part) for part in components)
+    return _NAMING.normalize_name(short), _NAMING.normalize_name("".join(components))
+
+
+def _local_name(schema: str, modes: set[str], short: str, qualified: str) -> str | None:
+    """The name `schema` takes in its namespace's document when pydantic gave
+    it to the type of these names, read or written in `modes`, else None.
+    Pydantic's choices are the short name and the qualified one, each bare or
+    with a mode the type takes, and the qualified one with an occurrence index."""
+    for suffix, mode in MODES.items():
+        if mode is not None and mode not in modes:
+            continue
+        if schema == f"{short}{suffix}":
+            return schema
+        if re.fullmatch(rf"{re.escape(qualified + suffix)}(__\d+)?", schema):
+            return f"{short}{suffix}"
+    return None
 
 
 def _refer(node: Any, here: str, owner: dict[str, str], name: dict[str, str]) -> Any:
