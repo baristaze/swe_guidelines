@@ -1,47 +1,42 @@
+import dataclasses
+import inspect
+import typing
 from pathlib import Path
 
 from acme.infra.impl.local import InfraLocalImpl
 from acme.integrations.impl.configured import absent_integrations
-from acme.om.change_events import ChangeEventsManagerInterface
-from acme.om.change_events.storage import ChangeEventStorageInterface
-from acme.om.idempotency import IdempotencyManagerInterface
-from acme.om.idempotency.storage import IdempotencyStorageInterface
-from acme.om.leases import LeasesManagerInterface
-from acme.om.leases.storage import LeasesStorageInterface
-from acme.om.media import MediaManagerInterface
-from acme.om.media.storage import MediaStorageInterface
-from acme.om.orchestrations import OrchestrationsManagerInterface
-from acme.om.orchestrations.storage import OrchestrationsStorageInterface
-from acme.om.outbox import OutboxRelayInterface
-from acme.om.outbox.storage import OutboxStorageInterface
-from acme.om.root import build_managers
+from acme.om.root import Managers, build_managers
 from acme.om.storage.impl.memory import StorageMemoryImpl
 from acme.om.storage.impl.postgres import StoragePostgresImpl
 from acme.om.storage.roles import DatabaseRole
+from acme.om.storage.root import StorageInterface
 from acme.om.storage.settings import StorageSettings
 from acme.om.tenancy import (
     TenancyCredentialsManagerInterface,
-    TenancyManagerInterface,
     TenancyMembersManagerInterface,
-    TenancyOperatorManagerInterface,
     TenancyOrgManagerInterface,
     TenancySignInManagerInterface,
 )
 from acme.om.tenancy.storage import TenancyStorageInterface
-from acme.om.work import WorkManagerInterface, WorkOperatorManagerInterface
-from acme.om.work.storage import WorkStorageInterface
+
+
+def storage_getters() -> list[tuple[str, type]]:
+    """Every namespace's getter on the storage root, with the interface it
+    answers: read off the root itself, so a namespace a copy adds is held
+    here with no line of this file changed."""
+    return [
+        (name, typing.get_type_hints(member)["return"])
+        for name, member in inspect.getmembers(StorageInterface, inspect.isfunction)
+        if name.startswith("get_") and name.endswith("_storage")
+    ]
 
 
 async def test_memory_root_serves_every_storage() -> None:
     root = StorageMemoryImpl()
-    assert isinstance(root.get_tenancy_storage(), TenancyStorageInterface)
-    assert isinstance(root.get_work_storage(), WorkStorageInterface)
-    assert isinstance(root.get_media_storage(), MediaStorageInterface)
-    assert isinstance(root.get_idempotency_storage(), IdempotencyStorageInterface)
-    assert isinstance(root.get_change_event_storage(), ChangeEventStorageInterface)
-    assert isinstance(root.get_outbox_storage(), OutboxStorageInterface)
-    assert isinstance(root.get_orchestrations_storage(), OrchestrationsStorageInterface)
-    assert isinstance(root.get_lease_storage(), LeasesStorageInterface)
+    getters = storage_getters()
+    assert getters, "the storage root declares no getter"
+    for name, interface in getters:
+        assert isinstance(getattr(root, name)(), interface), name
     assert await root.healthcheck() is True
     await root.close()
 
@@ -108,16 +103,9 @@ def test_business_root_has_a_field_per_manager(tmp_path: Path) -> None:
         InfraLocalImpl(tmp_path),
         integrations=absent_integrations(),
     )
-    assert isinstance(managers.tenancy, TenancyManagerInterface)
-    assert isinstance(managers.tenancy_operator, TenancyOperatorManagerInterface)
-    assert isinstance(managers.work, WorkManagerInterface)
-    assert isinstance(managers.work_operator, WorkOperatorManagerInterface)
-    assert isinstance(managers.media, MediaManagerInterface)
-    assert isinstance(managers.idempotency, IdempotencyManagerInterface)
-    assert isinstance(managers.change_events, ChangeEventsManagerInterface)
-    assert isinstance(managers.outbox, OutboxRelayInterface)
-    assert isinstance(managers.orchestrations, OrchestrationsManagerInterface)
-    assert isinstance(managers.leases, LeasesManagerInterface)
+    hints = typing.get_type_hints(Managers)
+    for field in dataclasses.fields(Managers):
+        assert isinstance(getattr(managers, field.name), hints[field.name]), field.name
 
 
 def test_the_tenancy_manager_carries_each_delegate(tmp_path: Path) -> None:

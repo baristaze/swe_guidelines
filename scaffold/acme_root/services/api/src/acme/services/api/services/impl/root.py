@@ -30,26 +30,25 @@ from acme.services.api.services.impl.webhooks import WebhooksServiceImpl
 class ServicesImpl(ServicesInterface):
     def __init__(
         self,
-        tenancy: TenancyServiceInterface,
         admin: AdminServiceInterface,
         change_events: ChangeEventsServiceInterface,
-        media: MediaServiceInterface,
         flags: FlagsServiceInterface,
-        realtime: RealtimeServiceInterface,
-        webhooks: WebhooksServiceInterface,
         leases: LeasesServiceInterface,
+        media: MediaServiceInterface,
+        realtime: RealtimeServiceInterface,
+        tenancy: TenancyServiceInterface,
+        webhooks: WebhooksServiceInterface,
+        # A copy adds its entries below this line.
     ) -> None:
-        self._tenancy = tenancy
         self._admin = admin
         self._change_events = change_events
-        self._media = media
         self._flags = flags
-        self._realtime = realtime
-        self._webhooks = webhooks
         self._leases = leases
-
-    def get_tenancy_service(self) -> TenancyServiceInterface:
-        return self._tenancy
+        self._media = media
+        self._realtime = realtime
+        self._tenancy = tenancy
+        self._webhooks = webhooks
+        # A copy adds its entries below this line.
 
     def get_admin_service(self) -> AdminServiceInterface:
         return self._admin
@@ -57,20 +56,25 @@ class ServicesImpl(ServicesInterface):
     def get_change_events_service(self) -> ChangeEventsServiceInterface:
         return self._change_events
 
-    def get_media_service(self) -> MediaServiceInterface:
-        return self._media
-
     def get_flags_service(self) -> FlagsServiceInterface:
         return self._flags
+
+    def get_lease_service(self) -> LeasesServiceInterface:
+        return self._leases
+
+    def get_media_service(self) -> MediaServiceInterface:
+        return self._media
 
     def get_realtime_service(self) -> RealtimeServiceInterface:
         return self._realtime
 
+    def get_tenancy_service(self) -> TenancyServiceInterface:
+        return self._tenancy
+
     def get_webhooks_service(self) -> WebhooksServiceInterface:
         return self._webhooks
 
-    def get_lease_service(self) -> LeasesServiceInterface:
-        return self._leases
+    # A copy adds its entries below this line.
 
 
 def build_services(
@@ -82,14 +86,15 @@ def build_services(
     """In-process impls only: a Python caller outside the process reaches the
     same services through the typed client under `clients/python`."""
     return ServicesImpl(
-        tenancy=TenancyServiceImpl(managers.tenancy),
         admin=AdminServiceImpl(managers.tenancy_operator, managers.work_operator),
         change_events=ChangeEventsServiceImpl(managers.change_events),
-        media=MediaServiceImpl(managers.media),
         flags=FlagsServiceImpl(infra.get_flags()),
+        leases=LeasesServiceImpl(managers.leases),
+        media=MediaServiceImpl(managers.media),
         realtime=RealtimeServiceImpl(
             managers.tenancy, managers.change_events, infra.get_topics(), head_max_age
         ),
+        tenancy=TenancyServiceImpl(managers.tenancy),
         webhooks=WebhooksServiceImpl(integrations.get_identity_provider(), infra.get_queues()),
-        leases=LeasesServiceImpl(managers.leases),
+        # A copy adds its entries below this line.
     )

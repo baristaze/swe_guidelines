@@ -30,10 +30,11 @@ export type HintReaders = Readonly<Record<string, Hints>>;
 // a push. No screen reads an orchestration's record; a screen that does
 // keys its queries under the entity and drops its line here.
 const CARRIED_BY: Readonly<Record<string, readonly QueryKey[]>> = {
-  membership: [keys.me, keys.myMemberships.all, keys.memberships.all],
-  user: [keys.users.all, keys.me],
   auth_session: [],
+  membership: [keys.me, keys.myMemberships.all, keys.memberships.all],
   orchestration: [],
+  user: [keys.users.all, keys.me],
+  // A copy adds its entries below this line.
 };
 
 function targetsOf(entity: string): readonly QueryKey[] {
@@ -50,6 +51,7 @@ export const PUSHED_ENTITIES = [
   "membership",
   "orchestration",
   "user",
+  // A copy adds its entries below this line.
 ] as const;
 
 const KEPT_FRESH = new Set(PUSHED_ENTITIES.flatMap((entity) => targetsOf(entity).map((key) => key[0])));

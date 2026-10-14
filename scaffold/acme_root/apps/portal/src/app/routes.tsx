@@ -47,24 +47,25 @@ function GoOn({ to }: { to: string }) {
   return <Navigate to={to} replace state={location.state} />;
 }
 
+// The signed-in screens, each mounted under the shell below, sorted by path.
+const signedIn: RouteObject[] = [
+  { path: "/", element: <HomePage /> },
+  { path: "/orgs/new", element: <NewOrgPage /> },
+  { path: "/settings", element: <SettingsPage /> },
+  // A copy adds its entries below this line.
+];
+
 export const routes: RouteObject[] = [
+  { element: <AuthenticatedShell />, errorElement: <RouteError />, children: signedIn },
+  { path: "/auth/callback", element: <CallbackPage />, errorElement: <RouteError /> },
   // The identity provider's "initiate login" address: it starts a sign-in at once.
   { path: "/login", element: <LoginPage />, errorElement: <RouteError /> },
   { path: "/login/dev", element: <DevSignInPage />, errorElement: <RouteError /> },
-  // Where the identity provider's logout sends the browser back: a sign-in page that waits.
-  { path: "/signed-out", element: <LoginPage signedOut />, errorElement: <RouteError /> },
-  { path: "/auth/callback", element: <CallbackPage />, errorElement: <RouteError /> },
   { path: "/sign-in", element: <GoOn to="/login" />, errorElement: <RouteError /> },
   { path: "/sign-up", element: <GoOn to="/login?screen_hint=sign-up" />, errorElement: <RouteError /> },
-  {
-    element: <AuthenticatedShell />,
-    errorElement: <RouteError />,
-    children: [
-      { path: "/", element: <HomePage /> },
-      { path: "/settings", element: <SettingsPage /> },
-      { path: "/orgs/new", element: <NewOrgPage /> },
-    ],
-  },
+  // Where the identity provider's logout sends the browser back: a sign-in page that waits.
+  { path: "/signed-out", element: <LoginPage signedOut />, errorElement: <RouteError /> },
+  // A copy adds its entries below this line.
 ];
 
 export const router = createBrowserRouter(routes);

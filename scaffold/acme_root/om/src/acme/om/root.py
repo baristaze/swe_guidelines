@@ -42,16 +42,175 @@ from acme.om.work.impl.operator import WorkOperatorManagerImpl
 
 @dataclass(frozen=True)
 class Managers:
+    change_events: ChangeEventsManagerInterface
+    idempotency: IdempotencyManagerInterface
+    leases: LeasesManagerInterface
+    media: MediaManagerInterface
+    orchestrations: OrchestrationsManagerInterface
+    outbox: OutboxRelayInterface
     tenancy: TenancyManagerInterface
     tenancy_operator: TenancyOperatorManagerInterface
     work: WorkManagerInterface
     work_operator: WorkOperatorManagerInterface
-    media: MediaManagerInterface
-    idempotency: IdempotencyManagerInterface
-    change_events: ChangeEventsManagerInterface
-    outbox: OutboxRelayInterface
-    orchestrations: OrchestrationsManagerInterface
-    leases: LeasesManagerInterface
+    # A copy adds its entries below this line.
+
+
+def build_managers(
+    storage: StorageInterface,
+    infra: InfraInterface,
+    tenancy_options: TenancyOptions | None = None,
+    operator_options: TenancyOperatorOptions | None = None,
+    integrations: IntegrationsInterface | None = None,
+    *,
+    change_events_options: ChangeEventsOptions | None = None,
+    idempotency_options: IdempotencyOptions | None = None,
+    leases_options: LeasesOptions | None = None,
+    media_options: MediaOptions | None = None,
+    orchestrations_options: OrchestrationsOptions | None = None,
+    work_options: WorkOptions | None = None,
+    # A copy adds its entries below this line.
+) -> Managers:
+    """`integrations` is the root of the hosted services the managers front:
+    the identity provider, which the tenancy manager signs people in and
+    invites them through. None is a process that signs nobody in, and every
+    call that would reach the provider is refused as unavailable.
+
+    The options after `integrations` are what the process that sweeps sets
+    on the managers it purges through: each one's retention and batch. None
+    keeps that manager's defaults.
+
+    Each manager is one call to its builder below, in dependency order: a
+    builder takes the storage, the infrastructure, and the sibling managers
+    it needs, by their interfaces, and nothing else."""
+    # The relay every core-role manager hands its outbox rows to. It reaches
+    # the work manager through the root below, because a row of kind
+    # `work.<kind>` is enqueued there: the work manager needs the tenancy
+    # manager, which needs this relay, so that one edge is bound at call time
+    # and the graph the root hands back is still whole.
+    outbox = build_outbox(storage, infra, lambda: managers.work)
+    tenancy = build_tenancy(
+        storage.get_tenancy_storage(),
+        outbox,
+        infra.get_cache(CacheScope.REALTIME_TICKET),
+        tenancy_options or TenancyOptions(),
+        identity_provider=(
+            IdentityProviderAbsentImpl()
+            if integrations is None
+            else integrations.get_identity_provider()
+        ),
+    )
+    tenancy_operator = build_tenancy_operator(
+        storage, outbox, operator_options or TenancyOperatorOptions()
+    )
+    change_events = build_change_events(
+        storage, tenancy, change_events_options or ChangeEventsOptions()
+    )
+    work = build_work(storage, infra, tenancy, change_events, work_options or WorkOptions())
+    work_operator = build_work_operator(storage, infra)
+    media = build_media(storage, infra, tenancy, outbox, media_options or MediaOptions())
+    orchestrations = build_orchestrations(
+        storage, tenancy, outbox, orchestrations_options or OrchestrationsOptions()
+    )
+    leases = build_leases(
+        storage, tenancy, outbox, work, orchestrations, leases_options or LeasesOptions()
+    )
+    idempotency = build_idempotency(storage, idempotency_options or IdempotencyOptions())
+    # A copy adds its entries below this line.
+    managers = Managers(
+        change_events=change_events,
+        idempotency=idempotency,
+        leases=leases,
+        media=media,
+        orchestrations=orchestrations,
+        outbox=outbox,
+        tenancy=tenancy,
+        tenancy_operator=tenancy_operator,
+        work=work,
+        work_operator=work_operator,
+        # A copy adds its entries below this line.
+    )
+    return managers
+
+
+def build_change_events(
+    storage: StorageInterface, tenancy: TenancyManagerInterface, options: ChangeEventsOptions
+) -> ChangeEventsManagerInterface:
+    return ChangeEventsManagerImpl(storage.get_change_event_storage(), tenancy, options)
+
+
+def build_idempotency(
+    storage: StorageInterface, options: IdempotencyOptions
+) -> IdempotencyManagerInterface:
+    return IdempotencyManagerImpl(storage.get_idempotency_storage(), options)
+
+
+def build_leases(
+    storage: StorageInterface,
+    tenancy: TenancyManagerInterface,
+    outbox: OutboxRelayInterface,
+    work: WorkManagerInterface,
+    orchestrations: OrchestrationsManagerInterface,
+    options: LeasesOptions,
+) -> LeasesManagerInterface:
+    """A product registers its resource kinds and its waiter kinds here, each
+    with its hooks, as a work kind's handler is registered in the worker,
+    and, for a kind that refuses some asks, its check (`asks`)."""
+    return LeasesManagerImpl(
+        storage.get_lease_storage(),
+        tenancy,
+        outbox,
+        options,
+        kinds={
+            LeasableResourceKind.NOOP: NoopLeasableResourceKindImpl(),
+            # A copy adds its entries below this line.
+        },
+        waiters={
+            WaiterKind.ORCHESTRATION: OrchestrationWaiterImpl(orchestrations),
+            # A copy adds its entries below this line.
+        },
+        work=work,
+    )
+
+
+def build_media(
+    storage: StorageInterface,
+    infra: InfraInterface,
+    tenancy: TenancyManagerInterface,
+    outbox: OutboxRelayInterface,
+    options: MediaOptions,
+) -> MediaManagerInterface:
+    return MediaManagerImpl(
+        storage.get_media_storage(),
+        infra.get_buckets(),
+        tenancy,
+        outbox,
+        infra.get_flags(),
+        options,
+    )
+
+
+def build_orchestrations(
+    storage: StorageInterface,
+    tenancy: TenancyManagerInterface,
+    outbox: OutboxRelayInterface,
+    options: OrchestrationsOptions,
+) -> OrchestrationsManagerInterface:
+    return OrchestrationsManagerImpl(storage.get_orchestrations_storage(), tenancy, outbox, options)
+
+
+def build_outbox(
+    storage: StorageInterface,
+    infra: InfraInterface,
+    work: Callable[[], WorkManagerInterface],
+) -> OutboxRelayInterface:
+    """`work` is called when a row asks for work, never here: the work
+    manager is built after the relay it is reached through."""
+    return OutboxRelayImpl(
+        storage.get_outbox_storage(),
+        storage.get_change_event_storage(),
+        infra.get_topics(),
+        work,
+    )
 
 
 def build_tenancy(
@@ -101,110 +260,35 @@ def build_tenancy(
     return tenancy
 
 
-def build_managers(
+def build_tenancy_operator(
+    storage: StorageInterface, outbox: OutboxRelayInterface, options: TenancyOperatorOptions
+) -> TenancyOperatorManagerInterface:
+    return TenancyOperatorManagerImpl(
+        storage.get_tenancy_storage(), storage.get_change_event_storage(), outbox, options
+    )
+
+
+def build_work(
     storage: StorageInterface,
     infra: InfraInterface,
-    tenancy_options: TenancyOptions | None = None,
-    operator_options: TenancyOperatorOptions | None = None,
-    integrations: IntegrationsInterface | None = None,
-    *,
-    media_options: MediaOptions | None = None,
-    idempotency_options: IdempotencyOptions | None = None,
-    change_events_options: ChangeEventsOptions | None = None,
-    work_options: WorkOptions | None = None,
-    orchestrations_options: OrchestrationsOptions | None = None,
-    leases_options: LeasesOptions | None = None,
-) -> Managers:
-    """`integrations` is the root of the hosted services the managers front:
-    the identity provider, which the tenancy manager signs people in and
-    invites them through. None is a process that signs nobody in, and every
-    call that would reach the provider is refused as unavailable.
+    tenancy: TenancyManagerInterface,
+    change_events: ChangeEventsManagerInterface,
+    options: WorkOptions,
+) -> WorkManagerInterface:
+    return WorkManagerImpl(
+        storage.get_work_storage(), tenancy, change_events, infra.get_topics(), options
+    )
 
-    The options after `integrations` are what the process that sweeps sets
-    on the managers it purges through: each one's retention and batch. None
-    keeps that manager's defaults."""
-    # The relay every core-role manager hands its outbox rows to. It reaches
-    # the work manager through the root below, because a row of kind
-    # `work.<kind>` is enqueued there: the work manager needs the tenancy
-    # manager, which needs this relay, so that one edge is bound at call time
-    # and the graph the root hands back is still whole.
-    outbox = OutboxRelayImpl(
-        storage.get_outbox_storage(),
-        storage.get_change_event_storage(),
-        infra.get_topics(),
-        lambda: managers.work,
-    )
-    tenancy = build_tenancy(
-        storage.get_tenancy_storage(),
-        outbox,
-        infra.get_cache(CacheScope.REALTIME_TICKET),
-        tenancy_options or TenancyOptions(),
-        identity_provider=(
-            IdentityProviderAbsentImpl()
-            if integrations is None
-            else integrations.get_identity_provider()
-        ),
-    )
-    change_events = ChangeEventsManagerImpl(
-        storage.get_change_event_storage(), tenancy, change_events_options or ChangeEventsOptions()
-    )
-    work = WorkManagerImpl(
+
+def build_work_operator(
+    storage: StorageInterface, infra: InfraInterface
+) -> WorkOperatorManagerInterface:
+    return WorkOperatorManagerImpl(
         storage.get_work_storage(),
-        tenancy,
-        change_events,
-        infra.get_topics(),
-        work_options or WorkOptions(),
-    )
-    media = MediaManagerImpl(
-        storage.get_media_storage(),
-        infra.get_buckets(),
-        tenancy,
-        outbox,
-        infra.get_flags(),
-        media_options or MediaOptions(),
-    )
-    orchestrations = OrchestrationsManagerImpl(
-        storage.get_orchestrations_storage(),
-        tenancy,
-        outbox,
-        orchestrations_options or OrchestrationsOptions(),
-    )
-    # A product registers its resource kinds and its waiter kinds here, each
-    # with its hooks, as a work kind's handler is registered in the worker,
-    # and, for a kind that refuses some asks, its check (`asks`).
-    leases = LeasesManagerImpl(
-        storage.get_lease_storage(),
-        tenancy,
-        outbox,
-        leases_options or LeasesOptions(),
-        kinds={LeasableResourceKind.NOOP: NoopLeasableResourceKindImpl()},
-        waiters={WaiterKind.ORCHESTRATION: OrchestrationWaiterImpl(orchestrations)},
-        work=work,
-    )
-    idempotency = IdempotencyManagerImpl(
-        storage.get_idempotency_storage(), idempotency_options or IdempotencyOptions()
-    )
-    tenancy_operator = TenancyOperatorManagerImpl(
         storage.get_tenancy_storage(),
         storage.get_change_event_storage(),
-        outbox,
-        operator_options or TenancyOperatorOptions(),
+        infra.get_topics(),
     )
-    managers = Managers(
-        tenancy=tenancy,
-        tenancy_operator=tenancy_operator,
-        work=work,
-        work_operator=WorkOperatorManagerImpl(
-            storage.get_work_storage(),
-            storage.get_tenancy_storage(),
-            storage.get_change_event_storage(),
-            infra.get_topics(),
-        ),
-        media=media,
-        idempotency=idempotency,
-        change_events=change_events,
-        outbox=outbox,
-        orchestrations=orchestrations,
-        leases=leases,
-    )
-    return managers
+
+
+# A copy adds its entries below this line.

@@ -12,27 +12,28 @@ class DatabaseRole(StrEnum):
 
 
 TABLE_ROLES: dict[str, DatabaseRole] = {
-    "orgs": DatabaseRole.CORE,
-    "identities": DatabaseRole.CORE,
-    "sign_in_delays": DatabaseRole.CORE,
-    "users": DatabaseRole.CORE,
-    "memberships": DatabaseRole.CORE,
-    "auth_sessions": DatabaseRole.CORE,
     "api_keys": DatabaseRole.CORE,
-    "socket_tickets": DatabaseRole.CORE,
-    "invitations": DatabaseRole.CORE,
-    "work_items": DatabaseRole.QUEUE,
-    "tenant_caps": DatabaseRole.QUEUE,
+    "auth_sessions": DatabaseRole.CORE,
+    "change_event_cursors": DatabaseRole.ACTIVITY,
+    "change_events": DatabaseRole.ACTIVITY,
     "files": DatabaseRole.CORE,
     "idempotency_records": DatabaseRole.CORE,
-    "change_events": DatabaseRole.ACTIVITY,
-    "change_event_cursors": DatabaseRole.ACTIVITY,
-    "outbox_rows": DatabaseRole.CORE,
-    "orchestrations": DatabaseRole.CORE,
+    "identities": DatabaseRole.CORE,
+    "invitations": DatabaseRole.CORE,
     "leasable_resources": DatabaseRole.CORE,
-    "leases": DatabaseRole.CORE,
     "lease_requests": DatabaseRole.CORE,
+    "leases": DatabaseRole.CORE,
+    "memberships": DatabaseRole.CORE,
+    "orchestrations": DatabaseRole.CORE,
+    "orgs": DatabaseRole.CORE,
+    "outbox_rows": DatabaseRole.CORE,
+    "sign_in_delays": DatabaseRole.CORE,
+    "socket_tickets": DatabaseRole.CORE,
     "system_sizes": DatabaseRole.ADMIN,
+    "tenant_caps": DatabaseRole.QUEUE,
+    "users": DatabaseRole.CORE,
+    "work_items": DatabaseRole.QUEUE,
+    # A copy adds its entries below this line.
 }
 
 DROPPED_TABLE_ROLES: dict[str, DatabaseRole] = {
@@ -41,6 +42,7 @@ DROPPED_TABLE_ROLES: dict[str, DatabaseRole] = {
     "platform_sizes": DatabaseRole.ADMIN,
     "resources": DatabaseRole.CORE,
     "sessions": DatabaseRole.CORE,
+    # A copy adds its entries below this line.
 }
 """Tables the migration chain made and later dropped or renamed, by the name
 they had. No process reaches them, so `role_for` does not know them; only the

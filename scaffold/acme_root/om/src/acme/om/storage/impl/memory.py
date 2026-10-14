@@ -34,6 +34,31 @@ class StorageMemoryImpl(StorageInterface):
         self._leases = LeasesStorageMemoryImpl(self._outbox, self._orchestrations)
         self._media = MediaStorageMemoryImpl(self._outbox)
         self._change_events = ChangeEventStorageMemoryImpl()
+        # A copy adds its entries below this line.
+
+    async def healthcheck(self) -> bool:
+        return True
+
+    async def close(self) -> None:
+        return None
+
+    def get_change_event_storage(self) -> ChangeEventStorageInterface:
+        return self._change_events
+
+    def get_idempotency_storage(self) -> IdempotencyStorageInterface:
+        return self._idempotency
+
+    def get_lease_storage(self) -> LeasesStorageInterface:
+        return self._leases
+
+    def get_media_storage(self) -> MediaStorageInterface:
+        return self._media
+
+    def get_orchestrations_storage(self) -> OrchestrationsStorageInterface:
+        return self._orchestrations
+
+    def get_outbox_storage(self) -> OutboxStorageInterface:
+        return self._outbox
 
     def get_tenancy_storage(self) -> TenancyStorageInterface:
         return self._tenancy
@@ -41,26 +66,4 @@ class StorageMemoryImpl(StorageInterface):
     def get_work_storage(self) -> WorkStorageInterface:
         return self._work
 
-    def get_media_storage(self) -> MediaStorageInterface:
-        return self._media
-
-    def get_idempotency_storage(self) -> IdempotencyStorageInterface:
-        return self._idempotency
-
-    def get_change_event_storage(self) -> ChangeEventStorageInterface:
-        return self._change_events
-
-    def get_outbox_storage(self) -> OutboxStorageInterface:
-        return self._outbox
-
-    def get_orchestrations_storage(self) -> OrchestrationsStorageInterface:
-        return self._orchestrations
-
-    def get_lease_storage(self) -> LeasesStorageInterface:
-        return self._leases
-
-    async def healthcheck(self) -> bool:
-        return True
-
-    async def close(self) -> None:
-        return None
+    # A copy adds its entries below this line.

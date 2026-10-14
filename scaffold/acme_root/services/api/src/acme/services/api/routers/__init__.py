@@ -18,20 +18,27 @@ from importlib import import_module
 from fastapi import APIRouter
 
 from acme.services.api.realtime import socket
-from acme.services.api.routers import change_events, leases, media, tenancy, work
+from acme.services.api.routers import (
+    change_events,
+    leases,
+    media,
+    tenancy,
+    work,
+)
 
 HOSTED: dict[str, tuple[APIRouter, ...]] = {
-    # The operator plane is tenancy's: it lists and deletes orgs. The
-    # auth session's flags are too: they answer for its org and user.
-    "tenancy": (tenancy.router, tenancy.operator),
     # The realtime channel is the change events pushed; its replay is
     # `/change-events`.
     "change_events": (change_events.router, change_events.operator, socket.router),
-    "media": (media.router,),
     "leases": (leases.router,),
+    "media": (media.router,),
+    # The operator plane is tenancy's: it lists and deletes orgs. The
+    # auth session's flags are too: they answer for its org and user.
+    "tenancy": (tenancy.router, tenancy.operator),
     # The work queue has the operator's routes alone: a tenant's work is
     # queued by the writes of the other namespaces.
     "work": (work.operator,),
+    # A copy adds its entries below this line.
 }
 """Every namespace this image hosts, and the routers that serve it."""
 
