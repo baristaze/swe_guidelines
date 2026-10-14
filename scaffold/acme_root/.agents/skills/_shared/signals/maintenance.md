@@ -35,5 +35,7 @@ sweeps on every pass, and consumes what providers deliver.
 
 ## Report
 
+```markdown
 - Workers: <worker outcomes>
 - Queue: webhooks <n> (dead <n>), deliveries <outcomes>
+```

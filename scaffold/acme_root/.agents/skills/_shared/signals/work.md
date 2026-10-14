@@ -55,5 +55,7 @@ for it, and that namespace's file says what the kind does.
 
 ## Report
 
+```markdown
 - Work: oldest ready item <age>, failed in the last fifteen minutes <n>, requeued <n>
 - Failed work items: <item id, kind, org id, reason; or none>
+```

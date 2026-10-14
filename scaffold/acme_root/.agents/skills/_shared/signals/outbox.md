@@ -48,4 +48,6 @@ fails for good.
 
 ## Report
 
+```markdown
 - Outbox: oldest pending row <age>, failed for good in the last fifteen minutes <n>, dead letters <row id, kind, org id; or none>
+```

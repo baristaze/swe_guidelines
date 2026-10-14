@@ -36,5 +36,6 @@ a signal it does not emit.
 - `## Commands`: a person's command for one of its findings, run in
   their own terminal. A skill names it in its report and never runs it.
 - `## Report`: the lines it adds to the Signals of an investigation's
-  report. A file with no Report adds none, and what it explains reaches
-  the report as a finding.
+  report, in a fenced block, as a skill's Output writes them. A file
+  with no Report adds none, and what it explains reaches the report as
+  a finding.

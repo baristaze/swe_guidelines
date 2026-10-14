@@ -52,4 +52,6 @@ A finding about a secret names the secret and
 
 ## Report
 
+```markdown
 - Identity provider: sign-in <configured | off: acme/<env>/workos_api_key | not in the window>, webhook <configured | off: acme/<env>/workos_webhook_secret | signature refused: acme/<env>/workos_webhook_secret | not in the window>
+```

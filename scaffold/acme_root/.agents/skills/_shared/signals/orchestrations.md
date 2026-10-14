@@ -32,4 +32,6 @@ request, each advanced one step at a time on the work queue.
 
 ## Report
 
+```markdown
 - Orchestrations: <kind> <started, parked, succeeded, failed, cancelled> per kind, defects <record and org ids, or none>
+```
