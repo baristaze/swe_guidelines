@@ -100,9 +100,15 @@ def test_the_spine_writes_no_kind_gauge_alarm_queue_or_event_of_a_namespace(name
     """A copy writes its namespace's into its own file, and the scaffold's
     release edits the scaffold's: no sentence of the skill is both's. An
     identifier is a span with a dot, an underscore, or a hyphen in it, or one
-    in capitals."""
+    in capitals. A log group, a path from `/`, is no namespace's: it names a
+    process, which the spine names too, and in a copy whose name holds an
+    underscore it would read as an identifier."""
     spans = set().union(*(_spans(heading) for heading in DECLARED))
-    identifiers = {span for span in spans if re.search(r"[._-]", span) or span.isupper()}
+    identifiers = {
+        span
+        for span in spans
+        if not span.startswith("/") and (re.search(r"[._-]", span) or span.isupper())
+    }
     assert identifiers, "the signals files declare nothing, or this test no longer reads them"
     written = sorted(term for term in identifiers if term in text_of(name))
     assert not written, f"{name} writes {written}, which a signals file holds"

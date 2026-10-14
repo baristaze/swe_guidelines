@@ -1,3 +1,4 @@
+from enum import StrEnum
 from pathlib import Path
 
 from worker_support import RecordingHandler, build_container, make_item, sign_in
@@ -17,6 +18,22 @@ async def test_handler_is_idempotent_over_the_memory_container(tmp_path: Path) -
     await handler.handle(ctx, item)
     await handler.handle(ctx, item)
     assert [handled.id for handled in handler.handled] == [item.id, item.id]
+
+
+class ShipmentKind(StrEnum):
+    """A kind of a copy's own namespace, named in its `kinds.py`."""
+
+    NOTIFY_SHIPMENT = "NOTIFY_SHIPMENT"
+
+
+async def test_an_item_takes_a_kind_a_namespace_of_the_copy_registers(tmp_path: Path) -> None:
+    """A copy registers its kinds by name in its own namespace, never in
+    `WorkKind`, and its handler's test builds its item here: the helper takes
+    a registered kind's name, as the registry and the row do."""
+    container = build_container(tmp_path)
+    ctx = await sign_in(container)
+    item = make_item(ctx, kind=ShipmentKind.NOTIFY_SHIPMENT)
+    assert item.kind == "NOTIFY_SHIPMENT"
 
 
 async def test_handler_keeps_nothing_per_item(tmp_path: Path) -> None:

@@ -25,8 +25,11 @@ missing. `<Kind>` is the kind in CamelCase. When `<worker-name>` is a
 worker the tree has (`maintenance` in a copy), the kind joins it.
 Otherwise the skill creates the worker first. The kind belongs to
 `<namespace>`, the namespace whose write starts it; ask when that is
-not plain. `<Namespace>` is its name in CamelCase, `<NAMESPACE>` in
-upper snake case.
+not plain. The tables below take that namespace and that write as
+there: when no namespace's write starts the kind yet, the namespace
+comes first, made by `../arch-scaffold-namespace/SKILL.md`, never a
+bare folder, which fails OM-14. `<Namespace>` is its name in
+CamelCase, `<NAMESPACE>` in upper snake case.
 
 A kind that needs its own capacity (`--lane <name>`) is first the lane
 on its spec, which the relay lands its items on, and a replica of the
@@ -79,10 +82,16 @@ the maintenance worker should not carry.
    record the item advances is a compare-and-set on the record's
    version, since the fences guard the queue row and not the record. An
    effect the handler must make happen rides an outbox row or a work
-   item, never a topic alone.
+   item, never a topic alone. A handler that needs an outside provider
+   the copy does not reach yet gets it through a client under
+   `integrations/`, with a real impl, a deterministic twin, and the
+   setting that picks one, as the conventions' Two storage impls rule
+   says, or through the provider's own skill where the copy has one;
+   it never calls the provider directly.
 3. A long-running kind is an `OrchestrationKindSpec` in its namespace's
    `kinds.py`, registered in `ORCHESTRATION_KINDS` below the marker, whose
-   step is mapped by its name in `build_loop`, not a handler that loops; it parks or fails as Long-Running
+   step is mapped by its name in `build_loop`, not a handler that loops;
+   it parks or fails as Long-Running
    Orchestrations states. A lane is a work kind's, and every orchestration
    kind's steps ride `WorkKind.ORCHESTRATION`, so `--lane` gives no one
    orchestration kind a lane of its own. A long-running kind that needs

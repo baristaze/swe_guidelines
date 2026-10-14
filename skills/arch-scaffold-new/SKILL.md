@@ -1,7 +1,7 @@
 ---
 name: arch-scaffold-new
 description: "Start a new system in the guideline's shape: pick its name, copy the scaffold's domain-agnostic core under it, run its gates, record the product's first decisions, then add the first namespace."
-allowed-tools: Read, Grep, Glob, Write, Edit, Bash(python3:*), Bash(make setup), Bash(make check), Bash(make openapi), Bash(make infra-up), Bash(make migrate), Bash(make migrate-check), Bash(make test-integration), Bash(uv run:*), Bash(uv sync:*), Bash(pnpm install:*), Bash(pnpm run:*), Bash(git status:*), Bash(git rev-parse:*), Bash(lsof:*), Bash(docker info:*)
+allowed-tools: Read, Grep, Glob, Write, Edit, Bash(python3:*), Bash(make setup), Bash(make check:*), Bash(cp .env.example .env:*), Bash(make openapi), Bash(make infra-up), Bash(make migrate), Bash(make migrate-check), Bash(make test-integration), Bash(uv run:*), Bash(uv sync:*), Bash(pnpm install:*), Bash(pnpm run:*), Bash(git status:*), Bash(git rev-parse:*), Bash(lsof:*), Bash(docker info:*)
 ---
 
 # arch-scaffold-new
@@ -77,13 +77,19 @@ Example: `free_journalism --first journalists Journalist display_name:str`.
 1. Settle the name and the folder, and refuse as the Input states.
 2. Copy: `python3 <new.py> <name>`, where `<new.py>` is the absolute
    path of `../../scaffold/new.py`.
-   Then, in the folder, `make setup` and `make check`. The copy is green
+   Then, in the folder, `make setup` and `make check`. The Makefile pins
+   the checker of the copy's release, and a checkout past it (a
+   snapshot of `main`) carries a newer scaffold, so this check and step
+   6's run this checkout's checker through the Makefile's override:
+   `make check ARCH_CHECK="uv run --no-project --python <version> python <checkers>/arch_check.py"`,
+   `<version>` the copy's `.python-version` and `<checkers>` the
+   absolute path of `../../checkers`. The copy is green
    before this skill writes anything, so a gate that fails here is a
    defect of the scaffold: stop with the cause pre-existing, name the
    gate, and change nothing.
 3. Tell whether Docker runs: `docker info` exits 0 when it does. When
    it runs, settle the local ports before any stack starts. Copy
-   `.env.example` whole to `.env`, as `make up` does. Then check every
+   `.env.example` whole to `.env` (`cp .env.example .env`), as `make up` does. Then check every
    port knob in it with `lsof -i :<port>`: the compose stack's
    (`<NAME>_POSTGRES_PORT` and the rest) and the host processes'
    (`<NAME>_PORT`, `<NAME>_METRICS_PORT`, `<NAME>_COLLECTOR_SCRAPE_PORT`,

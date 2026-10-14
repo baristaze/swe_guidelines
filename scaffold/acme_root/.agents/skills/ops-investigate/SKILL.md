@@ -166,9 +166,9 @@ Search, and the report their Report.
    ```bash
    set -a; . ~/.config/acme/ops/<env>.env; set +a
    curl -sG "$ACME_PROMETHEUS_URL/api/v1/query" \
-     --data-urlencode 'query=sum by (route, status) (rate(acme_http_requests_total[5m]))'
+     --data-urlencode 'query=sum by (route, status) (rate(acme_http_requests_total[<since>]))'
    curl -sG "$ACME_PROMETHEUS_URL/api/v1/query" \
-     --data-urlencode 'query=histogram_quantile(0.95, sum by (le, route) (rate(acme_http_request_seconds_bucket[5m])))'
+     --data-urlencode 'query=histogram_quantile(0.95, sum by (le, route) (rate(acme_http_request_seconds_bucket[<since>])))'
    ```
 
 5. Outcomes, gauges, queues, the pool: one counter carries every

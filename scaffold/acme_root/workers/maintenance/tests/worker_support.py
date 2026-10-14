@@ -21,7 +21,7 @@ from acme.om.storage.impl.memory import StorageMemoryImpl
 from acme.om.tenancy import TenancyManagerInterface
 from acme.om.tenancy.impl.manager import TenancyOptions
 from acme.om.work.types.handler import WorkHandlerInterface
-from acme.om.work.types.work_item import WorkItem, WorkKind
+from acme.om.work.types.work_item import KindName, WorkItem, WorkKind
 from acme.workers.maintenance.container import WorkerContainer
 from acme.workers.maintenance.handler import NoopHandlerImpl
 from acme.workers.maintenance.loop import LoopOptions
@@ -128,7 +128,7 @@ async def start_noop(container: WorkerContainer, ctx: TenantContext, steps: int)
 def make_item(
     ctx: TenantContext,
     *,
-    kind: WorkKind = WorkKind.NOOP,
+    kind: KindName = WorkKind.NOOP,
     payload: OmBase | None = None,
     target_id: UUID | None = None,
     traceparent: str | None = None,
