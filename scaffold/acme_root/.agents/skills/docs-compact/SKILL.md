@@ -254,7 +254,13 @@ left as it is, and the report names it under Kept.
    formats its Python; commit what it changes, apart. Then `make
    openapi`, which writes each namespace's API document and its two
    schemas from the code, a docstring step 6 rewrote included; commit
-   what it changes, apart. Then `make check`. When `docker info` exits 0, also `make
+   what it changes, apart. Then `make check`. In the guideline's
+   repository, the scaffold pins the last release's checker, older than
+   the scaffold it checks, so `make check` runs the checkout's instead,
+   through the Makefile's override: `make check ARCH_CHECK="uv run
+   --no-project --python $(cat .python-version) python
+   $(git rev-parse --show-toplevel)/checkers/arch_check.py"`. When
+   `docker info` exits 0, also `make
    infra-up`, and then `make migrate`, `make migrate-check`, and `make
    test-integration` on a database the run makes and drops, never the
    stack's own: the integration tests empty every table of the

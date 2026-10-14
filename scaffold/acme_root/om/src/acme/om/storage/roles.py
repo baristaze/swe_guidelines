@@ -37,6 +37,11 @@ TABLE_ROLES: dict[str, DatabaseRole] = {
 }
 
 DROPPED_TABLE_ROLES: dict[str, DatabaseRole] = {
+    "event_cursors": DatabaseRole.ACTIVITY,
+    "events": DatabaseRole.ACTIVITY,
+    "platform_sizes": DatabaseRole.ADMIN,
+    "resources": DatabaseRole.CORE,
+    "sessions": DatabaseRole.CORE,
     # A copy adds its entries below this line.
 }
 """Tables the migration chain made and later dropped or renamed, by the name
