@@ -62,7 +62,7 @@ Example: `free_journalism --first journalists Journalist display_name:str`.
 | File | Holds |
 |------|-------|
 | `<name>/` | the scaffold, copied by `new.py` under the name in each of its forms, pinned at this plugin's release, in a new git repository; from a clean checkout of the plugin, its first commit is the copy, on `scaffold` and the main branch, the base `arch-upgrade-scaffold` moves |
-| `<name>/docs/adr/<n>-*.md` | the product's first decisions, numbered from 1001: the scaffold's ADRs there stay below 1000 |
+| `<name>/docs/adr/<n>-*.md` | the product's first decisions, numbered from 1001: the scaffold's ADRs there stay below 1000, as the scaffold wrote them |
 | the first namespace and its entity | as `arch-scaffold-namespace` and `arch-scaffold-entity` create them |
 
 ## Changed
@@ -109,7 +109,12 @@ Example: `free_journalism --first journalists Journalist display_name:str`.
    Number them from 1001, in that order (`1001-<slug>.md`, then
    `1002-<slug>.md`), never one above the scaffold's highest: Records
    of Decisions keeps every number below 1000 for the scaffold's ADRs,
-   those a later move brings included.
+   those a later move brings included. Never edit an ADR the scaffold
+   gave, not even to add a row: a decision that extends one, such as a
+   substitution beside ADR 0002's, goes in the copy's own ADR, which
+   cites the scaffold's by number and title (`ADR 0002, Technology
+   choices as adopted`). A later move then rewrites the scaffold's ADR
+   with no conflict.
 
    Then write the opening of `README.md` and the summary of `llms.txt`.
    With `--codeowners`, write the owners into `.github/CODEOWNERS`: on

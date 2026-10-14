@@ -117,6 +117,14 @@ left as it is, and the report names it under Kept.
      The list is the sweep: the skill reads each hit in its paragraph,
      and does not read every file.
 3. **Compact the ADRs**, each once, then commit them alone.
+   - **The tree's own alone.** With a `scaffold` branch (`git rev-parse
+     --verify --quiet origin/scaffold` prints its id), each ADR that
+     `git ls-tree -r --name-only origin/scaffold -- docs/adr` lists is
+     its base's, and stays as the render gave it: a copy never edits an
+     ADR its base gave, and the next move rewrites it with no conflict.
+     None is rewritten, removed, or the target of a move or a fold
+     below; a decision of the tree's own that extends one stays in the
+     tree's ADR that cites it.
    - **Rewrite in place** an ADR whose decision holds. Its status is
      `**Status**: accepted (<date>)` and nothing more, with the date
      the old status gives for its acceptance, wherever in the line it
@@ -175,7 +183,8 @@ left as it is, and the report names it under Kept.
      leaves in doubt is kept and listed too. Either is rewritten in
      place as this step's first item says, its status one date.
    - A file under `docs/adr/` that is not an ADR, such as a picture,
-     goes when no ADR links it. An ADR never goes for want of a link.
+     goes when no ADR links it; the folder's `README.md` stays. An ADR
+     never goes for want of a link.
 4. **Cut the changelog** to its latest release: the lines above the
    first release, that one section, and one line that says every
    release's notes stay on the repository host. Each older section goes
@@ -301,6 +310,7 @@ left as it is, and the report names it under Kept.
   an applied migration file: a fold replaces the revisions it owns
   whole, and leaves every file the render of its base holds as the
   render gave it.
+- Never edits or removes an ADR the render of its base holds.
 - Never writes to a shared database or to an environment, and never
   runs a test on the local stack's own database: its gates and its fold
   run on databases it made on the local stack, and drops.

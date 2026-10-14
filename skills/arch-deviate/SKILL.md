@@ -20,7 +20,8 @@ The arguments name the rule being deviated from, as a lens id
 Principles`), or a sentence describing it, optionally followed by a
 one-line reason. A technology substitution (an equivalent in place of
 a technology the guideline names) is not a deviation and is recorded
-in the project's technology-choices ADR instead, as the guideline's
+in the project's technology-choices ADR instead (in a copy, its own,
+never the scaffold's), as the guideline's
 "Technology Choices and How to Override Them" section states; when
 the arguments describe one, say so and stop. Ask in one
 message for what is missing: the reason, the scope of the deviation

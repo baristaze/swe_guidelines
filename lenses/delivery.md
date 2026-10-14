@@ -578,7 +578,9 @@ vendor's SDK outside the infra flags package; the rest is judged.
 **Principle.** A decision that constrains future work is recorded under
 `docs/adr/` with context, decision, and consequences, dated and
 numbered. Code and comments cite the ADR by number. The scaffold's
-ADRs stay below 1000, and a copy numbers its own from 1001.
+ADRs stay below 1000, and a copy numbers its own from 1001. A copy
+never edits an ADR the scaffold gave: what it extends or changes goes
+in an ADR of its own, which cites the scaffold's by number and title.
 `specs/architecture.md` pins the guideline and links the ADRs that
 depart from it.
 
@@ -594,8 +596,8 @@ checker's enumeration instead (CTX-12).
 **Violation.** An exception to a guideline rule introduced with no
 ADR; code that embodies an ADR's decision without citing its number;
 a row of `specs/architecture.md` left naming a deviation the change
-ended; a copy's new ADR numbered below 1001. (What an ADR says once
-it is accepted is OPS-29.)
+ended; a copy's new ADR numbered below 1001; a copy's edit to an ADR
+the scaffold gave. (What an ADR says once it is accepted is OPS-29.)
 
 **Severity.** medium
 
@@ -635,7 +637,7 @@ rules it must still satisfy. A substitution that changes a shape is a
 deviation, recorded as one.
 
 **Source.** Technology Choices and How to Override Them, Overriding a
-Choice.
+Choice; Cross-Cutting Conventions, Records of Decisions.
 
 **Look for.** Dependencies and providers that differ from the named
 stack (`pyproject.toml`, `package.json`, compose images, Terraform
@@ -646,7 +648,8 @@ the record lists (queue claim, atomic increment, a bus that reaches
 every subscribed process).
 
 **Violation.** A substitute technology in the tree with no ADR naming
-it, or with an ADR of its own beside the one that lists them; an ADR
+it, or with an ADR of its own beside the one that lists the project's
+(in a copy, that one is the copy's own, never the scaffold's); an ADR
 that swaps a technology and silently drops a rule it cannot satisfy; a
 substitution recorded as a deviation or a deviation recorded as a
 substitution.

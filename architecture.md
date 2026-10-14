@@ -2854,11 +2854,15 @@ managers build once for any number of requests.
 A decision that constrains future work is an ADR under `docs/adr/`:
 context, decision, consequences, numbered and cited by number. The
 scaffold's ADRs stay below 1000, and a copy numbers its own from 1001,
-so a later scaffold ADR never takes a number the copy uses. An ADR
+so a later scaffold ADR never takes a number the copy uses. A copy never
+edits an ADR the scaffold gave: it records what it extends or changes
+in an ADR of its own, which cites the scaffold's by number and title, so
+a later release rewrites the scaffold's with no conflict. An ADR
 [says what holds](#documentation-as-code): it is rewritten in place when
 its decision changes and removed when it constrains nothing, its number
 never changes, and its status is one date. A substitution is one row of
-the one ADR that lists them. A changelog holds the latest release, and
+the one ADR that lists them, and a copy lists its own in one ADR of its
+own. A changelog holds the latest release, and
 the release notes hold the rest. `specs/architecture.md` pins this
 document and links the ADRs that depart from it; this document describes
 how we build, and names each decision it makes for every system where it

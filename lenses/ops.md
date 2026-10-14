@@ -775,7 +775,9 @@ For each rejected option, whether a reader at the head could reach it.
 
 **Violation.** An ADR whose status tells what replaced or amended it,
 or that keeps the options it turned down in a section of their own; a
-second ADR that amends the first where the first could say what holds;
+second ADR that amends the first where the first could say what holds
+(a copy's ADR that extends one the scaffold gave is not one, since a
+copy never edits the scaffold's);
 an ADR renumbered, so a citation in code names another decision. A
 comment or a README that tells what the code did before, or serves a
 release the tree never had; a changelog that lists every release. (The
