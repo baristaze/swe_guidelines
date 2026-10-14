@@ -5,9 +5,9 @@ A table mixin is a class whose name ends in `Mixin`, defined in a
 `tables` module of the OM; its columns are read from its body and its
 mixin bases. The role map and the scope map are module-level dict
 literals of the OM, found by name. Migration files are read as text
-and as history: a rule replays a role's `up` files in stamp order when
-it asks what the chain leaves in place, so a state a later migration
-replaced is never reported.
+and as history: a rule replays a role's `up` files in the chain's order,
+each after the parent its wrapper names, when it asks what the chain
+leaves in place, so a state a later migration replaced is never reported.
 """
 
 from __future__ import annotations
@@ -632,13 +632,64 @@ def sql_files(project: Project, sql_dir: str) -> tuple[list[SqlFile], list[str]]
     return good, bad
 
 
+@dataclass(frozen=True)
+class Wrapper:
+    """A migration's wrapper: its `revision` and the parents its `down_revision` names, with the nodes that
+    assign them. A revision that is no string literal is None."""
+
+    rel: str
+    role: str
+    stamp: str
+    revision: str | None
+    revision_node: ast.expr | None
+    parents: tuple[object, ...]
+    parents_node: ast.expr | None
+
+
+def wrappers(project: Project, versions_dir: str) -> Iterator[Wrapper]:
+    """Each wrapper named `<stamp>_<slug>.py` under `<versions_dir>/<role>/` that parses."""
+    for rel in project.files(f"{versions_dir}/*/*.py"):
+        role, fname = rel.split("/")[-2:]
+        m = WRAPPER_FILE.match(fname)
+        if not m:
+            continue
+        try:
+            tree = ast.parse(project.read(rel) or "", filename=rel)
+        except SyntaxError:
+            continue
+        rev_node = module_value(tree, "revision")
+        down_node = module_value(tree, "down_revision")
+        revision = rev_node.value if isinstance(rev_node, ast.Constant) and isinstance(rev_node.value, str) else None
+        elements = down_node.elts if isinstance(down_node, ast.Tuple | ast.List) else [down_node] if down_node else []
+        parents = tuple(e.value if isinstance(e, ast.Constant) else ast.unparse(e) for e in elements if e is not None)
+        yield Wrapper(rel, role, m.group("stamp"), revision, rev_node, tuple(p for p in parents if p is not None), down_node)
+
+
 def up_chain(project: Project, sql_dir: str) -> dict[str, list[SqlFile]]:
-    """Each role's `up` files in stamp order: the order the chain applies them."""
+    """Each role's `up` files in the order its chain applies them: each after the parents its wrapper names,
+    never by its stamp, which names a migration and orders nothing. The wrappers are read where STO-23 reads
+    them. Among the files whose parents are all placed the lower stamp goes first, so a file with no wrapper,
+    or one whose parent is missing or in a cycle, still replays; STO-18 and STO-23 report those."""
     files, _ = sql_files(project, sql_dir)
+    versions_dir = project.option("STO-23", "versions_dir", VERSIONS_DIR, {"versions_dir"})
+    parents = {(w.role, w.stamp): w.parents for w in wrappers(project, versions_dir) if w.revision == w.stamp}
     out: dict[str, list[SqlFile]] = {}
     for f in files:
         if f.direction == "up":
             out.setdefault(f.role, []).append(f)
+    for role, ups in out.items():
+        stamps = {f.stamp for f in ups}
+        placed: set[object] = set()
+        ordered: list[SqlFile] = []
+        while ups:
+            ready = next(
+                (f for f in ups if all(p in placed or p not in stamps for p in parents.get((role, f.stamp), ()))),
+                ups[0],
+            )
+            ups.remove(ready)
+            ordered.append(ready)
+            placed.add(ready.stamp)
+        out[role] = ordered
     return out
 
 

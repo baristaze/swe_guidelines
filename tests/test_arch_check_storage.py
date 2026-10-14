@@ -784,6 +784,52 @@ def test_sto_23_a_merge_revision_closes_the_fork(tmp_path):
     assert code == 0
 
 
+def test_sto_23_a_missing_parent(tmp_path):
+    files = {"om/migrations/versions/core/202601020000_a.py": 'revision = "202601020000"\ndown_revision = "202512310000"\n'}
+    code, report = run(tmp_path, "STO-23", files)
+    assert code == 1
+    assert_messages(
+        report,
+        [
+            "down_revision '202512310000' is no revision of role core",
+            "role core ends in 2 heads (202601010000, 202601020000); merge them",
+        ],
+    )
+
+
+def migration(stem, parent, up):
+    """A core migration whose wrapper names `parent`, with its SQL pair."""
+    stamp = stem.split("_", 1)[0]
+    return {
+        f"om/migrations/versions/core/{stem}.py": f'revision = "{stamp}"\ndown_revision = "{parent}"\n',
+        f"om/migrations/sql/core/{stem}.up.sql": up,
+        f"om/migrations/sql/core/{stem}.down.sql": "SELECT 1;\n",
+    }
+
+
+@pytest.mark.parametrize("rule", ["STO-05", "STO-23"])
+def test_a_chain_replays_in_its_parents_order_never_its_stamps(tmp_path, rule):
+    """The newest file sorts below its parent's stamp: it drops what its
+    parent made, so the chain leaves nothing, and a replay in stamp order
+    would find the function alive."""
+    files = {
+        **migration(
+            "202601030000_touch",
+            "202601010000",
+            "CREATE FUNCTION core.touch() RETURNS trigger AS $$ $$;\n"
+            "CREATE TRIGGER touch_widgets BEFORE UPDATE ON core.widgets;\n",
+        ),
+        **migration(
+            "202601020000_untouch",
+            "202601030000",
+            "DROP TRIGGER IF EXISTS touch_widgets ON core.widgets;\nDROP FUNCTION IF EXISTS core.touch();\n",
+        ),
+    }
+    code, report = run(tmp_path, rule, files)
+    assert report["findings"] == []
+    assert code == 0
+
+
 def test_sto_26_a_full_unique_key_on_a_soft_deletable_table(tmp_path):
     files = edit(WIDGETS, ', postgresql_where=text("deleted_at IS NULL")', "")
     files[WIDGETS] += "    code: Mapped[str] = mapped_column(unique=True)\n"

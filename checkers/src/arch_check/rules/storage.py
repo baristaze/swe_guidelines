@@ -5,7 +5,8 @@ and reads the project's current state: the table classes, the storage
 interfaces, the role and scope maps. Migration SQL is history, since an
 applied file is never edited (STO-24). So a rule reads it only for a
 property every file must hold (its name, its wrapper, the roles it
-names), or replays a role's chain in stamp order and judges what the
+names), or replays a role's chain in its order, each file after the
+parent its wrapper names and never by its stamp, and judges what the
 chain leaves in place, never a state a later migration replaced.
 """
 
@@ -74,6 +75,7 @@ from arch_check.rules._storage_util import (
     table_map,
     tables,
     up_chain,
+    wrappers,
 )
 
 T = TypeVar("T")
@@ -1006,41 +1008,26 @@ def outbox_rows_are_a_tuple(project: Project) -> Iterator[Violation]:
     "STO-23",
     options=("versions_dir",),
     coverage="partial",
-    summary="Each wrapper's revision is its file's stamp, unique in its role; each role has one first migration and one head.",
+    summary="A wrapper's revision is its file's stamp, unique in its role; a role has one root, one head, and every parent.",
 )
 def one_chain_per_role(project: Project) -> Iterator[Violation]:
     """Reads `versions_dir` under `[tool.arch-check.options.STO-23]`: the wrappers' folder, `om/migrations/versions`.
 
-    A merge revision names two parents, and that is how two heads are resolved. So a fork is reported only
-    while it is open: when a role's chain ends in more than one head.
+    The chain's order is its parents', so a stamp that sorts below its parent's is no finding. A merge
+    revision names two parents, and that is how two heads are resolved. So a fork is reported only while it
+    is open: when a role's chain ends in more than one head.
     """
     versions_dir = project.option("STO-23", "versions_dir", VERSIONS_DIR, {"versions_dir"})
     chains: dict[str, dict[str, tuple[str, tuple[object, ...], ast.AST | None]]] = {}
-    for rel in project.files(f"{versions_dir}/*/*.py"):
-        role, fname = rel.split("/")[-2:]
-        m = WRAPPER_FILE.match(fname)
-        if not m:
+    for w in wrappers(project, versions_dir):
+        if w.revision is None or w.revision != w.stamp:
+            yield Violation.at(w.rel, w.revision_node, f"revision is {w.revision!r}; it is the file's stamp {w.stamp!r}")
             continue
-        try:
-            tree = ast.parse(project.read(rel) or "", filename=rel)
-        except SyntaxError:
+        chain = chains.setdefault(w.role, {})
+        if w.revision in chain:
+            yield Violation(w.rel, 1, 1, f"revision {w.revision} is already {chain[w.revision][0]}")
             continue
-        rev_node = module_value(tree, "revision")
-        down_node = module_value(tree, "down_revision")
-        revision = rev_node.value if isinstance(rev_node, ast.Constant) and isinstance(rev_node.value, str) else None
-        if revision is None or revision != m.group("stamp"):
-            yield Violation.at(rel, rev_node, f"revision is {revision!r}; it is the file's stamp {m.group('stamp')!r}")
-            continue
-        elements = down_node.elts if isinstance(down_node, ast.Tuple | ast.List) else [down_node] if down_node else []
-        downs: tuple[object, ...] = tuple(
-            e.value if isinstance(e, ast.Constant) else ast.unparse(e) for e in elements if e is not None
-        )
-        downs = tuple(d for d in downs if d is not None)
-        chain = chains.setdefault(role, {})
-        if revision in chain:
-            yield Violation(rel, 1, 1, f"revision {revision} is already {chain[revision][0]}")
-            continue
-        chain[revision] = (rel, downs, down_node)
+        chain[w.revision] = (w.rel, w.parents, w.parents_node)
     for role, chain in sorted(chains.items()):
         for rel, downs, node in sorted(chain.values(), key=lambda e: e[0]):
             for down in downs:
