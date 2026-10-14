@@ -19,13 +19,20 @@ namespaces at run time.
 ## Decision
 
 **A marker line in every root and registry.** Each composition root and
-each registry a copy adds to holds the scaffold's entries, then the line
-`# A copy adds its entries below this line.` (`//` in TypeScript), then
-the copy's own: the object model's root and its builders, the storage
-root and its two impls, the services root and its impl, the gateway's
-resolvers, `HOSTED`, `TABLE_ROLES` and `TABLE_SCOPES`, the work kinds,
-the worker's handlers and purges, and the portal's keys, routes, and
-realtime table. Each entry sits on its own line with a trailing comma,
+each list a copy adds to holds the scaffold's entries, then the line
+`# A copy adds its entries below this line.` (`//` in TypeScript,
+`<!-- -->` around it in Markdown and `llms.txt`), then the copy's own:
+the object model's root and its builders, the storage root and its two
+impls, the services root and its impl, the gateway's resolvers,
+`HOSTED`, `TABLE_ROLES` and `TABLE_SCOPES`, the work and orchestration
+kinds, the resource and waiter hooks, the worker's handlers, steps, and
+purges, the portal's keys, routes, and realtime table, the stage
+construction sites CTX-26 and its test enumerate, the session-scope
+test's two lists of the system scope's exceptions, each audience of
+`llms.txt`, and the Makefile's buckets and local URLs. A Markdown table
+ends at the marker, so the spec's Substitutions and Deviations each
+hold the scaffold's table, the marker, then the copy's rows in a table
+of its own under the same header. Each entry sits on its own line with a trailing comma,
 so the formatter keeps the list exploded, and the scaffold's are sorted
 wherever their order carries no meaning. `build_managers` makes one
 builder call per manager. A test merges, with `git merge-tree`, an
@@ -42,13 +49,20 @@ no stage `@stageless`, and a transition `@transition`, all from
 names the methods. A contract suite names the interface its cross-tenant
 cases cover (`INTERFACE`), and the test gathers the suites itself.
 
-**Work kinds are a registry.** A kind is a spec: its name, its payload,
+**Kinds are registries.** A work kind is a spec: its name, its payload,
 the permission that asks for it, and its lane
-([`kinds.py`](../../om/src/acme/om/work/kinds.py)). The scaffold's own
-kinds are one tuple a copy never edits; a copy declares its kinds in its
-namespace's own module and adds them to the root's registry below the
-marker. The registry refuses a name registered twice, and the wire type
-of a kind is a string, not a closed enum.
+([`kinds.py`](../../om/src/acme/om/work/kinds.py)). An orchestration
+kind is its name and its input shape
+([`kinds.py`](../../om/src/acme/om/orchestrations/kinds.py)), and the
+worker keys its step by the name. A resource kind and a waiter kind are
+their hooks, registered at the root by name, and a resource kind's hooks
+carry the shape of its ask (`ASK`). The scaffold's own kinds are entries
+a copy never edits; a copy names its kinds in its namespace's own module
+and registers them below the marker. A registry refuses a name
+registered twice, the lease manager refuses at its build hooks it could
+not serve, and a start or an ask of a kind nobody registered is refused.
+A kind is a string held to a pattern on every row and on the wire, not a
+closed enum, so a stored value never changes when a kind is added.
 
 **The ops skills read one signals file per namespace.** What an
 investigation, a watch, or a root cause reads of one namespace (its
@@ -62,6 +76,14 @@ pins are in one test file per skill.
 target declares `.PHONY` on the line above it. An index document points
 at the table, the folder, or the code that holds a list, and does not
 repeat it. No document states a count a new entry would bump.
+
+**A copy is formatted as it is rendered.** A name longer or shorter
+than `acme` moves Python lines past the formatter's limit or back within
+it, so `scaffold/new.py` formats the render by the ruff its `uv.lock`
+names before the base is committed, and a later render, made by its
+source's own `new.py`, is formatted the same way. The copy's main and
+its `scaffold` branch then lay out each line alike, and its first setup
+rewrites nothing.
 
 **The contract suites import as a local folder.** `ruff.toml` puts
 `contracts` in an import block of its own, so a copy under another name
@@ -78,8 +100,8 @@ sign-in, members, credentials, and the org, beside the manager's own.
 ## Consequences
 
 A copy's change to a root, a registry, a skill's signals, the Makefile,
-or its own ADRs lands on lines the scaffold's next release does not
-touch, and the move merges them. A conflict that remains is work that
+the knowledge map, the spec's tables, or its own ADRs lands on lines the
+scaffold's next release does not touch, and the move merges them. A conflict that remains is work that
 overlaps, which is the one kind a person should read.
 
 The lines above a marker are the scaffold's. A copy that edits one of
