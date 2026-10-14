@@ -181,6 +181,12 @@ with `local` against the local stack's twins, so it is tested on a
 laptop before an environment trusts it. An audit reads and reports; it
 never fixes.
 
+`ops-investigate`, `ops-watch`, and `ops-root-cause` name no
+namespace. They read one signals file per namespace or process, in
+`.agents/skills/_shared/signals/`: what it emits that an investigation
+meets. A copy adds `<ns>.md` there for each namespace of its own, and
+edits no skill.
+
 `/docs-compact` keeps the tree's documents to what holds: its ADRs, its
 changelog, the rows of `specs/architecture.md`, and its comments. With
 `--migrations` it also folds the revisions each role's chain owns into
@@ -192,7 +198,8 @@ pushes nothing.
 
 An existing tree copies the scaffold's `.agents/skills/` into its own
 and renames `acme` in them to its own name, in each form
-`scaffold/new.py` uses. Then, from the tree's root, it moves any skill
+`scaffold/new.py` uses. It keeps the signals files of the namespaces it
+has, and writes one for each namespace of its own. Then, from the tree's root, it moves any skill
 of its own from `.claude/skills/` into `.agents/skills/`, and makes
 `.claude/skills` a link to that folder:
 
