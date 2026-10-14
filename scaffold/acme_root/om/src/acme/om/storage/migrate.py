@@ -26,6 +26,7 @@ import importlib
 import os
 import re
 import sys
+import warnings
 from collections.abc import Callable, Iterable
 from pathlib import Path
 from typing import Any
@@ -70,13 +71,38 @@ def alembic_config(role: DatabaseRole, migrations_dir: Path = MIGRATIONS_DIR) ->
     return config
 
 
-def head(role: DatabaseRole, migrations_dir: Path = MIGRATIONS_DIR) -> str | None:
-    """The single head of a role's chain, this checkout's or the one under
-    `migrations_dir`; more than one is a real conflict."""
-    heads = ScriptDirectory.from_config(alembic_config(role, migrations_dir)).get_heads()
+def chain(role: DatabaseRole, migrations_dir: Path = MIGRATIONS_DIR) -> list[str]:
+    """A role's revisions in the order they apply, this checkout's or the ones
+    under `migrations_dir`: each after the parent its wrapper names, its
+    `down_revision`, never by its stamp. A stamp names a migration and orders
+    nothing, so a base's migration and a tree's own keep their names whatever
+    minute each was written in (ADR 0102). More than one head, more than one
+    first revision, or a parent the chain does not hold is refused: each is a
+    chain no one wrote."""
+    script = ScriptDirectory.from_config(alembic_config(role, migrations_dir))
+    with warnings.catch_warnings():
+        # Alembic warns of a missing parent, then fails on it with a KeyError,
+        # which the refusal below names.
+        warnings.filterwarnings("ignore", "Revision .* is not present", UserWarning)
+        try:
+            heads, bases = script.get_heads(), script.get_bases()
+            walked = [revision.revision for revision in script.walk_revisions()]
+        except KeyError as missing:
+            raise RuntimeError(
+                f"role {role.value} names a parent its chain does not hold: {missing}"
+            ) from None
     if len(heads) > 1:
         raise RuntimeError(f"role {role.value} has {len(heads)} heads: {heads}")
-    return heads[0] if heads else None
+    if len(bases) > 1:
+        raise RuntimeError(f"role {role.value} has {len(bases)} first revisions: {bases}")
+    return walked[::-1]
+
+
+def head(role: DatabaseRole, migrations_dir: Path = MIGRATIONS_DIR) -> str | None:
+    """The last revision of a role's chain (`chain`), or None for a role
+    with no revision."""
+    revisions = chain(role, migrations_dir)
+    return revisions[-1] if revisions else None
 
 
 def migrations_of(checkout: Path) -> Path:
@@ -443,7 +469,9 @@ def main(argv: list[str] | None = None) -> int:
                         continue
                     revision = head(role, there)
                     await stamp(role, urls[role], revision, lock_timeout_seconds=bound)
-                    print(f"{role.value}: stamped {revision or 'empty'}, the head in {args.heads_of}")
+                    print(
+                        f"{role.value}: stamped {revision or 'empty'}, the head in {args.heads_of}"
+                    )
                 else:
                     diff = await check(role, urls[role], lock_timeout_seconds=bound)
                     print(f"{role.value}: {'in sync' if not diff else diff}")
