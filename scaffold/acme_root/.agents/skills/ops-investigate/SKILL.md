@@ -59,8 +59,8 @@ this skill's folder. Its `README.md` says what each heading holds, and
 each other file is one namespace or one process, the scaffold's and a
 copy's alike: a copy adds `<ns>.md` there for each namespace of its
 own. Step 3 reads their Alarms, step 5 their Outcomes, Gauges, and
-Queues, step 7 their Log lines and Commands, step 8 their Search, and
-the report their Report.
+Queues, step 7 their Log lines, Kinds, and Commands, step 8 their
+Search, and the report their Report.
 
 1. Verify the credential as Role and credential states. Compute the
    window: `--since` back from now, as epoch seconds
@@ -314,7 +314,8 @@ the report their Report.
    With `--request-id`, filter every source on it: `filter request_id
    = "<id>"` in the cloud, `grep` locally.
    A line a signals file's Log lines names is read as that file says:
-   the finding it is, with the ids it carries. When the file's Commands
+   the finding it is, with the ids it carries, and a kind on it as the
+   Kinds of the file that names the kind say. When the file's Commands
    give a person's command for that finding, the report names it for a
    person to run in their own terminal; this skill never runs it.
 8. The lines a read of `ERROR` misses: a start line, a warning, an
