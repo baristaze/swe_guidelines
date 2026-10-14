@@ -16,7 +16,7 @@ from acme.om.storage.migrate import (
     role_metadata,
     split_statements,
 )
-from acme.om.storage.roles import DatabaseRole
+from acme.om.storage.roles import TABLE_ROLES, DatabaseRole
 
 
 def test_every_sql_file_names_only_its_own_role() -> None:
@@ -175,19 +175,15 @@ def test_the_head_of_another_checkouts_chain_is_read_from_its_files(
     assert migrations_of(MIGRATIONS_DIR.parents[1]) == MIGRATIONS_DIR
 
 
-def test_role_metadata_holds_only_that_role() -> None:
-    core = role_metadata(DatabaseRole.CORE)
-    assert {t.name for t in core.tables.values()} >= {"orgs", "identities", "users"}
-    assert all(t.schema == "core" for t in core.tables.values())
-    assert {t.name for t in role_metadata(DatabaseRole.QUEUE).tables.values()} == {
-        "work_items",
-        "tenant_caps",
+@pytest.mark.parametrize("role", list(DatabaseRole))
+def test_role_metadata_holds_only_that_role(role: DatabaseRole) -> None:
+    """Each role's metadata holds exactly the tables the role map gives it, each
+    in the role's schema, so a table a copy adds is held once it names its role."""
+    tables = role_metadata(role).tables.values()
+    assert {t.name for t in tables} == {
+        name for name, owner in TABLE_ROLES.items() if owner is role
     }
-    assert {t.name for t in role_metadata(DatabaseRole.ACTIVITY).tables.values()} == {
-        "change_events",
-        "change_event_cursors",
-    }
-    assert {t.name for t in role_metadata(DatabaseRole.ADMIN).tables.values()} == {"system_sizes"}
+    assert all(t.schema == role.value for t in tables)
 
 
 SWEEP_INDEXES = {
