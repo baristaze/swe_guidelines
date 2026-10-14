@@ -21,7 +21,7 @@ class ApiSettings(StorageSettings, InfraSettings, IntegrationsSettings):
 
     service_name: str = "api"
     # The namespaces whose routers this process mounts; empty mounts every one
-    # the image hosts (tenancy, change_events, media). Naming a subset is how
+    # the image hosts (`HOSTED` in `routers/`). Naming a subset is how
     # one namespace becomes a service of its own: the same image, another
     # value, and no code change. A name the image does not host refuses the
     # boot.
