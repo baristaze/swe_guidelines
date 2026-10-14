@@ -46,5 +46,5 @@ A product names its own nouns plainly and never meets one of Acme's.
 A noun Acme adds later takes a qualifier on the day it lands (OM-19).
 
 The words that stay bare are mechanism words with no product meaning,
-or the same meaning in any product: org, member, identity, invitation,
-outbox, orchestration, lease, idempotency, and file.
+or the same meaning in any product: org, user, member, identity,
+invitation, outbox, orchestration, lease, idempotency, and file.

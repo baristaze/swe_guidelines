@@ -11,7 +11,7 @@
 # exposes none of them yet.
 #
 # The first responder is an agent holding the investigate role: it reads the
-# alarm against the platform's size before it escalates, so the topic's
+# alarm against the system's size before it escalates, so the topic's
 # subscribers are the people who are told, not the people who act first.
 
 locals {
@@ -315,8 +315,8 @@ resource "aws_cloudwatch_metric_alarm" "sweep_duration" {
 # a metric filter per field on the worker's log group turns them into
 # metrics of raw values. Several workers each write their own line, and every
 # alarm reads the largest value of the period, which is the same number read
-# twice. The numbers below are the platform's, and illustrative: a busier
-# platform moves them.
+# twice. The numbers below are the system's, and illustrative: a busier
+# system moves them.
 #
 # Like the inbound queues, missing data keeps each alarm's state. A worker
 # that is not running writes no line, and the runtime alarm says so; a read

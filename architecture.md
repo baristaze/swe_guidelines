@@ -272,6 +272,10 @@ lines and steps. So the scaffold signs a person in with an
 `AuthSession`, records a change as a `ChangeEvent`, leases a
 `LeasableResource` to the head of its `WaitLine`, and lands what an
 orchestration writes as an `OrchestrationStep`; its root is `OmBase`.
+A noun stays bare when no product gives it a meaning of its own: it
+names a mechanism, or it means the same in every product. The
+scaffold's `Org`, `User`, `Membership`, `Identity`, `Invitation`,
+`Lease`, `File`, and `Orchestration` are bare by design.
 The qualifier names the mechanism, never the product that adopts it,
 and no name says "domain". It holds on every surface the noun reaches:
 the class, the table, the route, the kinds, the settings, and the

@@ -32,7 +32,7 @@ async def test_a_5xx_message_stays_in_the_log(
     caplog.handler.addFilter(RequestIdFilter())
     with caplog.at_level(logging.ERROR):
         infra = await client.get("/infra-fails")
-        platform = await client.get("/overloaded")
+        om = await client.get("/overloaded")
 
     assert infra.status_code == 500
     assert infra.json()["error"] == {
@@ -40,14 +40,14 @@ async def test_a_5xx_message_stays_in_the_log(
         "message": "internal error",
         "request_id": infra.headers["x-request-id"],
     }
-    assert platform.status_code == 503
-    assert platform.json()["error"]["code"] == "overloaded"
-    assert platform.json()["error"]["message"] == "internal error"
+    assert om.status_code == 503
+    assert om.json()["error"]["code"] == "overloaded"
+    assert om.json()["error"]["message"] == "internal error"
 
     errors = [r for r in caplog.records if r.levelno >= logging.ERROR]
     assert [r.request_id for r in errors] == [  # type: ignore[attr-defined]
         infra.headers["x-request-id"],
-        platform.headers["x-request-id"],
+        om.headers["x-request-id"],
     ]
     assert "s3 get failed with AccessDenied" in errors[0].getMessage()
     assert "pool exhausted on db-7" in errors[1].getMessage()
