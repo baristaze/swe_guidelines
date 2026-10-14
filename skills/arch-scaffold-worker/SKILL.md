@@ -25,8 +25,11 @@ missing. `<Kind>` is the kind in CamelCase. When `<worker-name>` is a
 worker the tree has (`maintenance` in a copy), the kind joins it.
 Otherwise the skill creates the worker first. The kind belongs to
 `<namespace>`, the namespace whose write starts it; ask when that is
-not plain. `<Namespace>` is its name in CamelCase, `<NAMESPACE>` in
-upper snake case.
+not plain. The tables below take that namespace and that write as
+there: when no namespace's write starts the kind yet, the namespace
+comes first, made by `../arch-scaffold-namespace/SKILL.md`, never a
+bare folder, which fails OM-14. `<Namespace>` is its name in
+CamelCase, `<NAMESPACE>` in upper snake case.
 
 A kind that needs its own capacity (`--lane <name>`) is first the lane
 on its spec, which the relay lands its items on, and a replica of the
