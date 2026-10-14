@@ -67,9 +67,9 @@ PNPM_SPEC := $(or $(shell sed -n 's/^ *"packageManager": *"\(pnpm@[^"+]*\).*/\1/
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(firstword $(MAKEFILE_LIST)) | awk 'BEGIN {FS = ":.*?## "}; {printf "  %-18s %s\n", $$1, $$2}'
 
-# A tree copied under a longer name has longer lines and its imports in
-# another order, so setup formats the Python once; on a formatted tree it
-# changes nothing.
+# Setup ends with the formatter the gate checks. A copy is formatted as it is
+# rendered, so on a fresh copy this changes nothing; after a merge or an edit
+# by hand it lays the Python out as `format-check` expects.
 .PHONY: setup
 setup: pnpm ## Install every Python and TypeScript dependency, and format the Python
 	uv sync --all-packages

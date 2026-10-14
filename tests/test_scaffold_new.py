@@ -399,29 +399,32 @@ def test_the_bound_is_the_tightest_name_the_scaffold_builds():
     assert new.TIGHTEST_NAME.format(name="acme") == "acme-production-api"
 
 
-def copy_lint(dest: Path) -> subprocess.CompletedProcess[str]:
-    """The copy's own line rule, at the ruff its lock names, over the Python
-    `make setup` formats first."""
-    lock = (dest / "uv.lock").read_text(encoding="utf-8")
-    found = re.search(r'name = "ruff"\nversion = "([^"]+)"', lock)
-    assert found, "the copy's lock names no ruff"
-    ruff = ["uvx", f"ruff@{found.group(1)}"]
-    subprocess.run([*ruff, "format", "--quiet", "."], cwd=dest, check=True)
-    return subprocess.run(
-        [*ruff, "check", "--select", "E501", "--output-format", "concise", "."],
-        cwd=dest,
-        capture_output=True,
-        text=True,
-    )
+def copy_ruff(dest: Path, *args: str) -> subprocess.CompletedProcess[str]:
+    """The copy's own ruff, at the version its lock names."""
+    version = new.locked_ruff(dest)
+    assert version, "the copy's lock names no ruff"
+    return subprocess.run(["uv", "tool", "run", f"ruff@{version}", *args], cwd=dest, capture_output=True, text=True)
 
 
-@pytest.mark.skipif(shutil.which("uvx") is None, reason="needs uvx, which CI has")
-@pytest.mark.parametrize("name", ["independent_press", "free_journalism"])
-def test_a_copy_under_a_long_name_keeps_every_line_within_its_lint(tmp_path, name):
+@pytest.mark.skipif(shutil.which("uv") is None, reason="needs uv, which CI has")
+@pytest.mark.parametrize("name", ["independent_press", "free_journalism", "ab"])
+def test_a_copy_is_formatted_as_rendered_and_keeps_every_line_within_its_lint(tmp_path, name):
+    """A name longer or shorter than `acme` moves lines past the limit or back
+    within it. The render is what the copy's own formatter leaves, so its
+    first setup rewrites nothing, and its base is what its gate passes."""
     dest = tmp_path / name
     assert new.main([str(dest)]) == 0
-    linted = copy_lint(dest)
-    assert linted.returncode == 0, linted.stdout
+    for args in (("format", "--check", "."), ("check", "--select", "I,E501", "--output-format", "concise", ".")):
+        done = copy_ruff(dest, *args)
+        assert done.returncode == 0, f"ruff {' '.join(args)}: {done.stdout}{done.stderr}"
+
+
+def test_a_copy_that_locks_ruff_is_refused_without_uv_and_nothing_is_written(tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr(new.shutil, "which", lambda name: None)
+    dest = tmp_path / "pressroom"
+    assert new.main([str(dest)]) == 2
+    assert "uv is not installed" in capsys.readouterr().err
+    assert not dest.exists()
 
 
 GUIDE = {"name": "swe-guidelines", "version": "9.8.7", "repository": "https://github.com/o/guide"}

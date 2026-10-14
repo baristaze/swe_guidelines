@@ -16,8 +16,11 @@ pnpm writes it, so the renamed workspace package moves to its name's place.
 The copy's skills sit in `.agents/skills/`, and its
 `.claude/skills` is a link to them, whatever the source holds there: the link,
 or a folder when the scaffold was copied without its links. The copy pins the
-guideline release this checkout carries and starts a git repository. A
-layer's checkout, whose scaffold builds on the guideline's, carries no
+guideline release this checkout carries. Its Python is formatted by the ruff
+its `uv.lock` names, as its setup formats it, since a name longer or shorter
+than `acme` moves lines past the limit or back within it; the render is what
+the copy's own formatter leaves. It starts a git repository. A layer's
+checkout, whose scaffold builds on the guideline's, carries no
 guideline manifest, or one of its own: its copy keeps the pins its scaffold
 holds, the guideline release the layer took. When the checkout is a clean git
 checkout, the repository's first commit is the scaffold as copied, on the
@@ -26,7 +29,8 @@ repository: the guideline's, or for a layer its `origin` on GitHub. That is
 the copy's base, which `scaffold/base.py` moves forward. Otherwise nothing is
 committed, and the first move grafts the base. It prints the next step.
 
-Standard library only, so it runs before anything is installed.
+Standard library only, so it runs before anything is installed but uv,
+which runs the formatter, and which every copy's setup needs.
 """
 
 from __future__ import annotations
@@ -236,6 +240,40 @@ def release(plugin: Path = PLUGIN) -> str | None:
     return str(version) if version is not None else None
 
 
+FORMATTER_LOCK = "uv.lock"
+"""Where a copy names the version of its formatter, ruff, as its setup and its
+gate run it."""
+
+FORMAT_STEPS = (("check", "--fix", "--quiet", "--select", "I", "."), ("format", "--quiet", "."))
+"""The formatter's two passes, as the copy's `make setup` runs them: the
+imports' order, then the layout."""
+
+
+def locked_ruff(root: Path) -> str | None:
+    """The ruff version a tree's lock names; None when it locks none."""
+    lock = root / FORMATTER_LOCK
+    if not lock.is_file():
+        return None
+    found = re.search(r'^name = "ruff"\nversion = "([^"]+)"$', lock.read_text(encoding="utf-8"), re.MULTILINE)
+    return found.group(1) if found else None
+
+
+def format_copy(dest: Path) -> str | None:
+    """Formats the copy's Python by the ruff its lock names, through uv, so the
+    render is what the copy's own formatter leaves; returns why it could not,
+    or None. A tree that locks no ruff is left as copied."""
+    version = locked_ruff(dest)
+    if version is None:
+        return None
+    for step in FORMAT_STEPS:
+        done = subprocess.run(
+            ["uv", "tool", "run", f"ruff@{version}", *step], cwd=dest, capture_output=True, text=True, check=False
+        )
+        if done.returncode != 0:
+            return f"ruff {step[0]} at {version} failed: {(done.stderr or done.stdout).strip()}"
+    return None
+
+
 def git(where: Path, *args: str, stdin: str | None = None) -> subprocess.CompletedProcess[str]:
     return subprocess.run(["git", "-C", str(where), *args], capture_output=True, text=True, input=stdin, check=False)
 
@@ -346,9 +384,16 @@ def main(argv: list[str] | None = None, source: Path = SOURCE, plugin: Path = PL
     if dest.exists() and (not dest.is_dir() or any(dest.iterdir())):
         print(f"refused: {dest} exists and is not an empty folder", file=sys.stderr)
         return 2
+    if locked_ruff(source) is not None and shutil.which("uv") is None:
+        print("refused: uv is not installed, and the copy is formatted by the ruff its uv.lock names", file=sys.stderr)
+        return 2
     names = Names(dest.name)
     version = release(plugin)
     count = copy(source, dest, names, version)
+    unformatted = format_copy(dest)
+    if unformatted is not None:
+        print(f"refused: {unformatted}; {dest} holds the copy as renamed", file=sys.stderr)
+        return 1
     subprocess.run(["git", "init", "--quiet", str(dest)], check=True)
     commit = checkout_commit(source, plugin)
     came_from = repository(source.resolve().parent.parent, plugin) if commit else None
