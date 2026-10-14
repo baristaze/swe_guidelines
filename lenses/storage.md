@@ -465,16 +465,19 @@ declared schemas, and cross-role foreign keys; the rest is judged.
 **Principle.** Migrations live with the OM. A migration is a pair of
 hand-written, schema-qualified SQL files with a thin wrapper, one
 revision chain and one version table per role, the minute stamp as
-sort key and revision id. The runner refuses a file that names another
-role's table, and a run that names no role migrates every role.
+revision id, and the chain ordered by each wrapper's `down_revision`.
+The runner refuses a file that names another role's table, and a run
+that names no role migrates every role.
 
 **Source.** The Storage Layer, Migrations.
 
 **Look for.** `om/migrations/sql/<role>/YYYYMMDDHHMM_<slug>.up.sql`
 and `.down.sql` pairs, with a wrapper under `versions/<role>/` that
-only calls the SQL runner. Wrappers containing hand-written schema
-operations instead of `run_sql`, and SQL in one role's chain naming a
-table of another role. What a run that names no role migrates.
+only calls the SQL runner, or for a data migration the backfill runner
+(`run_backfill`), with the role and its own SQL file. Wrappers
+containing hand-written schema operations instead of `run_sql`, and SQL
+in one role's chain naming a table of another role. What a run that
+names no role migrates.
 
 **Violation.** A migration lives in a service instead of with the OM,
 or a wrapper carries schema operations of its own. A migration names a
@@ -604,28 +607,33 @@ editors both win; a `version` added to every table by default.
 
 ## STO-23 The minute stamp is the revision id, and a collision takes a suffix
 
-**Principle.** The minute stamp is the file's sort key and the revision
-id, so two authors never negotiate a counter. Two migrations of one
-role in the same minute collide on the stamp, and the later one takes
-a suffix; two migrations naming the same parent are a real conflict
-the tool reports on purpose.
+**Principle.** The minute stamp is the revision id, so two authors
+never negotiate a counter. It orders nothing: the chain follows each
+wrapper's `down_revision`, so a migration whose stamp sorts below its
+parent's keeps its name, and no migration is renamed to sort above
+another. Two migrations of one role in the same minute collide on the
+stamp, and the later one takes a suffix; two migrations naming the same
+parent are a real conflict the tool reports on purpose.
 
 **Source.** The Storage Layer, Migrations.
 
 **Look for.** The stamps in each role's folder and the `revision` and
 `down_revision` of each wrapper; two files of one role sharing a
 stamp, and how the later one was renamed; a merge that resolved two
-heads.
+heads; a parent no revision of the role holds; a migration renamed
+after it merged, per `git log --follow`.
 
 **Violation.** Two migrations of one role share a revision id; a chain
 with two heads merged by editing an existing wrapper's
-`down_revision`; a counter or a hand-picked id in place of the stamp.
+`down_revision`; a counter or a hand-picked id in place of the stamp; a
+migration renamed to sort above a new head; a gate or a replay that
+orders the chain by its stamps.
 
 **Severity.** medium
 
 **Check.** `arch-check` decides each stamp against its revision, a
-unique revision, and one first migration and one head per role; the
-rest is judged.
+unique revision, every parent present, and one first migration and one
+head per role; the rest is judged.
 
 ## STO-24 An applied migration is never edited; expand, then contract
 
@@ -635,7 +643,8 @@ it, since a rollout runs both: add and backfill in one release, switch
 the code, drop in a later one (expand and contract). A chain may be
 folded into one revision under the head's revision id, while every
 database that exists is at that head and a schema dump of the chain
-equals the fold's. A metadata-vs-schema check per role and a
+equals the fold's. A tree built on a base folds only its own
+revisions, on its base's head. A metadata-vs-schema check per role and a
 downgrade-then-upgrade of the head run in CI's integration job, and the
 release before's own suite runs on the branch's schema (DEL-50).
 
@@ -653,7 +662,8 @@ of the head.
 **Violation.** An applied `.up.sql` is modified rather than followed
 by a new migration; a chain folded under a new revision id, while a
 database sits behind the head, or in a commit that does not state the
-two dumps equal. A
+two dumps equal; a fold in a tree built on a base that changes or
+removes a file its base's render holds. A
 column dropped or renamed in the same release
 that stops reading it, or while the release before it still maps it,
 so a rollout that runs both versions breaks.

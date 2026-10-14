@@ -1,5 +1,6 @@
 """The migration files obey the role rules without a database."""
 
+import shutil
 from pathlib import Path
 
 import pytest
@@ -7,6 +8,8 @@ import pytest
 from acme.om.media.types.file import FileStatus
 from acme.om.storage.migrate import (
     MIGRATIONS_DIR,
+    backfill_statements,
+    chain,
     check_role_of_sql,
     head,
     migrations_of,
@@ -64,20 +67,99 @@ def test_a_function_is_checked_by_its_schema_alone() -> None:
         check_role_of_sql(DatabaseRole.CORE, "CREATE FUNCTION queue.f() RETURNS trigger")
 
 
-@pytest.mark.parametrize("role", list(DatabaseRole))
-def test_each_role_has_at_most_one_head_and_stamped_wrappers(role: DatabaseRole) -> None:
-    versions = MIGRATIONS_DIR / "versions" / role.value
+def test_a_data_migrations_file_is_a_count_then_an_update(tmp_path: Path) -> None:
+    """What `run_backfill` reads from the file its wrapper names: the count
+    it compares the update's rows with, and the update. An update with no
+    count could not tell a backfill that touched nothing from one that had
+    nothing to do, so it is refused."""
+    (tmp_path / "sql" / "core").mkdir(parents=True)
+    count = "SELECT count(*) FROM core.users WHERE locale IS NULL"
+    update = "UPDATE core.users SET locale = 'en' WHERE locale IS NULL"
+    (tmp_path / "sql" / "core" / "a.up.sql").write_text(f"-- the backfill\n{count};\n{update};\n")
+    (tmp_path / "sql" / "core" / "b.up.sql").write_text(f"{update};\n")
+    assert backfill_statements(DatabaseRole.CORE, "a.up.sql", tmp_path) == (count, update)
+    with pytest.raises(RuntimeError, match="holds 1 statements"):
+        backfill_statements(DatabaseRole.CORE, "b.up.sql", tmp_path)
+
+
+def assert_one_chain_of_stamped_wrappers(
+    role: DatabaseRole, migrations_dir: Path = MIGRATIONS_DIR
+) -> None:
+    """The gate on a role's chain: one head, one first revision, and every
+    parent present (`chain` refuses the rest), every wrapper in it, named by
+    its stamp, with its SQL pair. The order is the parents', so a wrapper's
+    stamp may sort below its parent's."""
+    versions = migrations_dir / "versions" / role.value
     wrappers = sorted(versions.glob("*.py")) if versions.is_dir() else []
-    if not wrappers:
-        assert head(role) is None
-        return
-    assert head(role) == wrappers[-1].stem.split("_", 1)[0]
+    revisions = chain(role, migrations_dir)
+    assert sorted(revisions) == sorted(wrapper.stem.split("_", 1)[0] for wrapper in wrappers)
+    assert head(role, migrations_dir) == (revisions[-1] if revisions else None)
     for wrapper in wrappers:
         stamp = wrapper.stem.split("_", 1)[0]
         assert len(stamp) == 12 and stamp.isdigit(), wrapper.name
         assert f'revision = "{stamp}"' in wrapper.read_text()
         for suffix in (".up.sql", ".down.sql"):
-            assert (MIGRATIONS_DIR / "sql" / role.value / f"{wrapper.stem}{suffix}").is_file()
+            assert (migrations_dir / "sql" / role.value / f"{wrapper.stem}{suffix}").is_file()
+
+
+@pytest.mark.parametrize("role", list(DatabaseRole))
+def test_each_role_is_one_chain_of_stamped_wrappers(role: DatabaseRole) -> None:
+    assert_one_chain_of_stamped_wrappers(role)
+
+
+def a_chain(tmp_path: Path, parents: dict[str, str | None]) -> Path:
+    """A checkout whose admin chain is `parents`, each revision's wrapper
+    naming its parent, with its SQL pair."""
+    there = migrations_of(tmp_path)
+    (there / "versions" / "admin").mkdir(parents=True)
+    (there / "sql" / "admin").mkdir(parents=True)
+    shutil.copy(MIGRATIONS_DIR / "alembic.ini", there)
+    for revision, parent in parents.items():
+        stem = f"{revision}_step"
+        (there / "versions" / "admin" / f"{stem}.py").write_text(
+            f'revision = "{revision}"\n'
+            f"down_revision = {parent!r}\n"
+            "branch_labels = None\n"
+            "depends_on = None\n"
+        )
+        for suffix in (".up.sql", ".down.sql"):
+            (there / "sql" / "admin" / f"{stem}{suffix}").write_text("SELECT 1;\n")
+    return there
+
+
+def test_a_chain_is_ordered_by_its_parents_never_by_its_stamps(tmp_path: Path) -> None:
+    """A base's migration written after a tree's own sorts above it, and the
+    tree's own then follows it on the chain: its stamp sorts below its
+    parent's, and the gate passes it under its own name."""
+    there = a_chain(
+        tmp_path,
+        {"202601010000": None, "202602010000": "202601010000", "202512010000": "202602010000"},
+    )
+    assert_one_chain_of_stamped_wrappers(DatabaseRole.ADMIN, there)
+    assert chain(DatabaseRole.ADMIN, there) == ["202601010000", "202602010000", "202512010000"]
+    assert head(DatabaseRole.ADMIN, there) == "202512010000"
+
+
+@pytest.mark.parametrize(
+    ("parents", "refusal"),
+    [
+        (
+            {"202601010000": None, "202602010000": "202601010000", "202603010000": "202601010000"},
+            "2 heads",
+        ),
+        (
+            {"202601010000": None, "202602010000": "202501010000"},
+            "a parent its chain does not hold",
+        ),
+    ],
+    ids=["two heads", "a missing parent"],
+)
+def test_a_chain_with_two_heads_or_a_missing_parent_fails_the_gate(
+    tmp_path: Path, parents: dict[str, str | None], refusal: str
+) -> None:
+    there = a_chain(tmp_path, parents)
+    with pytest.raises(RuntimeError, match=refusal):
+        assert_one_chain_of_stamped_wrappers(DatabaseRole.ADMIN, there)
 
 
 def test_the_head_of_another_checkouts_chain_is_read_from_its_files(

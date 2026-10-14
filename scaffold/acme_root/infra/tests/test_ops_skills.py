@@ -888,6 +888,43 @@ def test_the_fold_states_its_precondition_its_proof_and_its_bound() -> None:
     assert "one the fold lacks is a line of step 4's `diff`" in fold
 
 
+def test_a_fold_on_a_base_takes_only_the_revisions_the_tree_owns() -> None:
+    """A copy or a layer merges the render of its base on every move, so a
+    fold that rewrote a rendered file would meet each later change the base
+    makes to it as a conflict. The fold takes only the tree's own revisions,
+    on its base's head, and reads the chain by its parents."""
+    fold = " ".join((SKILLS / "docs-compact" / "references" / "fold.md").read_text().split())
+    assert "never by its stamp" in fold
+    assert "`git rev-parse --verify --quiet origin/scaffold` prints nothing." in fold
+    assert (
+        "`git ls-tree -r --name-only origin/scaffold -- om/migrations/sql om/migrations/versions`"
+        in fold
+    )
+    assert "Bash(git ls-tree:*)" in [
+        tool.strip() for tool in _allowed_tools("docs-compact").split(",")
+    ]
+    assert "Each rendered file stays as the render gave it" in fold
+    assert "The fold's parent is the base's head as the chain holds it" in fold
+    assert "no rendered revision follows an owned one on any line" in fold
+    assert "no path `git diff --name-only --relative HEAD -- om/migrations` lists" in fold
+    assert "Every other owned file of the role's chain goes: `git rm`." in fold
+    assert "A rendered file stays as it is." in fold
+    # Each path the fold reads is the tree's, so the skill says where the
+    # tree's root is in a copy, in a layer, and in the guideline itself.
+    where = _prose("docs-compact")
+    assert "In a copy, that folder is the root of the checkout." in where
+    assert "In a layer, it is the folder of the layer's repository that holds its tree." in where
+    assert "it is the folder that holds this scaffold, never the repository's root" in where
+    # A fold with a parent leaves the rendered revisions below it, so a step
+    # down from its head lands on that parent, not on an empty role.
+    assert "With a parent, it returns the role to the parent, the last rendered revision" in fold
+    # A layer's repository runs none of its tree's deploy workflows, so a
+    # read of its deploys would fail and stop every fold of a layer.
+    assert (
+        "A tree that is a folder of its repository, as a layer's is, passes this part whole" in fold
+    )
+
+
 def test_the_fold_reads_the_commit_staging_deployed_as_the_release_does() -> None:
     """A deploy run's head is the branch's tip when it started, and its
     title ends with the commit it deployed. The release workflow reads the

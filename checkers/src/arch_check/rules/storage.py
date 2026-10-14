@@ -5,7 +5,8 @@ and reads the project's current state: the table classes, the storage
 interfaces, the role and scope maps. Migration SQL is history, since an
 applied file is never edited (STO-24). So a rule reads it only for a
 property every file must hold (its name, its wrapper, the roles it
-names), or replays a role's chain in stamp order and judges what the
+names), or replays a role's chain in its order, each file after the
+parent its wrapper names and never by its stamp, and judges what the
 chain leaves in place, never a state a later migration replaced.
 """
 
@@ -74,6 +75,7 @@ from arch_check.rules._storage_util import (
     table_map,
     tables,
     up_chain,
+    wrappers,
 )
 
 T = TypeVar("T")
@@ -865,23 +867,25 @@ def unqualified(f: SqlFile, code: str) -> Iterator[Violation]:
 
 @rule(
     "STO-18",
-    options=("sql_dir", "versions_dir", "runner", "map"),
+    options=("sql_dir", "versions_dir", "runner", "backfill", "map"),
     coverage="partial",
-    summary="Migrations are named up and down SQL pairs per role, each wrapper one run_sql call, each file naming only its role.",
+    summary="Migrations are named up and down SQL pairs per role, each wrapper one runner call, each file naming only its role.",
 )
 def migration_layout(project: Project) -> Iterator[Violation]:
     """Reads `[tool.arch-check.options.STO-18]`: `sql_dir` and `versions_dir`, the two migration folders
     (`om/migrations/sql` and `om/migrations/versions`); `runner`, the function a wrapper calls (`run_sql`);
-    and `map`, the table-to-role map (`TABLE_ROLES`).
+    `backfill`, the one a data migration's wrapper calls in its place (`run_backfill`), which also takes the
+    table it fills; and `map`, the table-to-role map (`TABLE_ROLES`).
 
     Every table a migration names is schema-qualified (`core.widgets`), and no migration sets `search_path`.
     A wrapper passes the role and the SQL file, by position or by keyword. A file named by a string is its own
     `<stem>.<up|down>.sql`, alone or at the end of a path; a file built by an expression is left to the review.
     """
-    keys = {"sql_dir", "versions_dir", "runner", "map"}
+    keys = {"sql_dir", "versions_dir", "runner", "backfill", "map"}
     sql_dir = project.option("STO-18", "sql_dir", SQL_DIR, keys)
     versions_dir = project.option("STO-18", "versions_dir", VERSIONS_DIR, keys)
     runner = project.option("STO-18", "runner", "run_sql", keys)
+    backfill = project.option("STO-18", "backfill", "run_backfill", keys)
     name = project.option("STO-18", "map", ROLE_MAP, keys)
     for rel in project.files("services/**/migrations/**/*", "workers/**/migrations/**/*"):
         yield Violation(rel, 1, 1, "a migration outside the OM; migrations live with the OM")
@@ -940,15 +944,19 @@ def migration_layout(project: Project) -> Iterator[Violation]:
                 yield Violation(rel, 1, 1, f"the wrapper has no {fn_name}()")
                 continue
             call = wrapper_call(fn)
-            if call is None or call_name(call) != runner:
-                yield Violation.at(rel, fn, f"{fn_name}() is not one {runner}() call; the SQL file holds the migration")
+            if call is None or call_name(call) not in (runner, backfill):
+                yield Violation.at(
+                    rel, fn, f"{fn_name}() is not one {runner}() or {backfill}() call; the SQL file holds the migration"
+                )
                 continue
             want = f"{stem}.{direction}.sql"
             positional = list(call.args)
             role_arg = kwarg(call, "role") or (positional.pop(0) if positional else None)
-            file_arg = positional[0] if positional else next((k.value for k in call.keywords if k.arg != "role"), None)
+            file_arg = (
+                positional[0] if positional else next((k.value for k in call.keywords if k.arg not in ("role", "table")), None)
+            )
             if role_arg is None or file_arg is None:
-                yield Violation.at(rel, call, f"{runner}() takes the role and {want}")
+                yield Violation.at(rel, call, f"{call_name(call)}() takes the role and {want}")
                 continue
             named = role_value(role_arg, enums)
             if named is not None and named != role:
@@ -1006,41 +1014,26 @@ def outbox_rows_are_a_tuple(project: Project) -> Iterator[Violation]:
     "STO-23",
     options=("versions_dir",),
     coverage="partial",
-    summary="Each wrapper's revision is its file's stamp, unique in its role; each role has one first migration and one head.",
+    summary="A wrapper's revision is its file's stamp, unique in its role; a role has one root, one head, and every parent.",
 )
 def one_chain_per_role(project: Project) -> Iterator[Violation]:
     """Reads `versions_dir` under `[tool.arch-check.options.STO-23]`: the wrappers' folder, `om/migrations/versions`.
 
-    A merge revision names two parents, and that is how two heads are resolved. So a fork is reported only
-    while it is open: when a role's chain ends in more than one head.
+    The chain's order is its parents', so a stamp that sorts below its parent's is no finding. A merge
+    revision names two parents, and that is how two heads are resolved. So a fork is reported only while it
+    is open: when a role's chain ends in more than one head.
     """
     versions_dir = project.option("STO-23", "versions_dir", VERSIONS_DIR, {"versions_dir"})
     chains: dict[str, dict[str, tuple[str, tuple[object, ...], ast.AST | None]]] = {}
-    for rel in project.files(f"{versions_dir}/*/*.py"):
-        role, fname = rel.split("/")[-2:]
-        m = WRAPPER_FILE.match(fname)
-        if not m:
+    for w in wrappers(project, versions_dir):
+        if w.revision is None or w.revision != w.stamp:
+            yield Violation.at(w.rel, w.revision_node, f"revision is {w.revision!r}; it is the file's stamp {w.stamp!r}")
             continue
-        try:
-            tree = ast.parse(project.read(rel) or "", filename=rel)
-        except SyntaxError:
+        chain = chains.setdefault(w.role, {})
+        if w.revision in chain:
+            yield Violation(w.rel, 1, 1, f"revision {w.revision} is already {chain[w.revision][0]}")
             continue
-        rev_node = module_value(tree, "revision")
-        down_node = module_value(tree, "down_revision")
-        revision = rev_node.value if isinstance(rev_node, ast.Constant) and isinstance(rev_node.value, str) else None
-        if revision is None or revision != m.group("stamp"):
-            yield Violation.at(rel, rev_node, f"revision is {revision!r}; it is the file's stamp {m.group('stamp')!r}")
-            continue
-        elements = down_node.elts if isinstance(down_node, ast.Tuple | ast.List) else [down_node] if down_node else []
-        downs: tuple[object, ...] = tuple(
-            e.value if isinstance(e, ast.Constant) else ast.unparse(e) for e in elements if e is not None
-        )
-        downs = tuple(d for d in downs if d is not None)
-        chain = chains.setdefault(role, {})
-        if revision in chain:
-            yield Violation(rel, 1, 1, f"revision {revision} is already {chain[revision][0]}")
-            continue
-        chain[revision] = (rel, downs, down_node)
+        chain[w.revision] = (w.rel, w.parents, w.parents_node)
     for role, chain in sorted(chains.items()):
         for rel, downs, node in sorted(chain.values(), key=lambda e: e[0]):
             for down in downs:
