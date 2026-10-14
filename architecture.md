@@ -1170,9 +1170,15 @@ hand-written SQL files per change, `YYYYMMDDHHMM_<slug>.up.sql` and
 one chain, and the minute stamp is the revision id. The chain is
 ordered by each revision's parent, its `down_revision`, never by its
 stamp: a stamp names a migration and orders nothing. So a chain has one
-head and holds every parent it names, and no migration is renamed to
-sort above another, since every tree built on the scaffold holds the
-same files under the same names. An applied file is never edited.
+head and holds every parent it names. An applied file is never edited.
+
+A copy of the scaffold keeps the chain its databases applied: a
+scaffold migration a move brings stays out, and the copy writes its own
+migration for that change. A tree whose own scaffold builds on this one
+applies no database. It takes each scaffold migration under its name,
+and a move re-points only its first own migration's parent, onto the
+new head. No migration is renamed to sort above another, so every tree
+built on it holds the same files under the same names.
 
 A chain may be folded: one revision holds the head's schema under the
 head's revision id, so a reader finds the schema in one file and a
@@ -1180,9 +1186,10 @@ database at the head has nothing to apply. A fold needs every database
 that exists at that head, and a schema dump of the chain equal to the
 fold's. A tree built on a base, a copy of the scaffold or a tree whose
 own scaffold builds on it, folds only the revisions it owns: those the
-render of its base does not hold. Its fold names its base's head as its
-parent, and every rendered file stays as the render gave it, so the
-next move of its base merges with no conflict there.
+render of its base does not hold. Its fold's parent is the last
+rendered revision its chain holds, and every rendered file stays as the
+render gave it, so the next move of its base merges with no conflict
+there.
 
 A migration is compatible with the release before it, because a rollout
 runs both ([Deployment](#deployment)): add and backfill, switch the
