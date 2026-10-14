@@ -50,7 +50,7 @@ The shape of each file is its sibling for the `File` entity of the
 | `om/src/<name>/om/<ns>/storage/tables/<entities>.py` | the table over the matching mixins; the sibling by scope is below |
 | `om/migrations/sql/<role>/<stamp>_<entities>.up.sql`, `.down.sql` | the table with its mixin header first, then its policy with `ENABLE` and `FORCE ROW LEVEL SECURITY`; the down drops the policy and the table |
 | `om/migrations/versions/<role>/<stamp>_<entities>.py` | `revision = "<stamp>"`, `down_revision` the role's current head, `run_sql(DatabaseRole.<ROLE>, ...)` |
-| `om/tests/contracts/<entity>_storage.py` | the storage contract cases and their `CROSS_TENANT_CASES` set, shape `om/tests/contracts/media_storage.py` |
+| `om/tests/contracts/<entity>_storage.py` | the storage contract cases, their `CROSS_TENANT_CASES` set, and `INTERFACE`, the storage interface they cover, shape `om/tests/contracts/media_storage.py` |
 | `om/tests/unit/test_<entity>_storage.py`, `om/tests/integration/test_<entity>_storage_postgres.py` | those cases over memory, and over Postgres under the `integration` marker |
 | `om/tests/unit/test_<entity>_manager.py` | every operation over the memory storage |
 | `services/api/tests/test_<ns>_<entity>_api.py` (unless `--no-api`) | the routes over the in-process app, shape `services/api/tests/test_media_api.py` |
@@ -63,8 +63,8 @@ table's sibling by scope, with its policy in its role's first migration:
 |-------|---------|------------|
 | `org` | `media/storage/tables/files.py` | on `org_id`, with the system login's clause |
 | `both` | `tenancy/storage/tables/api_keys.py` | on `org_id`, narrowed by the person column, `user_id` unless `--person-column` names another |
-| `system` | `tenancy/storage/tables/identities.py` | none: no row-level security, and every storage method is on the tenantless list |
-| `identity` | none; `ScopeKind.IDENTITY` in `storage/scopes.py` | on the identity column against `app.identity_id`; every storage method takes `identity_id` in place of `org_id` and is on the tenantless list |
+| `system` | `tenancy/storage/tables/identities.py` | none: no row-level security, and every storage method is declared `@tenantless` |
+| `identity` | none; `ScopeKind.IDENTITY` in `storage/scopes.py` | on the identity column against `app.identity_id`; every storage method takes `identity_id` in place of `org_id` and is declared `@tenantless` |
 
 ## Changed
 
@@ -73,7 +73,6 @@ table's sibling by scope, with its policy in its role's first migration:
 | `om/src/<name>/om/<ns>/storage/__init__.py`, `impl/postgres.py`, `impl/memory.py` | the storage operations of the conventions' Names, each with its tenant first by the scope, and `purge_tenant(org_id, limit)` when the namespace gains its first table, as the orchestrations storage has it |
 | `om/src/<name>/om/<ns>/manager.py`, `impl/manager.py` | the manager operations, or, when the manager delegates the entity's duty, those operations in the delegate's `<duty>.py` and `impl/<duty>.py`; and `purge_tenant(ctx)` over the storage's, always on the manager itself, which the maintenance worker calls, its batch from the namespace's options, as `OrchestrationsOptions` carries it |
 | `om/src/<name>/om/root.py`, `workers/maintenance/src/<name>/workers/maintenance/container.py` (first table) | the namespace's options taken by `build_managers`, and the worker's purge batch passed in them, as `orchestrations_options` is |
-| `om/tests/unit/test_storage_exceptions.py` | the storage interface in `CROSS_TENANT_CASES`, with the contract module's set |
 | `om/tests/unit/test_session_scope.py` (when `<ns>` is new) | the Postgres impl in `IMPL_INTERFACES` |
 | `om/src/<name>/om/storage/roles.py`, `scopes.py` | the table in `TABLE_ROLES` and in `TABLE_SCOPES` |
 | `om/src/<name>/om/<ns>/README.md` | the noun, what can happen to it, the rules that hold |

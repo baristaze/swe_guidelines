@@ -77,9 +77,10 @@ a copy of the shape still goes wrong.
   stage for a transition or the sweep, `ictx` for an identity before a
   tenant, and `octx` on the operator plane. A storage method takes
   `org_id: UUID` first. A method that takes no tenant says why in its
-  docstring and is listed under `[tool.arch-check.options.CTX-12]
-  tenantless` in the root `pyproject.toml` and in
-  `om/tests/unit/test_storage_exceptions.py`. A site that builds a
+  docstring and is declared `@tenantless` (from `acme.om.context`)
+  beside it on its interface; a manager method that takes no stage is
+  declared `@stageless`, and a transition `@transition`. Each is read
+  where it is declared, and no list names it. A site that builds a
   stage above the request stage is listed under
   `[tool.arch-check.options.CTX-26] sites` and in
   `om/tests/unit/test_stage_construction.py`.
@@ -144,7 +145,7 @@ a copy of the shape still goes wrong.
   it creates its policy, with `ENABLE` and `FORCE ROW LEVEL SECURITY`.
   Every Postgres statement opens through the base's `_session_for`,
   with the call's scope by keyword. `EMPTY_UUID` is passed only by a
-  method on the tenantless list.
+  method declared `@tenantless`.
 - **A backfill lifts the force.** A data migration runs as the
   migration login, which `FORCE ROW LEVEL SECURITY` binds, so its
   `UPDATE` would touch nothing. Its wrapper calls `run_backfill` in
@@ -189,8 +190,13 @@ a copy of the shape still goes wrong.
 
 A changed file gains an entry: a getter on a root, a field on
 `Managers`, a router in `HOSTED`, a row in a map, a member in the
-workspace. Nothing is reordered, and nothing is removed but what a
-skill's Changed table names as removed.
+workspace. In a composition root or a registry, the entry goes below
+its marker line, `# A copy adds its entries below this line.` (`//` in
+TypeScript), after the entries already there, one to a line with a
+trailing comma. The lines above a marker are the scaffold's, and a
+tree made from it never edits them, so its next release merges beside
+the tree's own entries. Nothing is reordered, and nothing is removed but
+what a skill's Changed table names as removed.
 
 ## After writing
 

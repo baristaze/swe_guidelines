@@ -295,46 +295,47 @@ the same tenant.
 
 **Severity.** high
 
-## CTX-12 Exceptions to tenant-first are enumerated
+## CTX-12 Exceptions to tenant-first are declared
 
 **Principle.** Global tables, cross-tenant sweeps, and the lookups that
 run before an identity is known are the exceptions to the tenant-first
 rule. A global method takes no tenant and its docstring says why; a
 bookkeeping sweep gets the tenant back with each row; the five lookups
-run in the system scope. `arch-check` enumerates them (CTX-30).
+run in the system scope. Each is declared `tenantless` beside it, on
+its interface, and `arch-check` reads the declarations (CTX-30).
 
 **Source.** The Storage Layer, Namespace Shape; The Second Fence; The
 Business Layer, Operations Without a Principal.
 
-**Look for.** Storage methods without a tenant parameter; the list the
-checker holds; each step of the sweep and whether it is bookkeeping with
-no principal (relaying the outbox, expiring a lease, `purge_items`
-purging done and failed work items, purging ended auth sessions and
-redeemed or expired socket tickets) or a tenant operation (CTX-17);
-what each cross-tenant read returns, as `tuple[UUID, Entity]` or an
-entity carrying `org_id`; the five lookups by name,
+**Look for.** Storage methods without a tenant parameter; the
+`tenantless` declaration beside each; each step of the sweep and whether
+it is bookkeeping with no principal (relaying the outbox, expiring a
+lease, `purge_items` purging done and failed work items, purging ended
+auth sessions and redeemed or expired socket tickets) or a tenant
+operation (CTX-17); what each cross-tenant read returns, as `tuple[UUID,
+Entity]` or an entity carrying `org_id`; the five lookups by name,
 `read_identity_by_email_digest`, `read_identity_by_issuer_subject`,
 `read_api_key_by_digest`, `read_auth_session_by_digest`, and
-`redeem_socket_ticket`; every call that
-passes `EMPTY_UUID` as the `org_id`, where the operator plane's marker
-calls are the one caller that takes `org_id` and is handed
-`EMPTY_UUID`, by the operator gate alone.
+`redeem_socket_ticket`; every call that passes `EMPTY_UUID` as the
+`org_id`, where the operator plane's marker calls are the one caller
+that takes `org_id` and is handed `EMPTY_UUID`, by the operator gate
+alone.
 
 **Violation.** A tenant-less storage method whose interface docstring
 does not justify it; a sweep that returns entities without their
-tenant; a new tenant-less method that the enumeration does not know
-about, or no enumeration at all; a lookup by digest that the
-enumeration does not name, or one that runs outside the system scope;
+tenant; a tenant-less method that is not declared `tenantless`, or a
+method that takes `org_id` first and is; a lookup by digest that is
+not declared, or one that runs outside the system scope;
 `EMPTY_UUID` passed as the `org_id` by a method outside the three kinds
 the enumeration names.
 
 **Severity.** medium
 
 **Shape.**
-`scaffold/acme_root/pyproject.toml`,
+`scaffold/acme_root/om/src/acme/om/context.py`,
 `scaffold/acme_root/om/tests/unit/test_storage_exceptions.py`
 
-**Check.** `arch-check` decides the docstring and the enumeration of
+**Check.** `arch-check` decides the docstring and the declaration of
 every tenant-less method; the rest is judged.
 
 ## CTX-13 The system scope is EMPTY_UUID
@@ -402,7 +403,8 @@ base of every payload; the rest is judged.
 **Principle.** The operations that exist before a principal does (a
 sign-up, a sign-in, a claim, a sweep, a webhook token, an integration
 acting for a person) take the request stage and produce the stage the
-work runs under; a test names each.
+work runs under; each is declared a `transition` beside it, and a test
+reads the declarations.
 The outbox relay and its two handoffs, the change event append and the work
 enqueue, take `(org_id, row)` instead: the row carries tenant, actor,
 request id.
@@ -413,14 +415,14 @@ Stages; Worker Roles, The Work Queue.
 **Look for.** Manager methods whose first parameter is the request
 stage; what they return (the identity stage, a `TenantContext`, or one
 service context per tenant); their docstrings, which document
-them as transitions; the test that enumerates them; any method with no
+them as transitions; the `transition` declaration on each; any method with no
 context at all, and whether the relay runs again from the sweep. Every
 caller of `member_context`, and where the address it passes comes from.
 
 **Violation.** A request-stage method that performs tenant work
 directly instead of returning a stage (a sign-up creating the tenant it
-answers with acts inside no tenant); a request-stage method the
-enumerating test does not name; a method with no context that performs
+answers with acts inside no tenant); a request-stage method not
+declared a `transition`; a method with no context that performs
 a tenant operation, where bookkeeping with no principal (the relay and
 its two handoffs, the expiry of a lease) is declared as such on its
 interface; a transition whose return type is neither a stage nor a list
@@ -837,20 +839,21 @@ recorded, so the next reader takes it on trust.
 takes `org_id` with an optional `user_id`, or an `identity_id`, and
 sets them as settings that die with the transaction. `EMPTY_UUID` as
 the `org_id` is the system scope: never a default, passed explicitly,
-and enumerated by `arch-check` (CTX-12).
+and declared beside each method that passes it, which `arch-check`
+reads (CTX-12).
 
 **Source.** The Storage Layer, The Second Fence; A Storage Impl.
 
 **Look for.** The session helper every impl opens through: what it
 takes, which settings it sets, and whether each is local to the
 transaction; every call site that passes `EMPTY_UUID`, and the
-enumeration that lists them.
+declaration beside each.
 
 **Violation.** A session opened without the scope, or a setting that
 outlives its transaction, so a pooled connection hands one caller's
 tenant to the next; a funnel with a default `org_id`, so a forgotten
-argument reads across tenants; a cross-tenant call the enumeration
-does not know about.
+argument reads across tenants; a cross-tenant call no declaration
+names.
 
 **Severity.** high
 

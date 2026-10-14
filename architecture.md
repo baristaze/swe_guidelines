@@ -1157,9 +1157,9 @@ system-scope methods. Tests assert each fact on a live connection, and
 read `pg_class` and `pg_policies` to hold the policies to the scope map.
 
 <!-- agents-only
-The methods that take no tenant are listed by name in the project's
-`pyproject.toml`, under `[tool.arch-check.options.CTX-12]`, and no
-others take none ([`pyproject.toml`](scaffold/acme_root/pyproject.toml)).
+Each method that takes no tenant is declared `tenantless` beside it,
+on its interface, and no other takes none
+([`context.py`](scaffold/acme_root/om/src/acme/om/context.py)).
 Among them:
 
 - the sweeps' claims and purges across tenants, such as `claim_next`,
@@ -2882,6 +2882,16 @@ constructor opens nothing, so that costs microseconds, and a root that
 builds on first use is refused, since it moves a wiring error from boot
 to a request. A boot benchmark measures it, and a test holds that the
 managers build once for any number of requests.
+
+A root is typed and written out, never discovered at run time, so a
+copy adds its namespaces to the same files the scaffold's next release
+edits. Each root, and each registry a copy adds to, holds the
+scaffold's entries, then one marker line, then the copy's own, one to a
+line with a trailing comma; the two then edit lines apart, and a merge
+takes both. `build_managers` makes one builder call per manager, in
+dependency order. A rule that names methods (the storage methods that
+take no tenant, the manager methods that take no stage) is declared
+beside each method, never kept as a list a copy extends.
 
 ### Records of Decisions
 

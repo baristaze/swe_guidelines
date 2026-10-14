@@ -52,10 +52,9 @@ the heading the folder's `README.md` names.
 
 | File | Change |
 |------|--------|
-| `om/src/<name>/om/storage/root.py` | `get_<ns_singular>_storage()` on the storage root |
-| `om/src/<name>/om/storage/impl/postgres.py`, `memory.py` | each root builds its impl and returns it from the getter |
-| `om/src/<name>/om/root.py` | `<Ns>ManagerImpl` built in `build_managers`, and the field `<ns>` on `Managers` |
-| `om/tests/unit/test_roots.py` | the new getter and the new field held |
+| `om/src/<name>/om/storage/root.py` | `get_<ns_singular>_storage()` on the storage root, below the marker |
+| `om/src/<name>/om/storage/impl/postgres.py`, `memory.py` | each root builds its impl and returns it from the getter, each below its marker |
+| `om/src/<name>/om/root.py` | below each marker: the field `<ns>` on `Managers`, the namespace's options on `build_managers`, the call `<ns> = build_<ns>(...)` in its body, `<ns>=<ns>` in `Managers(...)`, and, at the end of the module, `build_<ns>`, which builds `<Ns>ManagerImpl` |
 | `om/README.md` | the namespace's nouns, each defined for a reader with no code, the first linked to the namespace's README, and in the relations the page names |
 
 ## Procedure
