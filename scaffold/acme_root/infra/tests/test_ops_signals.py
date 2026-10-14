@@ -110,13 +110,18 @@ def test_the_spine_writes_no_kind_gauge_alarm_queue_or_event_of_a_namespace(name
 
 def test_every_failure_event_a_namespace_records_is_its_signals_files() -> None:
     """The root cause picks a failing request by the failure events its
-    signals files name: one the code records and no file names is a failure
-    no run follows, and one a file names and no code records is never met."""
-    recorded = {
-        (path.relative_to(ROOT).parts[4], kind)
+    signals files name: one the code records as a dead letter and no file
+    names is a failure no run follows, and one a file names that its
+    namespace's code never writes is never met."""
+    code = {
+        path: path.read_text()
         for path in _sources()
         if path.relative_to(ROOT).parts[:2] == ("om", "src")
-        for kind in re.findall(r'^DEAD_LETTER_KIND = "([a-z_.]+)"$', path.read_text(), re.M)
+    }
+    recorded = {
+        (path.relative_to(ROOT).parts[4], kind)
+        for path, text in code.items()
+        for kind in re.findall(r'^DEAD_LETTER_KIND = "([a-z_.]+)"$', text, re.MULTILINE)
     }
     named = {
         (path.stem, kind)
@@ -125,7 +130,14 @@ def test_every_failure_event_a_namespace_records_is_its_signals_files() -> None:
         if re.fullmatch(r"[a-z_]+(?:\.[a-z_]+)+", kind)
     }
     assert recorded, "no namespace records a failure event, or this test no longer sees one"
-    assert recorded == named
+    assert recorded <= named, sorted(recorded - named)
+    written = {
+        (path.relative_to(ROOT).parts[4], kind)
+        for path, text in code.items()
+        for _, kind in named
+        if f'"{kind}"' in text
+    }
+    assert named <= written, sorted(named - written)
 
 
 def test_every_gauge_the_code_declares_is_a_signals_files_and_no_other() -> None:
