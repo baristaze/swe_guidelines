@@ -360,32 +360,35 @@ paging anywhere.
 **Check.** `arch-check` decides the two bases, a bare model in `types/`,
 an OM entity as a response, and an offset parameter; the rest is judged.
 
-## NET-14 The OpenAPI document is emitted, committed, and diffed
+## NET-14 The OpenAPI documents are emitted, committed, and diffed
 
-**Principle.** The running app emits the OpenAPI document; it is
-committed, and CI regenerates it and fails on a diff, so a change to
-the API surface shows in the document in the same pull request.
+**Principle.** The running app emits each namespace's OpenAPI document;
+the documents are committed, and CI regenerates them and fails on a
+change or a new file, so a change to the API surface shows in the
+documents in the same pull request.
 
 **Source.** The Network Layer, From OM to Wire.
 
-**Look for.** The committed document and the make target that
-regenerates it; the CI job that compares; whether the document is
-authored by hand anywhere.
+**Look for.** The committed documents and the make target that
+regenerates them; the CI job that compares, and whether it sees a file
+git does not track yet; whether a document is authored by hand
+anywhere.
 
-**Violation.** A view changed without the committed document changing;
+**Violation.** A view changed without the committed documents changing;
 a hand-maintained schema file next to the code; no CI check on the
-document.
+documents, or one `git diff` alone makes, which a namespace's first
+document slips past.
 
 **Severity.** medium
 
-**Check.** `arch-check` decides the make target and the CI diff; the
-rest is judged.
+**Check.** `arch-check` decides the make target and the CI's test of
+`git status --porcelain`; the rest is judged.
 
 ## NET-15 One client per language per service
 
 **Principle.** A service is accessed in exactly one way, so each
 language has one client for it, in one place under `clients/`, built
-from the committed OpenAPI document: one TypeScript client package every
+from the committed OpenAPI documents: one TypeScript client package every
 browser app imports, and one typed client package for Python consumers.
 
 **Source.** The Network Layer, Clients Live in One Place.
@@ -393,7 +396,7 @@ browser app imports, and one typed client package for Python consumers.
 **Look for.** How many places in a language construct calls to a
 service; whether a consumer built its own client instead of importing
 the shared one; whether the client is derived from the committed
-document.
+documents.
 
 **Violation.** Two clients for the same service in one language; a
 consumer hand-rolling HTTP calls to a service that has a client; a
@@ -587,7 +590,7 @@ request field is accepted one release before an app sends it.
 **Source.** The Network Layer, Public Types.
 
 **Look for.** The diff of every `types/` module, topic payload class,
-and envelope against the committed OpenAPI document; the model config
+and envelope against the committed OpenAPI documents; the model config
 of payload and envelope bases; whether a consumer fails
 on an unknown field; whether a field added to a payload has a default,
 since a new reader in front of an old writer holds only then; the
@@ -919,3 +922,32 @@ conflict; a deployed environment no person can enter; a closed sign-up
 that answers differently from a missing route.
 
 **Severity.** medium
+
+## NET-36 Each namespace owns its OpenAPI document
+
+**Principle.** Each namespace owns its OpenAPI document, and `common`
+holds what every namespace shares. A route is in the document of the
+namespace its tag names, and a type in the document of the namespace
+whose module defines it; another document names it by a file `$ref`,
+so each type is defined once. A namespace's operator routes live in its
+own router. Each client's generated types and facade follow, one module
+per namespace.
+
+**Source.** The Network Layer, Public Types; The Network Layer, Clients
+Live in One Place.
+
+**Look for.** The committed documents and the emitter; each router's
+tags and the routes its module holds; where each wire type is defined;
+the generated types and the facades of each client, and how an app names
+a type.
+
+**Violation.** One document for every namespace; a type defined in two
+documents; a router that gathers several namespaces' routes, such as one
+`admin` router for the operator plane; a wire type defined outside its
+namespace's module; one generated file or one flat facade for every
+namespace's types.
+
+**Severity.** medium
+
+**Shape.** `scaffold/acme_root/services/api/src/acme/services/api/openapi.py`
+and `scaffold/acme_root/clients/openapi`

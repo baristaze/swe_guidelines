@@ -48,13 +48,14 @@ portal.
 
 ## Procedure
 
-1. A browser app never calls `fetch` and never imports `schema.d.ts`:
-   everything goes through the client package of `clients/typescript/`,
-   whose one client owns the timeout and the one retry. The app builds
-   its one instance of it, as the portal's `src/app/api.ts` does, and
-   its ESLint config forbids `fetch` and the generated path, as the
-   portal's does. The bearer lives in memory and in the tab's session
-   storage, never in local storage. A view never
+1. A browser app never calls `fetch` and never imports a generated file
+   of `src/schema/`: everything goes through the client package of
+   `clients/typescript/`, whose one client owns the timeout and the one
+   retry, and the app names each type by its namespace (`tenancy.MeView`).
+   The app builds its one instance of it, as the portal's
+   `src/app/api.ts` does, and its ESLint config forbids `fetch` and the
+   generated paths, as the portal's does. The bearer lives in memory and
+   in the tab's session storage, never in local storage. A view never
    re-implements a domain rule to enable an action: the service exposes
    the decision on the view, or the app acts on the error envelope.
 2. The console imports the client from `clients/typescript/`, never

@@ -88,8 +88,8 @@ These are the invariants. Each links the section that states it.
 - [The gateway is the only edge](#the-gateway), and it mints the
   context.
 - [Domain services are stateless](#stateless-vs-stateful-services).
-- [Wire types project the object model](#public-types), and the OpenAPI
-  document is the contract.
+- [Wire types project the object model](#public-types), and each
+  namespace's OpenAPI document is its contract.
 - [Calls flow downward](#direction-of-calls).
 - [Every handler is idempotent](#idempotency-on-the-consumer-side) on a
   key its producer set.
@@ -1599,6 +1599,16 @@ timestamps; the server assigns them. A list is bounded by a
 server-clamped `limit`, or paged by `next_cursor` or, for a stream,
 `after_seq`, and never by an offset.
 
+Each namespace owns its OpenAPI document: its routes, tagged with its
+name, and the wire types its module defines. What every namespace
+shares, the bases and the error envelope, is a document of its own,
+`common`. A document names another namespace's type by a file `$ref`,
+so each type is defined once. Inside a document a name does not repeat
+its namespace, since the file is the namespace. A namespace's operator
+routes live in its own router too, so no router and no document gathers
+several namespaces, and a change to one namespace rewrites its own files
+([`clients/openapi/`](scaffold/acme_root/clients/openapi/)).
+
 Inside `/v1` a view only gains fields and a request only gains optional
 ones; a removal is a new prefix. A reader ignores a field it does not
 know, so a topic payload or an envelope only gains optional, defaulted
@@ -1609,20 +1619,25 @@ release before an app sends it.
 ### From OM to Wire
 
 `Warehouse` lives in the OM, `WarehouseView` decides the wire, the
-service impl translates, and the router binds the route. The OpenAPI
-document is emitted by the app and committed, and CI fails on a diff, so
-an API change shows in the document every client builds against.
+service impl translates, and the router binds the route. The app emits
+each namespace's OpenAPI document, and they are committed. CI fails on
+a change or a new file, so an API change shows in the documents every
+client builds against.
 
 ### Clients Live in One Place
 
 > **Principle:** One client per language per service. Every consumer
 > imports it. Nobody builds their own.
 
-The clients live under `clients/`, one folder per language. The
-TypeScript client generates its types from the document into one file,
-re-exports them through a facade, and sends through one transport client
+The clients live under `clients/`, one folder per language, and both
+follow the namespaces. The TypeScript client generates its types from
+each namespace's document into a file of its own, re-exports them
+through a facade of one module per namespace, and sends through one
+transport client
 ([`clients/typescript/`](scaffold/acme_root/clients/typescript/)).
-Every browser app imports it. A Python consumer imports one typed client
+Every browser app imports it, and names a type by its owner:
+`tenancy.MeView`. A Python consumer imports one typed client, whose
+types and calls are one module per namespace
 ([`clients/python/`](scaffold/acme_root/clients/python/)). Every
 outbound call carries a timeout from settings, a request a deadline, and
 a work handler its lease. Nothing runs unbounded.
@@ -2636,7 +2651,7 @@ is the whole tree ([`scaffold/acme_root/`](scaffold/acme_root/)):
 ├── services/api/     # the API process: gateway, routers, services, types
 ├── workers/          # one folder per worker role
 ├── apps/             # portal, operator console, CLI
-├── clients/          # a typed client per service, per language: typescript/, python/
+├── clients/          # openapi/, a document per namespace; a typed client per language
 ├── ops/              # acme-ops: traffic, stress, signal readers
 ├── deployment/       # terraform/, local/, docker/, cloud/
 ├── scripts/          # runnable entry points

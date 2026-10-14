@@ -79,9 +79,9 @@ table's sibling by scope, with its policy in its role's first migration:
 | `om/src/<name>/om/<ns>/README.md` | the noun, what can happen to it, the rules that hold |
 | `om/src/<name>/om/exceptions.py` (when a leaf is needed) | `<Ns>Exception(OmException)` once, then leaves that multiply-inherit a shape (`NotFound`, `Conflict`) |
 | `workers/maintenance/src/<name>/workers/maintenance/main.py` | the namespace in `purges`, and, for a `SoftDeletable` entity, its purge past retention in `across`, as `media` is |
-| `services/api/src/<name>/services/api/types/<ns>.py`, `services/<ns>.py`, `services/impl/<ns>.py`, `routers/<ns>.py` (unless `--no-api`) | the views and requests, the service interface, its impl, and the routes, shape `media` |
+| `services/api/src/<name>/services/api/types/<ns>.py`, `services/<ns>.py`, `services/impl/<ns>.py`, `routers/<ns>.py` (unless `--no-api`) | the views and requests, the service interface, its impl, and the routes, shape `media`: every route tagged `<ns>`, an operator route in the module's `operator` router under `/admin`, as `routers/work.py` holds, and the module's docstring the routes by area |
 | `services/api/src/<name>/services/api/services/__init__.py`, `services/impl/root.py`, `gateway/resolve.py`, `routers/__init__.py` (when `<ns>` is new to the API) | the service getter, its impl built over the managers, its `<Ns>Service` alias, and its router in `HOSTED` |
-| `clients/typescript/src/types.ts` (with the portal screen) | the facade type |
+| `clients/typescript/src/types/<ns>.ts`, `src/index.ts` (with the portal screen) | the facade type, which the screen names as `<ns>.<Name>`; a new module's `export type * as <ns>` line, in order |
 | `apps/portal/src/queries/keys.ts`, `queries/<ns>.ts`, `app/routes.tsx`, `realtime/router.ts`, `realtime/router.test.ts` (with the portal screen) | a key whose first element is `<entity>`, the query hooks, the route, `<entity>` in `PUSHED_ENTITIES`, and its kinds in `SERVER_KINDS` |
 | `apps/portal/src/app/AppNav.tsx` or `features/home/HomePage.tsx` (with the portal screen) | a link to the new screen, where the portal links its screens |
 
@@ -139,7 +139,8 @@ table's sibling by scope, with its policy in its role's first migration:
    an id that never existed. The row-level security test reads the scope
    map, so it holds the new table once its scope is declared.
 8. After the routes, `make openapi`, so the TypeScript and the Python
-   clients carry them, then the screen.
+   clients carry them, then the screen. A namespace new to the API gets
+   its own document and generated files, each a new file to commit.
 
 ## Output
 

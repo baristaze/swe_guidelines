@@ -350,9 +350,7 @@ def test_net_14_a_commented_out_step_runs_nothing(tmp_path):
         {
             ROUTER: "",
             "Makefile": "openapi:\n\techo\n",
-            WORKFLOW: (
-                f"jobs:\n  check:\n    steps:\n      # - run: make openapi && {DRIFT}\n      - run: make check\n"
-            ),
+            WORKFLOW: (f"jobs:\n  check:\n    steps:\n      # - run: make openapi && {DRIFT}\n      - run: make check\n"),
         },
     )
     assert (code, where) == (1, [("NET-14", "Makefile", 1)])
@@ -365,8 +363,7 @@ def test_net_14_a_tree_with_no_router_is_not_judged(tmp_path):
 
 def test_net_14_a_make_target_that_reaches_the_drift_check_passes(tmp_path):
     makefile = (
-        'check: openapi\n\t$(MAKE) lint\n\ttest -z "$$(git status --porcelain -- clients)"\n\nopenapi:\n\techo\n\n'
-        "lint:\n\ttrue\n"
+        'check: openapi\n\t$(MAKE) lint\n\ttest -z "$$(git status --porcelain -- clients)"\n\nopenapi:\n\techo\n\nlint:\n\ttrue\n'
     )
     code, _, _ = found(tmp_path, "NET-14", {ROUTER: "", "Makefile": makefile, WORKFLOW: "steps:\n  - run: make check\n"})
     assert code == 0

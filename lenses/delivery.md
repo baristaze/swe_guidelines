@@ -380,19 +380,20 @@ screen with no model module and untested decision logic in the hook.
 
 ## DEL-15 Generated types behind a facade; one transport client
 
-**Principle.** Types are generated from the committed OpenAPI document
-into one file and re-exported through a curated facade. One small
-hand-written client owns transport: bearer and app header, error
-envelope parsed into a typed error with the request id, sign-out on
-401. Feature code never calls `fetch`.
+**Principle.** Types are generated from each namespace's committed
+OpenAPI document into a file of its own, and re-exported through a
+curated facade of one module per namespace, so an app names a type by
+its owner. One small hand-written client owns transport: bearer and app
+header, error envelope parsed into a typed error with the request id,
+sign-out on 401. Feature code never calls `fetch`.
 
 **Source.** Client App Architecture, API Access.
 
-**Look for.** `clients/typescript/`: the generated file, the facade,
-the client; an app importing the generated path, or a client inside
+**Look for.** `clients/typescript/`: the generated files, the facade,
+the client; an app importing a generated path, or a client inside
 another app; direct `fetch` calls in an app.
 
-**Violation.** A feature module importing from the generated schema
+**Violation.** A feature module importing from a generated schema
 file; a second transport client inside an app, or an app taking the
 client from another app (a second client for a service across the
 repository is NET-15); hand-maintained request or response types that
