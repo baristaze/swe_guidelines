@@ -97,7 +97,7 @@ app, and `main.py` is the `acme-api` command: `serve`, `migrate`,
   lease's job acts through the manager, not a route. A manager reorders
   a request and revokes a lease. (`/v1/leases/requests`,
   `/v1/leases/requests/{request_id}`, `.../cancel`, `.../reorder`,
-  `/v1/leases/leasable-resources/{leasable_resource_id}/line`,
+  `/v1/leases/leasable-resources/{leasable_resource_id}/wait-line`,
   `/v1/leases`,
   `/v1/leases/{lease_id}`, `.../renew`, `.../release`, `.../revoke`,
   ADRs 0086, 0094, and 0098)

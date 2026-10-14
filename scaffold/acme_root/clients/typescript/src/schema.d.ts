@@ -586,15 +586,15 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/v1/leases/leasable-resources/{leasable_resource_id}/line": {
+    "/v1/leases/leasable-resources/{leasable_resource_id}/wait-line": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        /** Line */
-        get: operations["line_v1_leases_leasable_resources__leasable_resource_id__line_get"];
+        /** Wait Line */
+        get: operations["wait_line_v1_leases_leasable_resources__leasable_resource_id__wait_line_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1883,18 +1883,6 @@ export interface components {
             term_seconds: number;
         };
         /**
-         * LineView
-         * @description A resource and the requests in its line, first first, with each one's
-         *     place and estimate in the same order.
-         */
-        LineView: {
-            leasable_resource: components["schemas"]["LeasableResourceView"];
-            /** Places */
-            places: components["schemas"]["PlaceView"][];
-            /** Requests */
-            requests: components["schemas"]["LeaseRequestView"][];
-        };
-        /**
          * LogoutRequest
          * @description Where the identity provider sends the browser once it has ended its own
          *     session: this environment's portal page for it, and nothing else. Left
@@ -2547,6 +2535,18 @@ export interface components {
             msg: string;
             /** Error Type */
             type: string;
+        };
+        /**
+         * WaitLineView
+         * @description A leasable resource and the requests in its wait line, first first, with
+         *     each one's place and estimate in the same order.
+         */
+        WaitLineView: {
+            leasable_resource: components["schemas"]["LeasableResourceView"];
+            /** Places */
+            places: components["schemas"]["PlaceView"][];
+            /** Requests */
+            requests: components["schemas"]["LeaseRequestView"][];
         };
         /**
          * WaiterKind
@@ -3987,7 +3987,7 @@ export interface operations {
             };
         };
     };
-    line_v1_leases_leasable_resources__leasable_resource_id__line_get: {
+    wait_line_v1_leases_leasable_resources__leasable_resource_id__wait_line_get: {
         parameters: {
             query?: never;
             header?: {
@@ -4008,7 +4008,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["LineView"];
+                    "application/json": components["schemas"]["WaitLineView"];
                 };
             };
             /** @description Validation Error */

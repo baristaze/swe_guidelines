@@ -21,7 +21,6 @@ from acme.om.leases.manager import LeasesManagerInterface
 from acme.om.leases.rules import (
     holds_lapsed,
     is_grantable,
-    line_of,
     measured_hold,
     place_of,
     places_of,
@@ -31,6 +30,7 @@ from acme.om.leases.rules import (
     replay_all,
     stands_in,
     term_of,
+    wait_line_of,
     window_of,
 )
 from acme.om.leases.storage import LeasesStorageInterface
@@ -46,11 +46,11 @@ from acme.om.leases.types.request import (
     HistoryMark,
     LeasePage,
     LeaseRequest,
-    Line,
     Place,
     RequestStatus,
     Standing,
     WaiterKind,
+    WaitLine,
 )
 from acme.om.orchestrations.steps import step_rows
 from acme.om.orchestrations.types.orchestration import Step
@@ -261,7 +261,7 @@ class LeasesManagerImpl(LeasesManagerInterface):
         ctx.require(Permission.READ)
         return await self._standing(ctx, await self._request(ctx, request_id))
 
-    async def line(self, ctx: TenantContext, leasable_resource_id: UUID) -> Line:
+    async def wait_line(self, ctx: TenantContext, leasable_resource_id: UUID) -> WaitLine:
         """Each place and estimate comes from one replay over the reads the
         line makes, whatever its length, never a read per request."""
         ctx.require(Permission.READ)
@@ -274,10 +274,10 @@ class LeasesManagerImpl(LeasesManagerInterface):
         waiting = await self._storage.read_waiting(
             ctx.org_id, resource.kind, self._options.line_limit
         )
-        requests = line_of(resource, waiting)
+        requests = wait_line_of(resource, waiting)
         places = places_of(resources, waiting)
         estimates = replay_all(resources, waiting, self._clock())
-        return Line(
+        return WaitLine(
             leasable_resource=resource,
             requests=tuple(requests),
             places=tuple(
@@ -483,7 +483,7 @@ class LeasesManagerImpl(LeasesManagerInterface):
             waiting = await self._storage.read_waiting(
                 ctx.org_id, resource.kind, self._options.line_limit
             )
-            line = line_of(resource, waiting)
+            line = wait_line_of(resource, waiting)
             if not line:
                 return None
             head = line[0]

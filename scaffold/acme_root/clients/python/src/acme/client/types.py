@@ -28,7 +28,6 @@ from acme.client.schema import (
     LeaseRequestView,
     LeaseStatus,
     LeaseView,
-    LineView,
     MembershipChoicePageView,
     MembershipChoiceView,
     MembershipView,
@@ -55,6 +54,7 @@ from acme.client.schema import (
     UserPageView,
     UserView,
     WaiterKind,
+    WaitLineView,
 )
 
 __all__ = [
@@ -83,7 +83,6 @@ __all__ = [
     "LeaseRequestView",
     "LeaseStatus",
     "LeaseView",
-    "LineView",
     "MeView",
     "MembershipChoicePageView",
     "MembershipChoiceView",
@@ -109,5 +108,6 @@ __all__ = [
     "UploadFieldView",
     "UserPageView",
     "UserView",
+    "WaitLineView",
     "WaiterKind",
 ]

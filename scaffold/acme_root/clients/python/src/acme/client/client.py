@@ -29,7 +29,6 @@ from acme.client.types import (
     LeasePageView,
     LeaseRequestView,
     LeaseView,
-    LineView,
     MembershipChoicePageView,
     MembershipChoiceView,
     MeView,
@@ -48,6 +47,7 @@ from acme.client.types import (
     SystemSizeView,
     UserPageView,
     UserView,
+    WaitLineView,
 )
 
 APP_HEADER = "X-App"
@@ -545,7 +545,7 @@ class ApiClient:
             if cursor is None:
                 return users
 
-    # Leases: a resource's line, and the holder's lease. The holder's own
+    # Leases: a leasable resource's wait line, and the holder's lease. The holder's own
     # side, its clock and its fence, is `acme.client.leases`.
 
     async def ask_lease(
@@ -601,12 +601,13 @@ class ApiClient:
         moved = await self.request("POST", f"/v1/leases/requests/{request_id}/reorder", json=body)
         return LeaseRequestView.model_validate(moved)
 
-    async def leasable_resource_line(self, leasable_resource_id: UUID) -> LineView:
-        """A resource's line, first first, with each place and estimate."""
+    async def leasable_resource_wait_line(self, leasable_resource_id: UUID) -> WaitLineView:
+        """A leasable resource's wait line, first first, with each place and
+        estimate."""
         line = await self.request(
-            "GET", f"/v1/leases/leasable-resources/{leasable_resource_id}/line"
+            "GET", f"/v1/leases/leasable-resources/{leasable_resource_id}/wait-line"
         )
-        return LineView.model_validate(line)
+        return WaitLineView.model_validate(line)
 
     async def lease_history(
         self,

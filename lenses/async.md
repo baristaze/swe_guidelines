@@ -6,21 +6,20 @@ Worker Roles, and the causing request a work item carries in Telemetry
 (Correlation Across a Handoff) of `architecture.md`.
 
 This group judges everything that happens off the request path: the
-infrastructure capabilities managers lean on, how work is handed off
-and picked up, how a worker behaves over its life, and what a
-long-running record does when it cannot continue. It owns the sweep's
-duties (requeue expired leases, resume parked records, relay what a
-crash left in the outbox, purge done outbox rows and soft-deleted rows
-past retention, idempotency markers past theirs, socket tickets redeemed
-or expired, and auth sessions ended or past their lifetime), the whole
-work queue, its table and statements included, and the leases on a
-leasable resource, with their lock, their token, their line, and their
-waiters. It leaves the `org_id` and `EMPTY_UUID` keying rules, a
-tenant's secret among them, the provenance of a worker's context, and
-the permission that enqueues
-a kind to `context`, database roles, the
-retention periods, and the life of an outbox row to `storage`, and the
-realtime edge with its wait-versus-notify patterns to `network`.
+infrastructure capabilities managers lean on, how work is handed off and
+picked up, how a worker behaves over its life, and what a long-running
+record does when it cannot continue. It owns the sweep's duties (requeue
+expired leases, resume parked records, relay what a crash left in the
+outbox, purge done outbox rows and soft-deleted rows past retention,
+idempotency markers past theirs, socket tickets redeemed or expired, and
+auth sessions ended or past their lifetime), the whole work queue, its
+table and statements included, and the leases on a leasable resource,
+with their lock, their token, their wait line, and their waiters. It
+leaves the `org_id` and `EMPTY_UUID` keying rules, a tenant's secret
+among them, the provenance of a worker's context, and the permission
+that enqueues a kind to `context`, database roles, the retention
+periods, and the life of an outbox row to `storage`, and the realtime
+edge with its wait-versus-notify patterns to `network`.
 
 ## ASY-01 Infrastructure is never reached through ambient state
 
@@ -786,10 +785,10 @@ path token written to the access log in the clear.
 
 **Principle.** A grant of a leasable resource locks the anchor's row
 first and the request's second, as every write that moves a lease or a
-line does. It lands only while the anchor holds the token it read and no
-live lease, the leasable resource is available, and the request still
-waits and still fits the leasable resource as its row stands under the
-lock: in its line, within its bound. The lease, the anchor, the
+wait line does. It lands only while the anchor holds the token it read
+and no live lease, the leasable resource is available, and the request
+still waits and still fits the leasable resource as its row stands under
+the lock: in its wait line, within its bound. The lease, the anchor, the
 request's answer, and the rows the grant starts land in one commit. A
 unique index over a leasable resource's active leases is a second fence.
 
@@ -846,30 +845,30 @@ counted from the answer instead of the send.
 
 **Shape.** `scaffold/acme_root/clients/python/src/acme/client/leases.py`
 
-## ASY-34 One rank order serves every line, and a request gets one lease
+## ASY-34 One rank order serves every wait line, and a request gets one lease
 
 **Principle.** A request names one leasable resource or a selector, and
-one rank order serves every line of a tenant, so a selector request
-stands in each line it matches with one place. A reorder moves one
+one rank order serves every wait line of a tenant, so a selector request
+stands in each wait line it matches with one place. A reorder moves one
 request between two neighbours. Every ask is a request that joins the
-end of the line, idempotent by its key: a direct ask never passes anyone
-waiting, an ask asked again joins no line twice, and a request is
+end of the wait line, idempotent by its key: a direct ask never passes
+anyone waiting, an ask asked again joins no line twice, and a request is
 granted once, whichever leasable resource frees first. A leasable
-resource's line answers each request's place and estimate from one
+resource's wait line answers each request's place and estimate from one
 replay over what it reads.
 
 **Source.** Worker Roles, Leases on a Leasable Resource.
 
 **Look for.** The rank an ask and a reorder write; how a leasable
-resource's line is read, and how its places and estimates are replayed;
-the unique key on a request, and on the request a lease answers; the
-path of an ask when its leasable resource is free.
+resource's wait line is read, and how its places and estimates are
+replayed; the unique key on a request, and on the request a lease
+answers; the path of an ask when its leasable resource is free.
 
 **Violation.** A queue per leasable resource that a selector request
 joins once per line; a reorder that renumbers other requests; a direct
 ask granted ahead of one waiting; one request granted twice when two
 leasable resources free at once; a second request for an ask's key; a
-line that reads the store again for each place it answers.
+wait line that reads the store again for each place it answers.
 
 **Severity.** high
 
@@ -881,7 +880,8 @@ cancels the request, and the next in line is asked. The rows that wake
 the waiter land in the grant's commit, and in the commit of any end of
 its request without a lease. A record waits by parking on
 `ParkReason.LEASABLE_RESOURCE`, landed under the request's lock only
-while the request still waits, and a waiter that ends leaves every line.
+while the request still waits, and a waiter that ends leaves every wait
+line.
 
 **Source.** Worker Roles, Leases on a Leasable Resource; The Network
 Layer, Long-Running Orchestrations.
@@ -932,16 +932,16 @@ scope, or one read per lease.
 
 **Severity.** medium
 
-## ASY-37 A freed leasable resource goes to its line; the sweep catches the rest
+## ASY-37 What frees goes to its wait line; the sweep catches the rest
 
 **Principle.** A grant is a side effect of a leasable resource freeing:
 a release, an expiry, a revocation, or its availability back offers the
-leasable resource to its line at once, and so does its registration or
-an update of its labels. The sweep ends each lease past its expiry and
-the margin, expires each request past its wait, takes each request for a
-retired leasable resource out of its line, and offers each free leasable
-resource, each org under its own service context; retention purges ended
-leases and settled requests.
+leasable resource to its wait line at once, and so does its registration
+or an update of its labels. The sweep ends each lease past its expiry
+and the margin, expires each request past its wait, takes each request
+for a retired leasable resource out of its wait line, and offers each
+free leasable resource, each org under its own service context;
+retention purges ended leases and settled requests.
 
 **Source.** Worker Roles, Leases on a Leasable Resource; Maintenance
 Without a Scheduler.
@@ -952,12 +952,12 @@ Without a Scheduler.
 pass; the purge and its retention.
 
 **Violation.** A release that frees a leasable resource and offers it to
-no one, so its line waits for the sweep; a registration or an update
-that a waiting request now matches, offered to no one; a sweep with no
-leases step, so a lapsed lease holds its leasable resource for good; a
-sweep whose batch fills with orgs it skips, such as deleted ones, so a
-live org's lapsed lease never ends; a sweep that reads every org under
-one context; settled rows kept past their retention.
+no one, so its wait line waits for the sweep; a registration or an
+update that a waiting request now matches, offered to no one; a sweep
+with no leases step, so a lapsed lease holds its leasable resource for
+good; a sweep whose batch fills with orgs it skips, such as deleted
+ones, so a live org's lapsed lease never ends; a sweep that reads every
+org under one context; settled rows kept past their retention.
 
 **Severity.** medium
 

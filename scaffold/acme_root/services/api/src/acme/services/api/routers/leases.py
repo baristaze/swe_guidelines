@@ -1,7 +1,8 @@
-"""Lease routes: an ask, where a request stands, its cancel, a manager's
-reorder, a resource's line, the history of leases, a lease, and its
-renewal, its release, and a manager's revocation. Each function is one call into the leases service;
-the ask runs under the idempotency record, whose id is the request's key."""
+"""Lease routes: an ask, where a request stands, its cancel, a manager's reorder,
+a leasable resource's wait line, the history of leases, a lease, and its
+renewal, its release, and a manager's revocation. Each function is one call
+into the leases service; the ask runs under the idempotency record, whose id
+is the request's key."""
 
 from uuid import UUID
 
@@ -16,10 +17,10 @@ from acme.services.api.types.leases import (
     LeasePageView,
     LeaseRequestView,
     LeaseView,
-    LineView,
     RenewRequest,
     ReorderRequest,
     StandingView,
+    WaitLineView,
 )
 
 router = APIRouter(prefix="/leases", tags=["leases"])
@@ -60,9 +61,9 @@ async def reorder(
     return await leases.reorder(ctx, request_id, body)
 
 
-@router.get("/leasable-resources/{leasable_resource_id}/line", response_model=LineView)
-async def line(ctx: Ctx, leases: LeasesService, leasable_resource_id: UUID) -> LineView:
-    return await leases.line(ctx, leasable_resource_id)
+@router.get("/leasable-resources/{leasable_resource_id}/wait-line", response_model=WaitLineView)
+async def wait_line(ctx: Ctx, leases: LeasesService, leasable_resource_id: UUID) -> WaitLineView:
+    return await leases.wait_line(ctx, leasable_resource_id)
 
 
 @router.get("", response_model=LeasePageView)

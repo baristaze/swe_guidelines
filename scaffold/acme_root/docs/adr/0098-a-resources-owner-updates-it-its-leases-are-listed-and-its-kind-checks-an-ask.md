@@ -13,11 +13,11 @@ no longer offers ([ADR
 person also reads what happened: who held the dock, for what, and when
 it ended. A lease names only its request, and the request holds what was
 asked, so a history that read each request apart would read once per
-lease. A line that answers each place's wait the same way reads twice
-per place. And some kinds take an ask only from certain askers, or only
-for what a leasable resource offers: a refusal at the grant comes after
-the request waited, sometimes for days. The guideline's "Leases on a
-Leasable Resource" states the three, and this records how Acme holds
+lease. A wait line that answers each place's wait the same way reads
+twice per place. And some kinds take an ask only from certain askers, or
+only for what a leasable resource offers: a refusal at the grant comes
+after the request waited, sometimes for days. The guideline's "Leases on
+a Leasable Resource" states the three, and this records how Acme holds
 them.
 
 ## Decision
@@ -28,23 +28,23 @@ them.
   availability, in the transaction that writes the owner's row, and
   keeps each it leaves out: a dock out of service for a repair names its
   availability alone, and keeps what it offers and its bound. It takes
-  the anchor's lock, and leaves the lease, the token, and the line as
-  they are. After the commit the owner calls the manager's `offer`, and
-  the sweep offers what a crash left. The manager's own `update` writes
-  under the anchor's lock and offers at once, as `set_available` does. A
-  lease the leasable resource holds keeps its term and its expiry; the
-  new bound holds from its next renewal. No route updates a leasable
-  resource: the owner's own route does, in its commit.
-- **A new leasable resource goes to its line at once.** `register`
+  the anchor's lock, and leaves the lease, the token, and the wait line
+  as they are. After the commit the owner calls the manager's `offer`,
+  and the sweep offers what a crash left. The manager's own `update`
+  writes under the anchor's lock and offers at once, as `set_available`
+  does. A lease the leasable resource holds keeps its term and its
+  expiry; the new bound holds from its next renewal. No route updates a
+  leasable resource: the owner's own route does, in its commit.
+- **A new leasable resource goes to its wait line at once.** `register`
   offers it, so a selector already waiting is granted it without waiting
   for the sweep. An owner that registers through `register_statement`
   calls `offer` after its commit.
 - **A grant fits the leasable resource as its row stands.** Under the
   anchor's lock, `grant` lands only while the request still stands in
-  the leasable resource's line and the lease's term and window are
+  the leasable resource's wait line and the lease's term and window are
   within its bound (`rules.grant_fits`). A grant decided on labels read
   before an update lands nothing, and the update's own offer grants the
-  line anew.
+  wait line anew.
 - **The history is a page at a time, each one read.** `list_leases`
   answers a leasable resource's leases, or the org's, newest first by
   `created_at` and then `id`, ended ones included, each with the request
@@ -67,11 +67,12 @@ them.
   `ix_leases_org_id_leasable_resource_id_created_at_id`, which the two
   reads walk
   backwards to the page's bound. No column changes.
-- **A line answers each place and estimate.** `line` reads the leasable
-  resource, its kind's leasable resources, and the waiting requests, and
-  replays them once (`rules.replay_all`, `rules.places_of`), so its
-  `Place` for each request is what that request's standing answers. The
-  read count does not grow with the line. `LineView` gains `places`.
+- **A wait line answers each place and estimate.** `line` reads the
+  leasable resource, its kind's leasable resources, and the waiting
+  requests, and replays them once (`rules.replay_all`,
+  `rules.places_of`), so its `Place` for each request is what that
+  request's standing answers. The read count does not grow with the wait
+  line. `WaitLineView` gains `places`.
 - **A kind may check an ask.** A kind that refuses some asks registers
   an `AskCheckInterface` at the root, beside its hooks
   (`LeasesManagerImpl(asks=...)`); a kind with none accepts every ask,
@@ -100,6 +101,6 @@ them.
   gains what it lacked asks again under a new key.
 - `LeasesManagerInterface` declares 21 operations, past the twenty at
   which arch-check asks for a judgment (CON-01). It stays whole: every
-  operation reads or moves one leasable resource's anchor and its line,
-  and a split would cut the grant's lock from what frees a leasable
-  resource.
+  operation reads or moves one leasable resource's anchor and its wait
+  line, and a split would cut the grant's lock from what frees a
+  leasable resource.

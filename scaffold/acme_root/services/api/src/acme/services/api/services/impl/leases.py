@@ -20,11 +20,11 @@ from acme.services.api.types.leases import (
     LeasePageView,
     LeaseRequestView,
     LeaseView,
-    LineView,
     PlaceView,
     RenewRequest,
     ReorderRequest,
     StandingView,
+    WaitLineView,
 )
 
 
@@ -123,9 +123,9 @@ class LeasesServiceImpl(LeasesServiceInterface):
     ) -> LeaseRequestView:
         return request_view(await self._leases.reorder(ctx, request_id, body.before_id))
 
-    async def line(self, ctx: TenantContext, leasable_resource_id: UUID) -> LineView:
-        line = await self._leases.line(ctx, leasable_resource_id)
-        return LineView(
+    async def wait_line(self, ctx: TenantContext, leasable_resource_id: UUID) -> WaitLineView:
+        line = await self._leases.wait_line(ctx, leasable_resource_id)
+        return WaitLineView(
             leasable_resource=leasable_resource_view(line.leasable_resource),
             requests=[request_view(r) for r in line.requests],
             places=[PlaceView.model_validate(p) for p in line.places],

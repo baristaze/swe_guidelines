@@ -936,16 +936,6 @@ class LeaseRequestView(BaseModel):
     waiter_kind: WaiterKind | None
 
 
-class LineView(BaseModel):
-    """
-    A resource and the requests in its line, first first, with each one's
-    place and estimate in the same order.
-    """
-    leasable_resource: LeasableResourceView
-    places: Annotated[list[PlaceView], Field(title='Places')]
-    requests: Annotated[list[LeaseRequestView], Field(title='Requests')]
-
-
 class MeView(BaseModel):
     app: Annotated[str, Field(title='App')]
     org: OrgView
@@ -1045,6 +1035,16 @@ class UserPageView(BaseModel):
     """
     items: Annotated[list[UserView], Field(title='Items')]
     next_cursor: Annotated[str | None, Field(title='Next Cursor')]
+
+
+class WaitLineView(BaseModel):
+    """
+    A leasable resource and the requests in its wait line, first first, with
+    each one's place and estimate in the same order.
+    """
+    leasable_resource: LeasableResourceView
+    places: Annotated[list[PlaceView], Field(title='Places')]
+    requests: Annotated[list[LeaseRequestView], Field(title='Requests')]
 
 
 class ApiKeyPageView(BaseModel):

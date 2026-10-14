@@ -125,10 +125,10 @@ class Place(OmBase):
     estimate_seconds: float | None = None
 
 
-class Line(OmBase):
-    """A resource and the requests in its line, first first, with each one's
-    place and estimate in the same order, replayed from the one read the
-    line makes."""
+class WaitLine(OmBase):
+    """A leasable resource and the requests in its wait line, first first,
+    with each one's place and estimate in the same order, replayed from the
+    one read the wait line makes."""
 
     leasable_resource: LeasableResource
     requests: tuple[LeaseRequest, ...]

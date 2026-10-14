@@ -1593,35 +1593,6 @@
         "title": "LeaseView",
         "type": "object"
       },
-      "LineView": {
-        "description": "A resource and the requests in its line, first first, with each one's\nplace and estimate in the same order.",
-        "properties": {
-          "leasable_resource": {
-            "$ref": "#/components/schemas/LeasableResourceView"
-          },
-          "places": {
-            "items": {
-              "$ref": "#/components/schemas/PlaceView"
-            },
-            "title": "Places",
-            "type": "array"
-          },
-          "requests": {
-            "items": {
-              "$ref": "#/components/schemas/LeaseRequestView"
-            },
-            "title": "Requests",
-            "type": "array"
-          }
-        },
-        "required": [
-          "leasable_resource",
-          "requests",
-          "places"
-        ],
-        "title": "LineView",
-        "type": "object"
-      },
       "LogoutRequest": {
         "additionalProperties": false,
         "description": "Where the identity provider sends the browser once it has ended its own\nsession: this environment's portal page for it, and nothing else. Left\nout, the provider sends it to its default sign-out address.",
@@ -2912,6 +2883,35 @@
           "type"
         ],
         "title": "ValidationError",
+        "type": "object"
+      },
+      "WaitLineView": {
+        "description": "A leasable resource and the requests in its wait line, first first, with\neach one's place and estimate in the same order.",
+        "properties": {
+          "leasable_resource": {
+            "$ref": "#/components/schemas/LeasableResourceView"
+          },
+          "places": {
+            "items": {
+              "$ref": "#/components/schemas/PlaceView"
+            },
+            "title": "Places",
+            "type": "array"
+          },
+          "requests": {
+            "items": {
+              "$ref": "#/components/schemas/LeaseRequestView"
+            },
+            "title": "Requests",
+            "type": "array"
+          }
+        },
+        "required": [
+          "leasable_resource",
+          "requests",
+          "places"
+        ],
+        "title": "WaitLineView",
         "type": "object"
       },
       "WaiterKind": {
@@ -6705,9 +6705,9 @@
         ]
       }
     },
-    "/v1/leases/leasable-resources/{leasable_resource_id}/line": {
+    "/v1/leases/leasable-resources/{leasable_resource_id}/wait-line": {
       "get": {
-        "operationId": "line_v1_leases_leasable_resources__leasable_resource_id__line_get",
+        "operationId": "wait_line_v1_leases_leasable_resources__leasable_resource_id__wait_line_get",
         "parameters": [
           {
             "in": "path",
@@ -6773,7 +6773,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/LineView"
+                  "$ref": "#/components/schemas/WaitLineView"
                 }
               }
             },
@@ -6790,7 +6790,7 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Line",
+        "summary": "Wait Line",
         "tags": [
           "leases"
         ]

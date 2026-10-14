@@ -42,12 +42,11 @@ This is one of the kinds of thing [Acme is made of](../../../../README.md).
   every park on one outage lands one wake of the org's records then
   ([ADR 0088](../../../../../docs/adr/0088-a-providers-outage-is-a-shared-signal.md)).
 - **Succeed** after the last step, or **fail** on a bound.
-- **Cancel.** A person ends a running or a parked record, and it
-  settles `cancelled`, keeping its cursor and what it made. No wake
-  revives it, and a step already under way lands nothing after it. A
-  request it waits on in a lease's line is passed over at the next
-  grant
-  ([ADR 0099](../../../../../docs/adr/0099-a-person-cancels-a-running-or-a-parked-record.md)).
+- **Cancel.** A person ends a running or a parked record, and it settles
+  `cancelled`, keeping its cursor and what it made. No wake revives it,
+  and a step already under way lands nothing after it. A request it
+  waits on in a lease's wait line is passed over at the next grant ([ADR
+  0099](../../../../../docs/adr/0099-a-person-cancels-a-running-or-a-parked-record.md)).
 - **Sweep.** A settled record goes thirty days later. A parked or a
   running one is kept.
 

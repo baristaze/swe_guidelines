@@ -1,8 +1,9 @@
-"""The wire's leases: a resource and its anchor, a lease with the seconds it
-has left, a request with its place and estimate, a resource's line, and a
-history of leases, each with the request it answered. A
-lease's time travels as a duration as well as an instant: the holder's
-clock is not the server's, so it counts the seconds from when it asked."""
+"""The wire's leases: a leasable resource and its anchor, a lease with the
+seconds it has left, a request with its place and estimate, a leasable
+resource's wait line, and a history of leases, each with the request it
+answered. A lease's time travels as a duration as well as an instant: the
+holder's clock is not the server's, so it counts the seconds from when it
+asked."""
 
 from datetime import datetime
 from typing import Any
@@ -97,9 +98,9 @@ class PlaceView(View):
     estimate_seconds: float | None
 
 
-class LineView(View):
-    """A resource and the requests in its line, first first, with each one's
-    place and estimate in the same order."""
+class WaitLineView(View):
+    """A leasable resource and the requests in its wait line, first first, with
+    each one's place and estimate in the same order."""
 
     leasable_resource: LeasableResourceView
     requests: list[LeaseRequestView]

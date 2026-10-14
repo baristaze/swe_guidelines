@@ -392,7 +392,7 @@ async def test_an_ask_asked_again_by_its_key_joins_no_line_twice(world: World) -
     waits = await world.leases.ask(bob, an_ask(dock, key=key))
     again = await world.leases.ask(bob, an_ask(dock, key=key))
     assert again.request.id == waits.request.id and again.place == 1
-    assert len((await world.leases.line(owner, dock.id)).requests) == 1
+    assert len((await world.leases.wait_line(owner, dock.id)).requests) == 1
     assert held.lease is not None
     await world.leases.release(ann, held.lease.id)
     answered = await world.leases.ask(bob, an_ask(dock, key=key))
@@ -496,7 +496,7 @@ async def test_a_holder_cancels_its_own_and_a_manager_any(world: World) -> None:
     cancelled = await world.leases.cancel(ann, mine.request.id)
     assert cancelled.status is RequestStatus.CANCELLED and cancelled.end_reason is EndReason.ASKED
     assert (await world.leases.cancel(owner, theirs.request.id)).status is RequestStatus.CANCELLED
-    assert (await world.leases.line(owner, dock.id)).requests == ()
+    assert (await world.leases.wait_line(owner, dock.id)).requests == ()
 
 
 async def test_a_manager_reorders_one_request_and_no_one_else(world: World) -> None:
@@ -508,7 +508,7 @@ async def test_a_manager_reorders_one_request_and_no_one_else(world: World) -> N
     with pytest.raises(NotAuthorized):
         await world.leases.reorder(ann, c.id, a.id)
     moved = await world.leases.reorder(owner, c.id, b.id)
-    line = (await world.leases.line(owner, dock.id)).requests
+    line = (await world.leases.wait_line(owner, dock.id)).requests
     assert [r.id for r in line] == [a.id, c.id, b.id]
     assert [r.rank for r in line if r.id != c.id] == [a.rank, b.rank]
     assert a.rank < moved.rank < b.rank
@@ -776,7 +776,7 @@ async def test_a_waiter_that_ends_leaves_every_line(world: World) -> None:
             update={"waiter_kind": WaiterKind.ORCHESTRATION, "waiter_id": waiter}
         ))  # fmt: skip
     assert await world.leases.leave(owner, WaiterKind.ORCHESTRATION, waiter) == 2
-    assert (await world.leases.line(owner, a.id)).requests == ()
+    assert (await world.leases.wait_line(owner, a.id)).requests == ()
 
 
 # The selector.
@@ -795,14 +795,14 @@ async def test_a_selector_is_granted_by_the_first_resource_that_frees_and_leaves
     await world.leases.ask(bob, an_ask(south))
     either = await world.leases.ask(owner, an_ask(labels=("cold",)))
     assert either.lease is None
-    assert {r.id for r in (await world.leases.line(owner, south.id)).requests} == {
+    assert {r.id for r in (await world.leases.wait_line(owner, south.id)).requests} == {
         either.request.id
     }
     assert on_north.lease is not None
     await world.leases.release(ann, on_north.lease.id)
     granted = await world.leases.get_request(owner, either.request.id)
     assert granted.lease is not None and granted.lease.leasable_resource_id == north.id
-    assert (await world.leases.line(owner, south.id)).requests == ()
+    assert (await world.leases.wait_line(owner, south.id)).requests == ()
 
 
 async def test_two_resources_freeing_at_once_grant_a_selector_once(world: World) -> None:
@@ -892,7 +892,7 @@ async def test_a_kinds_check_refuses_an_ask_before_it_waits(tmp_path: Path) -> N
     for ask in (refused, unstaffed):
         with pytest.raises(NotFound):
             await world.leases.get_request(owner, ask.id)
-    assert (await world.leases.line(owner, staffed.id)).requests == ()
+    assert (await world.leases.wait_line(owner, staffed.id)).requests == ()
     asked_by, request, named = kind.asked[0]
     assert (asked_by, request.created_by, named) == (mia.user_id, mia.user_id, staffed)
     assert request.status is RequestStatus.WAITING and request.wait_until is not None
@@ -919,12 +919,12 @@ async def test_a_line_answers_each_place_and_estimate_from_one_read(world: World
     for resource in (dock, spare):
         assert (await world.leases.ask(owner, an_ask(resource))).lease is not None
 
-    async def line_of(count: int) -> tuple[int, list[tuple[int | None, float | None]]]:
+    async def wait_line_of(count: int) -> tuple[int, list[tuple[int | None, float | None]]]:
         for index in range(count):
             ask = an_ask(dock) if index % 3 == 0 else an_ask(labels=("cold",))
             await world.leases.ask(owner, ask)
         world.counted.reads.clear()
-        line = await world.leases.line(owner, dock.id)
+        line = await world.leases.wait_line(owner, dock.id)
         reads = sum(world.counted.reads.values())
         assert [p.request_id for p in line.places] == [r.id for r in line.requests]
         answered = [(p.place, p.estimate_seconds) for p in line.places]
@@ -932,8 +932,8 @@ async def test_a_line_answers_each_place_and_estimate_from_one_read(world: World
         assert answered == [(s.place, s.estimate_seconds) for s in standings]
         return reads, answered
 
-    short, first = await line_of(3)
-    long, then = await line_of(5)
+    short, first = await wait_line_of(3)
+    long, then = await wait_line_of(5)
     assert len(first) == 3 and len(then) == 8
     assert short == long == 3, "the resource, its kind's resources, and the waiting"
     assert all(place is not None and wait is not None for place, wait in then)

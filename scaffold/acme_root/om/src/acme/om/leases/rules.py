@@ -20,8 +20,9 @@ hold counts a fifth, and the measure before it the rest."""
 
 
 def stands_in(request: LeaseRequest, resource: LeasableResource) -> bool:
-    """Whether a waiting request is in the resource's line: it names the
-    resource, or its selector's labels are all among the resource's."""
+    """Whether a waiting request is in the leasable resource's wait line: it
+    names the resource, or its selector's labels are all among the
+    resource's."""
     if request.status is not RequestStatus.WAITING or request.kind is not resource.kind:
         return False
     if request.leasable_resource_id is not None:
@@ -114,8 +115,9 @@ def rank_at(ranks: Sequence[float], index: int) -> float:
     return (ranks[index - 1] + ranks[index]) / 2
 
 
-def line_of(resource: LeasableResource, waiting: Sequence[LeaseRequest]) -> list[LeaseRequest]:
-    """The resource's line, first first: `waiting` is in rank order already."""
+def wait_line_of(resource: LeasableResource, waiting: Sequence[LeaseRequest]) -> list[LeaseRequest]:
+    """The leasable resource's wait line, first first: `waiting` is in rank
+    order already."""
     return [request for request in waiting if stands_in(request, resource)]
 
 
@@ -126,7 +128,7 @@ def places_of(
     it stands in, 1 first. A request that stands in no line has none."""
     places: dict[UUID, int] = {}
     for resource in resources:
-        for index, ahead in enumerate(line_of(resource, waiting)):
+        for index, ahead in enumerate(wait_line_of(resource, waiting)):
             places[ahead.id] = min(index + 1, places.get(ahead.id, index + 1))
     return places
 

@@ -80,7 +80,7 @@ async def test_a_lease_is_granted_renewed_released_and_the_line_moves_on(
     second = await ask(client, mia, leasable_resource_id=str(dock.id))
     waits = second.json()
     assert waits["lease"] is None and waits["place"] == 1 and waits["estimate_seconds"] > 0
-    line = await client.get(f"/v1/leases/leasable-resources/{dock.id}/line", headers=ann)
+    line = await client.get(f"/v1/leases/leasable-resources/{dock.id}/wait-line", headers=ann)
     assert [r["id"] for r in line.json()["requests"]] == [waits["request"]["id"]]
     assert line.json()["leasable_resource"]["lease_id"] == lease["id"]
     (place,) = line.json()["places"]
@@ -156,7 +156,7 @@ async def test_a_malformed_ask_is_refused_and_a_replay_joins_no_line_twice(
     first = await ask(client, owner, key=key, leasable_resource_id=str(dock.id))
     again = await ask(client, owner, key=key, leasable_resource_id=str(dock.id))
     assert again.json()["request"]["id"] == first.json()["request"]["id"]
-    line = await client.get(f"/v1/leases/leasable-resources/{dock.id}/line", headers=owner)
+    line = await client.get(f"/v1/leases/leasable-resources/{dock.id}/wait-line", headers=owner)
     assert len(line.json()["requests"]) == 1
 
 
@@ -202,7 +202,9 @@ async def test_a_kinds_check_refuses_an_ask_and_the_route_answers_it(
             assert asked.json()["error"]["code"] == "not_authorized"
             selector = await ask(client, owner, labels=[])
             assert selector.status_code == 422, selector.text
-            line = await client.get(f"/v1/leases/leasable-resources/{dock.id}/line", headers=owner)
+            line = await client.get(
+                f"/v1/leases/leasable-resources/{dock.id}/wait-line", headers=owner
+            )
             assert (
                 line.json()["requests"] == []
                 and line.json()["leasable_resource"]["lease_id"] is None
@@ -273,7 +275,7 @@ async def test_another_tenants_leases_answer_as_missing_ones(
         ("GET", f"/v1/leases/requests/{request_id}", {}),
         ("POST", f"/v1/leases/requests/{request_id}/cancel", {}),
         ("POST", f"/v1/leases/requests/{request_id}/reorder", {"json": {}}),
-        ("GET", f"/v1/leases/leasable-resources/{dock.id}/line", {}),
+        ("GET", f"/v1/leases/leasable-resources/{dock.id}/wait-line", {}),
         ("GET", f"/v1/leases/{lease_id}", {}),
         ("POST", f"/v1/leases/{lease_id}/renew", {}),
         ("POST", f"/v1/leases/{lease_id}/release", {}),

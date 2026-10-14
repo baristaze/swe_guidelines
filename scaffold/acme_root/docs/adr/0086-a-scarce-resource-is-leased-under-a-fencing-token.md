@@ -1,4 +1,4 @@
-# ADR 0086: A scarce leasable resource is leased under a fencing token, with a line in front of it
+# ADR 0086: A scarce leasable resource is leased under a fencing token, with a wait line in front of it
 
 **Status**: accepted (2026-10-08)
 
@@ -27,10 +27,10 @@ and this records how Acme holds it.
   `register_statement` (`land_leasable_resource` in memory), and retires
   it with the row through `retire_statement` (Shape of an Operation).
   That commit knows no waiter, so the requests that name the leasable
-  resource leave their line through the manager, at once or at the next
-  sweep.
+  resource leave their wait line through the manager, at once or at the
+  next sweep.
 - **The anchor's row lock decides the grant.** Every write that moves a
-  lease or a line locks the leasable resource's row first and the
+  lease or a wait line locks the leasable resource's row first and the
   request's second, so two writers queue and never deadlock. A grant
   lands only while the anchor holds the token it read and no live lease,
   the leasable resource is live and available, and the request still
@@ -42,20 +42,20 @@ and this records how Acme holds it.
   (`LeasesOptions.margin`), and a renewal past the expiry is refused.
 - **One rank order per org.** A rank is a float: an ask takes one past
   the last, and a reorder takes the midpoint of its new neighbours, so
-  no one else moves. A selector request stands in each line it matches
-  with one place, and the first grant settles it. The estimate replays
-  the lines from each leasable resource's measured hold, which moves a
-  fifth of the way to each new hold.
+  no one else moves. A selector request stands in each wait line it
+  matches with one place, and the first grant settles it. The estimate
+  replays the wait lines from each leasable resource's measured hold,
+  which moves a fifth of the way to each new hold.
 - **An ask is idempotent by its key** (Idempotency). The route runs
   under the idempotency record, whose id is the request's key, and an
-  ask asked again answers its lease or its place. Every ask is a
-  request that joins the end of the line, so a direct ask never passes
+  ask asked again answers its lease or its place. Every ask is a request
+  that joins the end of the wait line, so a direct ask never passes
   anyone waiting, and one request gets one lease.
 - **A grant is a side effect of a leasable resource freeing.** A
   release, an expiry, a revocation, or the leasable resource's
-  availability back offers it to its line. The lease, the anchor, the
-  request's answer, and the rows the grant starts land in one commit, as
-  outbox rows the relay carries (Database Roles).
+  availability back offers it to its wait line. The lease, the anchor,
+  the request's answer, and the rows the grant starts land in one
+  commit, as outbox rows the relay carries (Database Roles).
 - **Kinds and waiters register as work kinds do** (The Work Queue). A
   leasable resource kind is a `LeasableResourceKind` with its ask's
   shape in `ASK_PAYLOADS` and a `LeasableResourceKindInterface`:
@@ -76,7 +76,7 @@ and this records how Acme holds it.
   Scheduler). It visits the orgs with something due, as each org's
   service context: it ends each lease past its expiry and the margin,
   expires each request past its wait, takes each request for a retired
-  leasable resource out of its line, and offers each free leasable
+  leasable resource out of its wait line, and offers each free leasable
   resource. It reads the due orgs in the order of their ids and reads on
   past a deleted one. The purge takes ended leases and settled requests
   after 30 days.
@@ -98,12 +98,12 @@ and this records how Acme holds it.
   product's. Facts a product keeps per lease, such as a run, live in its
   own table, keyed by the lease's id.
 - A thing that waits on a request registers as a waiter, and leaves
-  every line when it ends; nothing is granted to it after that.
+  every wait line when it ends; nothing is granted to it after that.
 - The code ships unused until a kind registers. A copy that never needs
   it drops the namespace, its routes, and its client side, and drops its
   tables with a migration of its own.
 - One offer reads at most `line_limit` waiting requests of a kind and
-  asks at most `offer_tries` heads; a line longer than that waits for
-  the next freeing or the sweep.
+  asks at most `offer_tries` heads; a wait line longer than that waits
+  for the next freeing or the sweep.
 - The estimate is a replay, not a promise: a reorder, a cancel, or a
   hold longer than the measure moves it.

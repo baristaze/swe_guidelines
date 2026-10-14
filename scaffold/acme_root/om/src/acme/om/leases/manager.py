@@ -20,9 +20,9 @@ from acme.om.leases.types.request import (
     HistoryMark,
     LeasePage,
     LeaseRequest,
-    Line,
     Standing,
     WaiterKind,
+    WaitLine,
 )
 from acme.om.orchestrations.types.orchestration import Step
 
@@ -109,7 +109,7 @@ class LeasesManagerInterface(ABC):
         ...
 
     @abstractmethod
-    async def line(self, ctx: TenantContext, leasable_resource_id: UUID) -> Line:
+    async def wait_line(self, ctx: TenantContext, leasable_resource_id: UUID) -> WaitLine:
         """A resource and the requests in its line, first first, each with its
         place and estimate, replayed from the one read the line makes."""
         ...

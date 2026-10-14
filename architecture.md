@@ -1925,7 +1925,7 @@ So every tenant due is reached in turn, however many are due
 
 Some things serve one holder at a time: a loading dock, a label
 printer. Work that needs one cannot carry it as it carries its own row,
-so the thing gets a lease, and whoever waits for it gets a line
+so the thing gets a lease, and whoever waits for it gets a wait line
 ([`leases/`](scaffold/acme_root/om/src/acme/om/leases/)). The trigger
 is the first such thing; until a kind registers, the code sits unused.
 
@@ -1937,10 +1937,10 @@ token granted on it, the lease that holds it, and until when. The
 namespace that owns the row registers the leasable resource in the same
 commit, updates its labels, its bound, and its availability with the
 row, and retires it with the row. After a registration or an update, the
-owner offers the leasable resource to its line: a request its labels now
-match may be granted, and one they no longer match leaves that line. A
-lease it holds keeps its term, and a new bound holds from the lease's
-next renewal.
+owner offers the leasable resource to its wait line: a request its
+labels now match may be granted, and one they no longer match leaves
+that wait line. A lease it holds keeps its term, and a new bound holds
+from the lease's next renewal.
 
 A **lease** is one grant of one leasable resource to one principal,
 under a fencing token one above the anchor's. Its holder renews it, for
@@ -1969,18 +1969,18 @@ misses its window lets the lease lapse.
 
 A **request** waits in line. It names one leasable resource, or a
 selector: a kind and the labels it needs. One rank order serves every
-line of a tenant, so a selector request stands in each line it matches
-with one place, and a manager's reorder moves one request between two
-neighbours. A request answers its place, and an estimate of its wait
-replayed from each leasable resource's measured holds, and a leasable
-resource's line answers the same for each request in it, from one
-replay. An ask is idempotent by its [key](#idempotency), and a direct
-ask never passes anyone waiting. Before it waits, its kind may refuse
-it, for who asks or for what it asks, and nothing of it lands.
+wait line of a tenant, so a selector request stands in each wait line it
+matches with one place, and a manager's reorder moves one request
+between two neighbours. A request answers its place, and an estimate of
+its wait replayed from each leasable resource's measured holds, and a
+leasable resource's wait line answers the same for each request in it,
+from one replay. An ask is idempotent by its [key](#idempotency), and a
+direct ask never passes anyone waiting. Before it waits, its kind may
+refuse it, for who asks or for what it asks, and nothing of it lands.
 
 A grant is a side effect of a leasable resource freeing: a release, an
 expiry, a revocation, or its availability back. It goes to the head of
-the line, decided under the anchor's row lock, for a request still
+the wait line, decided under the anchor's row lock, for a request still
 waiting that the leasable resource, as its row stands then, still
 serves. The lease, the anchor, the request's answer, and what the grant
 starts land in one commit, as rows and their outbox rows. A unique index
@@ -1994,15 +1994,15 @@ starts, whether a request may still be granted, and, when it needs one,
 a check at the ask. A **waiter** registers the same way. A [long-running
 record](#long-running-orchestrations) parks on the reason
 `leasable_resource`, and the grant wakes it with its lease. A request
-that leaves its line without one wakes its waiter too, which reads the
-end; a waiter that ends leaves every line. A kind keeps facts of its own
-about a lease in its own table, keyed by the lease's id. The
+that leaves its wait line without one wakes its waiter too, which reads
+the end; a waiter that ends leaves every wait line. A kind keeps facts
+of its own about a lease in its own table, keyed by the lease's id. The
 [sweep](#maintenance-without-a-scheduler) ends each lease past its
 expiry and the margin, expires each request past its wait, and offers
-each free leasable resource to its line; retention purges what settled.
-Until then a leasable resource's leases, and the org's, are a history:
-newest first, a page at a time, ended ones included, each with the
-request it answered. A tenant reads only its own.
+each free leasable resource to its wait line; retention purges what
+settled. Until then a leasable resource's leases, and the org's, are a
+history: newest first, a page at a time, ended ones included, each with
+the request it answered. A tenant reads only its own.
 
 > **Principle:** One holder at a time, under a token that only grows.
 > The row lock and the index fence the grant, and the token fences
@@ -2010,11 +2010,11 @@ request it answered. A tenant reads only its own.
 
 <!-- agents-only
 - The anchor's row is locked first and the request's second, in every
-  write that moves a lease or a line, so two writers queue and never
-  deadlock. `grant` lands only while the anchor holds `expected_token`,
-  and while the request still stands in the anchor's line as the row
-  stands under the lock, with the lease's term and window within its
-  bound (`grant_fits`).
+  write that moves a lease or a wait line, so two writers queue and
+  never deadlock. `grant` lands only while the anchor holds
+  `expected_token`, and while the request still stands in the anchor's
+  wait line as the row stands under the lock, with the lease's term and
+  window within its bound (`grant_fits`).
 - A kind is a `LeasableResourceKind` with its ask's shape in
   `ASK_PAYLOADS` and a `LeasableResourceKindInterface`: `may_grant`
   reads the asker's standing live, and `grant_rows` returns the rows the
@@ -2036,14 +2036,14 @@ request it answered. A tenant reads only its own.
   calls the manager's `offer`; the manager's own `register` and `update`
   offer at once, and the sweep offers what a crash left. The owner's
   commit knows no waiter, so the requests that name a retired leasable
-  resource leave their line through the manager, at once or at the next
-  sweep, each with its waiter's wake.
+  resource leave their wait line through the manager, at once or at the
+  next sweep, each with its waiter's wake.
 - `list_leases` reads a leasable resource's leases, or the org's, newest
   first by `created_at` and then `id`, each with its request from one
   join, at most `history_limit` a page; the next page starts after the
   last lease's `HistoryMark`, which the route's opaque cursor carries.
-  `line` answers each request's `Place`, its place and estimate, from
-  one replay over the reads it makes.
+  `wait_line` answers each request's `Place`, its place and estimate,
+  from one replay over the reads it makes.
 - The sweep reads the due orgs in the order of their ids and reads on
   past a deleted one, so deleted orgs never fill its batch.
 - The client's `Fence` keeps the highest token per leasable resource;

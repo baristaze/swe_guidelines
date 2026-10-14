@@ -1,8 +1,8 @@
 # Leases
 
 A thing one holder may use at a time, such as a loading dock, leased
-under a fencing token, with a line in front of it. This is one of the
-kinds of thing [Acme is made of](../../../../README.md).
+under a fencing token, with a wait line in front of it. This is one of
+the kinds of thing [Acme is made of](../../../../README.md).
 
 ## What it holds
 
@@ -28,25 +28,25 @@ kinds of thing [Acme is made of](../../../../README.md).
   to start in, a rank, and what waits on it, by a registered waiter kind
   and an id. It is waiting, then granted, cancelled with a reason, or
   expired.
-- **Line**: a leasable resource's line is the waiting requests that name
-  it, and the waiting selector requests it matches, in the org's one
-  rank order.
+- **Wait line**: a leasable resource's wait line is the waiting requests
+  that name it, and the waiting selector requests it matches, in the
+  org's one rank order.
 
 ## What can happen
 
 - **Register** a leasable resource with its owner's row, in the same
   commit, **update** its labels, its bound, or its availability with
   that row, each it names and nothing it leaves out, and **retire** it
-  with that row: the requests that name it leave their line as
+  with that row: the requests that name it leave their wait line as
   `retired`, and its lease is never renewed. After a registration or an
-  update, the leasable resource is offered to its line. A lease it holds
-  keeps its term, and a new bound holds from its next renewal.
-- **Ask.** A request joins the end of the line, and every free leasable
-  resource it may take is offered at once. A direct ask is granted only
-  when no one waits in front of it. An ask asked again by its key
-  answers its lease or its place. The kind may refuse an ask first, for
-  who asks or for what it asks, and nothing of it lands.
-- **Grant.** A leasable resource that frees goes to the head of its
+  update, the leasable resource is offered to its wait line. A lease it
+  holds keeps its term, and a new bound holds from its next renewal.
+- **Ask.** A request joins the end of the wait line, and every free
+  leasable resource it may take is offered at once. A direct ask is
+  granted only when no one waits in front of it. An ask asked again by
+  its key answers its lease or its place. The kind may refuse an ask
+  first, for who asks or for what it asks, and nothing of it lands.
+- **Grant.** A leasable resource that frees goes to the head of its wait
   line: on a release, a revocation, an expiry, or its availability back.
 - **Renew** and **release**, by the holder, or by the worker that holds
   the claim on the lease's job. A renewal runs the length it names, or
@@ -58,15 +58,15 @@ kinds of thing [Acme is made of](../../../../README.md).
   skew margin have passed; past them, the lease lapses.
 - **Cancel** a request, by its asker or a manager; **reorder** one, and
   **revoke** a lease, by a manager.
-- **Read** a leasable resource's line, each request with its place and
-  estimate, and the history: a leasable resource's leases, or the org's,
-  newest first, ended ones too, each with the request it answered, a
-  page at a time.
-- **Leave.** A waiter that ends leaves every line.
+- **Read** a leasable resource's wait line, each request with its place
+  and estimate, and the history: a leasable resource's leases, or the
+  org's, newest first, ended ones too, each with the request it
+  answered, a page at a time.
+- **Leave.** A waiter that ends leaves every wait line.
 - **Sweep.** A pass ends each lease past its expiry and the skew margin,
   expires each request past its wait, and offers each free leasable
-  resource to its line. An ended lease and a settled request go thirty
-  days later.
+  resource to its wait line. An ended lease and a settled request go
+  thirty days later.
 
 ## The rules
 
@@ -112,6 +112,6 @@ A kind whose grant starts a job returns its work row among its grant
 rows, and the job's handler starts the lease, renews it, and releases it
 ([ADR
 0094](../../../../../docs/adr/0094-a-lease-is-kept-by-the-worker-that-runs-its-job.md)).
-An owner's update, the history, a line's places, and a kind's check at
-the ask are [ADR
+An owner's update, the history, a wait line's places, and a kind's check
+at the ask are [ADR
 0098](../../../../../docs/adr/0098-a-resources-owner-updates-it-its-leases-are-listed-and-its-kind-checks-an-ask.md).
