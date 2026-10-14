@@ -9,6 +9,7 @@ above every marker and adds one there, the other adds one below, and
 `git merge-tree` merges them with no conflict."""
 
 import subprocess
+import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -127,3 +128,32 @@ def test_an_entry_above_every_marker_and_one_below_it_merge(tmp_path: Path) -> N
     conflicted = merged.stdout.splitlines()[1:]
     assert merged.returncode == 0, f"the marker does not separate in: {conflicted}"
     assert len(files) >= len(ROOTS)
+
+
+def test_a_name_below_the_marker_of_a_re_export_list_keeps_ruff_sorted(tmp_path: Path) -> None:
+    """Ruff holds `__all__` sorted (RUF022), so a copy's names never join the
+    scaffold's list: they go in an `__all__ +=` list the marker opens, sorted
+    on their own. A name that sorts before every one of the scaffold's then
+    leaves the lint green."""
+    lists = 0
+    for path in marked():
+        if path.suffix != ".py":
+            continue
+        lines = path.read_text().splitlines()
+        found = [i for i in marker_lines(lines) if lines[i - 1].strip() == "__all__ += ["]
+        if not found:
+            continue
+        for i in reversed(found):
+            lines.insert(i + 1, '    "AaaServiceInterface",')
+            lists += 1
+        copied = tmp_path / path.name
+        copied.write_text("\n".join(lines) + "\n")
+        linted = subprocess.run(
+            [sys.executable, "-m", "ruff", "check", "--no-cache", "--select", "RUF022", str(copied)],
+            cwd=ROOT,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        assert linted.returncode == 0, f"{path.relative_to(ROOT)}: {linted.stdout}"
+    assert lists >= 1, "no re-export list opens with the marker"
