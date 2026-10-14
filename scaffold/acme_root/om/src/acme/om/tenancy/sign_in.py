@@ -6,7 +6,7 @@ from uuid import UUID
 
 from acme.integrations.identity import DeviceAuthorization
 from acme.om.context import IdentityContext, RequestContext
-from acme.om.tenancy.types.issued import IssuedLogin, IssuedSession, SignedOut, SignInStart
+from acme.om.tenancy.types.issued import IssuedAuthSession, IssuedLogin, SignedOut, SignInStart
 from acme.om.tenancy.types.page import OrgMembershipPage
 
 
@@ -105,7 +105,7 @@ class TenancySignInManagerInterface(ABC):
         ...
 
     @abstractmethod
-    async def exchange_login(self, ictx: IdentityContext, org_id: UUID) -> IssuedSession:
+    async def exchange_login(self, ictx: IdentityContext, org_id: UUID) -> IssuedAuthSession:
         """System-internal: exchanges the verified identity for a tenant-scoped
         session token; NotAuthorized when the identity is not a member of
         `org_id`, and the credential presented still stands. A sign-in is

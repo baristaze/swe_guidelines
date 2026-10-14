@@ -64,7 +64,7 @@ class Stack:
             "http://test", app="cli", app_version="cli@test", token=token, transport=Hop(self.tc)
         )
 
-    def session_token(self, email: str) -> str:
+    def auth_session_token(self, email: str) -> str:
         """One session per person; signing in on every command would trip the login rate limit."""
         if email not in self._tokens:
             self._tokens[email] = self._sign_in(email)
@@ -107,7 +107,7 @@ class Stack:
         """Runs one command as the owner (or as `token`); returns the result."""
         variables = {"ACME_API_URL": "http://test", **(env or {})}
         if token == "owner":
-            token = self.session_token(OWNER["email"])
+            token = self.auth_session_token(OWNER["email"])
         if token is not None:
             variables["ACME_TOKEN"] = token
         return self.runner.invoke(main.app, list(args), env=variables, catch_exceptions=False)

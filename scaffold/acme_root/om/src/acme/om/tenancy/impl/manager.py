@@ -38,8 +38,8 @@ from acme.om.tenancy.impl.creates import (
     new_identity,
 )
 from acme.om.tenancy.impl.shared import (
-    check_session,
-    create_session,
+    check_auth_session,
+    create_auth_session,
     mint_token,
     new_operator_token,
     principal_in,
@@ -63,11 +63,11 @@ from acme.om.tenancy.rules import (
 from acme.om.tenancy.sign_in import TenancySignInManagerInterface
 from acme.om.tenancy.storage import TenancyStorageInterface
 from acme.om.tenancy.types.api_key import ApiKey
+from acme.om.tenancy.types.auth_session import AuthSession
 from acme.om.tenancy.types.identity import Identity
 from acme.om.tenancy.types.issued import IssuedOperatorToken, IssuedTicket
 from acme.om.tenancy.types.membership import Membership
 from acme.om.tenancy.types.org import Org
-from acme.om.tenancy.types.session import Session
 from acme.om.tenancy.types.socket_ticket import SocketPrincipal, SocketTicket
 from acme.om.tenancy.types.user import User
 
@@ -77,11 +77,11 @@ TICKET_USED_KEY = "ticket-used:"
 """The cache remembers a redeemed ticket so a replay is refused without a
 round trip; the row decides, so a miss (or a cache that is down) costs
 one conditional write and nothing else."""
-TICKET_CREDENTIALS = (CredentialKind.SESSION_TOKEN, CredentialKind.API_KEY)
+TICKET_CREDENTIALS = (CredentialKind.AUTH_SESSION_TOKEN, CredentialKind.API_KEY)
 """The credentials a socket ticket may stand for."""
 IDENTITY_CREDENTIALS = (
     CredentialKind.LOGIN,
-    CredentialKind.SESSION_TOKEN,
+    CredentialKind.AUTH_SESSION_TOKEN,
     CredentialKind.OPERATOR_TOKEN,
 )
 """The credentials that prove an identity: the person's own sign-in, a
@@ -93,13 +93,13 @@ class TenancyOptions(OmBase):
     """Tunables, built once at boot; the manager never reads the environment."""
 
     login_ttl: timedelta = timedelta(minutes=10)
-    session_ttl: timedelta = timedelta(days=30)
+    auth_session_ttl: timedelta = timedelta(days=30)
     """A session's absolute lifetime, from the exchange of its sign-in. A
     session made from another, by a switch, keeps that one's deadline."""
-    session_idle_ttl: timedelta = timedelta(days=14)
+    auth_session_idle_ttl: timedelta = timedelta(days=14)
     """A session not presented for this long has ended, whatever is left of
     its absolute lifetime. It ends at whichever passes first."""
-    session_seen_every: timedelta = timedelta(minutes=1)
+    auth_session_seen_every: timedelta = timedelta(minutes=1)
     """How stale `last_seen_at` may be before a request writes it again, so a
     busy session costs one write a minute and not one per request."""
     sign_in_free_failures: int = 3
@@ -260,12 +260,14 @@ class TenancyManagerImpl(TenancyManagerInterface):
         # The credential and the identity it proves in one read: the operator
         # gate takes what it needs of the identity from the stage, so an
         # operator's call reads the identity once.
-        found = await self._storage.read_session_with_identity_by_digest(hash_token(credential))
+        found = await self._storage.read_auth_session_with_identity_by_digest(
+            hash_token(credential)
+        )
         if found is None:
             raise InvalidCredential(f"unknown {kind.value} credential")
         org_id, proof, identity = found
-        check_session(proof, kind, self._options.session_idle_ttl)
-        if kind is CredentialKind.SESSION_TOKEN:
+        check_auth_session(proof, kind, self._options.auth_session_idle_ttl)
+        if kind is CredentialKind.AUTH_SESSION_TOKEN:
             # A session proves its user's identity only while it proves the
             # tenant too: the org, the user, and the membership are live.
             await self._principal(org_id, proof.user_id, proof)
@@ -290,12 +292,14 @@ class TenancyManagerImpl(TenancyManagerInterface):
 
     async def authenticate(self, rctx: RequestContext, credential: str) -> TenantContext:
         kind = credential_kind_of(credential)
-        if kind is CredentialKind.SESSION_TOKEN:
-            found = await self._storage.read_session_by_digest(hash_token(credential))
+        if kind is CredentialKind.AUTH_SESSION_TOKEN:
+            found = await self._storage.read_auth_session_by_digest(hash_token(credential))
             if found is None:
                 raise InvalidCredential("unknown session token")
             org_id, session = found
-            check_session(session, CredentialKind.SESSION_TOKEN, self._options.session_idle_ttl)
+            check_auth_session(
+                session, CredentialKind.AUTH_SESSION_TOKEN, self._options.auth_session_idle_ttl
+            )
             org, user, membership = await self._principal(org_id, session.user_id, session)
             return build_context(
                 rctx,
@@ -453,7 +457,7 @@ class TenancyManagerImpl(TenancyManagerInterface):
         issued, session = new_operator_token(
             identity.id, role, expires_in, self._options.operator_token_ttl
         )
-        await create_session(self._storage, EMPTY_UUID, session)
+        await create_auth_session(self._storage, EMPTY_UUID, session)
         return issued
 
     async def resume(
@@ -465,11 +469,13 @@ class TenancyManagerImpl(TenancyManagerInterface):
         *,
         record_use: bool = True,
     ) -> SocketPrincipal:
-        if credential_kind is CredentialKind.SESSION_TOKEN:
-            session = await self._storage.read_session(org_id, credential_id)
+        if credential_kind is CredentialKind.AUTH_SESSION_TOKEN:
+            session = await self._storage.read_auth_session(org_id, credential_id)
             if session is None:
                 raise InvalidCredential("the session behind the ticket is gone")
-            check_session(session, CredentialKind.SESSION_TOKEN, self._options.session_idle_ttl)
+            check_auth_session(
+                session, CredentialKind.AUTH_SESSION_TOKEN, self._options.auth_session_idle_ttl
+            )
             org, user, membership = await self._principal(
                 org_id, session.user_id, session if record_use else None
             )
@@ -693,18 +699,18 @@ class TenancyManagerImpl(TenancyManagerInterface):
             raise CredentialExpired("api key expired")
 
     async def _principal(
-        self, org_id: UUID, user_id: UUID, session: Session | None = None
+        self, org_id: UUID, user_id: UUID, auth_session: AuthSession | None = None
     ) -> tuple[Org, User, Membership]:
         """The org, the user, and the live membership a credential stands
-        for, or InvalidCredential. A tenant session presented is recorded as
-        used, at most once a `session_seen_every`, for its idle lifetime, in
+        for, or InvalidCredential. A tenant auth session presented is recorded as
+        used, at most once a `auth_session_seen_every`, for its idle lifetime, in
         the same transaction as the read."""
         seen = None
-        if session is not None:
+        if auth_session is not None:
             now = utcnow()
-            last = session.last_seen_at
-            if last is None or last + self._options.session_seen_every <= now:
-                seen = (session.id, now)
+            last = auth_session.last_seen_at
+            if last is None or last + self._options.auth_session_seen_every <= now:
+                seen = (auth_session.id, now)
         return self._live_principal(*await self._storage.read_principal(org_id, user_id, seen))
 
     @staticmethod

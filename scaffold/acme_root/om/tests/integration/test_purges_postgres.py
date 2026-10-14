@@ -29,7 +29,7 @@ from uuid import UUID, uuid4
 import pytest
 from contracts.event_storage import append_one, make_event
 from contracts.event_storage import drained as drained_events
-from contracts.factories import make_session, make_socket_ticket
+from contracts.factories import make_auth_session, make_socket_ticket
 from contracts.idempotency_storage import drained as drained_records
 from contracts.idempotency_storage import make_record
 from contracts.orchestration_storage import drained as drained_orchestrations
@@ -201,7 +201,7 @@ async def test_every_purge_across_tenants_reads_an_index_led_by_its_retention(
     assert served(users, "ix_users_deleted_at"), users
     assert served(memberships, "ix_memberships_deleted_at"), memberships
     assert served(keys, "ix_api_keys_deleted_at") and "ix_api_keys_expires_at" in keys, keys
-    assert served(tenancy_sessions, "ix_sessions_expires_at"), tenancy_sessions
+    assert served(tenancy_sessions, "ix_auth_sessions_expires_at"), tenancy_sessions
     assert served(tickets, "ix_socket_tickets_expires_at"), tickets
     assert served(invitations, "ix_invitations_updated_at"), invitations
     assert "ix_invitations_expires_at" in invitations, invitations
@@ -377,14 +377,14 @@ async def test_a_session_purge_skips_a_row_another_transaction_holds(
     org = new_id()
     user = new_id()
     gone = before(cut, timedelta(days=1))
-    dead = [make_session(new_id(), user, uuid4().hex, ttl=gone) for _ in range(2)]
+    dead = [make_auth_session(new_id(), user, uuid4().hex, ttl=gone) for _ in range(2)]
     for session in dead:
-        await storage.write_session(org, session)
+        await storage.write_auth_session(org, session)
     await storage.create_socket_ticket(org, make_socket_ticket(user, uuid4().hex, ttl=gone))
     async with pg_sessions[DatabaseRole.CORE]() as holder:
         await set_scope(holder, org, None, None)
         await holder.execute(
-            text("SELECT id FROM core.sessions WHERE id = :id FOR UPDATE"), {"id": dead[0].id}
+            text("SELECT id FROM core.auth_sessions WHERE id = :id FOR UPDATE"), {"id": dead[0].id}
         )
         assert await storage.purge_deleted(cut, cut, 10) == 2, "a session and the ticket"
         await holder.rollback()
@@ -454,7 +454,7 @@ BACKLOG: dict[DatabaseRole, dict[str, dict[str, str]]] = {
             "role": "'member'",
             "expires_at": AGE,
         },
-        "sessions": TRACKED
+        "auth_sessions": TRACKED
         | {
             "identity_id": "gen_random_uuid()",
             "user_id": "gen_random_uuid()",
@@ -648,7 +648,7 @@ async def test_an_idle_pass_after_a_backlog_still_reads_each_purge_index(
     assert served(users, "ix_users_deleted_at"), users
     assert served(memberships, "ix_memberships_deleted_at"), memberships
     assert served(keys, "ix_api_keys_deleted_at") and "ix_api_keys_expires_at" in keys, keys
-    assert served(tenancy_sessions, "ix_sessions_expires_at"), tenancy_sessions
+    assert served(tenancy_sessions, "ix_auth_sessions_expires_at"), tenancy_sessions
     assert served(tickets, "ix_socket_tickets_expires_at"), tickets
     assert served(invitations, "ix_invitations_updated_at"), invitations
     assert "ix_invitations_expires_at" in invitations, invitations

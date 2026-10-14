@@ -113,7 +113,7 @@ TABLE_SCOPES: dict[str, TableScope] = {
     # other row here names the user and narrows on `app.user_id`.
     "users": TableScope(ScopeKind.BOTH, identity_column="identity_id"),
     "memberships": TableScope(ScopeKind.BOTH, person_column="user_id"),
-    "sessions": TableScope(ScopeKind.BOTH, person_column="user_id"),
+    "auth_sessions": TableScope(ScopeKind.BOTH, person_column="user_id"),
     "api_keys": TableScope(ScopeKind.BOTH, person_column="user_id"),
     "socket_tickets": TableScope(ScopeKind.BOTH, person_column="user_id"),
     "idempotency_records": TableScope(ScopeKind.BOTH, person_column="user_id"),

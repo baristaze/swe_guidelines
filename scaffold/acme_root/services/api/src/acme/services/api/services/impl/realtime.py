@@ -30,7 +30,7 @@ PROJECTIONS: dict[Topics, Callable[[TopicPayload], EntityChangedView]] = {
 onto before a frame is offered. A topic outside this map never reaches a client."""
 
 REVOCATIONS: dict[str, tuple[Literal["credential", "user", "membership", "org"], str]] = {
-    "tenancy.session.revoked": ("credential", CREDENTIAL_REVOKED),
+    "tenancy.auth_session.revoked": ("credential", CREDENTIAL_REVOKED),
     "tenancy.api_key.deleted": ("credential", CREDENTIAL_REVOKED),
     "tenancy.user.deleted": ("user", MEMBERSHIP_ENDED),
     "tenancy.membership.updated": ("membership", RIGHTS_CHANGED),

@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { adoptSession } from "../../app/adoptSession";
-import { forgetSession, holdSession } from "../../app/forgetSession";
+import { adoptAuthSession } from "../../app/adoptAuthSession";
+import { forgetAuthSession, holdAuthSession } from "../../app/forgetAuthSession";
 import { switchOrg } from "../../app/switchOrg";
 import { useCreateOrg, useSwitchOrg } from "../../queries/tenancy";
 import { useNoticesStore } from "../../store/notices";
@@ -35,9 +35,9 @@ export function useNewOrgVm() {
     // exchange, the same one the org chip runs.
     const outcome = await switchOrg({
       exchange: () => exchange.mutateAsync(orgId),
-      hold: holdSession,
-      adopt: adoptSession,
-      forget: forgetSession,
+      hold: holdAuthSession,
+      adopt: adoptAuthSession,
+      forget: forgetAuthSession,
       report: notify,
     });
     if (outcome === "switched") navigate("/", { replace: true });

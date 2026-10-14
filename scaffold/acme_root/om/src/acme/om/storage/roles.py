@@ -17,7 +17,7 @@ TABLE_ROLES: dict[str, DatabaseRole] = {
     "sign_in_delays": DatabaseRole.CORE,
     "users": DatabaseRole.CORE,
     "memberships": DatabaseRole.CORE,
-    "sessions": DatabaseRole.CORE,
+    "auth_sessions": DatabaseRole.CORE,
     "api_keys": DatabaseRole.CORE,
     "socket_tickets": DatabaseRole.CORE,
     "invitations": DatabaseRole.CORE,
@@ -37,6 +37,7 @@ TABLE_ROLES: dict[str, DatabaseRole] = {
 
 DROPPED_TABLE_ROLES: dict[str, DatabaseRole] = {
     "platform_sizes": DatabaseRole.ADMIN,
+    "sessions": DatabaseRole.CORE,
 }
 """Tables the migration chain made and later dropped or renamed, by the name
 they had. No process reaches them, so `role_for` does not know them; only the

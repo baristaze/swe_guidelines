@@ -13,12 +13,12 @@ from acme.om.tenancy.rules import email_digest as digest_of
 from acme.om.tenancy.rules import fold_email, is_after_in_id_order, is_after_newest_first
 from acme.om.tenancy.storage import TenancyStorageInterface
 from acme.om.tenancy.types.api_key import ApiKey
+from acme.om.tenancy.types.auth_session import AuthSession
 from acme.om.tenancy.types.identity import Identity
 from acme.om.tenancy.types.invitation import Invitation, InvitationState
 from acme.om.tenancy.types.issued import OrgMembership
 from acme.om.tenancy.types.membership import Membership
 from acme.om.tenancy.types.org import Org
-from acme.om.tenancy.types.session import Session
 from acme.om.tenancy.types.sign_in_delay import SignInDelay
 from acme.om.tenancy.types.size import SystemSize
 from acme.om.tenancy.types.socket_ticket import SocketTicket
@@ -38,7 +38,7 @@ class TenancyStorageMemoryImpl(MemoryStorageBase, TenancyStorageInterface):
         self._orgs: MemoryTable[Org] = {}
         self._users: MemoryTable[User] = {}
         self._memberships: MemoryTable[Membership] = {}
-        self._sessions: MemoryTable[Session] = {}
+        self._auth_sessions: MemoryTable[AuthSession] = {}
         self._api_keys: MemoryTable[ApiKey] = {}
         self._socket_tickets: MemoryTable[SocketTicket] = {}
         self._invitations: MemoryTable[Invitation] = {}
@@ -86,7 +86,7 @@ class TenancyStorageMemoryImpl(MemoryStorageBase, TenancyStorageInterface):
                 raise NotFound(f"identity {identity.id} not found")
             ended = [
                 session
-                for session in self._rows(self._sessions, EMPTY_UUID)
+                for session in self._rows(self._auth_sessions, EMPTY_UUID)
                 if session.identity_id == identity.id
                 and session.revoked_at is None
                 and session.expires_at > at
@@ -99,7 +99,7 @@ class TenancyStorageMemoryImpl(MemoryStorageBase, TenancyStorageInterface):
             self._identities[identity.id] = identity
             for session in ended:
                 self._put(
-                    self._sessions,
+                    self._auth_sessions,
                     EMPTY_UUID,
                     session.model_copy(
                         update={"revoked_at": at, "updated_at": at, "updated_by": EMPTY_UUID}
@@ -354,7 +354,7 @@ class TenancyStorageMemoryImpl(MemoryStorageBase, TenancyStorageInterface):
                 raise NotFound(f"membership {membership.id} is not in {org_id}")
             sessions = [
                 s.model_copy(update={"revoked_at": at, "updated_at": at, "updated_by": by})
-                for s in self._rows(self._sessions, org_id)
+                for s in self._rows(self._auth_sessions, org_id)
                 if s.user_id == user.id and s.revoked_at is None
             ]
             keys = [
@@ -365,13 +365,13 @@ class TenancyStorageMemoryImpl(MemoryStorageBase, TenancyStorageInterface):
                 if k.user_id == user.id and k.deleted_at is None
             ]
             revoked = tuple(
-                [revocation_row("tenancy.session.revoked", s.id) for s in sessions]
+                [revocation_row("tenancy.auth_session.revoked", s.id) for s in sessions]
                 + [revocation_row("tenancy.api_key.deleted", k.id) for k in keys]
             )
             self._put(self._users, org_id, user, (*outbox_rows, *revoked))
             self._put(self._memberships, org_id, membership)
             for session in sessions:
-                self._put(self._sessions, org_id, session)
+                self._put(self._auth_sessions, org_id, session)
             for key in keys:
                 self._put(self._api_keys, org_id, key)
             return revoked
@@ -403,7 +403,7 @@ class TenancyStorageMemoryImpl(MemoryStorageBase, TenancyStorageInterface):
             ]
             sessions = [
                 s.model_copy(update={"revoked_at": at, "updated_at": at, "updated_by": by})
-                for s in self._rows(self._sessions, org_id)
+                for s in self._rows(self._auth_sessions, org_id)
                 if s.revoked_at is None
             ]
             keys = [
@@ -420,7 +420,10 @@ class TenancyStorageMemoryImpl(MemoryStorageBase, TenancyStorageInterface):
             ]
             built = tuple(
                 [member_row(u) for u in users]
-                + [revocation_row("tenancy.session.revoked", s.id, s.user_id) for s in sessions]
+                + [
+                    revocation_row("tenancy.auth_session.revoked", s.id, s.user_id)
+                    for s in sessions
+                ]
                 + [revocation_row("tenancy.api_key.deleted", k.id, k.user_id) for k in keys]
             )
             self._put(self._orgs, org_id, org, (*outbox_rows, *built))
@@ -429,7 +432,7 @@ class TenancyStorageMemoryImpl(MemoryStorageBase, TenancyStorageInterface):
             for membership in memberships:
                 self._put(self._memberships, org_id, membership)
             for session in sessions:
-                self._put(self._sessions, org_id, session)
+                self._put(self._auth_sessions, org_id, session)
             for key in keys:
                 self._put(self._api_keys, org_id, key)
             for invitation in invitations:
@@ -475,15 +478,15 @@ class TenancyStorageMemoryImpl(MemoryStorageBase, TenancyStorageInterface):
                 return (org_id, user_id) in places
 
             revoked: list[OutboxRow] = []
-            for session_id, (org_id, session) in list(self._sessions.items()):
+            for auth_session_id, (org_id, session) in list(self._auth_sessions.items()):
                 if org_id == EMPTY_UUID and session.identity_id == identity_id:
-                    del self._sessions[session_id]
+                    del self._auth_sessions[auth_session_id]
                 elif theirs(org_id, session.user_id):
                     if session.revoked_at is None:
                         revoked.append(
-                            revocation_row(org_id, "tenancy.session.revoked", session_id)
+                            revocation_row(org_id, "tenancy.auth_session.revoked", auth_session_id)
                         )
-                    del self._sessions[session_id]
+                    del self._auth_sessions[auth_session_id]
             for key_id, (org_id, key) in list(self._api_keys.items()):
                 if theirs(org_id, key.user_id):
                     if key.deleted_at is None:
@@ -592,14 +595,14 @@ class TenancyStorageMemoryImpl(MemoryStorageBase, TenancyStorageInterface):
             await self.read_membership_for_user(org_id, user_id),
         )
         if seen is not None:
-            session_id, seen_at = seen
+            auth_session_id, seen_at = seen
             async with self._lock:
-                session = self._get(self._sessions, org_id, session_id)
+                session = self._get(self._auth_sessions, org_id, auth_session_id)
                 if session is None or session.user_id != user_id:
                     return found
                 if session.revoked_at is None:
                     self._put(
-                        self._sessions,
+                        self._auth_sessions,
                         org_id,
                         session.model_copy(update={"last_seen_at": seen_at}),
                     )
@@ -622,36 +625,36 @@ class TenancyStorageMemoryImpl(MemoryStorageBase, TenancyStorageInterface):
                 "uq_memberships_org_id_user_id",
             )
 
-    async def read_sessions(
+    async def read_auth_sessions(
         self, org_id: UUID, user_id: UUID, live_at: datetime, limit: int
-    ) -> list[Session]:
+    ) -> list[AuthSession]:
         live = [
             s
-            for s in self._rows(self._sessions, org_id)
+            for s in self._rows(self._auth_sessions, org_id)
             if s.user_id == user_id and s.revoked_at is None and s.expires_at > live_at
         ]
         return live[::-1][:limit]
 
-    async def read_session(self, org_id: UUID, session_id: UUID) -> Session | None:
-        return self._get(self._sessions, org_id, session_id)
+    async def read_auth_session(self, org_id: UUID, auth_session_id: UUID) -> AuthSession | None:
+        return self._get(self._auth_sessions, org_id, auth_session_id)
 
-    async def read_session_by_digest(self, token_hash: str) -> tuple[UUID, Session] | None:
+    async def read_auth_session_by_digest(self, token_hash: str) -> tuple[UUID, AuthSession] | None:
         return next(
             (
                 (org_id, session)
-                for org_id, session in self._sessions.values()
+                for org_id, session in self._auth_sessions.values()
                 if session.token_hash == token_hash
             ),
             None,
         )
 
-    async def read_session_with_identity_by_digest(
+    async def read_auth_session_with_identity_by_digest(
         self, token_hash: str
-    ) -> tuple[UUID, Session, Identity | None] | None:
+    ) -> tuple[UUID, AuthSession, Identity | None] | None:
         return next(
             (
                 (org_id, session, self._identities.get(session.identity_id))
-                for org_id, session in self._sessions.values()
+                for org_id, session in self._auth_sessions.values()
                 if session.token_hash == token_hash
             ),
             None,
@@ -659,10 +662,10 @@ class TenancyStorageMemoryImpl(MemoryStorageBase, TenancyStorageInterface):
 
     async def read_operator_tokens(
         self, identity_id: UUID, live_at: datetime, after: UUID | None, limit: int
-    ) -> list[Session]:
+    ) -> list[AuthSession]:
         live = [
             s
-            for s in self._rows(self._sessions, EMPTY_UUID)
+            for s in self._rows(self._auth_sessions, EMPTY_UUID)
             if s.identity_id == identity_id
             and s.credential_kind is CredentialKind.OPERATOR_TOKEN
             and s.revoked_at is None
@@ -673,74 +676,78 @@ class TenancyStorageMemoryImpl(MemoryStorageBase, TenancyStorageInterface):
             newest_first = [s for s in newest_first if is_after_newest_first(s.id, after)]
         return newest_first[:limit]
 
-    async def read_session_by_id(self, session_id: UUID) -> tuple[UUID, Session] | None:
-        return self._sessions.get(session_id)
+    async def read_auth_session_by_id(
+        self, auth_session_id: UUID
+    ) -> tuple[UUID, AuthSession] | None:
+        return self._auth_sessions.get(auth_session_id)
 
-    async def create_session(self, org_id: UUID, session: Session) -> bool:
+    async def create_auth_session(self, org_id: UUID, auth_session: AuthSession) -> bool:
         async with self._lock:
             self._require_free(
-                self._every(self._sessions),
-                session,
-                lambda other: other.token_hash == session.token_hash,
-                "uq_sessions_token_hash",
+                self._every(self._auth_sessions),
+                auth_session,
+                lambda other: other.token_hash == auth_session.token_hash,
+                "uq_auth_sessions_token_hash",
             )
-            return self._insert(self._sessions, org_id, session)
+            return self._insert(self._auth_sessions, org_id, auth_session)
 
-    async def write_session(
-        self, org_id: UUID, session: Session, outbox_rows: tuple[OutboxRow, ...] = ()
+    async def write_auth_session(
+        self, org_id: UUID, auth_session: AuthSession, outbox_rows: tuple[OutboxRow, ...] = ()
     ) -> None:
         self._require_free(
-            self._every(self._sessions),
-            session,
-            lambda other: other.token_hash == session.token_hash,
-            "uq_sessions_token_hash",
+            self._every(self._auth_sessions),
+            auth_session,
+            lambda other: other.token_hash == auth_session.token_hash,
+            "uq_auth_sessions_token_hash",
         )
-        self._put(self._sessions, org_id, session, outbox_rows)
+        self._put(self._auth_sessions, org_id, auth_session, outbox_rows)
 
-    async def replace_session(
+    async def replace_auth_session(
         self,
         org_id: UUID,
-        session: Session,
+        auth_session: AuthSession,
         ended_org_id: UUID,
-        ended: Session,
+        ended: AuthSession,
         outbox_rows: tuple[OutboxRow, ...],
     ) -> None:
         # Every check, then every write: the twin of one commit.
         async with self._lock:
-            stored = self._get(self._sessions, ended_org_id, ended.id)
+            stored = self._get(self._auth_sessions, ended_org_id, ended.id)
             if stored is None:
-                raise NotFound(f"session {ended.id} is not in {ended_org_id}")
+                raise NotFound(f"auth session {ended.id} is not in {ended_org_id}")
             if stored.revoked_at is not None:
-                raise Conflict(f"session {ended.id} has already ended")
-            if session.id in self._sessions:
-                raise UniqueKeyTaken(f"session {session.id} is already written")
+                raise Conflict(f"auth session {ended.id} has already ended")
+            if auth_session.id in self._auth_sessions:
+                raise UniqueKeyTaken(f"auth session {auth_session.id} is already written")
             self._require_free(
-                self._every(self._sessions),
-                session,
-                lambda other: other.token_hash == session.token_hash,
-                "uq_sessions_token_hash",
+                self._every(self._auth_sessions),
+                auth_session,
+                lambda other: other.token_hash == auth_session.token_hash,
+                "uq_auth_sessions_token_hash",
             )
-            self._put(self._sessions, ended_org_id, ended, outbox_rows)
-            self._put(self._sessions, org_id, session)
+            self._put(self._auth_sessions, ended_org_id, ended, outbox_rows)
+            self._put(self._auth_sessions, org_id, auth_session)
 
-    async def exchange_sign_in(self, org_id: UUID, session: Session, ended: Session) -> None:
+    async def exchange_sign_in(
+        self, org_id: UUID, auth_session: AuthSession, ended: AuthSession
+    ) -> None:
         # Every check, then every write: the twin of one commit.
         async with self._lock:
-            stored = self._get(self._sessions, EMPTY_UUID, ended.id)
+            stored = self._get(self._auth_sessions, EMPTY_UUID, ended.id)
             if stored is None:
-                raise NotFound(f"session {ended.id} is not a sign-in")
+                raise NotFound(f"auth session {ended.id} is not a sign-in")
             if stored.revoked_at is not None:
                 raise Conflict(f"sign-in {ended.id} was exchanged already")
-            if session.id in self._sessions:
-                raise UniqueKeyTaken(f"session {session.id} is already written")
+            if auth_session.id in self._auth_sessions:
+                raise UniqueKeyTaken(f"auth session {auth_session.id} is already written")
             self._require_free(
-                self._every(self._sessions),
-                session,
-                lambda other: other.token_hash == session.token_hash,
-                "uq_sessions_token_hash",
+                self._every(self._auth_sessions),
+                auth_session,
+                lambda other: other.token_hash == auth_session.token_hash,
+                "uq_auth_sessions_token_hash",
             )
-            self._put(self._sessions, EMPTY_UUID, ended)
-            self._put(self._sessions, org_id, session)
+            self._put(self._auth_sessions, EMPTY_UUID, ended)
+            self._put(self._auth_sessions, org_id, auth_session)
 
     async def read_api_keys(
         self, org_id: UUID, after: UUID | None, limit: int, user_id: UUID | None = None
@@ -897,7 +904,7 @@ class TenancyStorageMemoryImpl(MemoryStorageBase, TenancyStorageInterface):
             if (k.deleted_at is not None and k.deleted_at < before) or k.expires_at < before
         ][:limit]
         gone_sessions = [
-            s.id for _, s in self._rows_across_tenants(self._sessions) if s.expires_at < before
+            s.id for _, s in self._rows_across_tenants(self._auth_sessions) if s.expires_at < before
         ][:limit]
         gone_tickets = [
             t.id
@@ -914,7 +921,7 @@ class TenancyStorageMemoryImpl(MemoryStorageBase, TenancyStorageInterface):
             (self._users, [user_id for _, user_id in gone_users]),
             (self._memberships, gone_memberships),
             (self._api_keys, gone_keys),
-            (self._sessions, gone_sessions),
+            (self._auth_sessions, gone_sessions),
             (self._socket_tickets, gone_tickets),
             (self._invitations, gone_invitations),
         ):
@@ -934,7 +941,7 @@ class TenancyStorageMemoryImpl(MemoryStorageBase, TenancyStorageInterface):
             self._drop_tenant(self._users, org_id, limit)
             + self._drop_tenant(self._memberships, org_id, limit)
             + self._drop_tenant(self._api_keys, org_id, limit)
-            + self._drop_tenant(self._sessions, org_id, limit)
+            + self._drop_tenant(self._auth_sessions, org_id, limit)
             + self._drop_tenant(self._socket_tickets, org_id, limit)
             + self._drop_tenant(self._invitations, org_id, limit)
         )

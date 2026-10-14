@@ -85,13 +85,13 @@ async def test_a_revocation_ends_the_sockets_it_names_and_no_other(tmp_path: Pat
         )
 
     # Another tenant's frame with the same ids ends nothing; nor does a change of another kind.
-    await announce("tenancy.session.revoked", ann_first.ctx.credential_id, org_id=new_id())
+    await announce("tenancy.auth_session.revoked", ann_first.ctx.credential_id, org_id=new_id())
     await announce("media.file.updated", ann_first.ctx.credential_id)
     # A membership's change names the membership, never the user.
     await announce("tenancy.membership.updated", bob.id)
     assert all(reasons == [] for reasons in ended.values())
 
-    await announce("tenancy.session.revoked", ann_first.ctx.credential_id)
+    await announce("tenancy.auth_session.revoked", ann_first.ctx.credential_id)
     assert ended["ann_first"] == [CREDENTIAL_REVOKED]
     assert ended["ann_second"] == [] and ended["from_key"] == []
 
@@ -174,21 +174,21 @@ async def test_the_recheck_answers_what_the_redemption_would(tmp_path: Path) -> 
     assert await realtime.recheck(principal) is None
 
     # Revoked in storage, with no message on any bus.
-    found = await storage.read_session_by_digest(hash_token(token))
+    found = await storage.read_auth_session_by_digest(hash_token(token))
     assert found is not None
     _, session = found
-    await storage.write_session(org.id, session.model_copy(update={"revoked_at": utcnow()}))
+    await storage.write_auth_session(org.id, session.model_copy(update={"revoked_at": utcnow()}))
     assert await realtime.recheck(principal) == "not_authenticated"
 
     # A session idle past its lifetime is refused as a request would be.
     idle_token = await session_of(container, org.id, OWNER["email"])
     idle = await principal_of(container, idle_token)
-    found = await storage.read_session_by_digest(hash_token(idle_token))
+    found = await storage.read_auth_session_by_digest(hash_token(idle_token))
     assert found is not None
     _, session = found
-    idle_lifetime = timedelta(seconds=container.settings.session_idle_lifetime_seconds)
+    idle_lifetime = timedelta(seconds=container.settings.auth_session_idle_lifetime_seconds)
     long_ago = utcnow() - idle_lifetime - timedelta(seconds=1)
-    await storage.write_session(org.id, session.model_copy(update={"last_seen_at": long_ago}))
+    await storage.write_auth_session(org.id, session.model_copy(update={"last_seen_at": long_ago}))
     assert await realtime.recheck(idle) == "not_authenticated"
 
     # The role, changed in storage alone.
@@ -220,15 +220,15 @@ async def test_the_recheck_is_not_a_use_of_the_session(tmp_path: Path) -> None:
     _, org = await tenancy.bootstrap(seed_request(), "Ajax", "ajax", OWNER["email"], OWNER["name"])
     token = await session_of(container, org.id, OWNER["email"])
     principal = await principal_of(container, token)
-    found = await storage.read_session_by_digest(hash_token(token))
+    found = await storage.read_auth_session_by_digest(hash_token(token))
     assert found is not None
     _, session = found
     seen = utcnow() - timedelta(hours=1)
-    await storage.write_session(org.id, session.model_copy(update={"last_seen_at": seen}))
+    await storage.write_auth_session(org.id, session.model_copy(update={"last_seen_at": seen}))
 
     assert await container.services.get_realtime_service().recheck(principal) is None
 
-    found = await storage.read_session_by_digest(hash_token(token))
+    found = await storage.read_auth_session_by_digest(hash_token(token))
     assert found is not None
     assert found[1].last_seen_at == seen
 

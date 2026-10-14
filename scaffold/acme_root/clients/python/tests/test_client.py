@@ -162,7 +162,7 @@ async def test_the_sign_in_flow_uses_the_credential_it_is_given() -> None:
     )
     async with client_over(recorder, token=None) as client:
         issued = await client.dev_sign_in("ann@example.test")
-        exchanged = await client.exchange_session(issued.token, issued.memberships[0].org.id)
+        exchanged = await client.exchange_auth_session(issued.token, issued.memberships[0].org.id)
     assert exchanged.token == "ses_2" and exchanged.org.slug == "ajax"
     assert "authorization" not in recorder.requests[0].headers
     assert recorder.requests[1].headers["authorization"] == "Bearer lgn_1"
@@ -338,14 +338,14 @@ async def test_a_switch_presents_the_session_and_carries_the_new_one() -> None:
     }
     recorder = Recorder({"/v1/auth/sessions": httpx.Response(200, json=switched)})
     async with client_over(recorder, token="ses_1") as client:
-        issued = await client.switch_session(UUID(ORG["id"]))
+        issued = await client.switch_auth_session(UUID(ORG["id"]))
         assert client.token == "ses_2" and issued.role.value == "member"
         await client.me()
     assert recorder.requests[0].headers["authorization"] == "Bearer ses_1"
     assert recorder.requests[1].headers["authorization"] == "Bearer ses_2"
     async with client_over(recorder, token=None) as client:
         with pytest.raises(ApiError) as refused:
-            await client.switch_session(UUID(ORG["id"]))
+            await client.switch_auth_session(UUID(ORG["id"]))
     assert refused.value.status == 401
 
 

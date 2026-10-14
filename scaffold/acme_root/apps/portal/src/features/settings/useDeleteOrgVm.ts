@@ -1,8 +1,8 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import type { MeView } from "@acme/client";
-import { adoptSession } from "../../app/adoptSession";
-import { forgetSession, holdSession } from "../../app/forgetSession";
+import { adoptAuthSession } from "../../app/adoptAuthSession";
+import { forgetAuthSession, holdAuthSession } from "../../app/forgetAuthSession";
 import { useDeleteOrg } from "../../queries/tenancy";
 import { useNoticesStore } from "../../store/notices";
 import { deleteOrg } from "./deleteOrg";
@@ -25,9 +25,9 @@ export function useDeleteOrgVm(me: MeView | undefined) {
     setRefusal(null);
     const outcome = await deleteOrg({
       remove: () => remove.mutateAsync({ name: typed }),
-      hold: holdSession,
-      adopt: adoptSession,
-      forget: forgetSession,
+      hold: holdAuthSession,
+      adopt: adoptAuthSession,
+      forget: forgetAuthSession,
       land: (where) => {
         if (where === "home") {
           if (name) notify(`${name} is deleted.`);

@@ -256,7 +256,7 @@ class World:
             org_id=creator.org_id,
             role=role,
             permissions=ROLE_PERMISSIONS[role],
-            credential_kind=CredentialKind.SESSION_TOKEN,
+            credential_kind=CredentialKind.AUTH_SESSION_TOKEN,
         )
 
     async def resource(self, ctx: TenantContext, *labels: str) -> Resource:

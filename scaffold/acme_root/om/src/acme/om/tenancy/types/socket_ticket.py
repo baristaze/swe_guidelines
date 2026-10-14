@@ -13,7 +13,7 @@ from acme.om.context import CredentialKind, TenantContext
 class SocketTicket(Identifiable, Created):
     user_id: UUID
     ticket_hash: str  # only the hash of the ticket is kept
-    credential_kind: CredentialKind  # session_token or api_key
+    credential_kind: CredentialKind  # auth_session_token or api_key
     credential_id: UUID
     expires_at: datetime
     redeemed_at: datetime | None = None

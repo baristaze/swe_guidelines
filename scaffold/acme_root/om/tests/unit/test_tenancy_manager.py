@@ -75,7 +75,7 @@ from acme.om.tenancy.rules import (
 from acme.om.tenancy.storage.impl.memory import TenancyStorageMemoryImpl
 from acme.om.tenancy.types.identity import Identity
 from acme.om.tenancy.types.invitation import Invitation
-from acme.om.tenancy.types.issued import IssuedSession, OrgMembership
+from acme.om.tenancy.types.issued import IssuedAuthSession, OrgMembership
 from acme.om.tenancy.types.membership import Membership
 from acme.om.tenancy.types.org import Org, OrgKind
 from acme.om.tenancy.types.socket_ticket import SocketPrincipal
@@ -319,7 +319,7 @@ async def test_bootstrap_login_exchange_authenticate(manager: TenancyManagerInte
     assert ctx.org_id == org.id
     assert ctx.user_id == issued.user.id
     assert ctx.security.role is Role.OWNER
-    assert ctx.security.credential_kind is CredentialKind.SESSION_TOKEN
+    assert ctx.security.credential_kind is CredentialKind.AUTH_SESSION_TOKEN
     assert ctx.has(Permission.MANAGE_MEMBERS)
     assert (await manager.org.get_org(ctx)) == org
     assert [u.id for u in (await manager.members.get_users(ctx, None, limit=10)).items] == [
@@ -465,7 +465,7 @@ async def test_expired_sessions_are_refused(
     storage: TenancyStorageMemoryImpl, infra: InfraLocalImpl
 ) -> None:
     manager = make_manager(
-        storage, infra, TenancyOptions(dev_sign_in=True, session_ttl=timedelta(seconds=-1))
+        storage, infra, TenancyOptions(dev_sign_in=True, auth_session_ttl=timedelta(seconds=-1))
     )
     _, org = await manager.bootstrap(request(), "Ajax", "ajax", "ann@example.test", "Ann")
     login = await manager.sign_in.dev_sign_in(request(), "ann@example.test")
@@ -488,17 +488,17 @@ async def test_a_session_idle_past_its_idle_lifetime_has_ended(
         await manager.authenticate_login(request(), login.token), org.id
     )
     ctx = await manager.authenticate(request(), issued.token)
-    seen = await storage.read_session(org.id, ctx.credential_id)
+    seen = await storage.read_auth_session(org.id, ctx.credential_id)
     assert seen is not None and seen.last_seen_at is not None
     await manager.authenticate(request(), issued.token)
-    again = await storage.read_session(org.id, ctx.credential_id)
+    again = await storage.read_auth_session(org.id, ctx.credential_id)
     assert again is not None and again.last_seen_at == seen.last_seen_at, "once a minute"
     # Just past the idle lifetime without a request, well inside the absolute one.
     options = TenancyOptions()
-    assert options.session_idle_ttl < options.session_ttl
-    since = utcnow() - options.session_idle_ttl - timedelta(seconds=1)
+    assert options.auth_session_idle_ttl < options.auth_session_ttl
+    since = utcnow() - options.auth_session_idle_ttl - timedelta(seconds=1)
     idle = seen.model_copy(update={"last_seen_at": since})
-    await storage.write_session(org.id, idle)
+    await storage.write_auth_session(org.id, idle)
     with pytest.raises(CredentialExpired, match="idle"):
         await manager.authenticate(request(), issued.token)
     with pytest.raises(CredentialExpired, match="idle"):
@@ -720,7 +720,7 @@ async def test_removing_a_member_revokes_their_credentials_and_announces_each(
     assert [
         k.user_id for k in (await manager.credentials.get_api_keys(owner, None, limit=10)).items
     ] == []
-    assert await storage.read_sessions(org.id, bob.id, utcnow(), 10) == []
+    assert await storage.read_auth_sessions(org.id, bob.id, utcnow(), 10) == []
     stored = await storage.read_api_key(org.id, key.api_key.id)
     assert stored is not None and stored.deleted_at is not None
     assert stored.deleted_by == owner.user_id
@@ -730,8 +730,8 @@ async def test_removing_a_member_revokes_their_credentials_and_announces_each(
     assert kinds[0] == ("tenancy.user.deleted", bob.id)
     assert sorted(kinds[1:]) == sorted(
         [
-            ("tenancy.session.revoked", bobs.security.credential_id),
-            ("tenancy.session.revoked", other.security.credential_id),
+            ("tenancy.auth_session.revoked", bobs.security.credential_id),
+            ("tenancy.auth_session.revoked", other.security.credential_id),
             ("tenancy.api_key.deleted", key.api_key.id),
         ]
     )
@@ -803,7 +803,7 @@ async def test_a_removal_that_fails_leaves_the_member_whole(
     cids = await sign_in(manager, "cid@example.test", org.id)
     with pytest.raises(RuntimeError):
         await manager.members.remove_member(owner, cid.id)
-    session = await storage.read_session(org.id, cids.credential_id)
+    session = await storage.read_auth_session(org.id, cids.credential_id)
     assert session is not None and session.revoked_at is None, "still signed in"
     assert cid.id in [u.id for u in (await manager.members.get_users(owner, None, limit=10)).items]
     assert cid.id in [
@@ -879,25 +879,25 @@ async def test_sessions_are_listed_revoked_and_logged_out(
     ctx = await manager.authenticate(request(), first.token)
     other = await manager.authenticate(request(), second.token)
 
-    sessions = await manager.credentials.get_sessions(ctx, limit=10)
+    sessions = await manager.credentials.get_auth_sessions(ctx, limit=10)
     assert {s.id for s in sessions} == {ctx.security.credential_id, other.security.credential_id}
-    assert all(s.credential_kind is CredentialKind.SESSION_TOKEN for s in sessions)
+    assert all(s.credential_kind is CredentialKind.AUTH_SESSION_TOKEN for s in sessions)
 
-    revoked = await manager.credentials.revoke_session(ctx, other.security.credential_id)
+    revoked = await manager.credentials.revoke_auth_session(ctx, other.security.credential_id)
     assert revoked.revoked_at is not None and revoked.updated_at == revoked.revoked_at
     with pytest.raises(CredentialExpired):
         await manager.authenticate(request(), second.token)
-    assert [s.id for s in await manager.credentials.get_sessions(ctx, limit=10)] == [
+    assert [s.id for s in await manager.credentials.get_auth_sessions(ctx, limit=10)] == [
         ctx.security.credential_id
     ]
     with pytest.raises(NotFound):
-        await manager.credentials.revoke_session(ctx, other.security.credential_id)
+        await manager.credentials.revoke_auth_session(ctx, other.security.credential_id)
 
     await add_member(storage, org.id, "cid@example.test", Role.VIEWER)
     viewer = await sign_in(manager, "cid@example.test", org.id)
     with pytest.raises(NotAuthorized):
-        await manager.credentials.revoke_session(viewer, ctx.security.credential_id)
-    assert await manager.credentials.get_sessions(viewer, limit=10) != sessions
+        await manager.credentials.revoke_auth_session(viewer, ctx.security.credential_id)
+    assert await manager.credentials.get_auth_sessions(viewer, limit=10) != sessions
 
     issued = await manager.credentials.create_api_key(ctx, "ci", Role.MEMBER)
     # An api key has no sign-out: it never proves an identity, and its holder
@@ -908,7 +908,7 @@ async def test_sessions_are_listed_revoked_and_logged_out(
     signed_out = await manager.sign_in.logout(
         await manager.authenticate_login(request(), first.token)
     )
-    out = signed_out.session
+    out = signed_out.auth_session
     assert out.id == ctx.security.credential_id and out.revoked_at is not None
     # The local sign-in leaves no session at the provider to end.
     assert signed_out.provider_logout_url is None
@@ -980,14 +980,14 @@ async def test_revoking_a_session_announces_it_on_the_bus_without_its_token(
     ctx = await sign_in(manager, "ann@example.test", org.id)
     other = await sign_in(manager, "ann@example.test", org.id)
 
-    revoked = await manager.credentials.revoke_session(ctx, other.security.credential_id)
-    row = next(r for _, r in relay.rows if r.kind == "tenancy.session.revoked")
+    revoked = await manager.credentials.revoke_auth_session(ctx, other.security.credential_id)
+    row = next(r for _, r in relay.rows if r.kind == "tenancy.auth_session.revoked")
     assert row.target_id == revoked.id and row.actor_id == ctx.user_id
     assert "token_hash" not in row.payload
     assert row.payload == {"user_id": str(ctx.user_id)}, "ids only"
     frames = [p for p in published if isinstance(p, EntityChangedPayload)]
-    assert [(f.kind, f.target_id, f.org_id) for f in frames if f.kind.startswith("tenancy.se")] == [
-        ("tenancy.session.revoked", revoked.id, org.id)
+    assert [(f.kind, f.target_id, f.org_id) for f in frames if f.kind.startswith("tenancy.auth_session.")] == [
+        ("tenancy.auth_session.revoked", revoked.id, org.id)
     ]
 
     # Logging out is the same revocation, announced the same way.
@@ -999,10 +999,10 @@ async def test_revoking_a_session_announces_it_on_the_bus_without_its_token(
     )
     out = (
         await manager.sign_in.logout(await manager.authenticate_login(request(), third.token))
-    ).session
+    ).auth_session
     logged_out = next(r for _, r in relay.rows if r.target_id == out.id)
     assert logged_out.actor_id == ctx.user_id and logged_out.org_id == org.id
-    assert [r.target_id for _, r in relay.rows if r.kind == "tenancy.session.revoked"] == [
+    assert [r.target_id for _, r in relay.rows if r.kind == "tenancy.auth_session.revoked"] == [
         revoked.id,
         out.id,
     ]
@@ -1017,13 +1017,13 @@ async def test_a_page_of_dead_sessions_never_hides_a_live_one(
     _, org = await manager.bootstrap(request(), "Ajax", "ajax", "ann@example.test", "Ann")
     older = await sign_in(manager, "ann@example.test", org.id)
     newer = await sign_in(manager, "ann@example.test", org.id)
-    stale = await storage.read_session(org.id, older.security.credential_id)
+    stale = await storage.read_auth_session(org.id, older.security.credential_id)
     assert stale is not None
-    await storage.write_session(
+    await storage.write_auth_session(
         org.id, stale.model_copy(update={"expires_at": utcnow() - timedelta(seconds=1)})
     )
     # The page holds one session; the expired one must not be it.
-    assert [s.id for s in await manager.credentials.get_sessions(newer, limit=10)] == [
+    assert [s.id for s in await manager.credentials.get_auth_sessions(newer, limit=10)] == [
         newer.security.credential_id
     ]
 
@@ -1185,7 +1185,7 @@ async def test_an_operator_token_carries_one_permission_and_reaches_the_plane_on
     issued = await operator.issue_operator_token(admin, OperatorRole.READ)
     assert issued.token.startswith("opr_")
     assert timedelta(minutes=59) < issued.expires_at - utcnow() <= timedelta(hours=1)
-    found = await storage.read_session_by_digest(hash_token(issued.token))
+    found = await storage.read_auth_session_by_digest(hash_token(issued.token))
     assert found is not None and found[0] == EMPTY_UUID, "a row of the system scope"
     assert found[1].credential_kind is CredentialKind.OPERATOR_TOKEN
     assert found[1].token_hash != issued.token, "stored as its digest"
@@ -1228,9 +1228,9 @@ async def test_an_operator_token_carries_one_permission_and_reaches_the_plane_on
     with pytest.raises(CredentialExpired):
         await manager.authenticate_login(request(), writer.token)
     short = await manager.grant_operator_token(request(), "sup@example.test", timedelta(seconds=1))
-    row = await storage.read_session_by_digest(hash_token(short.token))
+    row = await storage.read_auth_session_by_digest(hash_token(short.token))
     assert row is not None
-    await storage.write_session(
+    await storage.write_auth_session(
         EMPTY_UUID, row[1].model_copy(update={"expires_at": utcnow() - timedelta(seconds=1)})
     )
     with pytest.raises(CredentialExpired):
@@ -1253,10 +1253,10 @@ async def test_a_sign_in_with_its_code_mints_one_token_and_ends(
     with pytest.raises(NotAuthorized):
         await operator.size(minting)
     issued = await operator.issue_operator_token(minting, OperatorRole.READ)
-    row = await storage.read_session_by_id(issued.id)
+    row = await storage.read_auth_session_by_id(issued.id)
     assert row is not None and row[1].token_hash == hash_token(issued.token)
     assert row[1].created_by == minting.identity_id
-    ended = await storage.read_session_by_id(minting.credential_id)
+    ended = await storage.read_auth_session_by_id(minting.credential_id)
     assert ended is not None and ended[1].revoked_at is not None
     with pytest.raises(CredentialExpired):
         await manager.authenticate_login(request(), login.token)
@@ -1354,7 +1354,7 @@ async def test_a_sign_out_ends_the_credential_presented_whichever_it_is(
     await manager.bootstrap(request(), "Ajax", "ajax", "ann@example.test", "Ann")
     picker = await manager.sign_in.dev_sign_in(request(), "ann@example.test")
     out = await manager.sign_in.logout(await manager.authenticate_login(request(), picker.token))
-    assert out.session.credential_kind is CredentialKind.LOGIN and out.session.revoked_at
+    assert out.auth_session.credential_kind is CredentialKind.LOGIN and out.auth_session.revoked_at
     with pytest.raises(CredentialExpired):
         await manager.authenticate_login(request(), picker.token)
 
@@ -1372,7 +1372,7 @@ async def test_a_sign_out_ends_the_credential_presented_whichever_it_is(
     signed_out = await manager.sign_in.logout(
         await manager.authenticate_login(request(), token.token)
     )
-    assert signed_out.session.id == token.id and signed_out.provider_logout_url is None
+    assert signed_out.auth_session.id == token.id and signed_out.provider_logout_url is None
     with pytest.raises(CredentialExpired):
         await manager.authenticate_login(request(), token.token)
     assert token.id not in {
@@ -1455,7 +1455,7 @@ async def test_each_credential_is_checked_in_the_fewest_reads(
     login = await second_factor(manager, "root@example.test", clock.code(secret))
     reads = counted_reads(storage, monkeypatch)
     await manager.authenticate(request(), session.token)
-    assert reads == ["read_session_by_digest", "read_principal"]
+    assert reads == ["read_auth_session_by_digest", "read_principal"]
     reads.clear()
     await manager.authenticate(request(), key.key)
     assert reads == ["read_api_key_by_digest", "read_principal"]
@@ -1468,7 +1468,7 @@ async def test_each_credential_is_checked_in_the_fewest_reads(
     for credential in (login.token, token.token):
         reads.clear()
         await manager.admit_operator(await manager.authenticate_login(request(), credential))
-        assert reads == ["read_session_with_identity_by_digest"]
+        assert reads == ["read_auth_session_with_identity_by_digest"]
 
 
 async def test_the_grant_job_puts_an_identity_on_the_allowlist_and_audits_it(
@@ -1653,7 +1653,7 @@ async def test_a_deleted_orgs_rows_are_purged_once_the_retention_has_passed(
     assert await storage.read_users(org.id, None, limit=10) == []
     assert await storage.read_memberships(org.id, limit=10) == []
     assert await storage.read_api_keys(org.id, None, limit=10) == []
-    assert await storage.read_sessions(org.id, ann.user_id, utcnow(), 10) == []
+    assert await storage.read_auth_sessions(org.id, ann.user_id, utcnow(), 10) == []
     tombstone = await storage.read_org(org.id)
     assert tombstone is not None and tombstone.deleted_at is not None
     assert await no_retention.purge_tenant(sweep) == 0
@@ -1747,7 +1747,7 @@ async def test_resume_and_service_contexts(manager: TenancyManagerInterface) -> 
     rebuilt = await manager.service_context(request(), org.id, ctx.user_id)
     assert rebuilt.user_id == ctx.user_id
     with pytest.raises(InvalidCredential):
-        await manager.resume(request(), org.id, CredentialKind.SESSION_TOKEN, new_id())
+        await manager.resume(request(), org.id, CredentialKind.AUTH_SESSION_TOKEN, new_id())
 
 
 async def test_a_claim_for_a_departed_members_item_still_runs_under_their_name(
@@ -1826,7 +1826,7 @@ async def test_the_sweep_purges_the_expired_logins_of_the_system_scope(
     )
     await manager.bootstrap(request(), "Ajax", "ajax", "ann@example.test", "Ann")
     login = await manager.sign_in.dev_sign_in(request(), "ann@example.test")
-    found = await storage.read_session_by_digest(hash_token(login.token))
+    found = await storage.read_auth_session_by_digest(hash_token(login.token))
     assert found is not None and found[0] == EMPTY_UUID
     system = next(c for c in await manager.service_contexts(request()) if c.org_id == EMPTY_UUID)
     assert system.user_id == EMPTY_UUID and system.role is Role.SERVICE
@@ -1836,7 +1836,7 @@ async def test_the_sweep_purges_the_expired_logins_of_the_system_scope(
     )
     assert await no_retention.purge_tenant(system) == 0, "the system scope never expires"
     assert await no_retention.purge_across_tenants() == 1
-    assert await storage.read_session_by_digest(hash_token(login.token)) is None
+    assert await storage.read_auth_session_by_digest(hash_token(login.token)) is None
 
 
 async def test_expired_api_keys_are_purged_like_revoked_ones(
@@ -1876,7 +1876,7 @@ async def test_a_socket_ticket_is_redeemed_exactly_once(
     assert socket_ctx.security.credential_kind is CredentialKind.SOCKET_TICKET
     assert socket_ctx.security.credential_id == ctx.security.credential_id
     # The socket's authority ends with the session behind the ticket.
-    session = await storage.read_session(org.id, ctx.security.credential_id)
+    session = await storage.read_auth_session(org.id, ctx.security.credential_id)
     assert session is not None and principal.expires_at == session.expires_at
     with pytest.raises(InvalidCredential):
         await manager.redeem_ticket(request(), issued.ticket)
@@ -1899,18 +1899,18 @@ async def test_a_socket_is_resumed_without_recording_a_use(
     principal = await manager.redeem_ticket(request(), (await manager.issue_ticket(ctx)).ticket)
     membership = await storage.read_membership_for_user(org.id, ctx.user_id)
     assert membership is not None
-    assert principal.credential_kind is CredentialKind.SESSION_TOKEN
+    assert principal.credential_kind is CredentialKind.AUTH_SESSION_TOKEN
     assert principal.membership_id == membership.id
 
-    session = await storage.read_session(org.id, ctx.security.credential_id)
+    session = await storage.read_auth_session(org.id, ctx.security.credential_id)
     assert session is not None
     seen = utcnow() - timedelta(hours=1)
-    await storage.write_session(org.id, session.model_copy(update={"last_seen_at": seen}))
+    await storage.write_auth_session(org.id, session.model_copy(update={"last_seen_at": seen}))
     again = await manager.resume(
         request(), org.id, principal.credential_kind, ctx.security.credential_id, record_use=False
     )
     assert again.ctx.security == principal.ctx.security
-    session = await storage.read_session(org.id, ctx.security.credential_id)
+    session = await storage.read_auth_session(org.id, ctx.security.credential_id)
     assert session is not None and session.last_seen_at == seen
 
 
@@ -2655,7 +2655,7 @@ async def test_a_live_session_proves_the_identity_and_a_dead_one_does_not(
     )
     ictx = await manager.authenticate_login(request(), session.token)
     assert ictx.email == "ann@example.test"
-    assert ictx.credential_kind is CredentialKind.SESSION_TOKEN
+    assert ictx.credential_kind is CredentialKind.AUTH_SESSION_TOKEN
     await manager.sign_in.logout(ictx)
     with pytest.raises(CredentialExpired):
         await manager.authenticate_login(request(), session.token)
@@ -2667,7 +2667,7 @@ async def test_an_expired_session_or_a_removed_members_proves_no_identity(
     storage: TenancyStorageMemoryImpl, infra: InfraLocalImpl
 ) -> None:
     expiring = make_manager(
-        storage, infra, TenancyOptions(dev_sign_in=True, session_ttl=timedelta(seconds=-1))
+        storage, infra, TenancyOptions(dev_sign_in=True, auth_session_ttl=timedelta(seconds=-1))
     )
     manager = make_manager(storage, infra)
     _, org = await manager.bootstrap(request(), "Ajax", "ajax", "ann@example.test", "Ann")
@@ -2762,7 +2762,7 @@ async def test_a_switch_ends_the_session_it_was_presented_with_in_the_same_write
     # The session it was presented with is over, announced under its own tenant.
     with pytest.raises(CredentialExpired):
         await manager.authenticate(request(), tab.token)
-    revoked = [(org_id, r) for org_id, r in relay.rows if r.kind == "tenancy.session.revoked"]
+    revoked = [(org_id, r) for org_id, r in relay.rows if r.kind == "tenancy.auth_session.revoked"]
     assert len(revoked) == 1
     org_id, row = revoked[0]
     assert org_id == ajax.id and row.org_id == ajax.id
@@ -2819,15 +2819,15 @@ async def test_a_session_made_from_a_session_keeps_its_deadline(
     beta = await storage.read_org_by_slug("beta")
     assert beta is not None
 
-    async def exchange(token: str, org_id: UUID) -> IssuedSession:
+    async def exchange(token: str, org_id: UUID) -> IssuedAuthSession:
         return await manager.sign_in.exchange_login(
             await manager.authenticate_login(request(), token), org_id
         )
 
-    async def deadline(issued: IssuedSession) -> datetime:
+    async def deadline(issued: IssuedAuthSession) -> datetime:
         """The deadline on the row every request reads, which is the one issued."""
         ctx = await manager.authenticate(request(), issued.token)
-        row = await storage.read_session(ctx.org_id, ctx.security.credential_id)
+        row = await storage.read_auth_session(ctx.org_id, ctx.security.credential_id)
         assert row is not None and row.expires_at == issued.expires_at
         return row.expires_at
 
@@ -2841,7 +2841,7 @@ async def test_a_session_made_from_a_session_keeps_its_deadline(
     assert await deadline(same) == signed_in_until, "a switch within the same org"
     back = await exchange(same.token, ajax.id)
     owner = await manager.authenticate(request(), back.token)
-    home = (await manager.org.delete_org(owner, "Ajax")).session
+    home = (await manager.org.delete_org(owner, "Ajax")).auth_session
     assert home is not None and home.org.personal
     assert await deadline(home) == signed_in_until, "the landing after an org's deletion"
 
@@ -2853,7 +2853,7 @@ async def test_a_session_made_from_a_session_keeps_its_deadline(
     # A lifetime set shorter since the sign-in binds the next session too: the
     # earlier of the two deadlines, never the later.
     a_day = make_manager(
-        storage, infra, TenancyOptions(dev_sign_in=True, session_ttl=timedelta(days=1))
+        storage, infra, TenancyOptions(dev_sign_in=True, auth_session_ttl=timedelta(days=1))
     )
     capped = await a_day.sign_in.exchange_login(
         await a_day.authenticate_login(request(), again.token), beta.id
@@ -2874,7 +2874,7 @@ async def test_a_sign_in_is_exchanged_once(
     issued = await manager.sign_in.exchange_login(ictx, ajax.id)
     ctx = await manager.authenticate(request(), issued.token)
     # The sign-in ended in the write that made the session.
-    ended = await storage.read_session_by_id(ictx.credential_id)
+    ended = await storage.read_auth_session_by_id(ictx.credential_id)
     assert ended is not None and ended[0] == EMPTY_UUID
     assert ended[1].revoked_at == ended[1].updated_at is not None
     # A second exchange, a replay or a retry after a lost answer, lands nothing.
@@ -2884,7 +2884,7 @@ async def test_a_sign_in_is_exchanged_once(
     # places included; the session is what the person holds.
     with pytest.raises(CredentialExpired, match="sign in again"):
         await manager.authenticate_login(request(), login.token)
-    assert [s.id for s in await manager.credentials.get_sessions(ctx, limit=10)] == [
+    assert [s.id for s in await manager.credentials.get_auth_sessions(ctx, limit=10)] == [
         ctx.security.credential_id
     ]
     # A new sign-in makes a new session.
@@ -2910,7 +2910,7 @@ async def test_two_exchanges_of_one_sign_in_admit_one(
     assert len(won) == 1 and len(lost) == 2
     assert all(isinstance(error, CredentialExpired) for error in lost)
     ctx = await manager.authenticate(request(), won[0].token)
-    assert [s.id for s in await manager.credentials.get_sessions(ctx, limit=10)] == [
+    assert [s.id for s in await manager.credentials.get_auth_sessions(ctx, limit=10)] == [
         ctx.security.credential_id
     ]
 

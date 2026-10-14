@@ -168,7 +168,7 @@ class World:
             org_id=creator.org_id,
             role=Role.MEMBER,
             permissions=ROLE_PERMISSIONS[Role.MEMBER],
-            credential_kind=CredentialKind.SESSION_TOKEN,
+            credential_kind=CredentialKind.AUTH_SESSION_TOKEN,
         )
 
     async def dock(self, ctx: TenantContext) -> Resource:

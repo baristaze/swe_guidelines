@@ -38,16 +38,16 @@ from acme.om.outbox.types.row import OutboxRow
 from acme.om.tenancy.impl.creates import add_member_to, create_person, new_identity
 from acme.om.tenancy.impl.manager import TenancyOptions
 from acme.om.tenancy.impl.shared import (
-    check_session,
+    auth_session_payload,
+    check_auth_session,
     clamp,
-    create_session,
+    create_auth_session,
     ended_by,
     exchange_sign_in,
     memberships_of,
     mint_token,
     principal_in,
     provider_logout_url,
-    session_payload,
 )
 from acme.om.tenancy.impl.totp import TotpSealer
 from acme.om.tenancy.rules import (
@@ -63,18 +63,18 @@ from acme.om.tenancy.rules import (
 )
 from acme.om.tenancy.sign_in import TenancySignInManagerInterface
 from acme.om.tenancy.storage import TenancyStorageInterface
+from acme.om.tenancy.types.auth_session import AuthSession
 from acme.om.tenancy.types.identity import Identity
 from acme.om.tenancy.types.invitation import Invitation, InvitationState
 from acme.om.tenancy.types.issued import (
+    IssuedAuthSession,
     IssuedLogin,
-    IssuedSession,
     OrgMembership,
     SignedOut,
     SignInStart,
 )
 from acme.om.tenancy.types.org import Org, OrgKind
 from acme.om.tenancy.types.page import OrgMembershipPage
-from acme.om.tenancy.types.session import Session
 from acme.om.tenancy.types.user import User
 
 log = logging.getLogger(__name__)
@@ -219,7 +219,7 @@ class TenancySignInManagerImpl(TenancySignInManagerInterface):
         memberships = await memberships_of(
             self._storage, identity.id, self._options.max_orgs_per_identity
         )
-        presented = await self._storage.read_session_by_id(ictx.credential_id)
+        presented = await self._storage.read_auth_session_by_id(ictx.credential_id)
         if presented is None:
             raise InvalidCredential("the sign-in behind the code is gone")
         _, sign_in = presented
@@ -498,7 +498,7 @@ class TenancySignInManagerImpl(TenancySignInManagerInterface):
     ) -> IssuedLogin:
         """The credential that carries no tenant, stored under the system scope."""
         token, session = self._new_login(identity, provider_session_id=provider_session_id)
-        await create_session(self._storage, EMPTY_UUID, session)
+        await create_auth_session(self._storage, EMPTY_UUID, session)
         return IssuedLogin(token=token, expires_at=session.expires_at, memberships=memberships)
 
     def _new_login(
@@ -507,11 +507,11 @@ class TenancySignInManagerImpl(TenancySignInManagerInterface):
         *,
         second_factor_at: datetime | None = None,
         provider_session_id: str | None = None,
-    ) -> tuple[str, Session]:
+    ) -> tuple[str, AuthSession]:
         """A sign-in credential and the row that keeps it, as its digest."""
         now = utcnow()
         token = mint_token(CredentialKind.LOGIN)
-        session = Session(
+        session = AuthSession(
             id=new_id(),
             created_at=now,
             updated_at=now,
@@ -526,24 +526,24 @@ class TenancySignInManagerImpl(TenancySignInManagerInterface):
         )
         return token, session
 
-    async def exchange_login(self, ictx: IdentityContext, org_id: UUID) -> IssuedSession:
+    async def exchange_login(self, ictx: IdentityContext, org_id: UUID) -> IssuedAuthSession:
         self._refuse_operator_token(ictx)
         org, user, membership = await principal_in(
             self._storage, org_id, ictx.identity_id, self._options.max_orgs_per_identity
         )
         # The credential presented: the sign-in, or the session a switch ends.
         # The new session carries the provider's session it came from.
-        presented = await self._storage.read_session_by_id(ictx.credential_id)
+        presented = await self._storage.read_auth_session_by_id(ictx.credential_id)
         if presented is None:
             raise InvalidCredential("the credential behind the exchange is gone")
         now = utcnow()
         # A sign-in starts the absolute lifetime; a switch keeps the deadline
         # of the session it ends, so a session never renews itself.
-        expires_at = now + self._options.session_ttl
-        if ictx.credential_kind is CredentialKind.SESSION_TOKEN:
-            expires_at = deadline_kept(presented[1].expires_at, now, self._options.session_ttl)
-        token = mint_token(CredentialKind.SESSION_TOKEN)
-        session = Session(
+        expires_at = now + self._options.auth_session_ttl
+        if ictx.credential_kind is CredentialKind.AUTH_SESSION_TOKEN:
+            expires_at = deadline_kept(presented[1].expires_at, now, self._options.auth_session_ttl)
+        token = mint_token(CredentialKind.AUTH_SESSION_TOKEN)
+        session = AuthSession(
             id=new_id(),
             created_at=now,
             updated_at=now,
@@ -552,59 +552,63 @@ class TenancySignInManagerImpl(TenancySignInManagerInterface):
             identity_id=ictx.identity_id,
             user_id=user.id,
             token_hash=hash_token(token),
-            credential_kind=CredentialKind.SESSION_TOKEN,
+            credential_kind=CredentialKind.AUTH_SESSION_TOKEN,
             expires_at=expires_at,
             provider_session_id=presented[1].provider_session_id,
         )
-        if ictx.credential_kind is CredentialKind.SESSION_TOKEN:
+        if ictx.credential_kind is CredentialKind.AUTH_SESSION_TOKEN:
             await self._switch(ictx, presented, org_id, session, now)
         else:
             await self._exchange_sign_in(ictx, presented, org_id, session, now)
-        return IssuedSession(
+        return IssuedAuthSession(
             token=token, expires_at=session.expires_at, org=org, user=user, role=membership.role
         )
 
     async def _exchange_sign_in(
         self,
         ictx: IdentityContext,
-        found: tuple[UUID, Session],
+        found: tuple[UUID, AuthSession],
         org_id: UUID,
-        session: Session,
+        auth_session: AuthSession,
         now: datetime,
     ) -> None:
         """The exchange of a sign-in: it ends in the write that lands the
-        session, so one sign-in makes one session. A second exchange of it,
+        auth session, so one sign-in makes one auth session. A second exchange of it,
         a replay or a retry, is refused, and the person signs in again. A
         sign-in has no socket and no tenant, so nothing is announced."""
         _, presented = found
-        check_session(presented, CredentialKind.LOGIN, self._options.session_idle_ttl)
+        check_auth_session(presented, CredentialKind.LOGIN, self._options.auth_session_idle_ttl)
         await exchange_sign_in(
-            self._storage, org_id, session, ended_by(presented, ictx.identity_id, now)
+            self._storage, org_id, auth_session, ended_by(presented, ictx.identity_id, now)
         )
 
     async def _switch(
         self,
         ictx: IdentityContext,
-        found: tuple[UUID, Session],
+        found: tuple[UUID, AuthSession],
         org_id: UUID,
-        session: Session,
+        auth_session: AuthSession,
         now: datetime,
     ) -> None:
-        """The exchange of a session for another: the one presented ends in the
+        """The exchange of an auth session for another: the one presented ends in the
         write that lands the new one, and its revocation is announced under the
         tenant it belonged to, by its own user, so its socket closes."""
         ended_org_id, presented = found
-        check_session(presented, CredentialKind.SESSION_TOKEN, self._options.session_idle_ttl)
+        check_auth_session(
+            presented, CredentialKind.AUTH_SESSION_TOKEN, self._options.auth_session_idle_ttl
+        )
         ended = ended_by(presented, presented.user_id, now)
         row = self._revocation_row(ictx, ended_org_id, ended, now)
         try:
-            await self._storage.replace_session(org_id, session, ended_org_id, ended, (row,))
+            await self._storage.replace_auth_session(
+                org_id, auth_session, ended_org_id, ended, (row,)
+            )
         except NotFound:
-            raise InvalidCredential("the session behind the switch is gone") from None
+            raise InvalidCredential("the auth session behind the switch is gone") from None
         except UniqueKeyTaken:
-            raise  # a key of the new session, not the one presented
+            raise  # a key of the new auth session, not the one presented
         except Conflict:
-            raise CredentialExpired("session revoked") from None
+            raise CredentialExpired("auth session revoked") from None
         await self._relay.relay(ended_org_id, row)
 
     async def get_identity_memberships(
@@ -618,24 +622,24 @@ class TenancySignInManagerImpl(TenancySignInManagerInterface):
     async def logout(self, ictx: IdentityContext, return_to: str | None = None) -> SignedOut:
         if return_to is not None and return_to not in self._options.sign_out_return_uris:
             raise ValidationFailed("that is not this environment's sign-out return")
-        found = await self._storage.read_session_by_id(ictx.credential_id)
+        found = await self._storage.read_auth_session_by_id(ictx.credential_id)
         if found is None:
             raise InvalidCredential("the credential behind the sign-out is gone")
         org_id, presented = found
         now = utcnow()
-        if ictx.credential_kind is CredentialKind.SESSION_TOKEN:
+        if ictx.credential_kind is CredentialKind.AUTH_SESSION_TOKEN:
             # Announced like any revocation, under the tenant it belonged to,
             # by its own user: the socket it opened, in whichever process
             # holds it, closes on the row the relay publishes.
             ended = ended_by(presented, presented.user_id, now)
             row = self._revocation_row(ictx, org_id, ended, now)
-            await self._storage.write_session(org_id, ended, (row,))
+            await self._storage.write_auth_session(org_id, ended, (row,))
             await self._relay.relay(org_id, row)
         else:
             # A sign-in or an operator token: a row of the system scope, which
             # opens no socket and belongs to no tenant, so nothing is announced.
             ended = ended_by(presented, ictx.identity_id, now)
-            await self._storage.write_session(EMPTY_UUID, ended)
+            await self._storage.write_auth_session(EMPTY_UUID, ended)
             log.info(
                 "identity %s signed out its %s %s",
                 ictx.identity_id,
@@ -643,11 +647,12 @@ class TenancySignInManagerImpl(TenancySignInManagerInterface):
                 ended.id,
             )
         return SignedOut(
-            session=ended, provider_logout_url=provider_logout_url(self._provider, ended, return_to)
+            auth_session=ended,
+            provider_logout_url=provider_logout_url(self._provider, ended, return_to),
         )
 
     def _revocation_row(
-        self, rctx: RequestContext, org_id: UUID, ended: Session, now: datetime
+        self, rctx: RequestContext, org_id: UUID, ended: AuthSession, now: datetime
     ) -> OutboxRow:
         """The row that announces a session's end under its tenant, by the
         session's own user, when the stage that ends it is not a tenant's."""
@@ -655,9 +660,9 @@ class TenancySignInManagerImpl(TenancySignInManagerInterface):
             id=new_id(),
             created_at=now,
             org_id=org_id,
-            kind="tenancy.session.revoked",
+            kind="tenancy.auth_session.revoked",
             target_id=ended.id,
-            payload=session_payload(ended),
+            payload=auth_session_payload(ended),
             actor_id=ended.user_id,
             request_id=rctx.request_id,
             traceparent=rctx.traceparent,

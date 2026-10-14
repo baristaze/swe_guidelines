@@ -203,7 +203,7 @@ async def test_everyone_loses_the_org_in_one_commit_and_the_rest_is_asked_for(
     for ctx in (ann, bob):
         with pytest.raises(NotAuthenticated):
             await manager.authenticate(request(), TOKENS[ctx.security.credential_id])
-        session = await storage.read_session(org.id, ctx.security.credential_id)
+        session = await storage.read_auth_session(org.id, ctx.security.credential_id)
         assert session is not None and session.revoked_at is not None
         user = await storage.read_user(org.id, ctx.user_id)
         assert user is not None and user.deleted_at is not None
@@ -221,7 +221,7 @@ async def test_everyone_loses_the_org_in_one_commit_and_the_rest_is_asked_for(
     kinds = {(row.kind, row.target_id) for row in relay.rows}
     assert ("tenancy.user.deleted", ann.user_id) in kinds
     assert ("tenancy.user.deleted", bob.user_id) in kinds
-    assert ("tenancy.session.revoked", bob.security.credential_id) in kinds
+    assert ("tenancy.auth_session.revoked", bob.security.credential_id) in kinds
     assert ("tenancy.api_key.deleted", key.api_key.id) in kinds
     work = next(r for r in relay.rows if r.kind == work_row_kind(WorkKind.DELETE_ORG))
     assert (work.org_id, work.target_id, work.actor_id) == (org.id, org.id, ann.user_id)
@@ -230,10 +230,10 @@ async def test_everyone_loses_the_org_in_one_commit_and_the_rest_is_asked_for(
     for row in relay.rows:
         assert "bob" not in str(row.payload).lower()
     # The owner lands in their personal org with a session of their own.
-    assert deleted.session is not None
-    assert deleted.session.org.personal and deleted.session.role is Role.OWNER
-    home = await manager.authenticate(request(), deleted.session.token)
-    assert home.org_id == deleted.session.org.id
+    assert deleted.auth_session is not None
+    assert deleted.auth_session.org.personal and deleted.auth_session.role is Role.OWNER
+    home = await manager.authenticate(request(), deleted.auth_session.token)
+    assert home.org_id == deleted.auth_session.org.id
 
 
 async def test_the_last_owner_deletes_the_org_and_then_their_account(
@@ -242,8 +242,8 @@ async def test_the_last_owner_deletes_the_org_and_then_their_account(
     _, org = await manager.bootstrap(request(), "Solo", "solo", "ann@example.test", "Ann")
     ann = await dev(manager, "ann@example.test", org.id)
     deleted = await manager.org.delete_org(ann, "Solo")
-    assert deleted.session is not None
-    home = await manager.authenticate(request(), deleted.session.token)
+    assert deleted.auth_session is not None
+    home = await manager.authenticate(request(), deleted.auth_session.token)
     await manager.org.delete_account(home, "ann@example.test")
 
 

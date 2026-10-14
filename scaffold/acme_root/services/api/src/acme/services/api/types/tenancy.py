@@ -185,7 +185,7 @@ class MembershipChoicePageView(View):
     next_cursor: str | None
 
 
-class ExchangeSessionRequest(RequestBody):
+class ExchangeAuthSessionRequest(RequestBody):
     """The org to enter. Presented with the sign-in credential, it opens the
     first session; presented with a session, it is a switch, and that session
     ends in the same write."""
@@ -193,7 +193,7 @@ class ExchangeSessionRequest(RequestBody):
     org_id: UUID
 
 
-class IssuedSessionView(View):
+class IssuedAuthSessionView(View):
     token: str
     expires_at: datetime
     org: OrgView
@@ -209,7 +209,7 @@ class MeView(View):
     app: str
 
 
-class SessionView(View):
+class AuthSessionView(View):
     """Only the hash of a token is ever kept, so a session view carries no secret."""
 
     id: UUID
@@ -227,7 +227,7 @@ class LogoutRequest(RequestBody):
     return_to: str | None = Field(default=None, min_length=1, max_length=2000)
 
 
-class SignedOutView(SessionView):
+class SignedOutView(AuthSessionView):
     """The credential that ended, a session, a sign-in, or an operator
     token, and `provider_logout_url`: where the browser goes next to end the
     identity provider's session behind it, so the next sign-in on this
@@ -265,13 +265,13 @@ class DeleteOrgRequest(RequestBody):
 
 
 class OrgDeletedView(View):
-    """The org is gone for everyone in it: `deleted_at` is when. `session` is
+    """The org is gone for everyone in it: `deleted_at` is when. `auth_session` is
     the owner's new session in their personal org, which replaces the one
     that asked, as a switch's does; null when none could be made, and the
     owner signs in again."""
 
     deleted_at: datetime
-    session: IssuedSessionView | None = None
+    auth_session: IssuedAuthSessionView | None = None
 
 
 class ApiKeyView(View):

@@ -18,11 +18,11 @@ from uuid import UUID
 
 from acme.om.events.types.event import Event
 from acme.om.idempotency.types.attempt import Attempt
+from acme.om.tenancy.types.auth_session import AuthSession
 from acme.om.tenancy.types.identity import Identity
 from acme.om.tenancy.types.issued import IssuedOperatorToken, IssuedTotpSecret
 from acme.om.tenancy.types.org import Org
 from acme.om.tenancy.types.page import OperatorTokenPage, OrgPage, UserPage
-from acme.om.tenancy.types.session import Session
 from acme.om.tenancy.types.size import SystemSize
 from acme.om.tenancy.types.user import User
 
@@ -80,7 +80,7 @@ class TenancyOperatorManagerInterface(ABC):
         ...
 
     @abstractmethod
-    async def revoke_operator_token(self, admin: OperatorContext, token_id: UUID) -> Session:
+    async def revoke_operator_token(self, admin: OperatorContext, token_id: UUID) -> AuthSession:
         """Ends one of the operator's own tokens at once: its `revoked_at` is
         stamped, `updated_by` names the operator, and its next request is
         refused. Idempotent: a token ended already is answered as stored.

@@ -147,10 +147,10 @@ async def test_the_typed_email_must_be_the_accounts(
     ann = await dev(manager, "ann@example.test")
     with pytest.raises(ValidationFailed):
         await manager.org.delete_account(ann, "someone@example.test")
-    assert await storage.read_session(ann.org_id, ann.security.credential_id) is not None
+    assert await storage.read_auth_session(ann.org_id, ann.security.credential_id) is not None
     # Space and letter case are forgiven, as an address is read everywhere.
     await manager.org.delete_account(ann, "  Ann@Example.TEST ")
-    assert await storage.read_session(ann.org_id, ann.security.credential_id) is None
+    assert await storage.read_auth_session(ann.org_id, ann.security.credential_id) is None
     with pytest.raises(NotFound):
         await manager.org.get_identity(ann)
 
@@ -177,7 +177,7 @@ async def test_the_last_owner_of_a_team_org_is_refused_and_told_which(
     )
     assert "Ajax" in refused.value.message and "Globex" in refused.value.message
     assert refused.value.http_status == 409
-    assert await storage.read_session(ajax.id, ann.security.credential_id) is not None
+    assert await storage.read_auth_session(ajax.id, ann.security.credential_id) is not None
 
     # Another owner in each, and the refusal is gone.
     for org in (ajax, globex):
@@ -229,14 +229,14 @@ async def test_the_account_goes_in_one_commit_and_asks_for_the_rest(
     assert await storage.read_user(ajax.id, bob_in_ajax.id) is None
     assert await storage.read_membership_for_user(ajax.id, bob_in_ajax.id) is None
     for ctx in (bob, at_home):
-        assert await storage.read_session(ctx.org_id, ctx.security.credential_id) is None
+        assert await storage.read_auth_session(ctx.org_id, ctx.security.credential_id) is None
     assert await storage.read_api_key(personal.id, key.api_key.id) is None
     # Nothing a row says names who they were.
     for row in relay.rows:
         assert "bob" not in str(row.payload).lower()
     kinds = {(row.org_id, row.kind, row.target_id) for row in relay.rows}
     assert (ajax.id, "tenancy.user.deleted", bob_in_ajax.id) in kinds
-    assert (ajax.id, "tenancy.session.revoked", bob.security.credential_id) in kinds
+    assert (ajax.id, "tenancy.auth_session.revoked", bob.security.credential_id) in kinds
     assert (personal.id, "tenancy.api_key.deleted", key.api_key.id) in kinds
     # The rest runs in his personal org, and is the one work the commit asks for.
     work = [r for r in relay.rows if asks_for_work(r.kind)]

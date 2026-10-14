@@ -25,14 +25,14 @@ export type HintReaders = Readonly<Record<string, Hints>>;
 // of places the org chip reads, and as the role beside each member in
 // Settings; a user is read twice, as a row of the member list and as the name
 // and the email in `me`, so a user push reaches both: its reader places the
-// member in both (`userCache.ts`). A revoked session is
-// nobody's query: this session's own revocation arrives as a 4401 close, not
-// as a push. No screen reads an orchestration's record; a screen that does
+// member in both (`userCache.ts`). A revoked auth session is nobody's
+// query: this auth session's own revocation arrives as a 4401 close, not as
+// a push. No screen reads an orchestration's record; a screen that does
 // keys its queries under the entity and drops its line here.
 const CARRIED_BY: Readonly<Record<string, readonly QueryKey[]>> = {
   membership: [keys.me, keys.myMemberships.all, keys.memberships.all],
   user: [keys.users.all, keys.me],
-  session: [],
+  auth_session: [],
   orchestration: [],
 };
 
@@ -44,11 +44,11 @@ function targetsOf(entity: string): readonly QueryKey[] {
 // the kinds the service sends.
 export const PUSHED_ENTITIES = [
   "api_key",
+  "auth_session",
   "file",
   "invitation",
   "membership",
   "orchestration",
-  "session",
   "user",
 ] as const;
 

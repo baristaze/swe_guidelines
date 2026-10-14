@@ -14,9 +14,9 @@ import pytest
 
 from acme.ops.environments import repository_root
 from acme.ops.workos import (
+    AUTH_SESSION_IDLE_LIFETIME,
+    AUTH_SESSION_LIFETIME,
     CREDENTIAL_CHECK_CODE,
-    SESSION_IDLE_LIFETIME,
-    SESSION_LIFETIME,
     desired_file,
     load_desired,
     workos_bootstrap_command,
@@ -320,11 +320,14 @@ def test_the_sessions_tab_matches_the_session_lifetimes() -> None:
     values = dict(
         line.split("=", 1)
         for line in (root / ".env.example").read_text().splitlines()
-        if line.startswith("ACME_SESSION_")
+        if line.startswith("ACME_AUTH_SESSION_")
     )
-    assert int(values["ACME_SESSION_LIFETIME_SECONDS"]) == SESSION_LIFETIME.total_seconds()
     assert (
-        int(values["ACME_SESSION_IDLE_LIFETIME_SECONDS"]) == SESSION_IDLE_LIFETIME.total_seconds()
+        int(values["ACME_AUTH_SESSION_LIFETIME_SECONDS"]) == AUTH_SESSION_LIFETIME.total_seconds()
+    )
+    assert (
+        int(values["ACME_AUTH_SESSION_IDLE_LIFETIME_SECONDS"])
+        == AUTH_SESSION_IDLE_LIFETIME.total_seconds()
     )
 
 

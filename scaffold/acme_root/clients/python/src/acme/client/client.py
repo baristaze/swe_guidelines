@@ -21,9 +21,9 @@ from acme.client.types import (
     FileView,
     InvitationPageView,
     InvitationView,
+    IssuedAuthSessionView,
     IssuedDownloadView,
     IssuedLoginView,
-    IssuedSessionView,
     IssuedTicketView,
     IssuedUploadView,
     LeasePageView,
@@ -419,11 +419,11 @@ class ApiClient:
         )
         return IssuedLoginView.model_validate(answer)
 
-    async def exchange_session(self, login_token: str, org_id: UUID) -> IssuedSessionView:
+    async def exchange_auth_session(self, login_token: str, org_id: UUID) -> IssuedAuthSessionView:
         body = await self.request(
             "POST", "/v1/auth/sessions", json={"org_id": str(org_id)}, token=login_token
         )
-        return IssuedSessionView.model_validate(body)
+        return IssuedAuthSessionView.model_validate(body)
 
     async def create_org(
         self, name: str, slug: str | None = None, *, idempotency_key: str | None = None
@@ -460,11 +460,11 @@ class ApiClient:
                 return found
             cursor = page.next_cursor
 
-    async def switch_session(self, org_id: UUID) -> IssuedSessionView:
+    async def switch_auth_session(self, org_id: UUID) -> IssuedAuthSessionView:
         """The exchange presented with the session the client holds: the API
         ends that session in the same write, and the client carries the new
         one from here on, so it never holds two."""
-        issued = await self.exchange_session(self._require_token(), org_id)
+        issued = await self.exchange_auth_session(self._require_token(), org_id)
         self.token = issued.token
         return issued
 

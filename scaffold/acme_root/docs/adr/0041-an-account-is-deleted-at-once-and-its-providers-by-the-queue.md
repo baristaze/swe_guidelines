@@ -31,7 +31,7 @@ and slug, and `403 operator_role_held`. Then one named atomic write,
 `TenancyStorageInterface.delete_person`, deletes:
 
 - the identity, with its second factor;
-- every user it is, in any org, with their memberships, sessions, API
+- every user it is, in any org, with their memberships, auth sessions, API
   keys, and socket tickets;
 - its sign-ins and operator tokens, and the sign-in delay of its
   address;
@@ -45,7 +45,7 @@ owners who leave at once cannot both go. The personal fields are the
 named ones the guideline asks for, so the delete is a list, not a hunt.
 
 **Every live credential is announced as revoked.** The same commit
-lands `tenancy.session.revoked` and `tenancy.api_key.deleted` for each
+lands `tenancy.auth_session.revoked` and `tenancy.api_key.deleted` for each
 live one, and `tenancy.user.deleted` in each org the person leaves, so
 every socket they hold closes. Every payload carries ids only.
 

@@ -110,7 +110,7 @@ async def test_a_sign_in_is_exchanged_once(
         assert "sign in again" in again.json()["error"]["message"]
     places = await client.get("/v1/auth/memberships", headers=bearer(login["token"]))
     assert places.status_code == 401, places.text
-    live = await client.get("/v1/sessions", headers=bearer(session))
+    live = await client.get("/v1/auth/sessions", headers=bearer(session))
     assert live.status_code == 200, live.text
     assert len(live.json()) == 1
     # The session it made is the one the person holds; a switch is its own exchange.
@@ -132,7 +132,7 @@ async def test_exchanges_of_one_sign_in_at_once_make_one_session(
     )
     assert sorted(answer.status_code for answer in answers) == [200, 401, 401]
     won = next(answer for answer in answers if answer.status_code == 200)
-    live = await client.get("/v1/sessions", headers=bearer(won.json()["token"]))
+    live = await client.get("/v1/auth/sessions", headers=bearer(won.json()["token"]))
     assert len(live.json()) == 1
 
 

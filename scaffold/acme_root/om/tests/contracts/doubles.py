@@ -48,7 +48,7 @@ def context(role: Role, org: Org | None = None) -> TenantContext:
         org_id=(org or make_org()).id,
         role=role,
         permissions=permissions_of(role),
-        credential_kind=CredentialKind.SESSION_TOKEN,
+        credential_kind=CredentialKind.AUTH_SESSION_TOKEN,
     )
 
 

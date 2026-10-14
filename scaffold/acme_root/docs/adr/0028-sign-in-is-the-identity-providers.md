@@ -34,7 +34,7 @@ the tab kept
 reaches a browser.
 
 **The identity is Acme's.** The provider answers an issuer, a subject,
-and a verified email. The identity row, its id, the sessions, the
+and a verified email. The identity row, its id, the auth sessions, the
 memberships, and the personal org are Acme's own. The identity is found
 by the issuer and the subject; else by the verified email, and linked
 from then on (a person the seeding or the operator plane made); else
@@ -111,7 +111,7 @@ lists before an identity is known.
 
 A sign-in is as available as WorkOS is. When it cannot be reached, the
 API answers `503` and nobody new signs in. A person already signed in
-keeps their session.
+keeps their auth session.
 
 Account recovery is WorkOS's: its email code proves the address, so an
 operator resets nothing.

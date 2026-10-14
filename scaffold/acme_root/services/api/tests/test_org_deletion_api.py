@@ -59,7 +59,7 @@ async def test_everyone_is_out_at_once_and_the_owner_lands_at_home(
     assert deleted.status_code == 200, deleted.text
     body = deleted.json()
     assert body["deleted_at"]
-    landing = body["session"]
+    landing = body["auth_session"]
     assert landing["org"]["kind"] == "personal" and landing["role"] == "owner"
 
     for headers in (owner, bob, {"Authorization": f"Bearer {key.json()['key']}"}):

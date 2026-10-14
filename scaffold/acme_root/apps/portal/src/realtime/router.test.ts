@@ -40,7 +40,7 @@ const SERVER_KINDS = [
   "tenancy.invitation.created",
   "tenancy.invitation.updated",
   "tenancy.membership.updated",
-  "tenancy.session.revoked",
+  "tenancy.auth_session.revoked",
   "tenancy.user.created",
   "tenancy.user.updated",
   "tenancy.user.deleted",
@@ -129,9 +129,9 @@ describe("routeEnvelope", () => {
     });
   });
 
-  it("invalidates nothing for a revoked session or an orchestration, which no query reads", () => {
-    // This session's own revocation arrives as a 4401 close, not as a push.
-    for (const kind of ["tenancy.session.revoked", "orchestrations.orchestration.updated"]) {
+  it("invalidates nothing for a revoked auth session or an orchestration, which no query reads", () => {
+    // This auth session's own revocation arrives as a 4401 close, not as a push.
+    for (const kind of ["tenancy.auth_session.revoked", "orchestrations.orchestration.updated"]) {
       const { queryClient, seen } = recording();
       expect(routeEnvelope(queryClient, pushOf(kind))).toEqual({ invalidated: [] });
       expect(seen).toEqual([]);

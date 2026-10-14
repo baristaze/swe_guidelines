@@ -429,11 +429,29 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** List Auth Sessions */
+        get: operations["list_auth_sessions_v1_auth_sessions_get"];
+        put?: never;
+        /** Exchange Auth Session */
+        post: operations["exchange_auth_session_v1_auth_sessions_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/auth/sessions/{auth_session_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
         get?: never;
         put?: never;
-        /** Exchange Session */
-        post: operations["exchange_session_v1_auth_sessions_post"];
-        delete?: never;
+        post?: never;
+        /** Revoke Auth Session */
+        delete: operations["revoke_auth_session_v1_auth_sessions__auth_session_id__delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -1049,40 +1067,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/v1/sessions": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** List Sessions */
-        get: operations["list_sessions_v1_sessions_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/sessions/{session_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post?: never;
-        /** Revoke Session */
-        delete: operations["revoke_session_v1_sessions__session_id__delete"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/v1/users": {
         parameters: {
             query?: never;
@@ -1247,6 +1231,30 @@ export interface components {
             wait_seconds: number;
         };
         /**
+         * AuthSessionView
+         * @description Only the hash of a token is ever kept, so a session view carries no secret.
+         */
+        AuthSessionView: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            credential_kind: components["schemas"]["CredentialKind"];
+            /**
+             * Expires At
+             * Format: date-time
+             */
+            expires_at: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Revoked At */
+            revoked_at: string | null;
+        };
+        /**
          * ConfirmTotpRequest
          * @description The first code from the authenticator, which confirms the secret.
          */
@@ -1286,7 +1294,7 @@ export interface components {
          * CredentialKind
          * @enum {string}
          */
-        CredentialKind: "api_key" | "session_token" | "login" | "socket_ticket" | "operator_token" | "internal";
+        CredentialKind: "api_key" | "auth_session_token" | "login" | "socket_ticket" | "operator_token" | "internal";
         /**
          * DeleteAccountRequest
          * @description The account's email as the person typed it, which is how they say
@@ -1418,12 +1426,12 @@ export interface components {
             target_id: string;
         };
         /**
-         * ExchangeSessionRequest
+         * ExchangeAuthSessionRequest
          * @description The org to enter. Presented with the sign-in credential, it opens the
          *     first session; presented with a session, it is a switch, and that session
          *     ends in the same write.
          */
-        ExchangeSessionRequest: {
+        ExchangeAuthSessionRequest: {
             /**
              * Org Id
              * Format: uuid
@@ -1602,6 +1610,19 @@ export interface components {
             /** Key */
             key: string | null;
         };
+        /** IssuedAuthSessionView */
+        IssuedAuthSessionView: {
+            /**
+             * Expires At
+             * Format: date-time
+             */
+            expires_at: string;
+            org: components["schemas"]["OrgView"];
+            role: components["schemas"]["Role"];
+            /** Token */
+            token: string;
+            user: components["schemas"]["UserView"];
+        };
         /**
          * IssuedDownloadView
          * @description A link to the file's bytes that works until `expires_at`. A null `url`
@@ -1653,19 +1674,6 @@ export interface components {
             permission: components["schemas"]["OperatorRole"];
             /** Token */
             token: string | null;
-        };
-        /** IssuedSessionView */
-        IssuedSessionView: {
-            /**
-             * Expires At
-             * Format: date-time
-             */
-            expires_at: string;
-            org: components["schemas"]["OrgView"];
-            role: components["schemas"]["Role"];
-            /** Token */
-            token: string;
-            user: components["schemas"]["UserView"];
         };
         /**
          * IssuedTicketView
@@ -2050,18 +2058,18 @@ export interface components {
         };
         /**
          * OrgDeletedView
-         * @description The org is gone for everyone in it: `deleted_at` is when. `session` is
+         * @description The org is gone for everyone in it: `deleted_at` is when. `auth_session` is
          *     the owner's new session in their personal org, which replaces the one
          *     that asked, as a switch's does; null when none could be made, and the
          *     owner signs in again.
          */
         OrgDeletedView: {
+            auth_session?: components["schemas"]["IssuedAuthSessionView"] | null;
             /**
              * Deleted At
              * Format: date-time
              */
             deleted_at: string;
-            session?: components["schemas"]["IssuedSessionView"] | null;
         };
         /**
          * OrgKind
@@ -2235,30 +2243,6 @@ export interface components {
         SecondFactorRequest: {
             /** Totp Code */
             totp_code: string;
-        };
-        /**
-         * SessionView
-         * @description Only the hash of a token is ever kept, so a session view carries no secret.
-         */
-        SessionView: {
-            /**
-             * Created At
-             * Format: date-time
-             */
-            created_at: string;
-            credential_kind: components["schemas"]["CredentialKind"];
-            /**
-             * Expires At
-             * Format: date-time
-             */
-            expires_at: string;
-            /**
-             * Id
-             * Format: uuid
-             */
-            id: string;
-            /** Revoked At */
-            revoked_at: string | null;
         };
         /**
          * SetTenantCapRequest
@@ -3601,7 +3585,42 @@ export interface operations {
             };
         };
     };
-    exchange_session_v1_auth_sessions_post: {
+    list_auth_sessions_v1_auth_sessions_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: {
+                authorization?: string | null;
+                "x-app"?: string | null;
+                "x-app-version"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthSessionView"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    exchange_auth_session_v1_auth_sessions_post: {
         parameters: {
             query?: never;
             header?: {
@@ -3614,7 +3633,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["ExchangeSessionRequest"];
+                "application/json": components["schemas"]["ExchangeAuthSessionRequest"];
             };
         };
         responses: {
@@ -3624,7 +3643,42 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["IssuedSessionView"];
+                    "application/json": components["schemas"]["IssuedAuthSessionView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    revoke_auth_session_v1_auth_sessions__auth_session_id__delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "x-app"?: string | null;
+                "x-app-version"?: string | null;
+            };
+            path: {
+                auth_session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthSessionView"];
                 };
             };
             /** @description Validation Error */
@@ -5152,76 +5206,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["IssuedTicketView"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    list_sessions_v1_sessions_get: {
-        parameters: {
-            query?: {
-                limit?: number;
-            };
-            header?: {
-                authorization?: string | null;
-                "x-app"?: string | null;
-                "x-app-version"?: string | null;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["SessionView"][];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    revoke_session_v1_sessions__session_id__delete: {
-        parameters: {
-            query?: never;
-            header?: {
-                authorization?: string | null;
-                "x-app"?: string | null;
-                "x-app-version"?: string | null;
-            };
-            path: {
-                session_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["SessionView"];
                 };
             };
             /** @description Validation Error */

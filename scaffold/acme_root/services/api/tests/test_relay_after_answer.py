@@ -117,8 +117,8 @@ async def test_every_write_of_a_request_relays_after_it(
     assert response.status_code == 200, response.text
     assert at_answer == [0]
     assert sorted(h.kind for h in heard) == [
-        "tenancy.session.revoked",
-        "tenancy.session.revoked",
+        "tenancy.auth_session.revoked",
+        "tenancy.auth_session.revoked",
         "tenancy.user.deleted",
     ]
     assert await container.storage.get_outbox_storage().oldest_pending_at() is None

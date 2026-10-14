@@ -34,35 +34,35 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-describe("forgetSession", () => {
+describe("forgetAuthSession", () => {
   it("drops the token and every cached answer together", async () => {
-    const { forgetSession } = await import("./forgetSession");
+    const { forgetAuthSession } = await import("./forgetAuthSession");
     const { queryClient } = await import("./queryClient");
-    const { useSessionStore } = await import("../store/session");
-    useSessionStore.getState().setSession("tok_1", "ajax");
+    const { useAuthSessionStore } = await import("../store/authSession");
+    useAuthSessionStore.getState().setAuthSession("tok_1", "ajax");
     queryClient.setQueryData(["me"], { role: "owner" });
     queryClient.setQueryData(["user", "list", 200], { pages: [], pageParams: [] });
 
-    forgetSession();
+    forgetAuthSession();
 
-    expect(useSessionStore.getState().token).toBeNull();
-    expect(useSessionStore.getState().orgSlug).toBeNull();
+    expect(useAuthSessionStore.getState().token).toBeNull();
+    expect(useAuthSessionStore.getState().orgSlug).toBeNull();
     expect(queryClient.getQueryCache().getAll()).toEqual([]);
   });
 
   it("leaves a newer session alone when an old one's refusal arrives late", async () => {
-    const { forgetSessionIfHeld } = await import("./forgetSession");
+    const { forgetAuthSessionIfHeld } = await import("./forgetAuthSession");
     const { queryClient } = await import("./queryClient");
-    const { useSessionStore } = await import("../store/session");
-    useSessionStore.getState().setSession("ses_new", "beta");
+    const { useAuthSessionStore } = await import("../store/authSession");
+    useAuthSessionStore.getState().setAuthSession("ses_new", "beta");
     queryClient.setQueryData(["me"], { org: { slug: "beta" } });
 
-    forgetSessionIfHeld("ses_old");
-    expect(useSessionStore.getState().token).toBe("ses_new");
+    forgetAuthSessionIfHeld("ses_old");
+    expect(useAuthSessionStore.getState().token).toBe("ses_new");
     expect(queryClient.getQueryData(["me"])).toEqual({ org: { slug: "beta" } });
 
-    forgetSessionIfHeld("ses_new");
-    expect(useSessionStore.getState().token).toBeNull();
+    forgetAuthSessionIfHeld("ses_new");
+    expect(useAuthSessionStore.getState().token).toBeNull();
     expect(queryClient.getQueryCache().getAll()).toEqual([]);
   });
 });

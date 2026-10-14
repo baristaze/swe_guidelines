@@ -146,7 +146,7 @@ class FakeApi:
                 200,
                 json={
                     "id": str(uuid4()),
-                    "credential_kind": "session_token",
+                    "credential_kind": "auth_session_token",
                     "created_at": NOW,
                     "expires_at": NOW,
                     "revoked_at": NOW,

@@ -397,18 +397,18 @@ async def test_sessions_are_listed_revoked_and_logged_out(
     org_id = UUID((await client.get("/v1/orgs/current", headers=owner)).json()["id"])
     other = await sign_in_as(client, OWNER["email"], org_id)
 
-    listed = await client.get("/v1/sessions", headers=owner)
+    listed = await client.get("/v1/auth/sessions", headers=owner)
     assert listed.status_code == 200, listed.text
     assert len(listed.json()) == 2
-    assert all(s["credential_kind"] == "session_token" for s in listed.json())
+    assert all(s["credential_kind"] == "auth_session_token" for s in listed.json())
     assert all(s["revoked_at"] is None for s in listed.json())
 
     mine = (await client.post("/v1/auth/logout", headers=other)).json()["id"]
-    remaining = [s["id"] for s in (await client.get("/v1/sessions", headers=owner)).json()]
+    remaining = [s["id"] for s in (await client.get("/v1/auth/sessions", headers=owner)).json()]
     assert mine not in remaining and len(remaining) == 1
     assert (await client.get("/v1/me", headers=other)).status_code == 401
 
-    revoked = await client.delete(f"/v1/sessions/{remaining[0]}", headers=owner)
+    revoked = await client.delete(f"/v1/auth/sessions/{remaining[0]}", headers=owner)
     assert revoked.status_code == 200, revoked.text
     assert revoked.json()["revoked_at"] is not None
     assert (await client.get("/v1/me", headers=owner)).status_code == 401

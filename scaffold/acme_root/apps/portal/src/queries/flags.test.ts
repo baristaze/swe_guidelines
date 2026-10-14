@@ -10,9 +10,9 @@ import { act, createElement, type FunctionComponent } from "react";
 import { createRoot } from "react-dom/client";
 import type { FlagsView } from "@acme/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { adoptSession } from "../app/adoptSession";
+import { adoptAuthSession } from "../app/adoptAuthSession";
 import { queryClient, STALE_MS } from "../app/queryClient";
-import { useSessionStore } from "../store/session";
+import { useAuthSessionStore } from "../store/authSession";
 import { FLAGS_REFRESH_MS, flagOn, flagsQuery, useFlag, useFlags } from "./flags";
 import { keys } from "./keys";
 
@@ -38,7 +38,7 @@ beforeEach(() => {
 
 afterEach(() => {
   focusManager.setFocused(undefined);
-  useSessionStore.getState().clear();
+  useAuthSessionStore.getState().clear();
   vi.useRealTimers();
 });
 
@@ -48,10 +48,10 @@ describe("the flags snapshot", () => {
   });
 
   it("goes with the old tenant's answers on a switch", () => {
-    useSessionStore.getState().setSession("ses_ajax", "ajax");
+    useAuthSessionStore.getState().setAuthSession("ses_ajax", "ajax");
     queryClient.setQueryData(keys.flags, snapshot(false));
 
-    adoptSession({ token: "ses_beta", org: org("beta") });
+    adoptAuthSession({ token: "ses_beta", org: org("beta") });
 
     expect(queryClient.getQueryData(keys.flags)).toBeUndefined();
   });

@@ -810,7 +810,7 @@ async def test_a_sign_out_answers_the_providers_logout_for_the_session_the_sign_
     )
     ictx = await manager.authenticate_login(request(), switched.token)
     signed_out = await manager.sign_in.logout(ictx, SIGNED_OUT)
-    assert signed_out.session.revoked_at is not None
+    assert signed_out.auth_session.revoked_at is not None
     url = signed_out.provider_logout_url
     assert url is not None and url.startswith("https://identity.twin.invalid/logout?")
     assert "session_id=twin_session_" in url
@@ -835,7 +835,7 @@ async def test_a_sign_out_to_a_return_not_listed_is_refused_and_ends_nothing(
     ctx, ictx = await signed_in_at(manager, login, login.memberships[0].org.id)
     with pytest.raises(ValidationFailed):
         await manager.sign_in.logout(ictx, "https://elsewhere.example/signed-out")
-    assert [s.id for s in await manager.credentials.get_sessions(ctx, limit=10)] == [
+    assert [s.id for s in await manager.credentials.get_auth_sessions(ctx, limit=10)] == [
         ctx.security.credential_id
     ]
 
@@ -868,4 +868,4 @@ async def test_a_provider_this_process_cannot_reach_leaves_acme_signed_out(
 
     monkeypatch.setattr(twin, "logout_url", unreachable)
     signed_out = await manager.sign_in.logout(ictx, SIGNED_OUT)
-    assert signed_out.session.revoked_at is not None and signed_out.provider_logout_url is None
+    assert signed_out.auth_session.revoked_at is not None and signed_out.provider_logout_url is None

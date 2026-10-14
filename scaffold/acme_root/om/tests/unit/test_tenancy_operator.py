@@ -295,7 +295,7 @@ async def test_an_operator_deletes_a_team_org_as_its_owner_does(
     assert {row.actor_id for row in plane.relay.rows} == {writer.identity_id}
     kinds = {(row.kind, row.target_id) for row in plane.relay.rows}
     assert ("tenancy.user.deleted", bob.id) in kinds
-    assert ("tenancy.session.revoked", session.security.credential_id) in kinds
+    assert ("tenancy.auth_session.revoked", session.security.credential_id) in kinds
     work = [r for r in plane.relay.rows if r.kind == work_row_kind(WorkKind.DELETE_ORG)]
     assert len(work) == 1
     assert (work[0].org_id, work[0].target_id) == (org.id, org.id)

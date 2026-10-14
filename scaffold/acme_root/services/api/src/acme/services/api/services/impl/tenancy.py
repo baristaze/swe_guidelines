@@ -14,20 +14,21 @@ from acme.services.api.types.tenancy import (
     AddApiKeyRequest,
     ApiKeyPageView,
     ApiKeyView,
+    AuthSessionView,
     CreateTeamOrgRequest,
     DeleteAccountRequest,
     DeleteOrgRequest,
     DeviceSignInView,
     DeviceTokenRequest,
     DevSignInRequest,
-    ExchangeSessionRequest,
+    ExchangeAuthSessionRequest,
     IdentityView,
     InvitationPageView,
     InvitationView,
     InviteMemberRequest,
     IssuedApiKeyView,
+    IssuedAuthSessionView,
     IssuedLoginView,
-    IssuedSessionView,
     LogoutRequest,
     MembershipChoicePageView,
     MembershipChoiceView,
@@ -37,7 +38,6 @@ from acme.services.api.types.tenancy import (
     OrgDeletedView,
     OrgView,
     SecondFactorRequest,
-    SessionView,
     SignedOutView,
     SignInCallbackRequest,
     SignInStartRequest,
@@ -126,11 +126,11 @@ class TenancyServiceImpl(TenancyServiceInterface):
     ) -> IssuedLoginView:
         return login_view(await self._tenancy.sign_in.verify_second_factor(ictx, body.totp_code))
 
-    async def exchange_session(
-        self, ictx: IdentityContext, body: ExchangeSessionRequest
-    ) -> IssuedSessionView:
+    async def exchange_auth_session(
+        self, ictx: IdentityContext, body: ExchangeAuthSessionRequest
+    ) -> IssuedAuthSessionView:
         issued = await self._tenancy.sign_in.exchange_login(ictx, body.org_id)
-        return IssuedSessionView.model_validate(issued)
+        return IssuedAuthSessionView.model_validate(issued)
 
     async def get_identity_memberships(
         self, ictx: IdentityContext, cursor: str | None, limit: int
@@ -149,7 +149,7 @@ class TenancyServiceImpl(TenancyServiceInterface):
 
     async def logout(self, ictx: IdentityContext, body: LogoutRequest | None) -> SignedOutView:
         signed_out = await self._tenancy.sign_in.logout(ictx, body.return_to if body else None)
-        return SignedOutView.model_validate(signed_out.session).model_copy(
+        return SignedOutView.model_validate(signed_out.auth_session).model_copy(
             update={"provider_logout_url": signed_out.provider_logout_url}
         )
 
@@ -264,13 +264,15 @@ class TenancyServiceImpl(TenancyServiceInterface):
         url = await self._tenancy.members.sso_setup_link(ctx, body.intent, body.return_url)
         return SsoLinkView(url=url)
 
-    async def get_sessions(self, ctx: TenantContext, limit: int) -> list[SessionView]:
-        sessions = await self._tenancy.credentials.get_sessions(ctx, clamp_limit(limit))
-        return [SessionView.model_validate(s) for s in sessions]
+    async def get_auth_sessions(self, ctx: TenantContext, limit: int) -> list[AuthSessionView]:
+        sessions = await self._tenancy.credentials.get_auth_sessions(ctx, clamp_limit(limit))
+        return [AuthSessionView.model_validate(s) for s in sessions]
 
-    async def revoke_session(self, ctx: TenantContext, session_id: UUID) -> SessionView:
-        return SessionView.model_validate(
-            await self._tenancy.credentials.revoke_session(ctx, session_id)
+    async def revoke_auth_session(
+        self, ctx: TenantContext, auth_session_id: UUID
+    ) -> AuthSessionView:
+        return AuthSessionView.model_validate(
+            await self._tenancy.credentials.revoke_auth_session(ctx, auth_session_id)
         )
 
     async def get_api_keys(

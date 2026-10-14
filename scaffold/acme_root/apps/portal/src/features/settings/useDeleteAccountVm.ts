@@ -1,6 +1,6 @@
 import { useState } from "react";
 import type { MeView, OwnedOrg } from "@acme/client";
-import { forgetSession } from "../../app/forgetSession";
+import { forgetAuthSession } from "../../app/forgetAuthSession";
 import { useDeleteAccount } from "../../queries/tenancy";
 import { noteAccountDeleted, noteSignedOut } from "../../store/signInState";
 import { deleteAccount } from "./deleteAccount";
@@ -29,7 +29,7 @@ export function useDeleteAccountVm(me: MeView | undefined) {
         noteAccountDeleted();
         noteSignedOut();
       },
-      forget: forgetSession,
+      forget: forgetAuthSession,
       leave: (url) => window.location.assign(url ?? "/signed-out"),
     });
     if (!outcome.deleted) {

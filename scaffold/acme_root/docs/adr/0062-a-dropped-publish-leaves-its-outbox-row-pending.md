@@ -13,7 +13,7 @@ where the sweep never looks.
 
 For most kinds a lost publish costs a moment of staleness. The event is
 in the stream, and a client that misses a frame sees the gap at the next
-frame or pong. Four kinds cost more: `tenancy.session.revoked`,
+frame or pong. Four kinds cost more: `tenancy.auth_session.revoked`,
 `tenancy.api_key.deleted`, `tenancy.user.deleted`, and
 `tenancy.org.deleted` (`REVOCATIONS`). They tell the realtime service
 that a socket's authority ended, and no client replays them for the

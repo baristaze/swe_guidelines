@@ -6,7 +6,7 @@ from acme.om.base import EMPTY_UUID, Identifiable, Trackable
 from acme.om.context import CredentialKind, OperatorRole
 
 
-class Session(Identifiable, Trackable):
+class AuthSession(Identifiable, Trackable):
     """A login credential or an operator token (no tenant, stored under the
     system scope) or a tenant-scoped session token. Only the hash of the
     token is kept."""

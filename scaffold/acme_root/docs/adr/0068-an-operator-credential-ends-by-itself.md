@@ -6,7 +6,7 @@
 
 Two credentials reach the operator plane: a person's sign-in that
 verified a TOTP code, and an operator token. An operator token is a
-`sessions` row of kind `operator_token` under the system scope, lives an
+`auth_sessions` row of kind `operator_token` under the system scope, lives an
 hour at most, and carries one permission (CTX-38, "The Gateway").
 
 An operator credential should be short-lived, carry one permission, be
@@ -30,7 +30,7 @@ sooner.
 
 **The mint is an exchange.** It lands the token and ends the sign-in in
 one write, `exchange_sign_in` into the system scope, as a tenant's
-sign-in is exchanged for a session
+sign-in is exchanged for an auth session
 ([ADR 0037](0037-a-sign-in-is-exchanged-once.md)). A second mint with it
 is `401`. Like that exchange, the route takes no `Idempotency-Key` and
 answers `200`, not `201`: the sign-in is its key, so no retry can land a
@@ -46,7 +46,7 @@ with the code ends at the mint, and the token is what remains.
 /v1/admin/me/tokens` pages the caller's live tokens, newest first, the
 grant job's for that identity among them, and never a secret. `DELETE
 /v1/admin/me/tokens/{id}` stamps `revoked_at` and `updated_by`, as
-`revoke_session` does, and logs the operator, the token, and the
+`revoke_auth_session` does, and logs the operator, the token, and the
 credential that ended it. The next request with that token is `401
 operator token revoked`, and a second revoke answers the first one's
 row. Both take `OperatorPermission.READ`, which every token carries, so
@@ -62,7 +62,7 @@ writes tenants' rows, not operators'.
 **Sign-out ends the credential presented, whichever it is**, as the
 guideline's `sign_out(ictx)` ends "the credential the identity stage
 came from" ("The Operator Context"). `POST /v1/auth/logout` takes the
-identity stage. A session ends and is announced under its tenant. A
+identity stage. An auth session ends and is announced under its tenant. A
 sign-in ends, with or without its code: a tenant's at the picker, an
 operator's before its mint. An operator token ends: that is the
 operator's sign-out, and `acme-ops work requeue` signs its `write` token
@@ -72,11 +72,11 @@ it has no sign-out: `401`.
 **Disabling an operator ends its credentials.** The grant job's disable
 clears the entry and, in the same commit, ends every live operator token
 and every sign-in with a code the identity holds. A grant made again
-revives none of them. The person's sessions and plain sign-ins are
+revives none of them. The person's auth sessions and plain sign-ins are
 theirs, not the operator's, and stand.
 
 No operator credential holds a socket: `TICKET_CREDENTIALS` is the
-session and the API key. So an operator's revocation needs no bus
+auth session and the API key. So an operator's revocation needs no bus
 message and no recheck, since every request reads the row.
 
 ## Consequences

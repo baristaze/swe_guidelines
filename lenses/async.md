@@ -12,7 +12,7 @@ long-running record does when it cannot continue. It owns the sweep's
 duties (requeue expired leases, resume parked records, relay what a
 crash left in the outbox, purge done outbox rows and soft-deleted rows
 past retention, idempotency markers past theirs, socket tickets
-redeemed or expired, and sessions ended or past their lifetime), the
+redeemed or expired, and auth sessions ended or past their lifetime), the
 whole work queue, its table and statements included, and the leases on
 a resource, with their lock, their token, their line, and their
 waiters. It leaves the
@@ -466,7 +466,7 @@ resumes parked records (staggered), rolls periods, relays the outbox,
 and purges done outbox rows, done and failed work items past a
 retention setting (`purge_items(before)`), soft-deleted rows,
 idempotency markers, redeemed or expired socket tickets, and ended
-sessions. A chore, a duty per tenant such as rolling a period, runs
+auth sessions. A chore, a duty per tenant such as rolling a period, runs
 under the tenant's service context, only where one read across tenants
 names it due; a pass past its time budget leaves the next to carry on
 from the last tenant it ran.
@@ -485,7 +485,7 @@ housekeeping; a sweep that is not safe to run twice concurrently; a
 sweep only one elected instance runs; a sweep with no outbox relay,
 so a crash between the core write and its handoff is never repaired;
 a purge missing, so done rows, done or failed work items, idempotency
-markers, socket tickets, or sessions outlive their retention or their
+markers, socket tickets, or auth sessions outlive their retention or their
 lifetime; every parked record resumed in the same instant; a chore that
 asks every tenant on every pass whether it is due; a pass with no time
 budget, or one that starts again at the first tenant each time, so a

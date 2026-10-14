@@ -244,6 +244,50 @@
         "title": "AskRequest",
         "type": "object"
       },
+      "AuthSessionView": {
+        "description": "Only the hash of a token is ever kept, so a session view carries no secret.",
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "credential_kind": {
+            "$ref": "#/components/schemas/CredentialKind"
+          },
+          "expires_at": {
+            "format": "date-time",
+            "title": "Expires At",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "revoked_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Revoked At"
+          }
+        },
+        "required": [
+          "id",
+          "credential_kind",
+          "created_at",
+          "expires_at",
+          "revoked_at"
+        ],
+        "title": "AuthSessionView",
+        "type": "object"
+      },
       "ConfirmTotpRequest": {
         "additionalProperties": false,
         "description": "The first code from the authenticator, which confirms the secret.",
@@ -331,7 +375,7 @@
       "CredentialKind": {
         "enum": [
           "api_key",
-          "session_token",
+          "auth_session_token",
           "login",
           "socket_ticket",
           "operator_token",
@@ -584,7 +628,7 @@
         "title": "EventView",
         "type": "object"
       },
-      "ExchangeSessionRequest": {
+      "ExchangeAuthSessionRequest": {
         "additionalProperties": false,
         "description": "The org to enter. Presented with the sign-in credential, it opens the\nfirst session; presented with a session, it is a switch, and that session\nends in the same write.",
         "properties": {
@@ -597,7 +641,7 @@
         "required": [
           "org_id"
         ],
-        "title": "ExchangeSessionRequest",
+        "title": "ExchangeAuthSessionRequest",
         "type": "object"
       },
       "FilePageView": {
@@ -935,6 +979,37 @@
         "title": "IssuedApiKeyView",
         "type": "object"
       },
+      "IssuedAuthSessionView": {
+        "properties": {
+          "expires_at": {
+            "format": "date-time",
+            "title": "Expires At",
+            "type": "string"
+          },
+          "org": {
+            "$ref": "#/components/schemas/OrgView"
+          },
+          "role": {
+            "$ref": "#/components/schemas/Role"
+          },
+          "token": {
+            "title": "Token",
+            "type": "string"
+          },
+          "user": {
+            "$ref": "#/components/schemas/UserView"
+          }
+        },
+        "required": [
+          "token",
+          "expires_at",
+          "org",
+          "user",
+          "role"
+        ],
+        "title": "IssuedAuthSessionView",
+        "type": "object"
+      },
       "IssuedDownloadView": {
         "description": "A link to the file's bytes that works until `expires_at`. A null `url`\nmeans the store cannot sign one: the bytes come from\n`GET /v1/media/files/{id}/content`.",
         "properties": {
@@ -1025,37 +1100,6 @@
           "permission"
         ],
         "title": "IssuedOperatorTokenView",
-        "type": "object"
-      },
-      "IssuedSessionView": {
-        "properties": {
-          "expires_at": {
-            "format": "date-time",
-            "title": "Expires At",
-            "type": "string"
-          },
-          "org": {
-            "$ref": "#/components/schemas/OrgView"
-          },
-          "role": {
-            "$ref": "#/components/schemas/Role"
-          },
-          "token": {
-            "title": "Token",
-            "type": "string"
-          },
-          "user": {
-            "$ref": "#/components/schemas/UserView"
-          }
-        },
-        "required": [
-          "token",
-          "expires_at",
-          "org",
-          "user",
-          "role"
-        ],
-        "title": "IssuedSessionView",
         "type": "object"
       },
       "IssuedTicketView": {
@@ -1887,22 +1931,22 @@
         "type": "object"
       },
       "OrgDeletedView": {
-        "description": "The org is gone for everyone in it: `deleted_at` is when. `session` is\nthe owner's new session in their personal org, which replaces the one\nthat asked, as a switch's does; null when none could be made, and the\nowner signs in again.",
+        "description": "The org is gone for everyone in it: `deleted_at` is when. `auth_session` is\nthe owner's new session in their personal org, which replaces the one\nthat asked, as a switch's does; null when none could be made, and the\nowner signs in again.",
         "properties": {
-          "deleted_at": {
-            "format": "date-time",
-            "title": "Deleted At",
-            "type": "string"
-          },
-          "session": {
+          "auth_session": {
             "anyOf": [
               {
-                "$ref": "#/components/schemas/IssuedSessionView"
+                "$ref": "#/components/schemas/IssuedAuthSessionView"
               },
               {
                 "type": "null"
               }
             ]
+          },
+          "deleted_at": {
+            "format": "date-time",
+            "title": "Deleted At",
+            "type": "string"
           }
         },
         "required": [
@@ -2280,50 +2324,6 @@
           "totp_code"
         ],
         "title": "SecondFactorRequest",
-        "type": "object"
-      },
-      "SessionView": {
-        "description": "Only the hash of a token is ever kept, so a session view carries no secret.",
-        "properties": {
-          "created_at": {
-            "format": "date-time",
-            "title": "Created At",
-            "type": "string"
-          },
-          "credential_kind": {
-            "$ref": "#/components/schemas/CredentialKind"
-          },
-          "expires_at": {
-            "format": "date-time",
-            "title": "Expires At",
-            "type": "string"
-          },
-          "id": {
-            "format": "uuid",
-            "title": "Id",
-            "type": "string"
-          },
-          "revoked_at": {
-            "anyOf": [
-              {
-                "format": "date-time",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Revoked At"
-          }
-        },
-        "required": [
-          "id",
-          "credential_kind",
-          "created_at",
-          "expires_at",
-          "revoked_at"
-        ],
-        "title": "SessionView",
         "type": "object"
       },
       "SetTenantCapRequest": {
@@ -5626,8 +5626,101 @@
       }
     },
     "/v1/auth/sessions": {
+      "get": {
+        "operationId": "list_auth_sessions_v1_auth_sessions_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-app",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-App"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-app-version",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-App-Version"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/AuthSessionView"
+                  },
+                  "title": "Response List Auth Sessions V1 Auth Sessions Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Auth Sessions",
+        "tags": [
+          "tenancy"
+        ]
+      },
       "post": {
-        "operationId": "exchange_session_v1_auth_sessions_post",
+        "operationId": "exchange_auth_session_v1_auth_sessions_post",
         "parameters": [
           {
             "in": "header",
@@ -5682,7 +5775,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/ExchangeSessionRequest"
+                "$ref": "#/components/schemas/ExchangeAuthSessionRequest"
               }
             }
           },
@@ -5693,7 +5786,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/IssuedSessionView"
+                  "$ref": "#/components/schemas/IssuedAuthSessionView"
                 }
               }
             },
@@ -5710,7 +5803,98 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Exchange Session",
+        "summary": "Exchange Auth Session",
+        "tags": [
+          "tenancy"
+        ]
+      }
+    },
+    "/v1/auth/sessions/{auth_session_id}": {
+      "delete": {
+        "operationId": "revoke_auth_session_v1_auth_sessions__auth_session_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "auth_session_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Auth Session Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-app",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-App"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-app-version",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-App-Version"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthSessionView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Revoke Auth Session",
         "tags": [
           "tenancy"
         ]
@@ -9621,192 +9805,6 @@
         "summary": "Mint Ticket",
         "tags": [
           "realtime"
-        ]
-      }
-    },
-    "/v1/sessions": {
-      "get": {
-        "operationId": "list_sessions_v1_sessions_get",
-        "parameters": [
-          {
-            "in": "query",
-            "name": "limit",
-            "required": false,
-            "schema": {
-              "default": 50,
-              "title": "Limit",
-              "type": "integer"
-            }
-          },
-          {
-            "in": "header",
-            "name": "authorization",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Authorization"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-app",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-App"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-app-version",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-App-Version"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "items": {
-                    "$ref": "#/components/schemas/SessionView"
-                  },
-                  "title": "Response List Sessions V1 Sessions Get",
-                  "type": "array"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "List Sessions",
-        "tags": [
-          "tenancy"
-        ]
-      }
-    },
-    "/v1/sessions/{session_id}": {
-      "delete": {
-        "operationId": "revoke_session_v1_sessions__session_id__delete",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "session_id",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "title": "Session Id",
-              "type": "string"
-            }
-          },
-          {
-            "in": "header",
-            "name": "authorization",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Authorization"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-app",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-App"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-app-version",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-App-Version"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/SessionView"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Revoke Session",
-        "tags": [
-          "tenancy"
         ]
       }
     },

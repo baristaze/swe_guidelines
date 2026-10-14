@@ -2,7 +2,7 @@
 // for the tab's session storage and the origin's local storage.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const KEY = "acme.portal.session";
+const KEY = "acme.portal.authSession";
 
 class MemoryStorage implements Storage {
   private items = new Map<string, string>();
@@ -41,10 +41,10 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-describe("session store", () => {
+describe("auth session store", () => {
   it("persists the token in session storage and never in local storage", async () => {
-    const { useSessionStore } = await import("./session");
-    useSessionStore.getState().setSession("tok_1", "ajax");
+    const { useAuthSessionStore } = await import("./authSession");
+    useAuthSessionStore.getState().setAuthSession("tok_1", "ajax");
 
     const stored = session.getItem(KEY);
     expect(stored).not.toBeNull();
@@ -55,15 +55,15 @@ describe("session store", () => {
 
   it("reads the session back from session storage on load", async () => {
     session.setItem(KEY, JSON.stringify({ state: { token: "tok_2", orgSlug: "ajax" }, version: 0 }));
-    const { useSessionStore } = await import("./session");
-    expect(useSessionStore.getState().token).toBe("tok_2");
-    expect(useSessionStore.getState().orgSlug).toBe("ajax");
+    const { useAuthSessionStore } = await import("./authSession");
+    expect(useAuthSessionStore.getState().token).toBe("tok_2");
+    expect(useAuthSessionStore.getState().orgSlug).toBe("ajax");
   });
 
   it("clears the persisted session on sign-out", async () => {
-    const { useSessionStore } = await import("./session");
-    useSessionStore.getState().setSession("tok_3", "ajax");
-    useSessionStore.getState().clear();
+    const { useAuthSessionStore } = await import("./authSession");
+    useAuthSessionStore.getState().setAuthSession("tok_3", "ajax");
+    useAuthSessionStore.getState().clear();
     expect(JSON.parse(session.getItem(KEY) as string).state).toEqual({ token: null, orgSlug: null });
   });
 });

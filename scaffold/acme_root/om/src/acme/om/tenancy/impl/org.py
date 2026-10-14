@@ -29,7 +29,7 @@ from acme.om.tenancy.impl.creates import (
 )
 from acme.om.tenancy.impl.manager import TenancyOptions
 from acme.om.tenancy.impl.shared import (
-    create_session,
+    create_auth_session,
     live_user,
     memberships_of,
     mint_token,
@@ -48,10 +48,15 @@ from acme.om.tenancy.rules import (
     slug_from_name,
 )
 from acme.om.tenancy.storage import TenancyStorageInterface
+from acme.om.tenancy.types.auth_session import AuthSession
 from acme.om.tenancy.types.identity import Identity
-from acme.om.tenancy.types.issued import AccountDeleted, IssuedSession, OrgDeleted, OrgMembership
+from acme.om.tenancy.types.issued import (
+    AccountDeleted,
+    IssuedAuthSession,
+    OrgDeleted,
+    OrgMembership,
+)
 from acme.om.tenancy.types.org import Org
-from acme.om.tenancy.types.session import Session
 from acme.om.tenancy.types.user import User
 from acme.om.work.types.work_item import WorkKind, work_row_kind
 
@@ -105,7 +110,7 @@ class TenancyOrgManagerImpl(TenancyOrgManagerInterface):
         ctx.require(Permission.READ)
         # A person makes an org, not a program: an api key belongs to the
         # tenant it was minted in, and a new tenant is not its to make.
-        if ctx.security.credential_kind is not CredentialKind.SESSION_TOKEN:
+        if ctx.security.credential_kind is not CredentialKind.AUTH_SESSION_TOKEN:
             raise NotAuthorized("only a signed-in person creates an org")
         try:
             check_org(name, slug)
@@ -162,7 +167,7 @@ class TenancyOrgManagerImpl(TenancyOrgManagerInterface):
         ctx.require(Permission.READ)
         # A person deletes their account, not a program: an api key belongs
         # to the tenant it was minted in, and the person is not its to erase.
-        if ctx.security.credential_kind is not CredentialKind.SESSION_TOKEN:
+        if ctx.security.credential_kind is not CredentialKind.AUTH_SESSION_TOKEN:
             raise NotAuthorized("only a signed-in person deletes their account")
         if return_to is not None and return_to not in self._options.sign_out_return_uris:
             raise ValidationFailed("that is not this environment's sign-out return")
@@ -182,7 +187,7 @@ class TenancyOrgManagerImpl(TenancyOrgManagerInterface):
         refusal = await self._last_owner(places)
         if refusal.orgs:
             raise refusal
-        asking = await self._storage.read_session(ctx.org_id, ctx.security.credential_id)
+        asking = await self._storage.read_auth_session(ctx.org_id, ctx.security.credential_id)
         rows: list[OutboxRow] = []
         for place in places:
             # Each row is written under the person's own place in its org:
@@ -305,7 +310,7 @@ class TenancyOrgManagerImpl(TenancyOrgManagerInterface):
         ctx.require(Permission.MANAGE_MEMBERS)
         # A person deletes the org, not a program: an api key is the tenant's,
         # and the tenant is not its to end.
-        if ctx.security.credential_kind is not CredentialKind.SESSION_TOKEN:
+        if ctx.security.credential_kind is not CredentialKind.AUTH_SESSION_TOKEN:
             raise NotAuthorized("only a signed-in owner deletes an organization")
         if ctx.security.role is not Role.OWNER:
             raise NotAuthorized("only an owner deletes an organization")
@@ -314,7 +319,7 @@ class TenancyOrgManagerImpl(TenancyOrgManagerInterface):
             raise PersonalOrgFixed("a personal org goes only with its person's account")
         if not confirms_org_deletion(org.name, confirm_name):
             raise ValidationFailed("type the organization's name to delete it")
-        asking = await self._storage.read_session(ctx.org_id, ctx.security.credential_id)
+        asking = await self._storage.read_auth_session(ctx.org_id, ctx.security.credential_id)
         user = await live_user(self._storage, ctx, ctx.user_id)
         now = utcnow()
         # The org stays live, with nobody in it, until the queue has ended its
@@ -349,9 +354,9 @@ class TenancyOrgManagerImpl(TenancyOrgManagerInterface):
         await self._relay.relay_all(ctx.org_id, (work, *ended))
         log.info("owner %s deleted org %s", ctx.user_id, org.id)
         landing = None if asking is None else await self._land_home(user, asking)
-        return OrgDeleted(deleted_at=now, session=landing)
+        return OrgDeleted(deleted_at=now, auth_session=landing)
 
-    async def _land_home(self, user: User, asking: Session) -> IssuedSession | None:
+    async def _land_home(self, user: User, asking: AuthSession) -> IssuedAuthSession | None:
         """The session an owner lands on in their personal org once their team
         org is gone, as a switch would make it: the same person, carrying the
         provider's session the one that asked came from, and its deadline.
@@ -364,8 +369,8 @@ class TenancyOrgManagerImpl(TenancyOrgManagerInterface):
         if home is None:
             return None
         now = utcnow()
-        token = mint_token(CredentialKind.SESSION_TOKEN)
-        session = Session(
+        token = mint_token(CredentialKind.AUTH_SESSION_TOKEN)
+        session = AuthSession(
             id=new_id(),
             created_at=now,
             updated_at=now,
@@ -374,17 +379,17 @@ class TenancyOrgManagerImpl(TenancyOrgManagerInterface):
             identity_id=user.identity_id,
             user_id=home.user.id,
             token_hash=hash_token(token),
-            credential_kind=CredentialKind.SESSION_TOKEN,
-            expires_at=deadline_kept(asking.expires_at, now, self._options.session_ttl),
+            credential_kind=CredentialKind.AUTH_SESSION_TOKEN,
+            expires_at=deadline_kept(asking.expires_at, now, self._options.auth_session_ttl),
             provider_session_id=asking.provider_session_id,
         )
         try:
-            await create_session(self._storage, home.org.id, session)
+            await create_auth_session(self._storage, home.org.id, session)
         except (InfraException, OmException) as error:
             # The org is gone either way; only the landing failed.
             log.warning("no session in the personal org of %s: %s", user.identity_id, error)
             return None
-        return IssuedSession(
+        return IssuedAuthSession(
             token=token, expires_at=session.expires_at, org=home.org, user=home.user, role=home.role
         )
 

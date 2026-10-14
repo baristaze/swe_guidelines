@@ -79,7 +79,7 @@ class CreateTeamOrgRequest(BaseModel):
 
 class CredentialKind(StrEnum):
     api_key = 'api_key'
-    session_token = 'session_token'
+    auth_session_token = 'auth_session_token'
     login = 'login'
     socket_ticket = 'socket_ticket'
     operator_token = 'operator_token'
@@ -188,7 +188,7 @@ class EventView(BaseModel):
     target_id: Annotated[UUID, Field(title='Target Id')]
 
 
-class ExchangeSessionRequest(BaseModel):
+class ExchangeAuthSessionRequest(BaseModel):
     """
     The org to enter. Presented with the sign-in credential, it opens the
     first session; presented with a session, it is a switch, and that session
@@ -503,17 +503,6 @@ class SecondFactorRequest(BaseModel):
     totp_code: Annotated[str, Field(max_length=6, min_length=6, title='Totp Code')]
 
 
-class SessionView(BaseModel):
-    """
-    Only the hash of a token is ever kept, so a session view carries no secret.
-    """
-    created_at: Annotated[AwareDatetime, Field(title='Created At')]
-    credential_kind: CredentialKind
-    expires_at: Annotated[AwareDatetime, Field(title='Expires At')]
-    id: Annotated[UUID, Field(title='Id')]
-    revoked_at: Annotated[AwareDatetime | None, Field(title='Revoked At')]
-
-
 class SetTenantCapRequest(BaseModel):
     """
     An org's own cap on a lane: the most items it holds claimed there at
@@ -812,6 +801,17 @@ class AskRequest(BaseModel):
     wait_seconds: Annotated[int | None, Field(ge=1, le=604800, title='Wait Seconds')] = 3600
 
 
+class AuthSessionView(BaseModel):
+    """
+    Only the hash of a token is ever kept, so a session view carries no secret.
+    """
+    created_at: Annotated[AwareDatetime, Field(title='Created At')]
+    credential_kind: CredentialKind
+    expires_at: Annotated[AwareDatetime, Field(title='Expires At')]
+    id: Annotated[UUID, Field(title='Id')]
+    revoked_at: Annotated[AwareDatetime | None, Field(title='Revoked At')]
+
+
 class FilePageView(BaseModel):
     """
     One page of the org's stored files, oldest first. `next_cursor` fetches
@@ -875,6 +875,14 @@ class IssuedApiKeyView(BaseModel):
     key: Annotated[str | None, Field(title='Key')]
 
 
+class IssuedAuthSessionView(BaseModel):
+    expires_at: Annotated[AwareDatetime, Field(title='Expires At')]
+    org: OrgView
+    role: Role
+    token: Annotated[str, Field(title='Token')]
+    user: UserView
+
+
 class IssuedOperatorTokenView(BaseModel):
     """
     The token in the clear, on this answer only; `id` names it afterwards,
@@ -886,14 +894,6 @@ class IssuedOperatorTokenView(BaseModel):
     id: Annotated[UUID, Field(title='Id')]
     permission: OperatorRole
     token: Annotated[str | None, Field(title='Token')]
-
-
-class IssuedSessionView(BaseModel):
-    expires_at: Annotated[AwareDatetime, Field(title='Expires At')]
-    org: OrgView
-    role: Role
-    token: Annotated[str, Field(title='Token')]
-    user: UserView
 
 
 class IssuedUploadView(BaseModel):
@@ -1007,13 +1007,13 @@ class OperatorWorkItemView(BaseModel):
 
 class OrgDeletedView(BaseModel):
     """
-    The org is gone for everyone in it: `deleted_at` is when. `session` is
+    The org is gone for everyone in it: `deleted_at` is when. `auth_session` is
     the owner's new session in their personal org, which replaces the one
     that asked, as a switch's does; null when none could be made, and the
     owner signs in again.
     """
+    auth_session: IssuedAuthSessionView | None = None
     deleted_at: Annotated[AwareDatetime, Field(title='Deleted At')]
-    session: IssuedSessionView | None = None
 
 
 class OrgPageView(BaseModel):

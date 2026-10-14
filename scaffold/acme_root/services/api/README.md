@@ -37,10 +37,10 @@ app, and `main.py` is the `acme-api` command: `serve`, `migrate`,
   finish a device sign-in for the command line (`/v1/auth/device`,
   `/v1/auth/device/token`). Confirm an operator's second factor on a
   sign-in (`/v1/auth/second-factor`). List my places; exchange the
-  login, once, or switch a session, for a session in one org; sign out
+  login, once, or switch an auth session, for an auth session in one org; sign out
   (`/v1/auth/memberships`, `/v1/auth/sessions`, `/v1/auth/logout`).
   The sign-out ends the credential presented, whichever a person holds:
-  a session, a login (with or without its second factor), or an
+  an auth session, a login (with or without its second factor), or an
   operator token; an API key has none and is `401`. It takes an optional
   `return_to`, one of this environment's `ACME_SIGN_OUT_RETURN_URIS`,
   and answers the row it ended with `provider_logout_url`: WorkOS's
@@ -53,15 +53,15 @@ app, and `main.py` is the `acme-api` command: `serve`, `migrate`,
 - **Me.** The current org, my user, my identity, and my display name;
   a new team org I own. (`/v1/orgs/current`, `/v1/me`,
   `/v1/me/identity`, `/v1/orgs`)
-- **Delete my account.** From a session, with the account's email typed
+- **Delete my account.** From an auth session, with the account's email typed
   to confirm: the account goes at once, in every org, and the answer
   names the identity provider's logout, as a sign-out does. `409
   last_owner` names each team org the person is the last owner of, in
   the envelope's `last_owner.orgs`; `403 operator_role_held` refuses an
   operator. (`POST /v1/me/deletion`, ADR 0041)
-- **Delete this organization.** From an owner's session, with the
+- **Delete this organization.** From an owner's auth session, with the
   org's name typed to confirm: everyone in the team org loses it at
-  once, and the answer carries the owner's new session in their
+  once, and the answer carries the owner's new auth session in their
   personal org. `403 not_authorized` refuses an admin, a member, and an
   api key; `409 personal_org_fixed` refuses a personal org.
   (`POST /v1/orgs/current/deletion`, ADR 0042)
@@ -76,9 +76,9 @@ app, and `main.py` is the `acme-api` command: `serve`, `migrate`,
   sign-on or proves a domain. (`/v1/invitations`,
   `/v1/invitations/{invitation_id}/resend`,
   `/v1/invitations/{invitation_id}`, `/v1/orgs/current/sso-link`)
-- **Credentials.** My live sessions and revoking one; the org's API
+- **Credentials.** My live auth sessions and revoking one; the org's API
   keys, creating one, revoking one; a ticket for the live channel.
-  (`/v1/sessions`, `/v1/api-keys`, `/v1/realtime/tickets`)
+  (`/v1/auth/sessions`, `/v1/api-keys`, `/v1/realtime/tickets`)
 - **Files.** Starting an upload, under an Idempotency-Key; the org's
   stored files a page at a time; a file, and deleting it; the form that
   posts its bytes straight to the store, or the bytes through the API
@@ -160,8 +160,8 @@ app, and `main.py` is the `acme-api` command: `serve`, `migrate`,
   status. A 5xx says `internal error` and the real message goes to the
   log under the request id; the admission 503 alone says which bound it
   hit, with a `Retry-After`.
-- **Bearer by prefix.** The credential's prefix says what it is: a
-  session token, an API key, a login, a ticket, or an operator token. A missing or
+- **Bearer by prefix.** The credential's prefix says what it is: an
+  auth session token, an API key, a login, a ticket, or an operator token. A missing or
   invalid one is a 401; a route asked with the wrong kind is refused.
 - **The answer never waits for the relay.** A write commits its
   outbox rows before it answers. Their relay, the push and the queued
@@ -186,7 +186,7 @@ app, and `main.py` is the `acme-api` command: `serve`, `migrate`,
   shares one budget. Past a budget the answer is a 429,
   `rate_limited`, in the one envelope, with a `Retry-After` in
   seconds: the time left on the window. There are three budgets.
-  - **Per credential.** Every session and API key has a budget of
+  - **Per credential.** Every auth session and API key has a budget of
     reads (`GET`, `HEAD`) and one of writes, spent once the credential
     resolves (`ACME_CREDENTIAL_RATE_LIMIT_READS`, `_WRITES`, over
     `ACME_CREDENTIAL_RATE_WINDOW_SECONDS`). Two people behind one

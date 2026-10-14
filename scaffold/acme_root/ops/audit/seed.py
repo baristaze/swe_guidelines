@@ -177,14 +177,14 @@ def statements(c: Counts) -> list[tuple[str, str]]:
         ),
         (
             "tenant sessions",
-            f"""INSERT INTO core.sessions (id, org_id, created_at, updated_at, created_by,
+            f"""INSERT INTO core.auth_sessions (id, org_id, created_at, updated_at, created_by,
                 identity_id, user_id, token_hash,
                                        credential_kind, expires_at, updated_by, last_seen_at)
             SELECT uuidv7(-(interval '20 days') + (p.n * 2 + k) * interval '1 second'),
                 p.org_id, now() - interval '20 days',
                    now(), p.identity_id, p.identity_id, p.user_id,
                    encode(sha256(convert_to('s' || p.n || '-' || k, 'UTF8')), 'hex'),
-                       'session_token',
+                       'auth_session_token',
                    now() + interval '10 days', p.identity_id, now() - interval '5 minutes'
             FROM people p CROSS JOIN generate_series(1, 2) k
             UNION ALL
@@ -192,13 +192,13 @@ def statements(c: Counts) -> list[tuple[str, str]]:
                 now() - interval '20 days',
                    now(), m.identity_id, m.identity_id, m.user_id,
                    encode(sha256(convert_to('b' || m.n || '-' || k, 'UTF8')), 'hex'),
-                       'session_token',
+                       'auth_session_token',
                    now() + interval '10 days', m.identity_id, now() - interval '5 minutes'
             FROM members m CROSS JOIN generate_series(1, 2) k""",
         ),
         (
             "sign-in sessions",
-            f"""INSERT INTO core.sessions (id, org_id, created_at, updated_at, created_by,
+            f"""INSERT INTO core.auth_sessions (id, org_id, created_at, updated_at, created_by,
                 identity_id, user_id, token_hash,
                                        credential_kind, expires_at, updated_by)
             SELECT uuidv7(-(interval '20 days') + (p.n * 2 + k) * interval '1 second'), '{EMPTY}',

@@ -1101,7 +1101,7 @@ async def test_a_pass_purges_every_row_past_its_retention_and_keeps_what_lives(
             "removed user": await tenancy_rows.read_user(org, bob.id),
             "ended membership": next((m for _, m in memberships if m.user_id == bob.id), None),
             "revoked key": await tenancy_rows.read_api_key(org, revoked.api_key.id),
-            "expired session": await tenancy_rows.read_session(org, ann.credential_id),
+            "expired session": await tenancy_rows.read_auth_session(org, ann.credential_id),
             "ticket": next((t for _, t in tickets if t.ticket_hash == ticket_hash), None),
             "closed invitation": await tenancy_rows.read_invitation(org, invitation.id),
             "failed sign-ins": await tenancy_rows.read_sign_in_delay("a-digest"),

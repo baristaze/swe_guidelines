@@ -19,7 +19,7 @@ generated schema.
   `src/page.ts` reads a file of the page's own origin, such as
   `/config.json`. Neither is the API, so neither carries its headers.
 
-What only one app needs stays in that app: its session store, its query
+What only one app needs stays in that app: its auth session store, its query
 client, its realtime channel, and the one client instance it builds.
 
 ```ts

@@ -45,7 +45,7 @@ async def login(w: Any, email: str) -> str:
     return r.json()["token"]
 
 
-async def session(w: Any, email: str, org_id: Any) -> str:
+async def auth_session(w: Any, email: str, org_id: Any) -> str:
     token = await login(w, email)
     r = await w.client.post(
         "/v1/auth/sessions", json={"org_id": str(org_id)}, headers=headers(token)
@@ -54,7 +54,7 @@ async def session(w: Any, email: str, org_id: Any) -> str:
     return r.json()["token"]
 
 
-async def personal_session(w: Any, email: str) -> str:
+async def personal_auth_session(w: Any, email: str) -> str:
     """A person's session in their personal org, which a first sign-in makes."""
     token = await login(w, email)
     r = await w.client.get("/v1/auth/memberships", headers=headers(token))
@@ -85,8 +85,8 @@ async def seed(w: Any) -> None:
     assert made is not None
     st["org"] = made[1]
     st["bob"] = await add_member(w.container, st["org"].id, f"bob-{s}@example.test", Role.MEMBER)
-    st["H"] = headers(await session(w, st["owner_email"], st["org"].id))
-    st["bobH"] = headers(await session(w, f"bob-{s}@example.test", st["org"].id))
+    st["H"] = headers(await auth_session(w, st["owner_email"], st["org"].id))
+    st["bobH"] = headers(await auth_session(w, f"bob-{s}@example.test", st["org"].id))
 
 
 # ---------------------------------------------------------------- sign-in and the baseline
@@ -153,7 +153,7 @@ async def sign_in(w: Any) -> None:
         "/v1/auth/callback",
         json={"code": code, "code_verifier": VERIFIER},
     )
-    other = await session(w, st["owner_email"], st["org"].id)
+    other = await auth_session(w, st["owner_email"], st["org"].id)
     await w.http(
         area,
         "POST /v1/auth/logout",
@@ -306,7 +306,7 @@ async def api_keys(w: Any) -> None:
 async def switch(w: Any) -> None:
     st, s = w.state, w.state["s"]
     area = "switch"
-    h = headers(await session(w, st["owner_email"], st["org"].id))
+    h = headers(await auth_session(w, st["owner_email"], st["org"].id))
     r = await w.http(
         area, "POST /v1/orgs", "POST", "/v1/orgs", headers=h, json={"name": f"Team {s}"}
     )
@@ -327,13 +327,17 @@ async def switch(w: Any) -> None:
         headers=h,
     )
     switched = headers(r.json()["token"])
-    r = await w.http(area, "GET /v1/sessions", "GET", "/v1/sessions", headers=switched)
+    r = await w.http(area, "GET /v1/auth/sessions", "GET", "/v1/auth/sessions", headers=switched)
     known = {row["id"] for row in r.json()}
-    await session(w, st["owner_email"], team)
-    listed = await w.client.get("/v1/sessions", headers=switched)
+    await auth_session(w, st["owner_email"], team)
+    listed = await w.client.get("/v1/auth/sessions", headers=switched)
     other = next(row["id"] for row in listed.json() if row["id"] not in known)
     await w.http(
-        area, "DELETE /v1/sessions/{id}", "DELETE", f"/v1/sessions/{other}", headers=switched
+        area,
+        "DELETE /v1/auth/sessions/{id}",
+        "DELETE",
+        f"/v1/auth/sessions/{other}",
+        headers=switched,
     )
     st["team"] = {"id": team, "name": f"Team {s}", "H": switched}
 
@@ -490,7 +494,7 @@ async def team_org(w: Any) -> dict[str, Any]:
     """A team org the owner makes and switches to, uncounted: what `switch`
     leaves behind, for a run that names `org_deleted` without it."""
     st, name = w.state, f"Doomed {w.state['s']}"
-    h = headers(await session(w, st["owner_email"], st["org"].id))
+    h = headers(await auth_session(w, st["owner_email"], st["org"].id))
     r = await w.client.post("/v1/orgs", headers=h, json={"name": name})
     team = r.json()["org"]["id"]
     r = await w.client.post("/v1/auth/sessions", json={"org_id": team}, headers=h)
@@ -503,7 +507,7 @@ async def org_deleted(w: Any) -> None:
     st = w.state
     team = st.get("team") or await team_org(w)
     area = "deletion"
-    left = headers(await session(w, st["owner_email"], team["id"]))
+    left = headers(await auth_session(w, st["owner_email"], team["id"]))
     await w.http(
         area,
         "POST /v1/orgs/current/deletion (not the owner: refused)",
@@ -533,7 +537,7 @@ async def account_deleted(w: Any) -> None:
     s = w.state["s"]
     area = "deletion"
     email = f"leaving-{s}@example.test"
-    h = headers(await personal_session(w, email))
+    h = headers(await personal_auth_session(w, email))
     await w.http(
         area,
         "POST /v1/me/deletion (the wrong address: refused)",

@@ -100,12 +100,12 @@ def test_a_payload_from_a_producer_one_release_behind_still_parses() -> None:
         "idempotency_key": str(new_id()),
         "produced_at": utcnow().isoformat(),
         "org_id": str(new_id()),
-        "kind": "tenancy.session.revoked",
+        "kind": "tenancy.auth_session.revoked",
         "target_id": str(new_id()),
         "seq": 7,
     }
     payload = TOPIC_PAYLOADS[Topics.ENTITY_CHANGED].model_validate(frame)
     assert isinstance(payload, EntityChangedPayload)
-    assert payload.kind == "tenancy.session.revoked" and payload.seq == 7
+    assert payload.kind == "tenancy.auth_session.revoked" and payload.seq == 7
     # Nobody is named, so no client mistakes the change for its own.
     assert payload.actor_id == NO_ACTOR

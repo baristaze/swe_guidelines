@@ -44,11 +44,11 @@ from acme.om.tenancy.rules import (
     otpauth_uri,
 )
 from acme.om.tenancy.storage import TenancyStorageInterface
+from acme.om.tenancy.types.auth_session import AuthSession
 from acme.om.tenancy.types.identity import Identity
 from acme.om.tenancy.types.issued import IssuedOperatorToken, IssuedTotpSecret
 from acme.om.tenancy.types.org import Org
 from acme.om.tenancy.types.page import OperatorTokenPage, OrgPage, UserPage
-from acme.om.tenancy.types.session import Session
 from acme.om.tenancy.types.size import SystemSize
 from acme.om.tenancy.types.user import User
 from acme.om.work.types.work_item import WorkKind, work_row_kind
@@ -140,7 +140,7 @@ class TenancyOperatorManagerImpl(TenancyOperatorManagerInterface):
             entry
         ):
             raise NotAuthorized(f"operator lacks {operator_role.value}")
-        found = await self._storage.read_session_by_id(admin.credential_id)
+        found = await self._storage.read_auth_session_by_id(admin.credential_id)
         if found is None:
             raise InvalidCredential("the sign-in behind the mint is gone")
         issued, token = new_operator_token(
@@ -166,9 +166,9 @@ class TenancyOperatorManagerImpl(TenancyOperatorManagerInterface):
         )
         return OperatorTokenPage(items=tuple(rows[:limit]), has_more=len(rows) > limit)
 
-    async def revoke_operator_token(self, admin: OperatorContext, token_id: UUID) -> Session:
+    async def revoke_operator_token(self, admin: OperatorContext, token_id: UUID) -> AuthSession:
         admin.require(OperatorPermission.READ)
-        found = await self._storage.read_session_by_id(token_id)
+        found = await self._storage.read_auth_session_by_id(token_id)
         # An operator ends their own tokens, and no other operator's: the
         # allowlist is the grant job's, and so is ending another identity's
         # credentials (its disable). Another's reads as no token at all.
@@ -183,7 +183,7 @@ class TenancyOperatorManagerImpl(TenancyOperatorManagerInterface):
         if token.revoked_at is not None:
             return token  # ended already: the same answer again
         revoked = ended_by(token, admin.identity_id, utcnow())
-        await self._storage.write_session(EMPTY_UUID, revoked)
+        await self._storage.write_auth_session(EMPTY_UUID, revoked)
         log.info(
             "operator %s revoked operator token %s by its %s %s",
             admin.identity_id,

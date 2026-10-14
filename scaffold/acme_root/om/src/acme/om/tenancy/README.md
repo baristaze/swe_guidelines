@@ -18,8 +18,8 @@ plane. This is one of the kinds of thing
 - **Membership**: the user's place in the org, with a role.
 - **Invitation**: an email, a role, who asked, and whether it is
   pending, accepted, or revoked.
-- **Sign-in** and **session**: a sign-in proves the person and lists
-  their orgs; it is exchanged once for a session in one org. A session
+- **Sign-in** and **auth session**: a sign-in proves the person and lists
+  their orgs; it is exchanged once for an auth session in one org. An auth session
   lasts 30 days, or 14 idle.
 - **API key**, **socket ticket**, **second factor** (an operator's
   TOTP), and **operator token**: each stored as a digest or sealed,
@@ -33,14 +33,14 @@ plane. This is one of the kinds of thing
   flow for the CLI, or, on a developer's machine, by address alone. A
   first sign-in is the sign-up: the identity, its personal org, its
   user, and the owner membership land together.
-- **Exchange and switch.** A sign-in becomes a session in one org. A
-  session presented to the exchange is a switch, and ends in the same
-  write. The new session keeps its deadline: only a sign-in starts the
+- **Exchange and switch.** A sign-in becomes an auth session in one org. An
+  auth session presented to the exchange is a switch, and ends in the same
+  write. The new auth session keeps its deadline: only a sign-in starts the
   30 days.
-- **Sign out.** The credential presented ends. A hosted-page session
+- **Sign out.** The credential presented ends. A hosted-page auth session
   also ends the provider's session in that browser.
 - **Manage an org**: create a team org, invite, change a role, remove a
-  member, set up single sign-on, list and revoke sessions and API keys.
+  member, set up single sign-on, list and revoke auth sessions and API keys.
 - **Delete.** An owner deletes a team org, and a person deletes their
   account. Each closes at once for everyone it touches; the provider's
   side goes through the work queue.
@@ -55,7 +55,7 @@ plane. This is one of the kinds of thing
 - **The role ladder.** Viewer reads. Member also writes and manages
   their own keys. Admin and owner also manage members. Nothing a person
   issues ranks above the issuer, and the service role is no rung of it.
-- **A key never mints a key.** Only a session creates an API key.
+- **A key never mints a key.** Only an auth session creates an API key.
 - **A sign-in is exchanged once**
   ([ADR 0037](../../../../../docs/adr/0037-a-sign-in-is-exchanged-once.md)).
 - **An address is one address in any case**

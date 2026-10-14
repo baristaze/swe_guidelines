@@ -14,20 +14,21 @@ from acme.services.api.types.tenancy import (
     AddApiKeyRequest,
     ApiKeyPageView,
     ApiKeyView,
+    AuthSessionView,
     CreateTeamOrgRequest,
     DeleteAccountRequest,
     DeleteOrgRequest,
     DeviceSignInView,
     DeviceTokenRequest,
     DevSignInRequest,
-    ExchangeSessionRequest,
+    ExchangeAuthSessionRequest,
     IdentityView,
     InvitationPageView,
     InvitationView,
     InviteMemberRequest,
     IssuedApiKeyView,
+    IssuedAuthSessionView,
     IssuedLoginView,
-    IssuedSessionView,
     LogoutRequest,
     MembershipChoicePageView,
     MembershipChoiceView,
@@ -37,7 +38,6 @@ from acme.services.api.types.tenancy import (
     OrgDeletedView,
     OrgView,
     SecondFactorRequest,
-    SessionView,
     SignedOutView,
     SignInCallbackRequest,
     SignInStartRequest,
@@ -87,9 +87,9 @@ class TenancyServiceInterface(ABC):
     ) -> IssuedLoginView: ...
 
     @abstractmethod
-    async def exchange_session(
-        self, ictx: IdentityContext, body: ExchangeSessionRequest
-    ) -> IssuedSessionView:
+    async def exchange_auth_session(
+        self, ictx: IdentityContext, body: ExchangeAuthSessionRequest
+    ) -> IssuedAuthSessionView:
         """System-internal: the identity carries no tenant; the body chooses one."""
         ...
 
@@ -197,10 +197,12 @@ class TenancyServiceInterface(ABC):
     async def sso_link(self, ctx: TenantContext, body: SsoLinkRequest) -> SsoLinkView: ...
 
     @abstractmethod
-    async def get_sessions(self, ctx: TenantContext, limit: int) -> list[SessionView]: ...
+    async def get_auth_sessions(self, ctx: TenantContext, limit: int) -> list[AuthSessionView]: ...
 
     @abstractmethod
-    async def revoke_session(self, ctx: TenantContext, session_id: UUID) -> SessionView: ...
+    async def revoke_auth_session(
+        self, ctx: TenantContext, auth_session_id: UUID
+    ) -> AuthSessionView: ...
 
     @abstractmethod
     async def get_api_keys(

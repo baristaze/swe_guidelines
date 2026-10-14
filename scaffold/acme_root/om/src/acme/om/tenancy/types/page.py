@@ -4,11 +4,11 @@ The manager asks storage for one row more than the page and keeps it out, so
 
 from acme.om.base import OmBase
 from acme.om.tenancy.types.api_key import ApiKey
+from acme.om.tenancy.types.auth_session import AuthSession
 from acme.om.tenancy.types.invitation import Invitation
 from acme.om.tenancy.types.issued import OrgMembership
 from acme.om.tenancy.types.membership import Membership
 from acme.om.tenancy.types.org import Org
-from acme.om.tenancy.types.session import Session
 from acme.om.tenancy.types.user import User
 
 
@@ -46,8 +46,8 @@ class InvitationPage(OmBase):
 
 
 class OperatorTokenPage(OmBase):
-    """One operator's live tokens, newest first: rows of `sessions` of kind
+    """One operator's live tokens, newest first: rows of `auth_sessions` of kind
     `operator_token`, never the token itself, which is kept as its digest."""
 
-    items: tuple[Session, ...]
+    items: tuple[AuthSession, ...]
     has_more: bool

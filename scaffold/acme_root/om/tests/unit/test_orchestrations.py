@@ -457,7 +457,7 @@ async def test_a_cancel_takes_the_permission_a_resume_takes(world: World) -> Non
         org_id=ctx.org_id,
         role=Role.VIEWER,
         permissions=ROLE_PERMISSIONS[Role.VIEWER],
-        credential_kind=CredentialKind.SESSION_TOKEN,
+        credential_kind=CredentialKind.AUTH_SESSION_TOKEN,
     )
     with pytest.raises(NotAuthorized):
         await orchestrations.resume(viewer, parked.id)

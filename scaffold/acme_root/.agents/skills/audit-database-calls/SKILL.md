@@ -83,7 +83,7 @@ holds no cloud credential and reads no environment.
    - the fixed cost: every transaction pays `BEGIN`, which carries the
      scope's `set_config` in the same message, and `COMMIT` or
      `ROLLBACK`, so a one-statement read is three round trips;
-   - the per-request baseline of each credential (session, API key,
+   - the per-request baseline of each credential (auth session, API key,
      sign-in credential, operator token), and each route's cost above it;
    - what grows it: a count that rises with a list, an id set, the
      orgs of a person, the members of an org; say the formula (`13 + 8M`)

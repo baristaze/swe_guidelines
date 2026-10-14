@@ -6,8 +6,8 @@ from uuid import UUID
 from acme.om.base import OmBase
 from acme.om.context import OperatorRole, Role
 from acme.om.tenancy.types.api_key import ApiKey
+from acme.om.tenancy.types.auth_session import AuthSession
 from acme.om.tenancy.types.org import Org
-from acme.om.tenancy.types.session import Session
 from acme.om.tenancy.types.user import User
 
 
@@ -23,7 +23,7 @@ class IssuedLogin(OmBase):
     memberships: tuple[OrgMembership, ...]
 
 
-class IssuedSession(OmBase):
+class IssuedAuthSession(OmBase):
     token: str
     expires_at: datetime
     org: Org
@@ -76,7 +76,7 @@ class SignedOut(OmBase):
     provider's session behind it: None when the sign-in left none there
     (the device sign-in, the local sign-in, an operator token)."""
 
-    session: Session
+    auth_session: AuthSession
     provider_logout_url: str | None = None
 
 
@@ -95,4 +95,4 @@ class OrgDeleted(OmBase):
     session could not be made; the owner then signs in again."""
 
     deleted_at: datetime
-    session: IssuedSession | None = None
+    auth_session: IssuedAuthSession | None = None

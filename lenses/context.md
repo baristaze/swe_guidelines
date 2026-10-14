@@ -66,7 +66,7 @@ stage's identity id, email, and credential; every place that reads
 identity, tenant, or app information; the audit record type.
 
 **Violation.** A `User` or `Org` entity embedded in the context, so a
-role change waits for a new session and the context module imports
+role change waits for a new auth session and the context module imports
 the tenancy types; a context with no credential id, so rate limits
 key on something else; identity or tenant data
 passed beside the context as extra parameters; a second ad-hoc
@@ -91,7 +91,7 @@ held to it by a unit test.
 **Source.** TenantContext.
 
 **Look for.** The role-to-permission table and the module it lives in,
-credential issuing paths (API keys, invitations, session tokens), the
+credential issuing paths (API keys, invitations, auth session tokens), the
 comparison each issuing path makes and the test that holds a rank to
 the table, and any code that assigns permissions.
 
@@ -133,7 +133,7 @@ Principal; The Network Layer, The Gateway.
 
 **Look for.** Where the request stage is built (the gateway dependency,
 the worker loop, the bootstrap command); the transitions on the tenancy
-manager (a sign-in or a live session into the identity stage, a
+manager (a sign-in or a live auth session into the identity stage, a
 credential into `TenantContext`, the operator admission into
 `OperatorContext`, one service context per tenant for a sweep, and the
 one of them a purge across tenants acts in), what each takes (the
@@ -309,12 +309,12 @@ Business Layer, Operations Without a Principal.
 **Look for.** Storage methods without a tenant parameter; the list the
 checker holds; each step of the sweep and whether it is bookkeeping with
 no principal (relaying the outbox, expiring a lease, `purge_items`
-purging done and failed work items, purging ended sessions and
+purging done and failed work items, purging ended auth sessions and
 redeemed or expired socket tickets) or a tenant operation (CTX-17);
 what each cross-tenant read returns, as `tuple[UUID, Entity]` or an
 entity carrying `org_id`; the five lookups by name,
 `read_identity_by_email_digest`, `read_identity_by_issuer_subject`,
-`read_api_key_by_digest`, `read_session_by_digest`, and
+`read_api_key_by_digest`, `read_auth_session_by_digest`, and
 `redeem_socket_ticket`; every call that
 passes `EMPTY_UUID` as the `org_id`, where the operator plane's marker
 calls are the one caller that takes `org_id` and is handed
@@ -478,20 +478,20 @@ under the pass's request stage, or that acts in a tenant marked purged.
 prefix decides which gateway dependency accepts it. An agent's
 key is membership-scoped, expiring, and role-capped; a person's login
 credential carries no tenant and is exchanged for a tenant-scoped
-session token. A live session also proves its identity, and an
+auth session token. A live auth session also proves its identity, and an
 exchange presented with one ends it in the same write.
 
 **Source.** The Network Layer, The Gateway; TenantContext, Stages.
 
 **Look for.** Credential formats, the dependencies that parse them,
 which routes accept which kind; what the identity dependency accepts,
-and what the exchange does with a session it is handed.
+and what the exchange does with an auth session it is handed.
 
 **Violation.** One dependency that accepts any bearer on any route; a
 login credential usable directly on tenant routes; a key that never
 expires or that carries a tenant it was not scoped to; a revoked or
-expired session accepted into the identity stage; an exchange that
-leaves the presented session live, so one tab holds two.
+expired auth session accepted into the identity stage; an exchange that
+leaves the presented auth session live, so one tab holds two.
 
 **Severity.** high
 
@@ -507,7 +507,7 @@ credential behind it.
 **Look for.** The socket handshake, the ticket endpoint, ticket
 storage and expiry.
 
-**Violation.** An API key or session token in a socket URL; a ticket
+**Violation.** An API key or auth session token in a socket URL; a ticket
 that can be redeemed twice or long after minting; a redemption that
 does not re-validate the underlying credential.
 
@@ -539,7 +539,7 @@ flag (operator screens in the portal's bundle are DEL-16); an
 `OperatorContext` with a tenant field; an operator write that a
 read-only allowlist entry reaches; a manager method that accepts either
 context type; an operator route that reaches a tenant manager; an API
-key or a session admitted to the operator plane, since the operator
+key or an auth session admitted to the operator plane, since the operator
 gate admits only the person's own sign-in. (The second factor that
 sign-in needs is OPS-07.)
 
@@ -665,7 +665,7 @@ rank says.
 **Source.** TenantContext.
 
 **Look for.** Every credential issuing path (API keys, invitations,
-session tokens) and the check each makes against the service role by
+auth session tokens) and the check each makes against the service role by
 name; the test that tries to mint it and is refused.
 
 **Violation.** An issuing path that lets the service role through
@@ -699,37 +699,37 @@ the code for a new site.
 **Check.** `arch-check` decides every construction site in production
 code; the rest is judged.
 
-## CTX-27 A socket closes at its session's expiry or on its revocation
+## CTX-27 A socket closes at its auth session's expiry or on its revocation
 
 **Principle.** A stage lives no longer than its request. A socket holds
-the `TenantContext` its ticket produced, so the session's expiry bounds
+the `TenantContext` its ticket produced, so the auth session's expiry bounds
 the socket and the process closes it at that instant; a revocation or
 a membership's end travels on the topic bus as a change of its own
-kind, `tenancy.session.revoked` among them, and every process holding a
+kind, `tenancy.auth_session.revoked` among them, and every process holding a
 socket it names closes it on the change. The bus is at most once, so
-every socket also rechecks its session and membership every
+every socket also rechecks its auth session and membership every
 `realtime_recheck_seconds`, a setting of the realtime service, five
 minutes by default, without moving `last_seen_at`. A connection's lifetime is
-apart from the session's, and closing or pausing one never ends the
-session.
+apart from the auth session's, and closing or pausing one never ends the
+auth session.
 
 **Source.** TenantContext, Stages.
 
 **Look for.** The socket handler and what bounds its life: the deadline
-it sets from the session's expiry when the ticket is redeemed, and the
+it sets from the auth session's expiry when the ticket is redeemed, and the
 subscription on the topic bus that every process with sockets holds
 for those changes; what a process does with a change naming a
 credential, a user, a membership, or an org it holds a socket for; what the
 socket carries meanwhile, hints only; the recheck, its interval, and
 what it writes.
 
-**Violation.** A socket that outlives its session's expiry because the
+**Violation.** A socket that outlives its auth session's expiry because the
 client keeps pinging; a revocation that reaches a socket only at its
 next reconnect; a process that closes the sockets it revoked itself
 and ignores the change from another; a socket whose context is
 refreshed in place instead of closed; a change missed with no expiry to
 cover it, or with no recheck to bound it; a recheck that renews the
-session's idle window; a paused connection that ends the session.
+auth session's idle window; a paused connection that ends the auth session.
 
 **Severity.** high
 
@@ -747,14 +747,14 @@ Domain Owns.
 
 **Look for.** Where a provider's token is verified and what it
 produces; the key the identity is stored under; whether the exchange
-into a tenant session, the memberships, and the sessions are the ones
+into a tenant auth session, the memberships, and the auth sessions are the ones
 every person has; the provider's interface, real client, and twin in
 the `integrations/` distribution, and the container that wires one of
 them at boot.
 
-**Violation.** A provider's token accepted as a session on tenant
+**Violation.** A provider's token accepted as an auth session on tenant
 routes; an identity keyed on an email the provider may reassign; a
-second session or membership model for federated users; a tenant
+second auth session or membership model for federated users; a tenant
 manager that branches on the provider; no local twin, so the sign-in
 cannot run without the network (the twin itself is DEL-05).
 
@@ -926,16 +926,16 @@ points an integration at a secret it does not own.
 
 **Severity.** high
 
-## CTX-36 Failed sign-ins are throttled in storage; sessions have two lifetimes
+## CTX-36 Failed sign-ins throttle in storage; auth sessions have two lifetimes
 
 **Principle.** Sign-in has a defense that does not fail open: the
 tenancy manager counts failed sign-ins in its own storage, keyed on
 the email's digest, and each failure doubles the delay before the next
 attempt for that email is checked, up to a cap. An attempt inside the
 delay is refused `429` before its password is checked, and a success
-resets it. An unknown email is delayed like a known one. Every
+resets it. An unknown email is delayed like a known one. Every auth
 session has an idle and an absolute lifetime, both settings, and every
-API key an expiry. Only a sign-in starts the absolute lifetime: a
+API key an expiry. Only a sign-in starts the absolute lifetime: an auth
 session made from another, as a switch of tenant makes it, keeps the
 deadline of the one it ends.
 
@@ -944,20 +944,19 @@ Domain Owns.
 
 **Look for.** The sign-in transition and where it records a failure;
 what the count is keyed on, the delay it applies, its base and cap,
-and whether the refusal comes before the password check; the session's idle and
-absolute lifetimes in settings and where each is checked; the deadline
-a session takes when a session was presented to make it; the expiry
-on an API key.
+and whether the refusal comes before the password check; the auth
+session's idle and absolute lifetimes in settings and where each is
+checked; the deadline an auth session takes when an auth session was
+presented to make it; the expiry on an API key.
 
 **Violation.** A sign-in whose only defense is the per-address rate
 limit on the cache, which fails open; a failure count kept in the
 cache instead of the tenancy manager's storage; a count keyed on the
 identity, so an unknown email answers faster than a known one; an
-attempt inside the delay whose password is still checked; a session
-with no idle
-or no absolute lifetime; a switch that gives the new session a full
-lifetime, so a session renews itself with no sign-in; an API key with
-no expiry.
+attempt inside the delay whose password is still checked; an auth
+session with no idle or no absolute lifetime; a switch that gives the new
+auth session a full lifetime, so an auth session renews itself with no
+sign-in; an API key with no expiry.
 
 **Severity.** high
 
@@ -992,7 +991,7 @@ traffic generator, the deployed smoke test, and a supporter agent use
 an operator token. An operator signed in with the second factor mints
 it, or the grant job does for the provisioner and the smoke identity.
 It carries one operator permission, expires within one hour, and is
-a session of kind `operator`, stored as its digest and shown once.
+an auth session of kind `operator`, stored as its digest and shown once.
 The mint route is `POST /v1/admin/me/tokens`; the grant job writes its
 tokens into the secret store. `admit_operator` admits it as the one
 named exception to "a password alone never admits". The ops env file
@@ -1007,7 +1006,7 @@ Operator Credentials.
 agent skill authenticate to the operator plane; where an operator
 token is minted (`issue_operator_token`, `grant_operator_token`), its
 permission, its expiry, and how it is stored and found
-(`read_session_by_digest`);
+(`read_auth_session_by_digest`);
 the mint route and whether it refuses a stage that came from a
 token; where the grant job puts the token it mints; what
 `admit_operator` accepts; the keys in each ops env file, and which

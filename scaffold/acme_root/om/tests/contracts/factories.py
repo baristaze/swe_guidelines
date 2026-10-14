@@ -4,11 +4,11 @@ from uuid import UUID
 from acme.om.base import new_id, utcnow
 from acme.om.context import CredentialKind, OperatorRole, Role
 from acme.om.tenancy.types.api_key import ApiKey
+from acme.om.tenancy.types.auth_session import AuthSession
 from acme.om.tenancy.types.identity import Identity
 from acme.om.tenancy.types.invitation import Invitation
 from acme.om.tenancy.types.membership import Membership
 from acme.om.tenancy.types.org import Org, OrgKind
-from acme.om.tenancy.types.session import Session
 from acme.om.tenancy.types.socket_ticket import SocketTicket
 from acme.om.tenancy.types.user import User
 
@@ -78,11 +78,11 @@ def make_membership(user_id: UUID, role: Role = Role.MEMBER) -> Membership:
     )
 
 
-def make_session(
+def make_auth_session(
     identity_id: UUID, user_id: UUID, token_hash: str, ttl: timedelta = timedelta(hours=1)
-) -> Session:
+) -> AuthSession:
     now = utcnow()
-    return Session(
+    return AuthSession(
         id=new_id(),
         created_at=now,
         updated_at=now,
@@ -91,15 +91,15 @@ def make_session(
         identity_id=identity_id,
         user_id=user_id,
         token_hash=token_hash,
-        credential_kind=CredentialKind.SESSION_TOKEN,
+        credential_kind=CredentialKind.AUTH_SESSION_TOKEN,
         expires_at=now + ttl,
     )
 
 
-def make_sign_in(identity_id: UUID, token_hash: str) -> Session:
+def make_sign_in(identity_id: UUID, token_hash: str) -> AuthSession:
     """A sign-in: the credential with no tenant, kept in the system scope."""
     now = utcnow()
-    return Session(
+    return AuthSession(
         id=new_id(),
         created_at=now,
         updated_at=now,
@@ -117,10 +117,10 @@ def make_operator_token(
     token_hash: str,
     ttl: timedelta = timedelta(hours=1),
     role: OperatorRole = OperatorRole.READ,
-) -> Session:
+) -> AuthSession:
     """An operator token: a session of the system scope with one permission."""
     now = utcnow()
-    return Session(
+    return AuthSession(
         id=new_id(),
         created_at=now,
         updated_at=now,
@@ -159,7 +159,7 @@ def make_socket_ticket(
         created_at=now,
         user_id=user_id,
         ticket_hash=ticket_hash,
-        credential_kind=CredentialKind.SESSION_TOKEN,
+        credential_kind=CredentialKind.AUTH_SESSION_TOKEN,
         credential_id=new_id(),
         expires_at=now + ttl,
     )

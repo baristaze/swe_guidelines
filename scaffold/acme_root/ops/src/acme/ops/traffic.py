@@ -448,7 +448,7 @@ async def sign_in(
                     notes.append(f"{person.email} is not a member of {person.org_slug}")
                     queue.pop(0)
                     continue
-                session = await client.exchange_session(login.token, choices[0].org.id)
+                session = await client.exchange_auth_session(login.token, choices[0].org.id)
             except ApiError as error:
                 if error.status == 429 and waits_left > 0:
                     waits_left -= 1

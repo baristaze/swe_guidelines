@@ -37,7 +37,7 @@ A suite is worth what it catches, so break the fence on purpose.
 
 Probe several queries of different shapes: a helper the impls share
 (`MemoryStorageBase._get`, `_rows`, `_put`), a list with its own filter
-(`read_sessions`), a page (`read_api_keys`), a write with its own check.
+(`read_auth_sessions`), a page (`read_api_keys`), a write with its own check.
 A predicate that goes missing with the suite still green is the finding
 that matters: write the case that catches it, and confirm it fails.
 

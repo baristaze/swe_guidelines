@@ -9,13 +9,13 @@ it trusts the context it got until the bus carries a revocation that
 names it, or the credential expires.
 
 The bus is at most once: a failed publish, or a subscriber whose
-connection dropped, loses the message for good. A revoked session's
-socket would then stay open until the session's absolute expiry, up to
+connection dropped, loses the message for good. A revoked auth session's
+socket would then stay open until the auth session's absolute expiry, up to
 30 days, and an API key's until the key's, up to 90. A change of role
 would never reach an open socket.
 
 CTX-27 (TenantContext, Stages) puts a pull behind every trust decision a
-push carries: every socket rechecks its session and its membership
+push carries: every socket rechecks its auth session and its membership
 every `realtime_recheck_seconds`, a setting of the realtime service,
 five minutes by default, and closes when either has ended or the role
 changed.
@@ -31,7 +31,7 @@ every hint.
 **A socket rechecks its credential on an interval.** Every
 `ACME_REALTIME_RECHECK_SECONDS` (300 by default) the handler asks the
 realtime service again, and the service calls the same `resume` the
-redemption called: the session, or the API key, and the principal
+redemption called: the auth session, or the API key, and the principal
 behind it. The setting, `realtime_recheck_seconds`, sits beside the
 realtime service's other bounds, as Stages names it.
 
@@ -44,8 +44,8 @@ check together. No two checks are more than one interval apart, so a
 revocation the bus lost keeps its socket open for one interval at most.
 
 **The recheck asks and does not use.** `resume` takes
-`record_use=False` for it, and records no use of the session. An open
-socket never keeps an idle session alive: a tab left open is signed out
+`record_use=False` for it, and records no use of the auth session. An open
+socket never keeps an idle auth session alive: a tab left open is signed out
 at the idle lifetime, as a tab left closed is.
 
 **A change of rights closes the socket to reconnect.** The bus message

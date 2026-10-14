@@ -1,8 +1,8 @@
 // The one client instance the whole app shares, built from the runtime config.
 import { createClient } from "@acme/client";
-import { useSessionStore } from "../store/session";
+import { useAuthSessionStore } from "../store/authSession";
 import { runtimeConfig } from "./config";
-import { forgetSessionIfHeld } from "./forgetSession";
+import { forgetAuthSessionIfHeld } from "./forgetAuthSession";
 
 export const api = createClient({
   baseUrl: runtimeConfig().apiUrl,
@@ -11,7 +11,7 @@ export const api = createClient({
   timeoutMs: runtimeConfig().requestTimeoutMs,
   retryAttempts: runtimeConfig().retryAttempts,
   retryBaseDelayMs: runtimeConfig().retryBaseDelayMs,
-  getToken: () => useSessionStore.getState().token,
+  getToken: () => useAuthSessionStore.getState().token,
   // Through the same door as the socket's 4401, so a switch in flight holds it.
-  onUnauthorized: forgetSessionIfHeld,
+  onUnauthorized: forgetAuthSessionIfHeld,
 });

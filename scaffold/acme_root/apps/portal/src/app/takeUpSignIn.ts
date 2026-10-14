@@ -7,14 +7,14 @@
 // server could not end lapses when it expires. The logout's answer may name
 // the identity provider's logout; it is not followed, since the person is
 // signing in, not out, and the provider's session is the new sign-in's.
-import type { IssuedSessionView } from "@acme/client";
+import type { IssuedAuthSessionView } from "@acme/client";
 import { isAlreadyGone } from "./signOut";
 
 export interface TakeUpEffects {
   /** The token the tab holds before the new session is taken up, if any. */
   held: () => string | null;
   /** Drops the old tenant and takes up the new session. */
-  adopt: (issued: IssuedSessionView) => void;
+  adopt: (issued: IssuedAuthSessionView) => void;
   /** The logout, made with the replaced session's own token. */
   end: (token: string) => Promise<unknown>;
 }
@@ -23,7 +23,7 @@ export type TakeUpOutcome = "nothing_held" | "ended" | "already_gone" | "not_end
 
 /** Takes up the new session at once; the promise settles when the replaced
  * one is ended, or could not be. It never rejects. */
-export function takeUpSignIn(issued: IssuedSessionView, effects: TakeUpEffects): Promise<TakeUpOutcome> {
+export function takeUpSignIn(issued: IssuedAuthSessionView, effects: TakeUpEffects): Promise<TakeUpOutcome> {
   const held = effects.held();
   effects.adopt(issued);
   if (held === null || held === issued.token) return Promise.resolve("nothing_held");

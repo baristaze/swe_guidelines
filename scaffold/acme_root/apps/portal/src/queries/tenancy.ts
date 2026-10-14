@@ -9,11 +9,11 @@ import type {
   DeleteAccountRequest,
   DeleteOrgRequest,
   DevSignInRequest,
-  ExchangeSessionRequest,
+  ExchangeAuthSessionRequest,
   IdentityView,
   IssuedApiKeyView,
   IssuedLoginView,
-  IssuedSessionView,
+  IssuedAuthSessionView,
   InvitationPageView,
   InvitationView,
   InviteMemberRequest,
@@ -241,7 +241,7 @@ export function useLogout() {
 /** Ends a session this tab no longer holds, with that session's own token: a
  * sign-in over a tab that was signed in ends the session it replaced. It
  * sends no `return_to`, and its answer's provider logout is not followed. */
-export function useEndReplacedSession() {
+export function useEndReplacedAuthSession() {
   return useMutation({
     mutationFn: (token: string) => api.post<SignedOutView>("/v1/auth/logout", undefined, { token }),
   });
@@ -265,10 +265,10 @@ export function useDeleteOrg() {
   });
 }
 
-export function useExchangeSession() {
+export function useExchangeAuthSession() {
   return useMutation({
-    mutationFn: ({ loginToken, body }: { loginToken: string; body: ExchangeSessionRequest }) =>
-      api.post<IssuedSessionView>("/v1/auth/sessions", body, { token: loginToken }),
+    mutationFn: ({ loginToken, body }: { loginToken: string; body: ExchangeAuthSessionRequest }) =>
+      api.post<IssuedAuthSessionView>("/v1/auth/sessions", body, { token: loginToken }),
   });
 }
 
@@ -276,7 +276,7 @@ export function useExchangeSession() {
  * server ends that session in the same write and answers with the new one. */
 export function useSwitchOrg() {
   return useMutation({
-    mutationFn: (orgId: string) => api.post<IssuedSessionView>("/v1/auth/sessions", { org_id: orgId }),
+    mutationFn: (orgId: string) => api.post<IssuedAuthSessionView>("/v1/auth/sessions", { org_id: orgId }),
   });
 }
 

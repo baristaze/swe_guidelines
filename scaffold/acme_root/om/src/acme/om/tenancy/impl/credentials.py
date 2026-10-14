@@ -11,13 +11,13 @@ from acme.om.outbox import OutboxRelayInterface
 from acme.om.outbox.types.row import OutboxRow, outbox_row
 from acme.om.tenancy.credentials import TenancyCredentialsManagerInterface
 from acme.om.tenancy.impl.manager import TenancyOptions
-from acme.om.tenancy.impl.shared import clamp, mint_token, session_payload
+from acme.om.tenancy.impl.shared import auth_session_payload, clamp, mint_token
 from acme.om.tenancy.rules import hash_token, role_at_most
 from acme.om.tenancy.storage import TenancyStorageInterface
 from acme.om.tenancy.types.api_key import ApiKey
+from acme.om.tenancy.types.auth_session import AuthSession
 from acme.om.tenancy.types.issued import IssuedApiKey
 from acme.om.tenancy.types.page import ApiKeyPage
-from acme.om.tenancy.types.session import Session
 
 
 class TenancyCredentialsManagerImpl(TenancyCredentialsManagerInterface):
@@ -31,18 +31,18 @@ class TenancyCredentialsManagerImpl(TenancyCredentialsManagerInterface):
         self._relay = relay
         self._options = options
 
-    async def get_sessions(self, ctx: TenantContext, limit: int) -> list[Session]:
+    async def get_auth_sessions(self, ctx: TenantContext, limit: int) -> list[AuthSession]:
         ctx.require(Permission.READ)
         # Live at the storage: a page of dead sessions cannot hide a live one.
-        return await self._storage.read_sessions(
+        return await self._storage.read_auth_sessions(
             ctx.org_id, ctx.user_id, utcnow(), clamp(limit, self._options.max_limit)
         )
 
-    async def revoke_session(self, ctx: TenantContext, session_id: UUID) -> Session:
+    async def revoke_auth_session(self, ctx: TenantContext, auth_session_id: UUID) -> AuthSession:
         ctx.require(Permission.READ)
-        session = await self._storage.read_session(ctx.org_id, session_id)
+        session = await self._storage.read_auth_session(ctx.org_id, auth_session_id)
         if session is None or session.revoked_at is not None:
-            raise NotFound(f"session {session_id} not found")
+            raise NotFound(f"session {auth_session_id} not found")
         if session.user_id != ctx.user_id and not ctx.has(Permission.MANAGE_MEMBERS):
             raise NotAuthorized("only the owner of a session or a member manager may revoke it")
         now = utcnow()
@@ -51,7 +51,7 @@ class TenancyCredentialsManagerImpl(TenancyCredentialsManagerInterface):
         )
         # Announced like any change: the socket this session opened, in
         # whichever process holds it, closes on the row the relay publishes.
-        await self._write_session(ctx, revoked, "revoked")
+        await self._write_auth_session(ctx, revoked, "revoked")
         return revoked
 
     async def get_api_keys(self, ctx: TenantContext, after: UUID | None, limit: int) -> ApiKeyPage:
@@ -138,12 +138,21 @@ class TenancyCredentialsManagerImpl(TenancyCredentialsManagerInterface):
     # appends the event and pushes at once, and the sweep catches what a crash
     # left behind.
 
-    def _session_row(self, ctx: TenantContext, session: Session, action: str) -> OutboxRow:
-        return outbox_row(ctx, f"tenancy.session.{action}", session.id, session_payload(session))
+    def _auth_session_row(
+        self, ctx: TenantContext, auth_session: AuthSession, action: str
+    ) -> OutboxRow:
+        return outbox_row(
+            ctx,
+            f"tenancy.auth_session.{action}",
+            auth_session.id,
+            auth_session_payload(auth_session),
+        )
 
-    async def _write_session(self, ctx: TenantContext, session: Session, action: str) -> None:
-        row = self._session_row(ctx, session, action)
-        await self._storage.write_session(ctx.org_id, session, (row,))
+    async def _write_auth_session(
+        self, ctx: TenantContext, auth_session: AuthSession, action: str
+    ) -> None:
+        row = self._auth_session_row(ctx, auth_session, action)
+        await self._storage.write_auth_session(ctx.org_id, auth_session, (row,))
         await self._relay.relay(ctx.org_id, row)
 
     @staticmethod

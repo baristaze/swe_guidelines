@@ -768,7 +768,7 @@ and nothing else, set in Terraform.
 
 **Source.** Client App Architecture, API Access.
 
-**Look for.** Where the transport client and the session store read
+**Look for.** Where the transport client and the auth session store read
 and write the bearer; every `localStorage` reference in the app; the
 response headers policy of the static-site module in Terraform.
 
@@ -1019,9 +1019,9 @@ attaches them is DEL-19.)
 
 **Principle.** The portal signs in once and reads the memberships:
 one goes straight in, several get a picker first, none get a plain
-message. The pick is an exchange for one session. An org chip switches
+message. The pick is an exchange for one auth session. An org chip switches
 by a second exchange; the app then drops the old tenant's caches and
-reopens its socket. It never holds two sessions.
+reopens its socket. It never holds two auth sessions.
 
 **Source.** Client App Architecture, One Tenant at a Time; Realtime: One
 Channel per App.
@@ -1035,7 +1035,7 @@ the app keeps a bearer.
 switch that keeps the old tenant's query cache or store entries, so
 one tenant's rows show under another; a socket left open across a
 switch, or a notice the old tenant's channel read handed over after it;
-two sessions held at once, or the sign-in credential kept
+two auth sessions held at once, or the sign-in credential kept
 after the exchange. (A picker in the console is DEL-16.)
 
 **Severity.** high
@@ -1314,7 +1314,7 @@ Feature Flags.
 
 **Look for.** Where a browser app learns a flag's value, and when it
 reads it again; the snapshot's query key, and what a switch drops; each
-browser app's `package.json`; a flag carried in the session's token.
+browser app's `package.json`; a flag carried in the auth session's token.
 
 **Violation.** A browser app that depends on OpenFeature or a flag
 vendor's SDK, or holds a provider's key; flags read once at sign-in and

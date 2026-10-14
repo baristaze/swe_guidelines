@@ -95,11 +95,11 @@ queues, so a replica can be killed and replaced at any time.
 
 **Look for.** A module-level or instance-level `dict`, `list`, or `set`
 in a domain service that one request mutates and a later request
-reads; in-memory maps of sessions, users, or in-flight work; anything
+reads; in-memory maps of auth sessions, users, or in-flight work; anything
 written to memory that is not also written to a durable source.
 
 **Violation.** A service that remembers a user's progress, a pending
-operation, or a session only in RAM; a process whose restart loses
+operation, or an auth session only in RAM; a process whose restart loses
 information; a warm cache or rollup that is the only copy of a
 computed result and is not rebuilt at boot. (The progress of a
 long-running record is ASY-20, and a chain across services ASY-27.)
@@ -286,8 +286,8 @@ add's commit.
 Domain Owns.
 
 **Look for.** Where sign-up, invitation, role management, key rotation,
-and session refresh are implemented (organizations, identities, users,
-memberships, teams, credentials, sessions, invitations); whether the
+and auth session refresh are implemented (organizations, identities, users,
+memberships, teams, credentials, auth sessions, invitations); whether the
 gateway holds its own user or token tables; the hashing in the tenancy
 rules, what the credential tables hold, and the `Issued...View` that
 shows a secret once. Every path that adds a member, whether it goes
@@ -650,7 +650,7 @@ fresh `Issued...View` with the same id.
 Layer, The Gateway (Edge idempotency).
 
 **Look for.** The create of every entity that issues a secret (an API
-key, a session token, a socket ticket) and what it does when the
+key, an auth session token, a socket ticket) and what it does when the
 insert reports an existing id; the atomic method that re-mints and
 what its statement is conditional on. A
 rerun is a retry whose marker holds no outcome; a replay, whose

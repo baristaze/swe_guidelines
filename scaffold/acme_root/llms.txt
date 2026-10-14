@@ -11,7 +11,7 @@ served to it. Exposure is by listing, never by folder.
 - [README](README.md): what Acme is, the quick start with the local URLs and sign-ins, set up and check, deploy and operate, and the layout
 - [Architecture](specs/architecture.md): the guideline's pin, the substitutions, and the deviations, each linking its decision record under docs/adr/
 - [What Acme is made of](om/README.md): the nouns and how they relate, for a reader with no code
-- [Tenancy](om/src/acme/om/tenancy/README.md): orgs, identities, users, memberships, invitations, sessions, API keys, socket tickets, the operator plane, and deletion
+- [Tenancy](om/src/acme/om/tenancy/README.md): orgs, identities, users, memberships, invitations, auth sessions, API keys, socket tickets, the operator plane, and deletion
 - [Events](om/src/acme/om/events/README.md): the org's stream, its gapless sequence above a floor, and audit entries
 - [Outbox rows](om/src/acme/om/outbox/README.md): the note written beside every change, and its relay
 - [Idempotency records](om/src/acme/om/idempotency/README.md): the outcome of a request that may arrive twice

@@ -89,7 +89,7 @@ class OperatorPermission(StrEnum):
 
 class CredentialKind(StrEnum):
     API_KEY = "api_key"
-    SESSION_TOKEN = "session_token"
+    AUTH_SESSION_TOKEN = "auth_session_token"
     LOGIN = "login"
     SOCKET_TICKET = "socket_ticket"
     OPERATOR_TOKEN = "operator_token"

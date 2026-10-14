@@ -4,7 +4,7 @@ from uuid import UUID
 from acme.om.context import OperatorContext, OperatorPermission, OperatorRole
 from acme.om.idempotency.types.attempt import Attempt
 from acme.om.tenancy import TenancyOperatorManagerInterface
-from acme.om.tenancy.types.session import Session
+from acme.om.tenancy.types.auth_session import AuthSession
 from acme.om.work import WorkOperatorManagerInterface
 from acme.services.api.services.admin import AdminServiceInterface
 from acme.services.api.services.impl.tenancy import decode_cursor, encode_cursor
@@ -161,7 +161,7 @@ class AdminServiceImpl(AdminServiceInterface):
         return TenantCapView.model_validate(await self._work.clear_tenant_cap(admin, org_id, lane))
 
 
-def token_view(token: Session) -> OperatorTokenView:
+def token_view(token: AuthSession) -> OperatorTokenView:
     """A row of kind `operator_token` as the wire reads it: its one permission
     under the name the mint takes it by, and never its digest."""
     assert token.operator_role is not None, "an operator token names its permission"

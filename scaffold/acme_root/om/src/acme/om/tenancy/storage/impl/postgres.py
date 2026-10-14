@@ -26,22 +26,22 @@ from acme.om.storage.utils.translation import apply_row, to_model, to_row, to_va
 from acme.om.tenancy.rules import email_digest, fold_email
 from acme.om.tenancy.storage import TenancyStorageInterface
 from acme.om.tenancy.storage.tables.api_keys import ApiKeys
+from acme.om.tenancy.storage.tables.auth_sessions import AuthSessions
 from acme.om.tenancy.storage.tables.identities import Identities
 from acme.om.tenancy.storage.tables.invitations import Invitations
 from acme.om.tenancy.storage.tables.memberships import Memberships
 from acme.om.tenancy.storage.tables.orgs import Orgs
-from acme.om.tenancy.storage.tables.sessions import Sessions
 from acme.om.tenancy.storage.tables.sign_in_delays import SignInDelays
 from acme.om.tenancy.storage.tables.socket_tickets import SocketTickets
 from acme.om.tenancy.storage.tables.system_sizes import SystemSizes
 from acme.om.tenancy.storage.tables.users import Users
 from acme.om.tenancy.types.api_key import ApiKey
+from acme.om.tenancy.types.auth_session import AuthSession
 from acme.om.tenancy.types.identity import Identity
 from acme.om.tenancy.types.invitation import Invitation, InvitationState
 from acme.om.tenancy.types.issued import OrgMembership
 from acme.om.tenancy.types.membership import Membership
 from acme.om.tenancy.types.org import Org
-from acme.om.tenancy.types.session import Session
 from acme.om.tenancy.types.sign_in_delay import SignInDelay
 from acme.om.tenancy.types.size import SystemSize
 from acme.om.tenancy.types.socket_ticket import SocketTicket
@@ -97,19 +97,19 @@ class TenancyStoragePostgresImpl(PgStorageBase, TenancyStorageInterface):
         # The entry, its audit, and the end of the operator's live credentials
         # in one commit under the system scope, where every one of them is.
         ended = (
-            update(Sessions)
+            update(AuthSessions)
             .where(
-                Sessions.org_id == EMPTY_UUID,
-                Sessions.identity_id == identity.id,
-                Sessions.revoked_at.is_(None),
-                Sessions.expires_at > at,
+                AuthSessions.org_id == EMPTY_UUID,
+                AuthSessions.identity_id == identity.id,
+                AuthSessions.revoked_at.is_(None),
+                AuthSessions.expires_at > at,
                 or_(
-                    Sessions.credential_kind == CredentialKind.OPERATOR_TOKEN.value,
-                    Sessions.second_factor_at.is_not(None),
+                    AuthSessions.credential_kind == CredentialKind.OPERATOR_TOKEN.value,
+                    AuthSessions.second_factor_at.is_not(None),
                 ),
             )
             .values(revoked_at=at, updated_at=at, updated_by=EMPTY_UUID)
-            .returning(Sessions.id)
+            .returning(AuthSessions.id)
         )
         async with self._session_for(Identities, org_id=EMPTY_UUID) as session:
             row = await session.get(Identities, identity.id)
@@ -402,17 +402,17 @@ class TenancyStoragePostgresImpl(PgStorageBase, TenancyStorageInterface):
                     raise NotFound(f"{table.__tablename__} {entity.id} is not in {org_id}")
                 apply_row(row, entity)
             sessions = (
-                update(Sessions)
+                update(AuthSessions)
                 .where(
-                    Sessions.org_id == org_id,
-                    Sessions.user_id == user.id,
-                    Sessions.revoked_at.is_(None),
+                    AuthSessions.org_id == org_id,
+                    AuthSessions.user_id == user.id,
+                    AuthSessions.revoked_at.is_(None),
                 )
                 .values(revoked_at=at, updated_at=at, updated_by=by)
-                .returning(Sessions.id)
+                .returning(AuthSessions.id)
             )
-            for session_id in (await session.execute(sessions)).scalars().all():
-                revoked.append(revocation_row("tenancy.session.revoked", session_id))
+            for auth_session_id in (await session.execute(sessions)).scalars().all():
+                revoked.append(revocation_row("tenancy.auth_session.revoked", auth_session_id))
             keys = (
                 update(ApiKeys)
                 .where(
@@ -472,13 +472,15 @@ class TenancyStoragePostgresImpl(PgStorageBase, TenancyStorageInterface):
                 .values(**ended)
             )
             sessions = await session.execute(
-                update(Sessions)
-                .where(Sessions.org_id == org_id, Sessions.revoked_at.is_(None))
+                update(AuthSessions)
+                .where(AuthSessions.org_id == org_id, AuthSessions.revoked_at.is_(None))
                 .values(revoked_at=at, updated_at=at, updated_by=by)
-                .returning(Sessions.id, Sessions.user_id)
+                .returning(AuthSessions.id, AuthSessions.user_id)
             )
-            for session_id, user_id in sessions.all():
-                built.append(revocation_row("tenancy.session.revoked", session_id, user_id))
+            for auth_session_id, user_id in sessions.all():
+                built.append(
+                    revocation_row("tenancy.auth_session.revoked", auth_session_id, user_id)
+                )
             keys = await session.execute(
                 update(ApiKeys)
                 .where(ApiKeys.org_id == org_id, ApiKeys.deleted_at.is_(None))
@@ -559,18 +561,23 @@ class TenancyStoragePostgresImpl(PgStorageBase, TenancyStorageInterface):
                 )
             )
             sessions = await session.execute(
-                delete(Sessions)
+                delete(AuthSessions)
                 .where(
                     or_(
-                        and_(Sessions.org_id.in_(org_ids), Sessions.user_id.in_(user_ids)),
-                        and_(Sessions.org_id == EMPTY_UUID, Sessions.identity_id == identity_id),
+                        and_(AuthSessions.org_id.in_(org_ids), AuthSessions.user_id.in_(user_ids)),
+                        and_(
+                            AuthSessions.org_id == EMPTY_UUID,
+                            AuthSessions.identity_id == identity_id,
+                        ),
                     )
                 )
-                .returning(Sessions.org_id, Sessions.id, Sessions.revoked_at)
+                .returning(AuthSessions.org_id, AuthSessions.id, AuthSessions.revoked_at)
             )
-            for org_id, session_id, revoked_at in sessions.all():
+            for org_id, auth_session_id, revoked_at in sessions.all():
                 if org_id != EMPTY_UUID and revoked_at is None:
-                    revoked.append(revocation_row(org_id, "tenancy.session.revoked", session_id))
+                    revoked.append(
+                        revocation_row(org_id, "tenancy.auth_session.revoked", auth_session_id)
+                    )
             keys = await session.execute(
                 delete(ApiKeys)
                 .where(ApiKeys.org_id.in_(org_ids), ApiKeys.user_id.in_(user_ids))
@@ -744,14 +751,14 @@ class TenancyStoragePostgresImpl(PgStorageBase, TenancyStorageInterface):
             if seen is not None:
                 # The session's use rides the principal's transaction instead
                 # of opening one of its own.
-                session_id, seen_at = seen
+                auth_session_id, seen_at = seen
                 await session.execute(
-                    update(Sessions)
+                    update(AuthSessions)
                     .where(
-                        Sessions.org_id == org_id,
-                        Sessions.id == session_id,
-                        Sessions.user_id == user_id,
-                        Sessions.revoked_at.is_(None),
+                        AuthSessions.org_id == org_id,
+                        AuthSessions.id == auth_session_id,
+                        AuthSessions.user_id == user_id,
+                        AuthSessions.revoked_at.is_(None),
                     )
                     .values(last_seen_at=seen_at)
                 )
@@ -770,43 +777,45 @@ class TenancyStoragePostgresImpl(PgStorageBase, TenancyStorageInterface):
     ) -> None:
         await self._upsert(Memberships, org_id, membership, outbox_rows)
 
-    async def read_sessions(
+    async def read_auth_sessions(
         self, org_id: UUID, user_id: UUID, live_at: datetime, limit: int
-    ) -> list[Session]:
+    ) -> list[AuthSession]:
         stmt = (
-            select(Sessions)
+            select(AuthSessions)
             .where(
-                Sessions.org_id == org_id,
-                Sessions.user_id == user_id,
-                Sessions.revoked_at.is_(None),
-                Sessions.expires_at > live_at,
+                AuthSessions.org_id == org_id,
+                AuthSessions.user_id == user_id,
+                AuthSessions.revoked_at.is_(None),
+                AuthSessions.expires_at > live_at,
             )
-            .order_by(Sessions.id.desc())
+            .order_by(AuthSessions.id.desc())
             .limit(limit)
         )
         async with self._session_for(stmt, org_id=org_id, user_id=user_id) as session:
             result = await session.execute(stmt)
-            return [to_model(row, Session) for row in result.scalars()]
+            return [to_model(row, AuthSession) for row in result.scalars()]
 
-    async def read_session(self, org_id: UUID, session_id: UUID) -> Session | None:
-        stmt = select(Sessions).where(Sessions.org_id == org_id, Sessions.id == session_id)
+    async def read_auth_session(self, org_id: UUID, auth_session_id: UUID) -> AuthSession | None:
+        stmt = select(AuthSessions).where(
+            AuthSessions.org_id == org_id, AuthSessions.id == auth_session_id
+        )
         async with self._session_for(stmt, org_id=org_id) as session:
             row = (await session.execute(stmt)).scalar_one_or_none()
-            return None if row is None else to_model(row, Session)
+            return None if row is None else to_model(row, AuthSession)
 
-    async def read_session_by_digest(self, token_hash: str) -> tuple[UUID, Session] | None:
-        stmt = select(Sessions).where(Sessions.token_hash == token_hash)
+    async def read_auth_session_by_digest(self, token_hash: str) -> tuple[UUID, AuthSession] | None:
+        stmt = select(AuthSessions).where(AuthSessions.token_hash == token_hash)
         async with self._session_for(stmt, org_id=EMPTY_UUID) as session:
             row = (await session.execute(stmt)).scalar_one_or_none()
-            return None if row is None else (row.org_id, to_model(row, Session))
+            return None if row is None else (row.org_id, to_model(row, AuthSession))
 
-    async def read_session_with_identity_by_digest(
+    async def read_auth_session_with_identity_by_digest(
         self, token_hash: str
-    ) -> tuple[UUID, Session, Identity | None] | None:
+    ) -> tuple[UUID, AuthSession, Identity | None] | None:
         stmt = (
-            select(Sessions, Identities)
-            .outerjoin(Identities, Identities.id == Sessions.identity_id)
-            .where(Sessions.token_hash == token_hash)
+            select(AuthSessions, Identities)
+            .outerjoin(Identities, Identities.id == AuthSessions.identity_id)
+            .where(AuthSessions.token_hash == token_hash)
         )
         async with self._session_for(stmt, org_id=EMPTY_UUID) as session:
             found = (await session.execute(stmt)).one_or_none()
@@ -815,99 +824,103 @@ class TenancyStoragePostgresImpl(PgStorageBase, TenancyStorageInterface):
             row, identity = found
             return (
                 row.org_id,
-                to_model(row, Session),
+                to_model(row, AuthSession),
                 None if identity is None else to_model(identity, Identity),
             )
 
     async def read_operator_tokens(
         self, identity_id: UUID, live_at: datetime, after: UUID | None, limit: int
-    ) -> list[Session]:
+    ) -> list[AuthSession]:
         stmt = (
-            select(Sessions)
+            select(AuthSessions)
             .where(
-                Sessions.org_id == EMPTY_UUID,
-                Sessions.expires_at > live_at,
-                Sessions.identity_id == identity_id,
-                Sessions.credential_kind == CredentialKind.OPERATOR_TOKEN.value,
-                Sessions.revoked_at.is_(None),
+                AuthSessions.org_id == EMPTY_UUID,
+                AuthSessions.expires_at > live_at,
+                AuthSessions.identity_id == identity_id,
+                AuthSessions.credential_kind == CredentialKind.OPERATOR_TOKEN.value,
+                AuthSessions.revoked_at.is_(None),
             )
-            .order_by(Sessions.id.desc())
+            .order_by(AuthSessions.id.desc())
             .limit(limit)
         )
         if after is not None:
-            stmt = stmt.where(Sessions.id < after)  # is_after_newest_first
+            stmt = stmt.where(AuthSessions.id < after)  # is_after_newest_first
         async with self._session_for(stmt, org_id=EMPTY_UUID) as session:
             result = await session.execute(stmt)
-            return [to_model(row, Session) for row in result.scalars()]
+            return [to_model(row, AuthSession) for row in result.scalars()]
 
-    async def read_session_by_id(self, session_id: UUID) -> tuple[UUID, Session] | None:
-        stmt = select(Sessions).where(Sessions.id == session_id)
+    async def read_auth_session_by_id(
+        self, auth_session_id: UUID
+    ) -> tuple[UUID, AuthSession] | None:
+        stmt = select(AuthSessions).where(AuthSessions.id == auth_session_id)
         async with self._session_for(stmt, org_id=EMPTY_UUID) as session:
             row = (await session.execute(stmt)).scalar_one_or_none()
-            return None if row is None else (row.org_id, to_model(row, Session))
+            return None if row is None else (row.org_id, to_model(row, AuthSession))
 
-    async def create_session(self, org_id: UUID, session: Session) -> bool:
-        return await self._insert(Sessions, org_id, session)
+    async def create_auth_session(self, org_id: UUID, auth_session: AuthSession) -> bool:
+        return await self._insert(AuthSessions, org_id, auth_session)
 
-    async def write_session(
-        self, org_id: UUID, session: Session, outbox_rows: tuple[OutboxRow, ...] = ()
+    async def write_auth_session(
+        self, org_id: UUID, auth_session: AuthSession, outbox_rows: tuple[OutboxRow, ...] = ()
     ) -> None:
-        await self._upsert(Sessions, org_id, session, outbox_rows)
+        await self._upsert(AuthSessions, org_id, auth_session, outbox_rows)
 
-    async def replace_session(
+    async def replace_auth_session(
         self,
         org_id: UUID,
-        session: Session,
+        auth_session: AuthSession,
         ended_org_id: UUID,
-        ended: Session,
+        ended: AuthSession,
         outbox_rows: tuple[OutboxRow, ...],
     ) -> None:
         # One transaction, two tenants, and never the system scope: the ended
-        # session is revoked under its own tenant, then the scope is set again
-        # to the new session's tenant for its insert, so each statement is
+        # auth session is revoked under its own tenant, then the scope is set again
+        # to the new auth session's tenant for its insert, so each statement is
         # fenced by the tenant it touches. The row lock makes a second switch
-        # on the same session wait and then find it ended.
-        async with self._session_for(Sessions, org_id=ended_org_id) as db:
-            row = await db.get(Sessions, ended.id, with_for_update=True)
+        # on the same auth session wait and then find it ended.
+        async with self._session_for(AuthSessions, org_id=ended_org_id) as db:
+            row = await db.get(AuthSessions, ended.id, with_for_update=True)
             if row is None or row.org_id != ended_org_id:
-                raise NotFound(f"session {ended.id} is not in {ended_org_id}")
+                raise NotFound(f"auth session {ended.id} is not in {ended_org_id}")
             if row.revoked_at is not None:
-                raise Conflict(f"session {ended.id} has already ended")
+                raise Conflict(f"auth session {ended.id} has already ended")
             apply_row(row, ended)
             for outbox_row in outbox_rows:
                 db.add(to_row(outbox_row, OutboxRows, org_id=ended_org_id))
             try:
                 await db.flush()
                 await set_scope(db, org_id, None, None)
-                db.add(to_row(session, Sessions, org_id=org_id))
+                db.add(to_row(auth_session, AuthSessions, org_id=org_id))
                 await db.commit()
             except IntegrityError as error:
                 await db.rollback()
                 taken = violated_constraint(error) or "a unique key"
-                raise UniqueKeyTaken(f"sessions {session.id}: {taken} is taken") from error
+                raise UniqueKeyTaken(f"sessions {auth_session.id}: {taken} is taken") from error
 
-    async def exchange_sign_in(self, org_id: UUID, session: Session, ended: Session) -> None:
+    async def exchange_sign_in(
+        self, org_id: UUID, auth_session: AuthSession, ended: AuthSession
+    ) -> None:
         # One transaction on the system login, which the sign-in's row needs:
         # the sign-in is ended under the system scope, then the scope is set
-        # to the new session's tenant for its insert, so the insert is fenced
+        # to the new auth session's tenant for its insert, so the insert is fenced
         # by the tenant it lands in. The row lock makes a second exchange of
         # the same sign-in wait and then find it ended.
-        async with self._session_for(Sessions, org_id=EMPTY_UUID) as db:
-            row = await db.get(Sessions, ended.id, with_for_update=True)
+        async with self._session_for(AuthSessions, org_id=EMPTY_UUID) as db:
+            row = await db.get(AuthSessions, ended.id, with_for_update=True)
             if row is None or row.org_id != EMPTY_UUID:
-                raise NotFound(f"session {ended.id} is not a sign-in")
+                raise NotFound(f"auth session {ended.id} is not a sign-in")
             if row.revoked_at is not None:
                 raise Conflict(f"sign-in {ended.id} was exchanged already")
             apply_row(row, ended)
             try:
                 await db.flush()
                 await set_scope(db, org_id, None, None)
-                db.add(to_row(session, Sessions, org_id=org_id))
+                db.add(to_row(auth_session, AuthSessions, org_id=org_id))
                 await db.commit()
             except IntegrityError as error:
                 await db.rollback()
                 taken = violated_constraint(error) or "a unique key"
-                raise UniqueKeyTaken(f"sessions {session.id}: {taken} is taken") from error
+                raise UniqueKeyTaken(f"sessions {auth_session.id}: {taken} is taken") from error
 
     async def read_api_keys(
         self, org_id: UUID, after: UUID | None, limit: int, user_id: UUID | None = None
@@ -1030,7 +1043,7 @@ class TenancyStoragePostgresImpl(PgStorageBase, TenancyStorageInterface):
                 ),
                 # A revoked session expires within its lifetime, so the expiry
                 # alone decides.
-                delete_batch(Sessions, Sessions.expires_at < before, limit=limit),
+                delete_batch(AuthSessions, AuthSessions.expires_at < before, limit=limit),
                 # A ticket is spent within the minute it lives, so the same.
                 delete_batch(SocketTickets, SocketTickets.expires_at < tickets_before, limit=limit),
                 delete_batch(
@@ -1105,7 +1118,7 @@ class TenancyStoragePostgresImpl(PgStorageBase, TenancyStorageInterface):
     async def purge_tenant(self, org_id: UUID, limit: int) -> int:
         purged = 0
         async with self._session_for(Users, org_id=org_id) as session:
-            for table in (Users, Memberships, ApiKeys, Sessions, SocketTickets, Invitations):
+            for table in (Users, Memberships, ApiKeys, AuthSessions, SocketTickets, Invitations):
                 stmt = delete_batch(table, table.org_id == org_id, limit=limit)
                 purged += deleted(await session.execute(stmt))
             await session.commit()

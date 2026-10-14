@@ -174,7 +174,7 @@ def org_id_only_where_no_tenant(project: Project) -> Iterator[Violation]:
     """A class on the chain under a namespace's `types/` declares `org_id`
     only when a reader with no tenant takes it, and each such class carries
     it. The tenancy namespace is left out of the first half: a membership,
-    a session, or an API key is resolved before any tenant is held, so its
+    an auth session, or an API key is resolved before any tenant is held, so its
     `org_id` is the answer. Whether a field exists only for a response or a
     column is judged.
 

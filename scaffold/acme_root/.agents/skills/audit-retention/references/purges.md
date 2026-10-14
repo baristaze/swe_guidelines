@@ -78,7 +78,7 @@ Across tenants, once a pass:
 
 | Purge | Storage method | Deletes | Kept for |
 |---|---|---|---|
-| tenancy | `purge_deleted` | removed users, then their memberships; removed memberships; revoked or expired API keys; expired sessions; closed or expired invitations | `tenancy_retention_days`, 30 |
+| tenancy | `purge_deleted` | removed users, then their memberships; removed memberships; revoked or expired API keys; expired auth sessions; closed or expired invitations | `tenancy_retention_days`, 30 |
 | tenancy | `purge_deleted` | expired socket tickets | `socket_ticket_retention_hours`, 24 |
 | tenancy | `purge_sign_in_delays` | the sign-in delays of addresses that stopped failing | `sign_in_delay_retention_hours`, 720 |
 | idempotency | `purge_records` | finished or released records; markers an abandoned attempt still holds | `idempotency_retention_hours`, 24; an attempt older than ten pending leases of two minutes |
@@ -92,7 +92,7 @@ Across tenants, once a pass:
 Per tenant, for an org deleted past `tenancy_retention_days` (a
 personal org goes at the next pass): `purge_tenant` of media (every
 file, the object first), tenancy (users, memberships, API keys,
-sessions, socket tickets, invitations), events (the stream, then its
+auth sessions, socket tickets, invitations), events (the stream, then its
 cursor), orchestrations, and leases (resources, leases, requests). The
 org row stays, marked purged, as the record.
 

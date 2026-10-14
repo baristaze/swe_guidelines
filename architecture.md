@@ -611,7 +611,7 @@ class SecurityContext(OmBase):
     permissions: tuple[Permission, ...]
     teams: tuple[UUID, ...] = ()
     credential_kind: CredentialKind
-    credential_id: UUID = EMPTY_UUID  # the session or key; EMPTY_UUID for internal contexts
+    credential_id: UUID = EMPTY_UUID  # the auth session or key; EMPTY_UUID for internal contexts
 
 class RequestContext(OmBase):
     request_id: UUID
@@ -675,14 +675,14 @@ what it needs and never checks it again, and the type checker refuses a
 caller holding less. A sign-in route cannot reach a tenant manager.
 
 A stage lives as long as what minted it. A socket holds its `TenantContext`
-and closes when the evidence goes: at the session's expiry, on a change
-on the bus that ends it, such as `tenancy.session.revoked`, and on a
-recheck that finds the session or the membership ended or the role
+and closes when the evidence goes: at the auth session's expiry, on a change
+on the bus that ends it, such as `tenancy.auth_session.revoked`, and on a
+recheck that finds the auth session or the membership ended or the role
 changed. The recheck runs every `realtime_recheck_seconds`, a setting of
 the realtime service beside its other bounds. It is not activity and
 never moves `last_seen_at`. The server does not cap a connection's life,
 since the recheck bounds its trust, and closing a socket never ends its
-session.
+auth session.
 
 > **Principle:** A context stage is evidence. Only a transition
 > produces it, its type is the proof, and an operation takes the
@@ -1147,7 +1147,7 @@ Among them:
   `purge_items`, `purge_done`, and `purge_records`;
 - the five lookups before an identity is known:
   `read_identity_by_email_digest`, `read_identity_by_issuer_subject`,
-  `read_api_key_by_digest`, `read_session_by_digest`, and
+  `read_api_key_by_digest`, `read_auth_session_by_digest`, and
   `redeem_socket_ticket`;
 - the reads and writes of the global tables, the operator's size read
   among them.
@@ -1453,7 +1453,7 @@ imports. It owns the edge concerns, each done once.
 
 **Credentials.** Each credential kind has its own prefix, which decides
 who accepts it. A person signs in with a credential that names no
-tenant, then exchanges it for a tenant session. An agent presents a
+tenant, then exchanges it for an auth session in one tenant. An agent presents a
 membership-scoped, expiring API key. A socket opens with a single-use
 ticket, never a long-lived credential in a URL. A request id is
 accepted only as a UUID, or minted.
@@ -1492,14 +1492,14 @@ mounted.
 The operator plane has its own gate, for the routes under `/v1/admin/*`
 that the same process serves. It admits the person's own sign-in with a
 second factor, a TOTP code, or an operator token, and never an API key
-or a tenant session; then `admit_operator` checks the allowlist. A
+or a tenant's auth session; then `admit_operator` checks the allowlist. A
 tenant's sign-in needs no second factor, but the operator plane reads
 across tenants, so a password alone never admits to it. An agent never
 signs in with a password. It presents an operator token: minted by an
 operator with a second factor or by the grant job, naming one identity
 and one permission its entry grants (`write` implies `read`), expiring
 within the hour, and stored as its digest, found by
-`read_session_by_digest`. An operator with no confirmed second factor
+`read_auth_session_by_digest`. An operator with no confirmed second factor
 yet is admitted with `OperatorPermission.ENROL` alone, which reaches the
 two enrolment calls and nothing else.
 
@@ -1512,7 +1512,7 @@ refused, even inside its time step.
 ### Auth: the Gateway Verifies, the Tenancy Domain Owns
 
 The gateway verifies and owns nothing. The tenancy namespace owns the
-identity model, from organizations to sessions, and issues the tokens
+identity model, from organizations to auth sessions, and issues the tokens
 ([`tenancy/`](scaffold/acme_root/om/src/acme/om/tenancy/)). Sign-up,
 invitations, and roles are business logic in the OM.
 
@@ -1540,7 +1540,7 @@ An external identity provider is one more credential kind: the gateway
 verifies its token, and the tenancy manager finds or creates the
 identity by issuer and subject and produces the same `IdentityContext`
 a sign-in does. Nothing stored can be presented as a credential: a
-password is a memory-hard hash, and a key, a session, or a ticket a
+password is a memory-hard hash, and a key, an auth session, or a ticket a
 digest, shown once in the `Issued...View` that minted it. Failed
 sign-ins are throttled in storage, per email digest.
 
@@ -1705,7 +1705,7 @@ and goes on from the head.
   of its own, and its overflow is logged as such, since it means the
   socket produces state faster than it can be written.
 - A change that ends a socket's evidence rides the stream like any
-  other: `tenancy.session.revoked` and `tenancy.api_key.deleted` name the
+  other: `tenancy.auth_session.revoked` and `tenancy.api_key.deleted` name the
   credential, `tenancy.user.deleted` the user,
   `tenancy.membership.updated` the membership, and `tenancy.org.deleted`
   the org, and each closes every socket it names
@@ -2174,7 +2174,7 @@ what the hook gives it.
 
 Feature code never calls `fetch`. The transport client attaches the
 bearer, parses the envelope into a typed error with the request id, and
-clears the session on a 401. The bearer lives in memory and session
+clears the auth session on a 401. The bearer lives in memory and session
 storage, never local storage. The distribution sends a
 `Content-Security-Policy` that names only the origins the app uses.
 
@@ -2182,17 +2182,17 @@ storage, never local storage. The distribution sends a
 
 A person may hold several memberships, and the portal works in one at a
 time. It signs in once, picks a membership, and exchanges it for one
-tenant session. The org chip switches it with a second exchange, which
-ends the old session, and the app drops every cache of the old tenant
-and mounts afresh.
+auth session in that tenant. The org chip switches it with a second
+exchange, which ends the old auth session, and the app drops every
+cache of the old tenant and mounts afresh.
 
 > **Principle:** The app works in one tenant at a time. A switch is a
 > second exchange that drops the old tenant's caches. The app never
-> holds two sessions.
+> holds two auth sessions.
 
 ### Flags in the Client
 
-A browser app reads its session's flags from its own API, as one
+A browser app reads its auth session's flags from its own API, as one
 snapshot of the flags marked for clients
 ([Feature Flags](#feature-flags)). It reads the snapshot once the
 exchange is done and keeps it in the query cache under a key of its key

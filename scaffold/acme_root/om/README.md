@@ -30,7 +30,7 @@ The sign-in provider sends the email.
 
 ## How a person proves who they are
 
-A **session** is a signed-in visit to one org. It ends when the person
+An **auth session** is a signed-in visit to one org. It ends when the person
 signs out, when it sits idle too long, or when it reaches its lifetime.
 
 An **API key** is a named, expiring credential for a program, with a
@@ -82,7 +82,7 @@ arrive twice, so the second copy gets the first one's answer.
 
 - An org has users. A user is one identity's place in the org, held by
   a membership with a role.
-- A session or an API key belongs to a user, so everything done with
+- An auth session or an API key belongs to a user, so everything done with
   it is done as that user in that org.
 - Every change a screen acts on writes an outbox row, which becomes an
   event in the org's diary, which reaches every open screen of the org.

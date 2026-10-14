@@ -8,9 +8,9 @@ from uuid import UUID
 from acme.om.context import Role, TenantContext
 from acme.om.idempotency.types.attempt import Attempt
 from acme.om.tenancy.types.api_key import ApiKey
+from acme.om.tenancy.types.auth_session import AuthSession
 from acme.om.tenancy.types.issued import IssuedApiKey
 from acme.om.tenancy.types.page import ApiKeyPage
-from acme.om.tenancy.types.session import Session
 
 
 class TenancyCredentialsManagerInterface(ABC):
@@ -18,12 +18,14 @@ class TenancyCredentialsManagerInterface(ABC):
     `tenancy.credentials`. Every operation takes `TenantContext`."""
 
     @abstractmethod
-    async def get_sessions(self, ctx: TenantContext, limit: int) -> list[Session]:
+    async def get_auth_sessions(self, ctx: TenantContext, limit: int) -> list[AuthSession]:
         """The caller's own live sessions in this org, newest first."""
         ...
 
     @abstractmethod
-    async def revoke_session(self, ctx: TenantContext, session_id: UUID) -> Session: ...
+    async def revoke_auth_session(
+        self, ctx: TenantContext, auth_session_id: UUID
+    ) -> AuthSession: ...
 
     @abstractmethod
     async def get_api_keys(self, ctx: TenantContext, after: UUID | None, limit: int) -> ApiKeyPage:

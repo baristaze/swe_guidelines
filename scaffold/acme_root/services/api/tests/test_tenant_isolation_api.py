@@ -57,7 +57,7 @@ class Tenant:
     pending_file_id: str
     api_key_ids: list[str]
     invitation_ids: list[str]
-    session_id: str
+    auth_session_id: str
 
     @property
     def ids(self) -> set[str]:
@@ -65,7 +65,7 @@ class Tenant:
             str(self.org_id),
             self.owner_id,
             self.member_id,
-            self.session_id,
+            self.auth_session_id,
             self.pending_file_id,
             *self.file_ids,
             *self.api_key_ids,
@@ -117,7 +117,7 @@ async def seed_tenant(
     assert pending.status_code == 201, pending.text
     me = await client.get("/v1/me", headers=headers)
     assert me.status_code == 200, me.text
-    sessions = await client.get("/v1/sessions", headers=headers)
+    sessions = await client.get("/v1/auth/sessions", headers=headers)
     assert sessions.status_code == 200, sessions.text
     return Tenant(
         org_id=org.id,
@@ -128,7 +128,7 @@ async def seed_tenant(
         pending_file_id=pending.json()["id"],
         api_key_ids=keys,
         invitation_ids=invitations,
-        session_id=sessions.json()[0]["id"],
+        auth_session_id=sessions.json()[0]["id"],
     )
 
 
@@ -151,7 +151,7 @@ async def tenants(client: httpx.AsyncClient, container: AppContainer) -> tuple[T
 LISTS: tuple[str, ...] = (
     "/v1/users",
     "/v1/memberships",
-    "/v1/sessions",
+    "/v1/auth/sessions",
     "/v1/api-keys",
     "/v1/invitations",
     "/v1/media/files",
@@ -181,7 +181,7 @@ def by_id_routes(other: Tenant) -> list[tuple[str, str, dict[str, Any]]]:
         ("DELETE", f"/v1/memberships/{other.member_id}", {}),
         ("PATCH", f"/v1/memberships/{other.owner_id}", {"json": {"role": "member"}}),
         ("DELETE", f"/v1/memberships/{other.owner_id}", {}),
-        ("DELETE", f"/v1/sessions/{other.session_id}", {}),
+        ("DELETE", f"/v1/auth/sessions/{other.auth_session_id}", {}),
         ("DELETE", f"/v1/api-keys/{other.api_key_ids[0]}", {}),
         ("POST", f"/v1/invitations/{other.invitation_ids[0]}/resend", {}),
         ("DELETE", f"/v1/invitations/{other.invitation_ids[0]}", {}),
@@ -271,7 +271,7 @@ async def test_no_list_carries_another_tenants_rows(
         *caller.invitation_ids,
         caller.owner_id,
         caller.member_id,
-        caller.session_id,
+        caller.auth_session_id,
     } <= seen
 
 

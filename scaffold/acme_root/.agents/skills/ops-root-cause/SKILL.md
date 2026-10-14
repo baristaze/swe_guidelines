@@ -101,7 +101,7 @@ runs once, before the passes. It is not a pass.
    The run goes on only on `operator_role: read`. A `write` stops it,
    and so do an `error` and an answer that is empty or not JSON, as in
    step 2. No sign-in runs: the operator plane admits the token, and
-   no tenant session is exchanged.
+   no tenant auth session is exchanged.
 2. Read the tenant, then its members, through the operator plane's
    read routes, every one under `/v1/admin/orgs/{org_id}/`:
 
