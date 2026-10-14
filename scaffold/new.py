@@ -244,9 +244,13 @@ FORMATTER_LOCK = "uv.lock"
 """Where a copy names the version of its formatter, ruff, as its setup and its
 gate run it."""
 
-FORMAT_STEPS = (("check", "--fix", "--quiet", "--select", "I", "."), ("format", "--quiet", "."))
+FORMAT_STEPS = (
+    ("check", "--fix", "--quiet", "--no-cache", "--select", "I", "."),
+    ("format", "--quiet", "--no-cache", "."),
+)
 """The formatter's two passes, as the copy's `make setup` runs them: the
-imports' order, then the layout."""
+imports' order, then the layout. Neither writes a cache, which would hold the
+render's own paths and be committed with the copy."""
 
 
 def locked_ruff(root: Path) -> str | None:

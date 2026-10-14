@@ -419,6 +419,28 @@ def test_a_copy_is_formatted_as_rendered_and_keeps_every_line_within_its_lint(tm
         assert done.returncode == 0, f"ruff {' '.join(args)}: {done.stdout}{done.stderr}"
 
 
+def staged_tree(dest: Path) -> str:
+    """The tree `dest` gives when staged whole, as new.py stages a copy's base
+    and base.py a render."""
+    env = {**os.environ, "GIT_INDEX_FILE": str(dest.parent / "index")}
+    for args in (("add", "--all", "--force", "."), ("write-tree",)):
+        done = subprocess.run(["git", "-C", str(dest), *args], capture_output=True, text=True, env=env, check=True)
+    return done.stdout.strip()
+
+
+@pytest.mark.skipif(shutil.which("uv") is None, reason="needs uv, which CI has")
+def test_two_renders_at_two_paths_give_one_tree_with_no_cache_in_it(tmp_path):
+    """A render is committed whole, as the copy's base or as a move's render,
+    so nothing in it may say where it was written."""
+    trees = []
+    for where in ("one", "two"):
+        dest = tmp_path / where / "pressroom"
+        assert new.main([str(dest)]) == 0
+        assert not list(dest.rglob(".ruff_cache")), f"{dest} holds a formatter's cache"
+        trees.append(staged_tree(dest))
+    assert trees[0] == trees[1]
+
+
 def test_a_copy_that_locks_ruff_is_refused_without_uv_and_nothing_is_written(tmp_path, monkeypatch, capsys):
     monkeypatch.setattr(new.shutil, "which", lambda name: None)
     dest = tmp_path / "pressroom"
