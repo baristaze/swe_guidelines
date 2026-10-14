@@ -410,12 +410,12 @@ def test_del_13_a_recorded_state_substitution_is_an_option(tmp_path):
 # --- DEL-18
 
 OM_EXC = "om/src/acme/om/exceptions.py"
-PLATFORM = "class OmException(Exception):\n    http_status = 500\n    code = 'x'\n\nclass NotFound(OmException):\n    pass\n"
+OM_EXC_SOURCE = "class OmException(Exception):\n    http_status = 500\n    code = 'x'\n\nclass NotFound(OmException):\n    pass\n"
 
 
 def test_del_18_exceptions_rooted_at_om_or_infra_pass(tmp_path):
     files = {
-        OM_EXC: PLATFORM,
+        OM_EXC: OM_EXC_SOURCE,
         "om/src/acme/om/orders/impl.py": (
             "from ..exceptions import NotFound\n\nclass OrderMissing(NotFound):\n    pass\n\nclass _Retry(Exception):\n    pass\n"
         ),
@@ -425,7 +425,7 @@ def test_del_18_exceptions_rooted_at_om_or_infra_pass(tmp_path):
 
 def test_del_18_a_bare_exception_and_a_web_import_in_the_om_fail(tmp_path):
     files = {
-        OM_EXC: PLATFORM,
+        OM_EXC: OM_EXC_SOURCE,
         "om/src/acme/om/orders/impl.py": "from fastapi import HTTPException\n\nclass Oops(ValueError):\n    pass\n",
     }
     code, where = found(tmp_path, "DEL-18", files)
