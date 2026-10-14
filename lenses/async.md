@@ -378,21 +378,21 @@ in service code off the socket edge; the rest is judged.
 **Principle.** A work item names its kind and target, carries an
 idempotency key unique per tenant, a `lane` routing string, a status,
 an `available_at`, its claim (`claimed_by` for an operator,
-`claim_token` the fence, `lease_expires_at`), and its attempts; payload
-shapes are fixed per kind by `WORK_PAYLOADS`. The lane is the routing:
-one table serves a shared pool and any dedicated lane. A relayed item
-lands on its kind's lane: `WORK_LANES` names a kind's own lane, the
-relay and a worker of the kind's own read it through `relayed_lane`, a
-replica of a worker that serves many kinds takes the lane from its
-deployment as the registry spells it, and a kind it does not name lands
-on the default lane.
+`claim_token` the fence, `lease_expires_at`), and its attempts. Each
+kind is a `WorkKindSpec` registered once in the registry the root
+builds (`KINDS`): its payload's shape, the permission that asks for it,
+and its lane. The lane is the routing: one table serves a shared pool
+and any dedicated lane. A relayed item lands on the lane its kind's
+spec names, the default one unless it names another, and a worker of
+that lane takes the lane as the spec spells it.
 
 **Source.** Worker Roles, The Work Queue.
 
-**Look for.** The work item type and its fields; `WORK_PAYLOADS`; the
-table and its unique index on `(org_id, idempotency_key)`; how routing
-is expressed; the lane the relay gives a relayed item, and where a
-worker that serves a kind on its own lane gets that lane.
+**Look for.** The work item type and its fields; `WORK_KINDS` and the
+registry the root builds; the table and its unique index on
+`(org_id, idempotency_key)`; how routing is expressed; the lane the
+relay gives a relayed item, and where a worker that serves a kind on its
+own lane gets that lane.
 
 **Violation.** A row with no lease, no claim token, or no attempt
 count; a payload with no shape fixed for its kind; no unique index on
@@ -402,14 +402,18 @@ another tenant holds answers `KEY_EXISTS` and the read-back under this
 tenant finds nothing; a relay that lands a kind's items on a lane other
 than its own, so they wait where no worker claims them or count against
 the tenant cap of a lane of short items; a worker of a kind's own that
-spells the kind's lane apart from `WORK_LANES`, so the two can drift; a
-relay edited for one kind instead of a line in the registry.
+spells the kind's lane apart from its spec, so the two can drift; a
+relay edited for one kind instead of the lane on its spec; a kind added
+to the work namespace's own list, or to a closed enum, instead of a
+spec in its own namespace registered at the root; a row's kind not held
+to `KIND_NAME`.
 
 **Severity.** medium
 
-**Shape.** `scaffold/acme_root/om/src/acme/om/work/types/work_item.py`
+**Shape.** `scaffold/acme_root/om/src/acme/om/work/types/work_item.py`,
+`scaffold/acme_root/om/src/acme/om/work/kinds.py`
 
-**Check.** `arch-check` decides the work item's fields, `WORK_PAYLOADS`,
+**Check.** `arch-check` decides the work item's fields, `WORK_KINDS`,
 and the unique key; the rest is judged.
 
 ## ASY-17 A worker claims within capacity and renews its leases

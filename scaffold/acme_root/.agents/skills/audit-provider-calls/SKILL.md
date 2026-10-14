@@ -69,7 +69,8 @@ calls no real provider.
    `services/api/src/acme/services/api/routers/`), the inbound webhook
    (the identity provider's, `POST /webhooks/identity` in
    `routers/webhooks.py` there, and its consumer), every worker job
-   (`WorkKind` in `om/src/acme/om/work/types/work_item.py`, its handler
+   (each spec in `KINDS`, which `om/src/acme/om/root.py` builds from
+   each namespace's `kinds.py`, its handler
    in `workers/maintenance/src/acme/workers/maintenance/`, and the
    consumers of the queues there), the sweep's steps (`loop.py`,
    `_sweep_once`), and boot (each process's start: `services/api/src/acme/services/api/app.py`

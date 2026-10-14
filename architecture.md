@@ -1835,7 +1835,7 @@ Durable work is a row in the `queue` role
 
 ``` python
 class WorkItem(Identifiable, Trackable):
-    kind: WorkKind             # its payload's shape is in WORK_PAYLOADS
+    kind: KindName             # a kind the registry holds, in capitals
     target_id: UUID            # the record it advances
     idempotency_key: UUID      # unique per tenant
     request_id: UUID           # the request that caused it
@@ -1896,17 +1896,40 @@ its own.
   the claims of that moment, until one of its items ends.
 -->
 
+Each kind is registered once, with a spec: its name, the shape of its
+payload, the permission that asks for it, and its lane
+([`kinds.py`](scaffold/acme_root/om/src/acme/om/work/kinds.py)). The
+work namespace declares its own kinds, and any other namespace declares
+its own in a module beside its manager. The root that builds the
+managers composes them into the one registry a process holds
+([`root.py`](scaffold/acme_root/om/src/acme/om/root.py)), and the work
+manager reads every kind through it. A name registered twice is
+refused, so no namespace takes over another's kind. A row's kind is a
+name the registry holds, never a closed set the wire repeats.
+
 A kind can have a lane of its own too, such as a long-held kind kept
-apart from short ones. `WORK_LANES` names the lane of each such kind,
-and `relayed_lane` reads it, for the relay and for a worker of the
-kind's own, so the two never disagree. A replica of a worker that
-serves many kinds takes the lane from its deployment, spelled as the
-registry spells it. An outbox row carries no lane, so the relay lands
-each item on its kind's lane, and the item of a kind the registry does
-not name on the default one. A direct create carries the lane its
+apart from short ones. Its spec names the lane, and the relay and a
+worker of the kind's own both read it there, so the two never disagree.
+A replica of a worker that serves many kinds takes the lane from its
+deployment, spelled as the spec spells it. An outbox row carries no
+lane, so the relay lands each item on its kind's lane: the default one,
+unless its spec names another. A direct create carries the lane its
 caller sets. A long-held item on a lane of its own counts against no
-cap of the lane of short items. A kind's own lane is a line in the
-registry, never an edit of the relay.
+cap of the lane of short items. A kind's own lane is a field of its
+spec, never an edit of the relay.
+
+<!-- agents-only
+- A spec is `WorkKindSpec(name, payload, permission, lane="default")`,
+  its name held to `KIND_NAME`. The work namespace's own are
+  `WORK_KINDS`; another namespace's are a tuple of specs in its
+  `kinds.py`, named for it. `KINDS` in `root.py` is a `WorkKinds`
+  built from `WORK_KINDS` and, below the marker line, each namespace's
+  tuple.
+- The worker keys its `handlers` by the kind's name and refuses at
+  build a handler for a kind the registry does not hold. Its test holds
+  one handler for each registered kind, and each kind's permission to
+  its handler's calls.
+-->
 
 Every write after the enqueue is the system's, signed `EMPTY_UUID`.
 `created_by` is the person who asked, so the claim rebuilds their

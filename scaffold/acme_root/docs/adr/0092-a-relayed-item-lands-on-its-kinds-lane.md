@@ -20,23 +20,25 @@ that only the queue reads.
 
 ## Decision
 
-- **The lane is the kind's, in one registry.** `WORK_LANES`, in
-  `om/work/types/work_item.py` beside `WORK_PAYLOADS`, maps a kind to
-  its own lane. It is empty in the scaffold. A kind it does not name
-  runs on the default lane.
-- **The relay and the worker read the same function.**
-  `relayed_lane(kind)` reads the registry. The relay lands each relayed
-  item on it, and its wake names that lane. A worker of the kind's own
-  takes its lane from it, never from a copy of the name. A replica of a
-  worker that serves many kinds, such as the maintenance worker, takes
-  the lane from its deployment, spelled as the registry spells it.
+- **The lane is the kind's, on its spec.** Each kind is a
+  `WorkKindSpec` in the registry the root builds (`KINDS`, in
+  `om/root.py`, from each namespace's `kinds.py`), and its `lane` is
+  the kind's own. A spec that names none runs on the default lane, as
+  every kind of the scaffold's does.
+- **The relay and the worker read the same spec.** The work manager
+  reads the kind's spec through the registry it is handed. The relay
+  lands each relayed item on the spec's lane, and its wake names that
+  lane. A worker of the kind's own takes its lane from the spec, never
+  from a copy of the name. A replica of a worker that serves many
+  kinds, such as the maintenance worker, takes the lane from its
+  deployment, spelled as the spec spells it.
 - **A direct create keeps its caller's lane.** `enqueue` takes the item
   as its caller built it, lane included; a caller that wants the kind's
-  lane reads `relayed_lane`.
+  lane reads its spec.
 
 ## Consequences
 
-- A kind gets a lane of its own with one line in the registry and a
+- A kind gets a lane of its own with one field on its spec and a
   worker deployed on that lane. The relay is not edited.
 - A long-held item on its own lane counts against no cap of the
   default lane, so a tenant's short items keep their share there.

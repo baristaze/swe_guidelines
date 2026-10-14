@@ -45,8 +45,8 @@ holds no cloud credential and reads no environment.
 2. List every route (the routers under
    `services/api/src/acme/services/api/routers/`, the socket in
    `.../api/realtime/socket.py`, and `/healthz`, `/readyz`, and `/metrics`
-   in `.../api/app.py`), every kind of work item (`WorkKind` in
-   `om/src/acme/om/work/types/work_item.py`) and its handler and every
+   in `.../api/app.py`), every kind of work item (each spec in `KINDS`, which
+   `om/src/acme/om/root.py` builds from each namespace's `kinds.py`) and its handler and every
    consumer (`workers/maintenance/src/acme/workers/maintenance/`), and
    the sweep's steps (that folder's `loop.py`, `_sweep_once`). Compare the list with the calls the built-in flows make
    (`ops/audit/dbcalls_flows.py`): a route or a flow they do not reach is

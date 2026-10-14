@@ -58,7 +58,11 @@ copy.
   `update_<entity>`).
 - A work kind is upper snake case, and its handler is
   `<Kind>HandlerImpl` (`NOTIFY_SHIPMENT` gives
-  `NotifyShipmentHandlerImpl`).
+  `NotifyShipmentHandlerImpl`). It is named in the `StrEnum` of the
+  namespace that starts it, `<Namespace>Kind`, and declared in that
+  namespace's `<NAMESPACE>_KINDS`, both in its `kinds.py`; the root's
+  `KINDS` takes the tuple below its marker, and the worker's `handlers`
+  take the handler below theirs.
 - A cloud resource takes the kebab form of the name. The production
   environment is `production` in every name a process, a role, a
   profile, or a resource reads; only its Terraform folders are `prod/`.
