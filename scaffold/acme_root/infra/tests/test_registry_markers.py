@@ -149,7 +149,16 @@ def test_a_name_below_the_marker_of_a_re_export_list_keeps_ruff_sorted(tmp_path:
         copied = tmp_path / path.name
         copied.write_text("\n".join(lines) + "\n")
         linted = subprocess.run(
-            [sys.executable, "-m", "ruff", "check", "--no-cache", "--select", "RUF022", str(copied)],
+            [
+                sys.executable,
+                "-m",
+                "ruff",
+                "check",
+                "--no-cache",
+                "--select",
+                "RUF022",
+                str(copied),
+            ],
             cwd=ROOT,
             capture_output=True,
             text=True,
