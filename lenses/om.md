@@ -491,3 +491,28 @@ together; a rule decided before or after the statement re-implemented
 instead of calling the function.
 
 **Severity.** medium
+
+## OM-19 A scaffold noun is qualified; the bare noun is the product's
+
+**Principle.** A noun the scaffold brings is qualified by what it does,
+and the bare everyday noun is the product's, since a copy shares one
+codebase, one database, one API, and one portal with its product:
+`AuthSession`, `ChangeEvent`, `LeasableResource`, `WaitLine`,
+`OrchestrationStep`, with `OmBase` at the root. The qualifier names the
+mechanism, never the product that adopts it, and no name says
+"domain". It holds on every surface the noun reaches.
+
+**Source.** Naming Entities.
+
+**Look for.** The classes, tables, routes, kinds, stored values,
+settings, and labels a scaffold namespace declares, and whether each
+names its mechanism or takes a bare everyday noun a product would need.
+
+**Violation.** A scaffold class, table, route, or kind named by a bare
+everyday noun, such as a session, an event, a resource, a step, or a
+line; a name that says "domain" or names the adopting product; a
+rename that left the old name on one surface.
+
+**Severity.** medium
+
+**Shape.** `scaffold/acme_root/om/src/acme/om/change_events/`

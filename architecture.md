@@ -263,6 +263,20 @@ the OM to suit itself.
 
 Every entity in the domain is named by a class in the object model.
 
+A noun the scaffold brings is qualified by what it does, and the bare
+everyday noun is the product's. A system copies the scaffold, so the
+scaffold's nouns and the product's share one codebase, one database,
+one API, and one portal. A clinic needs its sessions, a ticketing
+product its events, a staffing tool its resources, and a factory its
+lines and steps. So the scaffold signs a person in with an
+`AuthSession`, records a change as a `ChangeEvent`, leases a
+`LeasableResource` to the head of its `WaitLine`, and lands what an
+orchestration writes as an `OrchestrationStep`; its root is `OmBase`.
+The qualifier names the mechanism, never the product that adopts it,
+and no name says "domain". It holds on every surface the noun reaches:
+the class, the table, the route, the kinds, the settings, and the
+labels.
+
 First comes a small set of mixins, each one trait. An entity composes
 the mixins it needs, in a fixed order, so its signature reads as a
 description. The base module holds them, with the root and the two
