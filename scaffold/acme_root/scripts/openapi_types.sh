@@ -25,5 +25,6 @@ done
 uv run datamodel-codegen --input "$documents" --input-file-type openapi --output "$python" \
   --output-model-type pydantic_v2.BaseModel --target-python-version 3.14 \
   --use-standard-collections --use-union-operator --use-annotated \
-  --enum-field-as-literal none --use-schema-description --disable-timestamp \
+  --enum-field-as-literal none --deserialize-default-values enum \
+  --use-schema-description --disable-timestamp \
   --formatters builtin
