@@ -55,7 +55,12 @@ stays as it is, and the report says which part.
    -- om/migrations/sql om/migrations/versions`.
 3. Each environment `deployment/cloud/environments.json` names has
    deployed that commit or a later one. The deploy migrates before it
-   rolls out, so its database is then at the head.
+   rolls out, so its database is then at the head. A tree that is a
+   folder of its repository, as a layer's is, passes this part whole:
+   `git rev-parse --show-prefix` at the tree's root prints that folder.
+   Its deploy workflows sit under it, not under the repository's
+   `.github/`, so nothing deploys it, and no environment of it has a
+   database.
    - Staging: the commit of the newest `deploy-staging` run on the main
      branch that succeeded and whose apply job succeeded, read as
      `release.yml` reads it. A run's `headSha` is the branch's tip when

@@ -895,6 +895,11 @@ def test_a_fold_on_a_base_takes_only_the_revisions_the_tree_owns() -> None:
     assert "no path `git diff --name-only --relative HEAD -- om/migrations` lists" in fold
     assert "Every other owned file of the role's chain goes: `git rm`." in fold
     assert "A rendered file stays as it is." in fold
+    # A layer's repository runs none of its tree's deploy workflows, so a
+    # read of its deploys would fail and stop every fold of a layer.
+    assert (
+        "A tree that is a folder of its repository, as a layer's is, passes this part whole" in fold
+    )
 
 
 def test_the_fold_reads_the_commit_staging_deployed_as_the_release_does() -> None:
