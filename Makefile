@@ -23,53 +23,67 @@ MARKDOWNLINT := $(NPX) markdownlint-cli2@$(call npm_pin,markdownlint-cli2)
 RUFF := uvx ruff@$(call pin,ruff)
 MYPY := uvx --with pytest==$(call pin,pytest) mypy@$(call pin,mypy)
 
-.PHONY: help check lint ruff mypy lenses leaks links snippets runs toc version skills agents test plugin checkers-dist gen-skills gen-skills-check gen-toc benchmark benchmark-serve clean
-
+.PHONY: help
 help:              ## show targets
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-18s\033[0m %s\n", $$1, $$2}'
 
+.PHONY: check
 check: lint ruff mypy lenses leaks links snippets runs toc version gen-skills-check skills agents test plugin ## run every check (what CI runs)
 
+.PHONY: lint
 lint:              ## markdownlint over every Markdown file
 	$(MARKDOWNLINT) "**/*.md" "#node_modules"
 
+.PHONY: ruff
 ruff:              ## lint and format check of scripts/, benchmark/, checkers/, and tests/
 	$(RUFF) check
 	$(RUFF) format --check
 
+.PHONY: mypy
 mypy:              ## type check of scripts/, benchmark/, checkers/src/, and tests/
 	$(MYPY)
 
+.PHONY: lenses
 lenses:            ## every lens follows the format and cites a real section
 	$(PYTHON) scripts/check_lenses.py
 
+.PHONY: leaks
 leaks:             ## no product or hardware vocabulary in the Markdown
 	$(PYTHON) scripts/check_leaks.py
 
+.PHONY: links
 links:             ## every relative link and anchor resolves
 	$(PYTHON) scripts/check_links.py
 
+.PHONY: snippets
 snippets:          ## every Python and YAML block in the Markdown parses, so no line of a snippet sits at the wrong indentation
 	$(PYTHON_YAML) scripts/check_snippets.py
 
+.PHONY: runs
 runs:              ## every benchmark run folder sits in its scenario's folder and one row names it, each row's cost is its chain's total, each ran on a runtime its scenario lists, is no rehearsal, and has no marked repeat, no file holds a key or a provider account's id, and each browser run is in its schema, text only, and names no conversation
 	$(PYTHON_RUNS) scripts/check_runs.py
 
+.PHONY: toc
 toc:               ## the table of contents of architecture.md matches its headings
 	$(PYTHON) scripts/gen_toc.py --check
 
+.PHONY: version
 version:           ## every copy of the release version agrees with .claude-plugin/plugin.json
 	$(PYTHON) scripts/check_version.py
 
+.PHONY: skills
 skills:            ## every skill has valid frontmatter and references files that exist
 	$(PYTHON) scripts/check_skills.py
 
+.PHONY: agents
 agents:            ## the reviewer agent mirrors the review template (decision words, report block, step count) and caps its turns
 	$(PYTHON) scripts/check_agents.py
 
+.PHONY: test
 test:              ## the checkers and generators pass their own tests (pytest through uv, pinned)
 	$(PYTEST) tests -q
 
+.PHONY: plugin
 plugin:            ## validate the plugin, marketplace, skills, and agents with Claude Code (skipped when claude is not installed)
 	@if command -v claude >/dev/null 2>&1; then \
 	  claude plugin validate . --strict && claude plugin validate .claude-plugin/plugin.json --strict \
@@ -78,6 +92,7 @@ plugin:            ## validate the plugin, marketplace, skills, and agents with 
 
 # Not part of check: arch-check needs Python 3.11, and check runs on the
 # scripts' 3.10 floor too. CI runs this on arch-check's own floor.
+.PHONY: checkers-dist
 checkers-dist:     ## build the arch-check wheel and run the arch-check entry point from it
 	@dist=$$(mktemp -d) && trap 'rm -rf "$$dist"' EXIT \
 	  && uv build --quiet checkers --wheel --out-dir "$$dist" \
@@ -86,21 +101,27 @@ checkers-dist:     ## build the arch-check wheel and run the arch-check entry po
 	  && uvx --isolated --from "$$wheel" arch-check --list > /dev/null \
 	  && echo "checkers-dist ok: $$(basename "$$wheel")"
 
+.PHONY: gen-skills
 gen-skills:        ## regenerate the review skills from the template and the lens files
 	$(PYTHON) scripts/gen_skills.py
 
+.PHONY: gen-skills-check
 gen-skills-check:  ## fail when a generated skill is out of date
 	$(PYTHON) scripts/gen_skills.py --check
 
+.PHONY: gen-toc
 gen-toc:           ## regenerate the table of contents of architecture.md
 	$(PYTHON) scripts/gen_toc.py
 
+.PHONY: benchmark
 benchmark:         ## run the smoke benchmark scenario in a container, its image built first (calls paid APIs; not part of check)
 	uv run benchmark/run.py --scenario explain-tenancy --providers 3 --effort medium --repeat 1 --build
 
+.PHONY: benchmark-serve
 benchmark-serve:   ## serve the benchmark runs folder at http://127.0.0.1:8765/
 	uv run benchmark/serve.py --runs benchmark/runs --port 8765
 
+.PHONY: clean
 clean:             ## remove tool caches
 	rm -rf .markdownlint-cli2-cache node_modules .pytest_cache .mypy_cache .ruff_cache
 	find . -name __pycache__ -type d -not -path './node_modules/*' -prune -exec rm -rf {} +

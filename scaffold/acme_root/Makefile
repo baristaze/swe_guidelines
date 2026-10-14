@@ -59,18 +59,18 @@ ARCH_CHECK ?= uvx --python "$(shell cat .python-version)" --from "git+https://gi
 # until npm installs it; a pnpm already on PATH runs the version named.
 PNPM_SPEC := $(or $(shell sed -n 's/^ *"packageManager": *"\(pnpm@[^"+]*\).*/\1/p' package.json 2>/dev/null),pnpm)
 
-.PHONY: help setup pnpm up down stop start reset urls infra-up buckets devx-up stack-up infra-down infra-reset collector-scrape migrate seed migrate-check release-before benchmark-boot check lint format-check typecheck arch-check test-unit test-integration test-telemetry traffic openapi
-
 # This Makefile alone, never $(MAKEFILE_LIST): the includes above put
 # .env.example and .env in that list, and grep prefixes every match with the
 # file it came from once it is given more than one, so every target would be
 # printed under the name "Makefile".
+.PHONY: help
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(firstword $(MAKEFILE_LIST)) | awk 'BEGIN {FS = ":.*?## "}; {printf "  %-18s %s\n", $$1, $$2}'
 
 # A tree copied under a longer name has longer lines and its imports in
 # another order, so setup formats the Python once; on a formatted tree it
 # changes nothing.
+.PHONY: setup
 setup: pnpm ## Install every Python and TypeScript dependency, and format the Python
 	uv sync --all-packages
 	@if [ -f pnpm-workspace.yaml ] && [ -d apps ]; then pnpm install; fi
@@ -78,6 +78,7 @@ setup: pnpm ## Install every Python and TypeScript dependency, and format the Py
 	uv run ruff format --quiet .
 
 # A tree without apps runs no pnpm, so it installs none.
+.PHONY: pnpm
 pnpm: ## Install pnpm with npm, at the version package.json names, when it is missing
 	@if [ -d apps ] && ! command -v pnpm >/dev/null; then npm install --global $(PNPM_SPEC); fi
 
@@ -89,6 +90,7 @@ pnpm: ## Install pnpm with npm, at the version package.json names, when it is mi
 # `up --wait` waits on the long-running services only, and GlitchTip's seed
 # runs to completion after it as a step of its own (see GLITCHTIP_SEED), so
 # either target exits 0 when every service is up and the seed succeeded.
+.PHONY: up
 up: .env ## Everything: stack, migrations, seed, app containers, dashboards; keeps data
 	$(COMPOSE) up -d --wait
 	$(MAKE) --no-print-directory buckets
@@ -97,6 +99,7 @@ up: .env ## Everything: stack, migrations, seed, app containers, dashboards; kee
 	$(COMPOSE_FULL) $(GLITCHTIP_SEED)
 	@$(MAKE) --no-print-directory urls
 
+.PHONY: down
 down: ## Remove every local container; the data stays for the next `make up`
 	$(COMPOSE_ALL) down --remove-orphans
 
@@ -106,16 +109,20 @@ down: ## Remove every local container; the data stays for the next `make up`
 # as it was. It builds, migrates, and seeds nothing, and waits on health as
 # `up` does. A tree with no container yet has nothing to start, so `start`
 # runs `make up` there.
+.PHONY: stop
 stop: ## Stop every local container and remove none; the ports free up, the data stays
 	$(COMPOSE_ALL) stop
 
+.PHONY: start
 start: ## Start what `make stop` left, with no build, migration, or seed; `make up` on a tree with no container
 	$(if $(CREATED_SERVICES),$(COMPOSE_ALL) start --wait $(CREATED_SERVICES),$(MAKE) --no-print-directory up)
 
+.PHONY: reset
 reset: ## Wipe every container and all local data, then `make up`
 	$(COMPOSE_ALL) down -v --remove-orphans
 	$(MAKE) --no-print-directory up
 
+.PHONY: urls
 urls: ## Print the local URLs and the seeded sign-ins
 	@echo ""
 	@echo "  Portal         http://localhost:$(ACME_PORTAL_PORT)   /login through WorkOS; /login/dev as $(SEED_EMAIL) or $(SEED_MEMBER_EMAIL)"
@@ -137,27 +144,33 @@ urls: ## Print the local URLs and the seeded sign-ins
 # The targets that start the stack copy .env from .env.example first, as
 # `up` does: the processes read .env, and its role URLs are what put each
 # role on its own instance. Without it, every role reads the one URL.
+.PHONY: infra-up
 infra-up: .env ## Start Postgres (one instance per database role), the cache, the queue, and the object store
 	$(COMPOSE) up -d --wait
 	$(MAKE) --no-print-directory buckets
 
 # One bucket per member of acme.infra.buckets.Buckets, named <prefix>-<bucket>
 # as the S3 impl names them; the cloud's are Terraform's. MinIO ships `mc`.
+.PHONY: buckets
 buckets: ## Create the object store's buckets in MinIO, if they are missing
 	$(COMPOSE) exec -T minio sh -c 'mc alias set local http://127.0.0.1:9000 acme acme-minio-local >/dev/null && mc mb --ignore-existing local/acme-local-user-file-uploads local/acme-local-exports'
 
+.PHONY: devx-up
 devx-up: .env ## The local stack plus developer dashboards (pgweb, Valkey Admin, ElasticMQ UI, Prometheus and its collector, Grafana, Jaeger, GlitchTip)
 	$(COMPOSE) --profile devx up -d --wait
 	$(COMPOSE) $(GLITCHTIP_SEED)
 
+.PHONY: stack-up
 stack-up: .env ## The local stack plus the api, maintenance, and portal containers
 	$(COMPOSE_FULL) up -d --build --wait
 
 # The shortcuts above are the developer's path; these are the steps they wrap,
 # which is what CI and a developer debugging one of them run one at a time.
+.PHONY: infra-down
 infra-down: ## Remove the dependencies' containers; the data stays, as after `make down`
 	$(COMPOSE) down --remove-orphans
 
+.PHONY: infra-reset
 infra-reset: ## Recreate the dependencies with their volumes removed, and nothing else
 	$(COMPOSE) down -v --remove-orphans
 	$(MAKE) --no-print-directory infra-up
@@ -167,6 +180,7 @@ infra-reset: ## Recreate the dependencies with their volumes removed, and nothin
 # here. With no argument it puts the collector back on the .env port, which
 # is what the telemetry round trip runs when it is done with the free port
 # it took.
+.PHONY: collector-scrape
 collector-scrape: ## Point the devx collector at SCRAPE_PORT on the host and recreate it
 	ACME_COLLECTOR_SCRAPE_PORT=$(SCRAPE_PORT) $(COMPOSE) --profile devx up -d --wait --no-deps otel-collector
 
@@ -175,6 +189,7 @@ collector-scrape: ## Point the devx collector at SCRAPE_PORT on the host and rec
 # shared one; the cloud runs `acme-api migrate` without --local. The master
 # makes the three logins first, and every migration runs as the migration
 # login; both steps are safe to repeat.
+.PHONY: migrate
 migrate: ## Make the database logins, then apply every role's migration chain to the local database
 	uv run --package acme-om python -m acme.om.storage.migrate ensure-logins --local
 	uv run --package acme-om python -m acme.om.storage.migrate upgrade --all --local
@@ -191,6 +206,7 @@ migrate: ## Make the database logins, then apply every role's migration chain to
 # that reads sources, each when its file is absent; `uv run acme-ops token
 # --env local --identity operator|provisioner` mints a fresh one into it,
 # since each lasts an hour.
+.PHONY: seed
 seed: ## Create two local orgs with an owner, a member, and an admin of both to sign in as, and the two local operators; a no-op once they exist
 	uv run --package acme-api acme-api bootstrap --if-absent \
 		--org "$(SEED_ORG)" --slug "$(SEED_SLUG)" --name "$(SEED_NAME)" \
@@ -221,6 +237,7 @@ seed: ## Create two local orgs with an owner, a member, and an admin of both to 
 # cannot reach, so `check` does not run it; CI's integration job runs it
 # right after `make migrate`, and the downgrade-then-upgrade round trip stays
 # in the integration tests.
+.PHONY: migrate-check
 migrate-check: ## Compare every role's ORM metadata with the migrated schema
 	uv run --package acme-om python -m acme.om.storage.migrate check --all --local
 
@@ -229,31 +246,40 @@ migrate-check: ## Compare every role's ORM metadata with the migrated schema
 # pull request (ADR 0084). A branch that changes no migration since its merge
 # base with BASE runs nothing; one that does brings the stack up and migrates
 # it. Like test-integration, it empties every table of the local stack.
+.PHONY: release-before
 release-before: ## Run the release before's integration suite on this branch's schema (BASE=origin/main)
 	scripts/release_before.sh $(BASE)
 
 # What a process pays to boot: imports once, then microseconds per root (ADR 0007).
+.PHONY: benchmark-boot
 benchmark-boot: ## Time the imports and the construction of every root
 	uv run --package acme-api python scripts/benchmark_boot.py
 
+.PHONY: check
 check: pnpm lint format-check typecheck arch-check test-unit ## The fast local gate
 	@if [ -d apps ]; then pnpm run lint && pnpm run typecheck && pnpm run test; fi
 
+.PHONY: lint
 lint: ## Ruff lint
 	uv run ruff check .
 
+.PHONY: format-check
 format-check: ## Ruff format, check only
 	uv run ruff format --check .
 
+.PHONY: typecheck
 typecheck: ## Pyright over every distribution and the scripts
 	uv run pyright
 
+.PHONY: arch-check
 arch-check: ## The guideline's static checks, configured in pyproject.toml
 	$(ARCH_CHECK)
 
+.PHONY: test-unit
 test-unit: ## Unit tests over the memory impls
 	uv run pytest -q -m "not integration and not e2e and not telemetry"
 
+.PHONY: test-integration
 test-integration: ## Integration tests over the compose stack
 	uv run pytest -q -m integration
 
@@ -263,11 +289,13 @@ test-integration: ## Integration tests over the compose stack
 # Needs `make devx-up` and `make migrate seed`; skips, naming what is missing,
 # when it cannot run. With ACME_TELEMETRY_REQUIRED=1 the same miss is a
 # failure, which is how CI runs it.
+.PHONY: test-telemetry
 test-telemetry: ## The telemetry round trip over the devx profile
 	uv run pytest -q -m telemetry
 
 # The gate's sanity run: the light profile for thirty seconds over the seeded
 # org, against the API on ACME_PORT. Proves the wiring, says nothing about capacity.
+.PHONY: traffic
 traffic: ## Drive light traffic at the local API (PROFILE=light DURATION=30)
 	uv run acme-ops traffic --env local --profile $(PROFILE) --duration $(DURATION) --orgs 0
 
@@ -277,6 +305,7 @@ traffic: ## Drive light traffic at the local API (PROFILE=light DURATION=30)
 # per document: the TypeScript client's src/schema/<namespace>.d.ts and the
 # Python client's schema package, so a change to one namespace rewrites its
 # own files alone.
+.PHONY: openapi
 openapi: pnpm ## Emit each namespace's API document and regenerate the clients' types from them
 	uv run --package acme-api acme-api openapi --out clients/openapi
 	scripts/openapi_types.sh clients/openapi clients/typescript/src/schema clients/python/src/acme/client/schema
