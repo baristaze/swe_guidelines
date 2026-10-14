@@ -193,6 +193,7 @@ ROOT_CAUSE_DECIDES = [
     'The pass writes its error leg as "not read", with which of the three it was, '
     "and goes on to the logs",
     "--since <start_at> --until <end_at> api maintenance",
+    "with `--no-log-prefix` and without its `grep`, written to a file with `>`",
     "so `<n>` is the minutes from the window's `start` of step 3 to now, rounded up",
     "with the request id the tenant saw as `--request-id`",
     "The run never widens the window itself",
