@@ -1,6 +1,6 @@
 ---
 name: ops-investigate
-description: "Investigate one environment of the system with a read-only credential: the alarms, the error rate, the latency, the worker outcomes and the work items that failed for good, the pool, the queue and its dead letter, the identity provider (the sign-in and its webhook), the cost against the budget, and the system's size, then report what is wrong and what to do next. Every read goes through the signals' own APIs (CloudWatch, X-Ray, the error tracker in the cloud; Prometheus, Jaeger, GlitchTip locally). Use when something looks off, when an alarm fires, or as the daily look. Never writes."
+description: "Investigate one environment of the system with a read-only credential: the alarms, the error rate, the latency, the outcomes, gauges, queues, and log lines each namespace's signals file names, the pool, the cost against the budget, and the system's size, then report what is wrong and what to do next. Every read goes through the signals' own APIs (CloudWatch, X-Ray, the error tracker in the cloud; Prometheus, Jaeger, GlitchTip locally). Use when something looks off, when an alarm fires, or as the daily look. Never writes."
 allowed-tools: Read, Grep, Glob, Bash(aws:*), Bash(curl:*), Bash(docker compose:*), Bash(uv run acme-ops size:*), Bash(sleep:*)
 ---
 
@@ -52,11 +52,15 @@ the token has expired: stop, and name the refresh the preamble gives.
 The processes are `api` and `maintenance`, as
 `deployment/README.md` lists them. Each is an ECS service of that
 name in the cluster `acme-<env>`, with the log group
-`/acme/<env>/<process>`. The queue is `acme-<env>-webhooks` (the
-identity provider's deliveries, which the API checked at
-`/webhooks/identity` and queued), with a dead-letter queue named with
-`-dead` after it. The deliveries come in through `/acme/<env>/api`,
-and their handling is in `/acme/<env>/maintenance`.
+`/acme/<env>/<process>`.
+
+Before step 1, read every file in `../_shared/signals/`, a path from
+this skill's folder. Its `README.md` says what each heading holds, and
+each other file is one namespace or one process, the scaffold's and a
+copy's alike: a copy adds `<ns>.md` there for each namespace of its
+own. Step 3 reads their Alarms, step 5 their Outcomes, Gauges, and
+Queues, step 7 their Log lines and Commands, step 8 their Search, and
+the report their Report.
 
 1. Verify the credential as Role and credential states. Compute the
    window: `--since` back from now, as epoch seconds
@@ -101,17 +105,11 @@ and their handling is in `/acme/<env>/maintenance`.
    - running processes: the `up` targets again, one per process
    - the database's CPU and free storage: no local exporter; report
      them as not read
-   - work backlog: `max(acme_work_oldest_ready_seconds)`, alarm above
-     600 (the item ready longest waited ten minutes: no worker claims)
-   - work dead letter: `max(acme_work_failed_recently)`, alarm at 1 or
-     more (an item failed for good in the last fifteen minutes)
-   - outbox lag: `max(acme_outbox_oldest_pending_seconds)`, alarm above
-     300 (the oldest row not yet relayed landed five minutes ago)
-   - outbox dead letter: `max(acme_outbox_failed_recently)`, alarm at 1
-     or more (a row failed for good in the last fifteen minutes)
+   - each signals file's Alarms, by the condition and the threshold it
+     gives
 
-   The last four are the worker's sweep reads, one per pass; a local
-   stack whose worker is not running has none, which is "not read".
+   A gauge is a read of the worker's sweep, one per pass; a local stack
+   whose worker is not running has none, which is "not read".
    With `--alarm <name>`, start here and apply the first responder
    rule of step 11 before reading anything else.
 4. Request rate, error ratio, p95, by route. Cloud, the queries of the
@@ -173,53 +171,30 @@ and their handling is in `/acme/<env>/maintenance`.
      --data-urlencode 'query=histogram_quantile(0.95, sum by (le, route) (rate(acme_http_request_seconds_bucket[5m])))'
    ```
 
-5. Workers, queue, pool, cache: one counter carries every outcome,
-   `acme_outcomes_total{subsystem, outcome}` (subsystems `worker`,
-   `work`, `outbox`, `queue`, `deliveries`, `cache`, `rate_limit`,
-   `admission`, `idempotency`, `orchestrations`, `leases`), read as `sum by (subsystem, outcome)
-   (increase(acme_outcomes_total[<since>]))`. A work item that failed
-   for good counts `work`/`dead_letter`: its attempts ran out
-   (`worker`/`failed` beside it), or its handler was refused, a failure
-   no retry changes (`worker`/`refused`, a provider refusing the call
-   itself). Each one is an `ERROR` line in `/acme/<env>/maintenance`,
-   `work item <id> (<kind>) in org <org> failed for good: <reason>`,
-   which step 7 finds; `work`/`requeued` counts the ones an operator
-   sent back. The long-running records
-   are `orchestrations`, one outcome per kind and state,
-   `<kind>_<state>`: `_running` when a record starts, `_parked` when a
-   step waits on a provider that did not answer, `_resumed`,
-   `_succeeded`, `_failed`, and `_cancelled`, a person's end. The
-   mechanism's own kind is `noop` (`noop_succeeded`); a product adds
-   its kinds beside it. A parked
-   record is woken by the event that clears its reason (`WAKE_PARKED`)
-   or by a person; one that stays parked is read beside the provider's
-   lines of step 8. A `_failed` is `defect`, a step that still failed
-   on its item's last attempt, which the maintenance log names at level
-   `ERROR` with the record's id and the org's (`<kind> <id> in org
-   <org> failed: defect ...`), so step 7 finds it. A running record
-   whose `_succeeded` never follows is a step the queue keeps retrying:
-   read the worker's `failed` outcomes beside it. A lease on a leasable
-   resource counts `leases`/`granted`, then `released`, `expired`, or
-   `revoked`; a request that left its line without one counts
-   `request_expired` or `request_<why>` (`asked`, `waiter_gone`,
-   `refused`). The work queue and the outbox are Postgres tables, and
-   each sweep pass reads four numbers of them across every tenant:
-   `acme_work_oldest_ready_seconds` (how long the item ready longest has
-   waited), `acme_work_failed_recently` (items failed in the last
-   fifteen minutes and still failed),
-   `acme_outbox_oldest_pending_seconds` (how long ago the oldest row not
-   yet relayed landed), and `acme_outbox_failed_recently` (rows failed
-   for good in the last fifteen minutes). Locally they are gauges on
-   Prometheus. In the cloud they are metrics of the same names in `Acme`
-   with no dimension, which the alarms `acme-<env>-work-backlog`,
-   `-work-dead-letter`, `-outbox-lag`, and `-outbox-dead-letter` read,
-   filtered from the worker's sweep line:
+5. Outcomes, gauges, queues, the pool: one counter carries every
+   outcome, `acme_outcomes_total{subsystem, outcome}`, read as
+   `sum by (subsystem, outcome) (increase(acme_outcomes_total[<since>]))`.
+   A signals file's Outcomes says what each outcome of its subsystems
+   means. Two subsystems are the infrastructure's, the report's Pool
+   and cache: `storage` counts the pool's `checkout_timeout` and
+   `statement_timeout`, and `cache` its `hit`, `miss`, and
+   `unreachable`.
+
+   The gauges are every signals file's Gauges. Locally they are gauges
+   on Prometheus, read as `max(<gauge>)`. In the cloud they are metrics
+   of the same names in `Acme` with no dimension, filtered from the
+   worker's sweep line, which the alarms read. One call reads them all,
+   with one query per gauge:
 
    ```bash
    aws cloudwatch get-metric-data --profile acme-<env>-investigate \
      --start-time <start> --end-time <end> \
-     --metric-data-queries '[{"Id":"ready","MetricStat":{"Metric":{"Namespace":"Acme","MetricName":"acme_work_oldest_ready_seconds"},"Period":60,"Stat":"Maximum"}},{"Id":"failed","MetricStat":{"Metric":{"Namespace":"Acme","MetricName":"acme_work_failed_recently"},"Period":60,"Stat":"Maximum"}},{"Id":"outbox","MetricStat":{"Metric":{"Namespace":"Acme","MetricName":"acme_outbox_oldest_pending_seconds"},"Period":60,"Stat":"Maximum"}},{"Id":"dead","MetricStat":{"Metric":{"Namespace":"Acme","MetricName":"acme_outbox_failed_recently"},"Period":60,"Stat":"Maximum"}}]'
+     --metric-data-queries '[{"Id":"<id>","MetricStat":{"Metric":{"Namespace":"Acme","MetricName":"<gauge>"},"Period":60,"Stat":"Maximum"}}]'
    ```
+
+   The list holds one such query for each gauge, each with an `Id` of
+   its own: lowercase letters, digits, and underscores, starting with
+   a letter.
 
    The outcomes and the pool are one more call in the cloud: the
    counter by the dashboard's schema, the twin of the `sum by` above,
@@ -239,21 +214,15 @@ and their handling is in `/acme/<env>/maintenance`.
    is the window's count. `pool` is read by its highest minute: the
    most connections the database held.
 
-   A backlog with the maintenance service at its desired count is a
-   worker that claims nothing: read its log for `claim failed`. An
-   outbox lag is a relay that keeps failing: its log names each attempt,
-   `outbox relay of <row id> (<kind>) failed on attempt <n>: <error>`.
-   An outbox dead letter is the last of those attempts: the log says
-   `outbox row <row id> (<kind>) failed for good after <n> attempts:
-   <error>`, and the org's diary holds an `outbox.row.failed` event that
-   names the row's kind and target.
-   A work item failed for good is step 7's line. The inbound queue's
-   depth and oldest age, and pool checkouts, have no metric of the
-   worker's; the cloud reads the pool from the database's connection
-   count, as above, and the queue and its dead letter from SQS:
+   An outcome, a gauge, or an alarm is read as its signals file says,
+   with the log line it names as the cause, which step 7 or step 8
+   finds. A queue's depth and oldest age, and pool checkouts, have no
+   metric of the worker's; the cloud reads the pool from the database's
+   connection count, as above, and each queue of every signals file's
+   Queues, with its dead letter, from SQS:
 
    ```bash
-   for q in webhooks webhooks-dead; do
+   for q in <queue> <queue>-dead; do
      url="$(aws sqs get-queue-url --queue-name acme-<env>-$q \
        --query QueueUrl --output text --profile acme-<env>-investigate)"
      aws sqs get-queue-attributes --queue-url "$url" --profile acme-<env>-investigate \
@@ -261,12 +230,10 @@ and their handling is in `/acme/<env>/maintenance`.
    done
    ```
 
-   A message in a `-dead` queue is a delivery the worker could not
-   handle after its retries: a finding, with the queue's name. The
-   worker counts each delivery it handles as `deliveries`/`<outcome>`
-   (`applied`, `duplicate`, `unowned`, `malformed`, `failed`); a
-   `failed` stays on the queue and comes back. Cloud
-   also reads the running count against the desired count:
+   with every queue the signals files name in the list, each followed
+   by its `-dead`. A message in a `-dead` queue is one its consumer
+   could not handle after its retries: a finding, with the queue's
+   name. Cloud also reads the running count against the desired count:
 
    ```bash
    aws ecs describe-services --cluster acme-<env> \
@@ -346,63 +313,29 @@ and their handling is in `/acme/<env>/maintenance`.
    `"request_id"` when `ACME_LOG_JSON` is on.
    With `--request-id`, filter every source on it: `filter request_id
    = "<id>"` in the cloud, `grep` locally.
-   A failed work item is a finding with its id, its kind, its org, and
-   its reason, all off the `failed for good` line. The reason says
-   whether it is the provider's or a person's to fix; a
-   `DELETE_ACCOUNT` one leaves a deleted person's personal org in
-   place until it runs. Once the cause is fixed, a person sends it back
-   with `uv run acme-ops work requeue --env <env> --org <org> <item>`,
-   in their own terminal: it signs them in with the second factor and
-   mints a `write` token for that one call. This skill names the
-   command in the report and never runs it.
-8. The identity provider. It says in its own log when it is not
-   configured, and the skill reads that, never a secret: the secrets
-   are denied to the role, and their names are enough. Cloud, over the
-   same window:
+   A line a signals file's Log lines names is read as that file says:
+   the finding it is, with the ids it carries. When the file's Commands
+   give a person's command for that finding, the report names it for a
+   person to run in their own terminal; this skill never runs it.
+8. The lines a read of `ERROR` misses: a start line, a warning, an
+   access line. Each signals file's Search is one pattern, and one
+   query joins them all with `|`. Cloud, over the same window:
 
    ```bash
    aws logs start-query --profile acme-<env>-investigate \
      --log-group-names /acme/<env>/api /acme/<env>/maintenance \
      --start-time <start> --end-time <end> \
-     --query-string 'fields @timestamp, @log, @message | filter @message like /identity provider|WorkOS application|WorkOS credential check|ACME_WORKOS_WEBHOOK_SECRET|webhooks\/identity (400|503)|identity delivery/ | sort @timestamp desc | limit 50'
+     --query-string 'fields @timestamp, @log, @message | filter @message like /<every Search, joined with |>/ | sort @timestamp desc | limit 50'
    ```
 
-   What each line means, and the secret it points to:
-
-   - `identity provider: none (ACME_WORKOS_API_KEY is not set)` and
-     `every sign-in through one answers 503`: nobody can sign in
-     through WorkOS. `acme/<env>/workos_api_key` is `off`, or the
-     API's tasks started before it was written.
-   - `ACME_WORKOS_API_KEY is not the API key of the WorkOS application`,
-     and the API's tasks stop at start: the secret holds a key WorkOS
-     refuses as the Acme App's (the environment's API key, another
-     application's, or the other WorkOS environment's). The key belongs
-     on the Acme App's own API keys tab. `the WorkOS credential check
-     did not finish` or `answered` is a warning only: WorkOS could not
-     say, and the API started.
-   - `ACME_WORKOS_WEBHOOK_SECRET is not set` on `POST
-     /webhooks/identity`, a `503` there in the access lines of
-     `/acme/<env>/api`: `acme/<env>/workos_webhook_secret` is `off`, or
-     the API's tasks started before it was written. Every delivery is
-     refused, and WorkOS sends it again later.
-   - A `400` (`webhook_signature_invalid`) on `/webhooks/identity` in
-     the access lines of `/acme/<env>/api`: the secret does not match
-     the signing secret of the endpoint in the WorkOS dashboard, so
-     every delivery is refused.
-   - `identity delivery <id> names no org` or `names org <id>, which
-     is gone` in `/acme/<env>/maintenance`: one delivery about an org
-     this environment does not hold, dropped. Not a finding about a
-     secret.
-
-   The start lines are written once, when a task starts, so a window
-   after the last rollout holds none: report "not in the window",
-   never "configured". A finding here names the secret and
-   `docs/runbooks/providers/workos.md`; writing the value is a
-   person's step under their own sign-in, never this skill's. Locally,
-   `grep` the same lines in each process's own output, as step 7 reads
-   it; a laptop that sets no `ACME_WORKOS_API_KEY` signs people in by
-   the local sign-in on purpose, so `identity provider: none` there is
-   not a finding.
+   What each line means, and the secret it points to, is its signals
+   file's Log lines. The skill reads a secret's name, never its value:
+   the secrets are denied to the role, and their names are enough. A
+   line written once, when a task starts, is not in a window after the
+   last rollout: report "not in the window", never "configured".
+   Writing a secret's value is a person's step under their own
+   sign-in, never this skill's. Locally, `grep` the same patterns in
+   each process's own output, as step 7 reads it.
 9. Traces. Cloud:
 
    ```bash
@@ -451,11 +384,11 @@ and their handling is in `/acme/<env>/maintenance`.
 12. Write the report. Name the next skill: `ops-root-cause` with an
     org id when one tenant's rows explain it, `ops-watch` when the
     signal is still moving, `ops-infra-as-code` when the fix is a
-    resource, and, for a failed work item whose cause is fixed, the
-    requeue command of step 7 for a person to run. A session follows at
-    most 2 hops of Next. The skill it starts with is hop zero; the
-    report of the second hop still names its next skill, and the
-    session stops there and reports.
+    resource, and, for a finding whose cause is fixed, the command its
+    signals file gives a person to run, as step 7 names it. A session
+    follows at most 2 hops of Next. The skill it starts with is hop
+    zero; the report of the second hop still names its next skill, and
+    the session stops there and reports.
 
 ## What it never does
 
@@ -487,12 +420,9 @@ and their handling is in `/acme/<env>/maintenance`.
 ## Signals
 
 - Requests: <rate>, error ratio <ratio>, p95 <ms> by route (cloud: one p95 <ms, or none>, every route together)
-- Workers: <outcomes per kind>, oldest ready item <age>, failed in the last fifteen minutes <n>, oldest pending outbox row <age>
-- Failed work items: <item id, kind, org id, reason; or none>
-- Orchestrations: <kind> <started, parked, succeeded, failed, cancelled> per kind, defects <record and org ids, or none>
-- Queue: webhooks <n> (dead <n>), deliveries <outcomes>; services api, maintenance <running>/<desired>
-- Identity provider: sign-in <configured | off: acme/<env>/workos_api_key | not in the window>, webhook <configured | off: acme/<env>/workos_webhook_secret | signature refused: acme/<env>/workos_webhook_secret | not in the window>
-- Pool and cache: <checkouts, timeouts, hits, misses>
+- Services: api, maintenance <running>/<desired> (cloud only)
+- Pool and cache: <connections, checkout and statement timeouts, hits, misses, unreachable>
+- <each Report line of every signals file, in the order of the files' names>
 - Errors: <count>, top issue <title> (<request id, or none>), or "not
   read: the environment names no error tracker"
 - Cost: <month to date> of <budget> USD (cloud only)

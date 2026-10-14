@@ -82,6 +82,13 @@ stop, and name the refresh the preamble gives.
 The processes are `api` and `maintenance`, as `deployment/README.md`
 lists them.
 
+Before step 1, read every file in `../_shared/signals/`, a path from
+this skill's folder. Its `README.md` says what each heading holds, and
+each other file is one namespace or one process, the scaffold's and a
+copy's alike: a copy adds `<ns>.md` there for each namespace of its
+own. Step 3 reads their Change events, and step 8 their Kinds and Log
+lines.
+
 Steps 4 to 8 are one pass, for one request id, and each id gets one
 pass. A pass reads each signal once: a signal that answers nothing is
 written as empty, never read a second time with a wider window or
@@ -200,12 +207,12 @@ runs once, before the passes. It is not a pass.
    that is empty or not JSON, ends the run as in step 2.
 
    Without `--request-id`, pick the request ids here, at most five, the
-   newest first among the change events tied to the symptom. A failure the
-   stream records is `work.item.failed` or `outbox.row.failed`: a work
-   item or an outbox row that failed for good. Any other change event tied to
-   the symptom is a write that landed, whose request is followed for
-   what it did next. When no change event is tied to the symptom, the run
-   makes no pass, as Input says.
+   newest first among the change events tied to the symptom. A failure
+   the stream records is a change event of a kind a signals file's
+   Change events names. Any other change event tied to the symptom is a
+   write that landed, whose request is followed for what it did next.
+   When no change event is tied to the symptom, the run makes no pass,
+   as Input says.
 4. The error tracker, by the pass's request id. The tracker holds no
    tenant: an event's tags are `service`, `request_id`, and the SDK's
    own (`environment`, `release`, `server_name`), never an org id, so
@@ -335,6 +342,7 @@ runs once, before the passes. It is not a pass.
    it waited), and the error event (where it broke). The cause is the
    first of those that disagrees with the code's intent; read the
    code at the file and line the error names with `Read` and `Grep`.
+   A log line or a kind a signals file names is read as that file says.
    When none disagrees, the pass ends with "not found" for its id,
    naming each leg it could not read, and the next id's pass starts.
 9. Write the report once the last pass ends, the fifth at most. The

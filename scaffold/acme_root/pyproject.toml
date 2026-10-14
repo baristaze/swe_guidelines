@@ -47,6 +47,7 @@ asyncio_mode = "auto"
 addopts = "--import-mode=importlib"
 pythonpath = [
     "om/tests",
+    "infra/tests",
     "services/api/tests",
     "workers/maintenance/tests",
     "clients/python/tests",
