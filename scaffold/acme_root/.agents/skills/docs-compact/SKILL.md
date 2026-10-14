@@ -1,6 +1,6 @@
 ---
 name: docs-compact
-description: "Compact the tree's documents to what holds at the head of the main branch: rewrite each ADR to its present decision with a status of one date, remove the ADRs that constrain nothing, cut the changelog to the latest release, clean the rows of specs/architecture.md, and rewrite the comments that tell what the code did before. With --migrations, fold each role's migration chain into one revision under the head's revision id, shown equal by a schema dump. Works on a branch, pushes nothing, and reports what it removed, rewrote, and kept."
+description: "Compact the tree's documents to what holds at the head of the main branch: rewrite each ADR to its present decision with a status of one date, remove the ADRs that constrain nothing, cut the changelog to the latest release, clean the rows of specs/architecture.md, and rewrite the comments that tell what the code did before. With --migrations, fold the revisions each role's chain owns into one revision under the head's revision id, shown equal by a schema dump; in a copy or a layer, on its base's head, with the base's files left as rendered. Works on a branch, pushes nothing, and reports what it removed, rewrote, and kept."
 allowed-tools: Read, Grep, Glob, Edit, Write, Bash(git status:*), Bash(git fetch:*), Bash(git symbolic-ref:*), Bash(git switch:*), Bash(git log:*), Bash(git diff:*), Bash(git rev-parse:*), Bash(git merge-base:*), Bash(git ls-files:*), Bash(git rm:*), Bash(git mv:*), Bash(git add:*), Bash(git commit:*), Bash(git restore:*), Bash(git clean:*), Bash(git grep:*), Bash(diff:*), Bash(mkdir:*), Bash(gh release:*), Bash(gh run:*), Bash(gh api:*), Bash(docker info:*), Bash(docker compose:*), Bash(uv run:*), Bash(make setup), Bash(make openapi), Bash(make check), Bash(make infra-up), Bash(make migrate)
 ---
 
@@ -27,9 +27,11 @@ an option only the history explains: no, so it goes.
 
 Without the flag the skill rewrites text only, and never opens
 `om/migrations/`: a search lists lines of it, as step 6's does, and no
-file there is read whole or changed. With it, it also folds each role's
-migration chain into one revision, as step 7 says. It runs at the root
-of the checkout.
+file there is read whole or changed. With it, it also folds the
+revisions each role's chain owns into one revision, as step 7 says:
+every revision, or in a copy or a layer, those the render of its base
+does not hold. It runs at the root of the checkout, or in a layer at
+the root of its tree, the folder that holds the tree's Makefile.
 
 ## Role and credential
 
@@ -193,10 +195,17 @@ left as it is, and the report names it under Kept.
      that ends the contract has not landed, and it is in flight.
      - A piece of the schema (a column, a default, a constraint, a
        trigger, a function): the last up file that names it decides,
-       by the stamp the file's name begins with. The head holds the
-       piece unless that file drops it and does not make it again.
-       `git grep -nwF '<its name>' -- 'om/migrations/sql/*.up.sql'`
-       lists the lines to read.
+       in the chain's order: each file after the one its wrapper's
+       `down_revision` names, never by the stamp its name begins with.
+       The head holds the piece unless that file drops it and does not
+       make it again. This lists the lines to read, and the command
+       below it prints each role's order:
+       `git grep -nwF '<its name>' -- 'om/migrations/sql/*.up.sql'`.
+
+       ```bash
+       uv run --package acme-om python -c "from acme.om.storage.migrate import chain; from acme.om.storage.roles import DatabaseRole; [print(r.value, *chain(r)) for r in DatabaseRole]"
+       ```
+
      - Any other piece (a field of a response, a setting, a branch of
        the code) is the code the comment sits on: the head holds it.
 
@@ -281,7 +290,9 @@ left as it is, and the report names it under Kept.
   `--migrations`, and only one that pins a revision the fold removes,
   tests a backfill it removes, or steps down from the head.
 - Never opens `om/migrations/` without `--migrations`, and never edits
-  an applied migration file: a fold replaces a chain whole.
+  an applied migration file: a fold replaces the revisions it owns
+  whole, and leaves every file the render of its base holds as the
+  render gave it.
 - Never writes to a shared database or to an environment, and never
   runs a test on the local stack's own database: its gates and its fold
   run on databases it made on the local stack, and drops.
@@ -324,8 +335,8 @@ Branch <name> at <commit>, cut from <main> at <commit>. Migrations: <folded | no
 
 ## The fold (with `--migrations`)
 
-| role | head id | revisions folded | backfills left out | dump of the chain against the fold's |
-|---|---|---|---|---|
+| role | head id | parent | revisions folded | backfills left out | dump of the chain against the fold's |
+|---|---|---|---|---|---|
 
 The last commit before the fold: <sha>. A snapshot older than the fold is restored at that commit's release, which migrates it to the head, and then moves to the current one.
 

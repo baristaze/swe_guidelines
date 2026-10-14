@@ -877,6 +877,26 @@ def test_the_fold_states_its_precondition_its_proof_and_its_bound() -> None:
     assert "one the fold lacks is a line of step 4's `diff`" in fold
 
 
+def test_a_fold_on_a_base_takes_only_the_revisions_the_tree_owns() -> None:
+    """A copy or a layer merges the render of its base on every move, so a
+    fold that rewrote a rendered file would meet each later change the base
+    makes to it as a conflict. The fold takes only the tree's own revisions,
+    on its base's head, and reads the chain by its parents."""
+    fold = " ".join((SKILLS / "docs-compact" / "references" / "fold.md").read_text().split())
+    assert "never by its stamp" in fold
+    assert "`git rev-parse --verify --quiet origin/scaffold` prints nothing." in fold
+    assert (
+        "`git ls-tree -r --name-only origin/scaffold -- om/migrations/sql om/migrations/versions`"
+        in fold
+    )
+    assert "Each rendered file stays as the render gave it" in fold
+    assert "The fold's parent is the base's head as the chain holds it" in fold
+    assert "no rendered revision follows an owned one on any line" in fold
+    assert "no path `git status --porcelain -- om/migrations` lists is one the render holds" in fold
+    assert "Every other owned file of the role's chain goes: `git rm`." in fold
+    assert "A rendered file stays as it is." in fold
+
+
 def test_the_fold_reads_the_commit_staging_deployed_as_the_release_does() -> None:
     """A deploy run's head is the branch's tip when it started, and its
     title ends with the commit it deployed. The release workflow reads the

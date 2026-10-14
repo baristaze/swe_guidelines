@@ -178,9 +178,12 @@ never fixes.
 
 `/docs-compact` keeps the tree's documents to what holds: its ADRs, its
 changelog, the rows of `specs/architecture.md`, and its comments. With
-`--migrations` it also folds each role's migration chain into one
-revision under the head's revision id, once every database that exists
-is at that head. It works on a branch and pushes nothing.
+`--migrations` it also folds the revisions each role's chain owns into
+one revision under the head's revision id, once every database that
+exists is at that head. A tree owns every revision, unless its
+`scaffold` branch holds its base: then it owns those the base does not
+hold, and the base's files stay as they came. It works on a branch and
+pushes nothing.
 
 An existing tree copies the scaffold's `.agents/skills/` into its own
 and renames `acme` in them to its own name, in each form
