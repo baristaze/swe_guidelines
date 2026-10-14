@@ -196,7 +196,9 @@ revision on the fold.
    - Every other owned file of the role's chain goes: `git rm`. A
      rendered file stays as it is.
 3. **Move what named a step.** `git grep -n` each removed stamp and each
-   removed file name.
+   removed file name, over the whole repository:
+   `git grep -n <name> -- ':/'`. In a layer or the guideline's
+   repository, its own text outside the tree can cite one too.
    - A test goes only when it pins a revision id the fold removes, or
      tests a backfill the fold removes. Every other test stays, the
      head's downgrade and upgrade, the ORM-against-schema check, and
@@ -215,8 +217,8 @@ revision on the fold.
      down for a fixture or a later test is changed to upgrade first, or
      the suite fails after it.
    - An ADR, a comment, or a document that cites a removed revision or
-     file names the fold's file, or drops the citation when it named a
-     step and not the schema.
+     file, in the tree or outside it, names the fold's file, or drops
+     the citation when it named a step and not the schema.
    - A checker exception whose `path` is a removed migration file
      (`[[tool.arch-check.exception]]` in `pyproject.toml`) names the
      fold's file when the fold still holds what it allows, and goes when
