@@ -8,7 +8,7 @@ from uuid import uuid4
 import httpx
 import pytest
 
-from acme.client.client import ApiError
+from acme.client.transport import ApiError
 from acme.ops.environments import Environment
 from acme.ops.profiles import Profile
 from acme.ops.traffic import (

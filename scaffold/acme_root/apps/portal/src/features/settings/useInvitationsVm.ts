@@ -1,4 +1,4 @@
-import type { MeView, Role } from "@acme/client";
+import type { common, tenancy } from "@acme/client";
 import { useMemo, useState } from "react";
 import { errorMessage } from "../../app/errorMessage";
 import {
@@ -14,7 +14,7 @@ import { canManageMembers, checkInvite, invitableRoles, invitationRows, ssoAvail
 /** Inviting people and the org's single sign-on, for a member who manages
  * members. The identity provider sends the invitation's email and hosts the
  * page where an admin connects their own identity provider. */
-export function useInvitationsVm(me: MeView | undefined) {
+export function useInvitationsVm(me: tenancy.MeView | undefined) {
   const mayManage = canManageMembers(me);
   const invitations = useInvitations(mayManage);
   const invite = useInviteMember();
@@ -24,7 +24,7 @@ export function useInvitationsVm(me: MeView | undefined) {
   const notify = useNoticesStore((s) => s.notify);
   const roles = invitableRoles(me);
   const [email, setEmail] = useState("");
-  const [role, setRole] = useState<Role>("member");
+  const [role, setRole] = useState<common.Role>("member");
   const [error, setError] = useState<string | null>(null);
 
   const rows = useMemo(() => invitationRows(invitations.data ?? [], new Date()), [invitations.data]);
@@ -84,7 +84,7 @@ export function useInvitationsVm(me: MeView | undefined) {
     loadingMore: invitations.isFetchingNextPage,
     showMore: () => void invitations.fetchNextPage(),
     setEmail,
-    setRole: (value: string) => setRole(value as Role),
+    setRole: (value: string) => setRole(value as common.Role),
     send,
     resend: resendOne,
     revoke: revokeOne,

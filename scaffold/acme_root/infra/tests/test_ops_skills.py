@@ -674,12 +674,19 @@ def test_the_compaction_leaves_no_choice_to_the_run(sentence: str) -> None:
     assert sentence in _prose("docs-compact"), f"docs-compact no longer says: {sentence}"
 
 
-# What `make openapi` writes: the API document and the two schemas made from it.
-GENERATED = [
-    "clients/typescript/openapi.json",
-    "clients/typescript/src/schema.d.ts",
-    "clients/python/src/acme/client/schema.py",
+# What `make openapi` writes: each namespace's API document and the two
+# schemas made from it, one file per document in each folder.
+GENERATED_FOLDERS = [
+    "clients/openapi",
+    "clients/typescript/src/schema",
+    "clients/python/src/acme/client/schema",
 ]
+GENERATED = sorted(
+    str(path.relative_to(ROOT))
+    for folder in GENERATED_FOLDERS
+    for path in (ROOT / folder).iterdir()
+    if path.suffix in {".json", ".ts", ".py"}
+)
 # What a compaction never edits: an applied migration, a generated file, a
 # lock file, and the skill's own folder, which holds the phrases it sweeps for.
 NEVER_SWEPT = [
@@ -705,8 +712,10 @@ def test_the_sweep_lists_no_file_the_compaction_never_edits(tmp_path: Path) -> N
     """Step 6 rewrites what the sweep lists, so the sweep's pathspec is what
     keeps an applied migration and a generated document as they are. It runs
     here as the skill writes it, over a tree where every file tells a past."""
-    for name in GENERATED:
-        assert (ROOT / name).is_file(), f"{name} is not a file `make openapi` writes"
+    for folder in GENERATED_FOLDERS:
+        assert any(name.startswith(f"{folder}/") for name in GENERATED), (
+            f"{folder} holds no file `make openapi` writes"
+        )
     for name in [*NEVER_SWEPT, *SWEPT]:
         path = tmp_path / name
         path.parent.mkdir(parents=True, exist_ok=True)

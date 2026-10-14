@@ -65,11 +65,3 @@ class ErrorEnvelope(Envelope):
 class ClientCommand(RequestBody):
     op: Literal["subscribe", "unsubscribe", "ping"]
     topic: str | None = None
-
-
-class IssuedTicketView(View):
-    """Carries the freshly minted socket ticket in the clear, once; redeeming
-    it opens the channel and re-checks the credential behind it."""
-
-    ticket: str
-    expires_in_seconds: int

@@ -271,15 +271,12 @@ test-telemetry: ## The telemetry round trip over the devx profile
 traffic: ## Drive light traffic at the local API (PROFILE=light DURATION=30)
 	uv run acme-ops traffic --env local --profile $(PROFILE) --duration $(DURATION) --orgs 0
 
-# One committed document, clients/typescript/openapi.json; both generated type
-# sets come from it: the TypeScript client's schema.d.ts and the Python
-# client's schema.py.
-openapi: pnpm ## Emit the API document and regenerate the TypeScript and the Python client's types
-	uv run --package acme-api acme-api openapi --out clients/typescript/openapi.json
-	pnpm --filter @acme/client generate
-	uv run datamodel-codegen --input clients/typescript/openapi.json --input-file-type openapi \
-		--output clients/python/src/acme/client/schema.py \
-		--output-model-type pydantic_v2.BaseModel --target-python-version 3.14 \
-		--use-standard-collections --use-union-operator --use-annotated \
-		--enum-field-as-literal none --use-schema-description --disable-timestamp \
-		--formatters ruff-format --formatters ruff-check
+# One committed document per namespace, clients/openapi/<namespace>.json, and
+# one for what they share, common.json; each schema is defined in its owner's
+# document, and another refers to it by a file $ref. The types follow one file
+# per document: the TypeScript client's src/schema/<namespace>.d.ts and the
+# Python client's schema package, so a change to one namespace rewrites its
+# own files alone.
+openapi: pnpm ## Emit each namespace's API document and regenerate the clients' types from them
+	uv run --package acme-api acme-api openapi --out clients/openapi
+	scripts/openapi_types.sh clients/openapi clients/typescript/src/schema clients/python/src/acme/client/schema

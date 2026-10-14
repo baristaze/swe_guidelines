@@ -3,7 +3,7 @@
 from abc import ABC, abstractmethod
 
 from acme.om.context import TenantContext
-from acme.services.api.types.flags import FlagsView
+from acme.services.api.types.tenancy import FlagsView
 
 
 class FlagsServiceInterface(ABC):

@@ -71,9 +71,10 @@ left as it is, and the report names it under Kept.
    either exists, both take the next free suffix (`_2`), so a run never
    overwrites another's. Make the folder (`mkdir -p`).
 2. **Take the inventory**, and keep it for the report. Read nothing
-   under `node_modules`, a lock file, a generated file
-   (`clients/typescript/openapi.json` and the two schemas `make openapi`
-   writes), or a skill folder that is a link.
+   under `node_modules`, a lock file, a generated file (what `make
+   openapi` writes: `clients/openapi/`, `clients/typescript/src/schema/`,
+   and `clients/python/src/acme/client/schema/`), or a skill folder that
+   is a link.
    - Every `docs/adr/NNNN-*.md`: its status line, its `##` headings, and
      who cites it, in the code, the config, and the Markdown. A citation
      takes one of four forms. `ADR NNNN`, `ADR-NNNN`, or `ADRNNNN`, in a
@@ -98,10 +99,10 @@ left as it is, and the report names it under Kept.
      folder, lists the phrases that mark one, a pattern a line, each
      matched as whole words. The pathspec leaves out what the skill
      never edits: its own folder, `om/migrations/`, the three generated
-     files, and the lock files.
+     folders, and the lock files.
 
      ```bash
-     git grep -nIiwE -f .agents/skills/docs-compact/references/phrases.txt -- . ':!.agents/skills/docs-compact' ':!om/migrations' ':!clients/typescript/openapi.json' ':!clients/typescript/src/schema.d.ts' ':!clients/python/src/acme/client/schema.py' ':!*.lock' ':!*.lock.hcl' ':!pnpm-lock.yaml'
+     git grep -nIiwE -f .agents/skills/docs-compact/references/phrases.txt -- . ':!.agents/skills/docs-compact' ':!om/migrations' ':!clients/openapi' ':!clients/typescript/src/schema' ':!clients/python/src/acme/client/schema' ':!*.lock' ':!*.lock.hcl' ':!pnpm-lock.yaml'
      ```
 
      The list is the sweep: the skill reads each hit in its paragraph,
@@ -221,9 +222,9 @@ left as it is, and the report names it under Kept.
    it is and the report says which part failed.
 8. **Run the gates.** `make setup` first, which installs the tree and
    formats its Python; commit what it changes, apart. Then `make
-   openapi`, which writes the API document and its two schemas from the
-   code, a docstring step 6 rewrote included; commit what it changes,
-   apart. Then `make check`. When `docker info` exits 0, also `make
+   openapi`, which writes each namespace's API document and its two
+   schemas from the code, a docstring step 6 rewrote included; commit
+   what it changes, apart. Then `make check`. When `docker info` exits 0, also `make
    infra-up`, and then `make migrate`, `make migrate-check`, and `make
    test-integration` on a database the run makes and drops, never the
    stack's own: the integration tests empty every table of the

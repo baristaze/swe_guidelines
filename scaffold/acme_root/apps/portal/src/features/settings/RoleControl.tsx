@@ -1,9 +1,9 @@
 import type { ReactNode } from "react";
-import type { Role } from "@acme/client";
+import type { common } from "@acme/client";
 import { BotIcon, Caret, CrownIcon, EyeIcon, Menu, MenuItemRadio, ShieldIcon, UserIcon } from "../../design/kit";
 import type { MemberRow } from "./settingsModel";
 
-const ROLE_ICONS: Record<Role, ReactNode> = {
+const ROLE_ICONS: Record<common.Role, ReactNode> = {
   owner: <CrownIcon />,
   admin: <ShieldIcon />,
   member: <UserIcon />,
@@ -21,7 +21,7 @@ export function RoleControl({
   busy,
 }: {
   row: MemberRow;
-  onChange: (userId: string, role: Role) => void;
+  onChange: (userId: string, role: common.Role) => void;
   busy: boolean;
 }) {
   if (row.role === null) return <span>—</span>;

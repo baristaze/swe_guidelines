@@ -1,5 +1,6 @@
-// The facade: feature code imports these names and never a generated path.
-import type { components } from "./schema";
+// The tenancy namespace's types: who a caller is and the org it acts in.
+// An app names each as tenancy.<Name>, through the package's entry.
+import type { components } from "../schema/tenancy";
 
 type Schemas = components["schemas"];
 
@@ -30,21 +31,11 @@ export type DeleteAccountRequest = Schemas["DeleteAccountRequest"];
 export type AccountDeletedView = Schemas["AccountDeletedView"];
 export type DeleteOrgRequest = Schemas["DeleteOrgRequest"];
 export type OrgDeletedView = Schemas["OrgDeletedView"];
-export type OwnedOrgRef = Schemas["OwnedOrgRef"];
-export type LastOwnerDetail = Schemas["LastOwnerDetail"];
 export type ApiKeyView = Schemas["ApiKeyView"];
 export type ApiKeyPageView = Schemas["ApiKeyPageView"];
 export type AddApiKeyRequest = Schemas["AddApiKeyRequest"];
 export type IssuedApiKeyView = Schemas["IssuedApiKeyView"];
-export type IssuedTicketView = Schemas["IssuedTicketView"];
-export type ChangeEventView = Schemas["ChangeEventView"];
-export type FileView = Schemas["FileView"];
-export type IssuedUploadView = Schemas["IssuedUploadView"];
-export type IssuedDownloadView = Schemas["IssuedDownloadView"];
-export type StorageUsageView = Schemas["StorageUsageView"];
 export type FlagsView = Schemas["FlagsView"];
-export type Role = Schemas["Role"];
-export type Permission = Schemas["Permission"];
 export type InvitationView = Schemas["InvitationView"];
 export type InvitationPageView = Schemas["InvitationPageView"];
 export type InviteMemberRequest = Schemas["InviteMemberRequest"];

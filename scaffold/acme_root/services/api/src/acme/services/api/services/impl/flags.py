@@ -1,7 +1,7 @@
 from acme.infra.flags import FlagsInterface
 from acme.om.context import TenantContext
 from acme.services.api.services.flags import FlagsServiceInterface
-from acme.services.api.types.flags import FlagsView
+from acme.services.api.types.tenancy import FlagsView
 
 
 class FlagsServiceImpl(FlagsServiceInterface):

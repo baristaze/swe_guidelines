@@ -15,9 +15,10 @@ from api_support import OWNER, add_member
 from cli_support import BOB, Hop, Stack
 
 from acme.apps.cli.listen import listen
-from acme.client.client import DEFAULT_RETRIES, ApiClient, ApiError
+from acme.client.client import ApiClient
 from acme.client.envelopes import EntityChanged
 from acme.client.realtime import State
+from acme.client.transport import DEFAULT_RETRIES, ApiError
 from acme.om.context import Role
 
 CLOCK = datetime(2026, 9, 18, 9, 30, 0)

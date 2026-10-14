@@ -43,3 +43,11 @@ class EntityChangedView(View):
     seq: int
     actor_id: UUID
     version: int | None = Field(default=None, exclude_if=lambda version: version is None)
+
+
+class IssuedTicketView(View):
+    """Carries the freshly minted socket ticket in the clear, once; redeeming
+    it opens the channel and re-checks the credential behind it."""
+
+    ticket: str
+    expires_in_seconds: int

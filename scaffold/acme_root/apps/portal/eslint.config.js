@@ -14,7 +14,7 @@ export default tseslint.config(...base, {
       "error",
       {
         patterns: [
-          { group: ["@acme/client/*", "**/schema", "**/schema.d"], message: "import the facade, @acme/client" },
+          { group: ["@acme/client/*", "**/schema", "**/schema/*"], message: "import the facade, @acme/client" },
         ],
       },
     ],

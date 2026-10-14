@@ -1,14 +1,14 @@
 // Pure: what the sign-in pages decide. No React, no fetch, no storage.
-import type { MembershipChoiceView } from "@acme/client";
+import type { tenancy } from "@acme/client";
 import { byPlace } from "../../app/orgChipModel";
 import type { PendingSignIn } from "../../store/signInState";
 
 export type OrgChoice =
   | { kind: "none" }
-  | { kind: "single"; membership: MembershipChoiceView }
-  | { kind: "several"; memberships: MembershipChoiceView[] };
+  | { kind: "single"; membership: tenancy.MembershipChoiceView }
+  | { kind: "several"; memberships: tenancy.MembershipChoiceView[] };
 
-export function chooseOrg(memberships: MembershipChoiceView[]): OrgChoice {
+export function chooseOrg(memberships: tenancy.MembershipChoiceView[]): OrgChoice {
   const [first] = memberships;
   if (first === undefined) return { kind: "none" };
   if (memberships.length === 1) return { kind: "single", membership: first };

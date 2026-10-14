@@ -1,13 +1,13 @@
 import { describe, expect, it } from "vitest";
-import type { MembershipChoiceView } from "@acme/client";
+import type { tenancy } from "@acme/client";
 import { chipChoices, placeNote } from "./orgChipModel";
 
-const place = (id: string, name: string, kind: "personal" | "team" = "team", role = "owner"): MembershipChoiceView =>
+const place = (id: string, name: string, kind: "personal" | "team" = "team", role = "owner"): tenancy.MembershipChoiceView =>
   ({
     org: { id, name, slug: id, kind, created_at: "2026-01-01T00:00:00Z" },
     user: { id: `u-${id}`, email: "dee@example.test", display_name: "Dee", created_at: "2026-01-01T00:00:00Z" },
     role,
-  }) as MembershipChoiceView;
+  }) as tenancy.MembershipChoiceView;
 
 describe("chipChoices", () => {
   it("offers the other places, the personal one first, then by name", () => {

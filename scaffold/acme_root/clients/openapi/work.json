@@ -1,0 +1,562 @@
+{
+  "components": {
+    "schemas": {
+      "OperatorWorkItemView": {
+        "description": "One background job as an operator reads it: what it does and for\nwhich record, where it stands, and how many of its attempts are spent.\nThe payload and the claim stay the worker's.",
+        "properties": {
+          "attempts": {
+            "title": "Attempts",
+            "type": "integer"
+          },
+          "available_at": {
+            "format": "date-time",
+            "title": "Available At",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/WorkKind"
+          },
+          "last_error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Error"
+          },
+          "max_attempts": {
+            "title": "Max Attempts",
+            "type": "integer"
+          },
+          "status": {
+            "$ref": "#/components/schemas/WorkStatus"
+          },
+          "target_id": {
+            "format": "uuid",
+            "title": "Target Id",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "target_id",
+          "status",
+          "available_at",
+          "attempts",
+          "max_attempts",
+          "last_error",
+          "updated_at"
+        ],
+        "title": "OperatorWorkItemView",
+        "type": "object"
+      },
+      "SetTenantCapRequest": {
+        "additionalProperties": false,
+        "description": "An org's own cap on a lane: the most items it holds claimed there at\nonce, in place of the lane's cap.",
+        "properties": {
+          "cap": {
+            "maximum": 10000.0,
+            "minimum": 1.0,
+            "title": "Cap",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "cap"
+        ],
+        "title": "SetTenantCapRequest",
+        "type": "object"
+      },
+      "TenantCapView": {
+        "description": "An org's own cap on a lane, with who last set it and when.",
+        "properties": {
+          "cap": {
+            "title": "Cap",
+            "type": "integer"
+          },
+          "lane": {
+            "title": "Lane",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "updated_by": {
+            "format": "uuid",
+            "title": "Updated By",
+            "type": "string"
+          }
+        },
+        "required": [
+          "lane",
+          "cap",
+          "updated_at",
+          "updated_by"
+        ],
+        "title": "TenantCapView",
+        "type": "object"
+      },
+      "WorkKind": {
+        "enum": [
+          "NOOP",
+          "ORCHESTRATION",
+          "WAKE_PARKED",
+          "DELETE_ACCOUNT",
+          "DELETE_ORG"
+        ],
+        "title": "WorkKind",
+        "type": "string"
+      },
+      "WorkStatus": {
+        "enum": [
+          "queued",
+          "claimed",
+          "done",
+          "failed"
+        ],
+        "title": "WorkStatus",
+        "type": "string"
+      }
+    }
+  },
+  "info": {
+    "title": "Acme API: work",
+    "version": "0.1.0"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/v1/admin/orgs/{org_id}/work/lanes/{lane}/cap": {
+      "delete": {
+        "description": "Removes the org's own cap on the lane and answers the cap it removed;\nthe lane's cap holds for it from the next claim on. `404` when it has\nnone.",
+        "operationId": "clear_tenant_cap",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "org_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Org Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "lane",
+            "required": true,
+            "schema": {
+              "title": "Lane",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-app",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-App"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-app-version",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-App-Version"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TenantCapView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Clear Tenant Cap",
+        "tags": [
+          "work"
+        ]
+      },
+      "get": {
+        "description": "The org's own cap on the lane; `404` when it has none, and the lane's\ncap holds for it.",
+        "operationId": "get_tenant_cap",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "org_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Org Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "lane",
+            "required": true,
+            "schema": {
+              "title": "Lane",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-app",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-App"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-app-version",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-App-Version"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TenantCapView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Tenant Cap",
+        "tags": [
+          "work"
+        ]
+      },
+      "put": {
+        "description": "Sets the org's own cap on the lane: the most items it holds claimed\nthere at once, in place of the lane's cap, from the next claim on.",
+        "operationId": "set_tenant_cap",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "org_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Org Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "lane",
+            "required": true,
+            "schema": {
+              "title": "Lane",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-app",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-App"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-app-version",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-App-Version"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetTenantCapRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TenantCapView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Set Tenant Cap",
+        "tags": [
+          "work"
+        ]
+      }
+    },
+    "/v1/admin/orgs/{org_id}/work/{item_id}/requeue": {
+      "post": {
+        "description": "Sends one failed work item back to the queue, available now, with its\nattempts reset; the org's diary names the operator who did. Refused\nwith `409 work_not_failed` for an item that is not failed, so a second\ncall finds the first one's work done and says so.",
+        "operationId": "requeue_work",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "org_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Org Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "item_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Item Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-app",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-App"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-app-version",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-App-Version"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OperatorWorkItemView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Requeue Work",
+        "tags": [
+          "work"
+        ]
+      }
+    }
+  },
+  "tags": [
+    {
+      "description": "Work: an org's work items and its own caps, on the operator plane.\n\nAn operator sends one of an org's failed work items back to the queue, and\nsets, reads, or clears the org's own cap on a lane: the most items it holds\nclaimed there at once, in place of the lane's cap, `404` where it has none.\nEach route is the operator plane's (`routers/tenancy.py`): an operator token\nwhose entry may read for a read and may write for a write, and one call\ninto the operator service.",
+      "name": "work"
+    }
+  ]
+}

@@ -8,7 +8,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, ValidationError
 
-from acme.client.types import ChangeEventView
+from acme.client.types.change_events import ChangeEventView
 
 
 class Frame(BaseModel):

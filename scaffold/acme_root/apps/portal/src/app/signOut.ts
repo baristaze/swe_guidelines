@@ -6,14 +6,14 @@
 // answers with the identity provider's logout, the browser goes there last,
 // so the provider's own session ends too and the next sign-in on this
 // browser asks who it is.
-import { ApiError, type SignedOutView } from "@acme/client";
+import { ApiError, type tenancy } from "@acme/client";
 import { errorMessage } from "./errorMessage";
 
 export const NOT_REVOKED_MESSAGE = "Signed out here; the server did not revoke the session.";
 
 export interface SignOutEffects {
   /** The logout call, made with the token the session still holds. */
-  revoke: () => Promise<Pick<SignedOutView, "provider_logout_url">>;
+  revoke: () => Promise<Pick<tenancy.SignedOutView, "provider_logout_url">>;
   /** Drops the token and everything fetched under it. */
   forget: () => void;
   /** Says what went wrong in one line. */

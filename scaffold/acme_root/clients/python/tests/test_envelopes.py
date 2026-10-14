@@ -11,7 +11,7 @@ from acme.client.envelopes import (
     parse_envelope,
     subscribe_command,
 )
-from acme.client.types import ChangeEventView
+from acme.client.types.change_events import ChangeEventView
 
 
 def test_a_push_parses_with_its_payload_and_tolerates_extra_fields() -> None:

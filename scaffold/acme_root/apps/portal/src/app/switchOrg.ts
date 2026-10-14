@@ -8,17 +8,17 @@
 // old tenant dropped (the token, every cached answer) and the new session
 // taken up. A refusal leaves the tab where it was, and one that says the
 // held session is gone signs the tab out; anything else is said.
-import { ApiError, type IssuedAuthSessionView } from "@acme/client";
+import { ApiError, type tenancy } from "@acme/client";
 import { errorMessage } from "./errorMessage";
 import type { AuthSessionHold } from "./forgetAuthSession";
 
 export interface SwitchEffects {
   /** The exchange, presented with the current session and the chosen org. */
-  exchange: () => Promise<IssuedAuthSessionView>;
+  exchange: () => Promise<tenancy.IssuedAuthSessionView>;
   /** Holds back a refusal of the current session while the exchange runs. */
   hold: () => AuthSessionHold;
   /** Drops the old tenant and takes up the new session. */
-  adopt: (issued: IssuedAuthSessionView) => void;
+  adopt: (issued: tenancy.IssuedAuthSessionView) => void;
   /** Signs the tab out: the session it held is gone. */
   forget: () => void;
   /** Says what went wrong in one line. */
@@ -29,7 +29,7 @@ export type SwitchOutcome = "switched" | "signed_out" | "refused";
 
 export async function switchOrg(effects: SwitchEffects): Promise<SwitchOutcome> {
   const hold = effects.hold();
-  let issued: IssuedAuthSessionView;
+  let issued: tenancy.IssuedAuthSessionView;
   try {
     issued = await effects.exchange();
   } catch (cause) {

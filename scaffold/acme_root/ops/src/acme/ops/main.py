@@ -23,8 +23,9 @@ from uuid import UUID
 import aioboto3
 import httpx
 
-from acme.client.client import ApiClient, ApiError
-from acme.client.schema import OrgPageView, UserPageView
+from acme.client.client import ApiClient
+from acme.client.transport import ApiError
+from acme.client.types.tenancy import OrgPageView, UserPageView
 from acme.infra.aws_clients import client_config
 from acme.ops.environments import (
     CLOUD_ENVIRONMENTS,

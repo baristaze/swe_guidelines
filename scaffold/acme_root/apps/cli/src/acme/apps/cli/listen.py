@@ -17,9 +17,10 @@ from uuid import UUID
 import httpx
 
 from acme.apps.cli.model import describe
-from acme.client.client import ApiClient, ApiError
+from acme.client.client import ApiClient
 from acme.client.envelopes import EntityChanged
 from acme.client.realtime import Channel, State
+from acme.client.transport import ApiError
 
 Changes = AsyncIterable[EntityChanged]
 OnResync = Callable[[], Awaitable[None]]

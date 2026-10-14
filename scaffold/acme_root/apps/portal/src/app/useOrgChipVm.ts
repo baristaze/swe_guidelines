@@ -1,6 +1,6 @@
 import { useRef } from "react";
 import { useNavigate } from "react-router-dom";
-import type { MembershipChoiceView } from "@acme/client";
+import type { tenancy } from "@acme/client";
 import { useMe, useMyMemberships, useSwitchOrg } from "../queries/tenancy";
 import { useNoticesStore } from "../store/notices";
 import { adoptAuthSession } from "./adoptAuthSession";
@@ -19,7 +19,7 @@ export function useOrgChipVm() {
   const choices = chipChoices(memberships.isPending ? undefined : memberships.data, me.data?.org.id);
 
   // One pick, one exchange: a second click while the first is in flight is dropped.
-  const pick = async (membership: MembershipChoiceView) => {
+  const pick = async (membership: tenancy.MembershipChoiceView) => {
     const outcome = await oneAtATime(switching.current, () =>
       switchOrg({
         exchange: () => exchange.mutateAsync(membership.org.id),

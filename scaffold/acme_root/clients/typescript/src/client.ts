@@ -3,7 +3,7 @@
 // a deadline on every call, and the app's one retry. Every browser app sends
 // through it, and nothing outside this package calls fetch.
 
-import type { LastOwnerDetail, OwnedOrgRef } from "./types";
+import type { LastOwnerDetail, OwnedOrgRef } from "./types/common";
 import {
   DEFAULT_RETRY_ATTEMPTS,
   DEFAULT_RETRY_BASE_DELAY_MS,

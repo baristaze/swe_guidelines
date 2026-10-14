@@ -3,7 +3,7 @@
 // the page never waits on it. The next session tries again.
 import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef } from "react";
-import type { IdentityView, UpdateIdentityRequest } from "@acme/client";
+import type { tenancy } from "@acme/client";
 import { useIdentity } from "../queries/tenancy";
 import { keys } from "../queries/keys";
 import { api } from "./api";
@@ -20,9 +20,9 @@ export function useTimeZoneSync(browser: () => string | null = browserTimeZone) 
     const zone = zoneToSend(browser(), stored);
     if (!zone) return;
     sent.current = true;
-    const body: UpdateIdentityRequest = { time_zone: zone };
+    const body: tenancy.UpdateIdentityRequest = { time_zone: zone };
     api
-      .patch<IdentityView>("/v1/me/identity", body)
+      .patch<tenancy.IdentityView>("/v1/me/identity", body)
       .then((updated) => queryClient.setQueryData(keys.identity, updated))
       .catch(() => undefined);
   }, [known, stored, browser, queryClient]);

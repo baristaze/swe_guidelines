@@ -1,11 +1,11 @@
 // Pure: what the home card says. The org, the person, and their role come
 // from `me`; the count comes from the org's member list. No React, no fetch.
-import type { MeView, Role } from "@acme/client";
+import type { common, tenancy } from "@acme/client";
 
 export interface HomeCard {
   orgName: string;
   personName: string;
-  role: Role;
+  role: common.Role;
   members: string;
 }
 
@@ -15,7 +15,7 @@ export function membersLine(count: number): string {
 }
 
 /** A person with no display name is shown by their email. */
-export function homeCard(me: MeView, memberCount: number): HomeCard {
+export function homeCard(me: tenancy.MeView, memberCount: number): HomeCard {
   return {
     orgName: me.org.name,
     personName: me.user.display_name.trim() || me.user.email,

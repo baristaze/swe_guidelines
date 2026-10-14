@@ -1,7 +1,7 @@
 // Runs without a browser: an in-memory Storage stands in for the tab's
 // session storage, as adoptAuthSession's own test does.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { IssuedAuthSessionView } from "@acme/client";
+import type { tenancy } from "@acme/client";
 import type { TakeUpEffects } from "./takeUpSignIn";
 
 class MemoryStorage implements Storage {
@@ -36,8 +36,8 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-function issued(token: string, slug: string): IssuedAuthSessionView {
-  return { token, org: { id: slug, name: slug, slug, kind: "team", created_at: "2026-09-01T00:00:00Z" } } as IssuedAuthSessionView;
+function issued(token: string, slug: string): tenancy.IssuedAuthSessionView {
+  return { token, org: { id: slug, name: slug, slug, kind: "team", created_at: "2026-09-01T00:00:00Z" } } as tenancy.IssuedAuthSessionView;
 }
 
 /** The real store and adoptAuthSession; the logout is a fake that records the

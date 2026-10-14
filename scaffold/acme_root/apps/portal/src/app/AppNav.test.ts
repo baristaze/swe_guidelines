@@ -8,7 +8,7 @@ import { createRoot } from "react-dom/client";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { createMemoryRouter, RouterProvider } from "react-router-dom";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import type { MeView, OrgView, UserView } from "@acme/client";
+import type { tenancy } from "@acme/client";
 import { PREFERENCES_STORAGE_KEY, usePreferencesStore } from "../store/preferences";
 import { useAuthSessionStore } from "../store/authSession";
 import { AppNav } from "./AppNav";
@@ -20,13 +20,13 @@ const net = vi.hoisted(() => ({
 }));
 
 const at = "2026-09-01T00:00:00Z";
-const user = { id: "u1", email: "owner@example.test", display_name: "Owner", created_at: at } as UserView;
-const org = { id: "o1", name: "Ajax", slug: "ajax", kind: "team", created_at: at, deleted_at: null } as OrgView;
+const user = { id: "u1", email: "owner@example.test", display_name: "Owner", created_at: at } as tenancy.UserView;
+const org = { id: "o1", name: "Ajax", slug: "ajax", kind: "team", created_at: at, deleted_at: null } as tenancy.OrgView;
 
 vi.mock("./api", () => ({
   api: {
     get: (path: string) => {
-      if (path === "/v1/me") return Promise.resolve({ app: "portal", role: "owner", permissions: ["read"], user, org } as MeView);
+      if (path === "/v1/me") return Promise.resolve({ app: "portal", role: "owner", permissions: ["read"], user, org } as tenancy.MeView);
       if (path.startsWith("/v1/auth/memberships")) return Promise.resolve({ items: [{ org, user, role: "owner" }], next_cursor: null });
       return Promise.reject(new Error(`no read for ${path}`));
     },

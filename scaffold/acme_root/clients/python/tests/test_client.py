@@ -9,20 +9,22 @@ from uuid import UUID, uuid4
 import httpx
 import pytest
 
-from acme.client.client import (
+from acme.client.client import ApiClient
+from acme.client.realtime import Channel
+from acme.client.transport import (
     DEFAULT_BACKOFF_SECONDS,
     DEFAULT_RETRIES,
     DEFAULT_TIMEOUT_SECONDS,
     MAX_BACKOFF_SECONDS,
-    ApiClient,
     ApiError,
     may_retry,
     retry_after_seconds,
     retry_delay_seconds,
     retry_wait_seconds,
 )
-from acme.client.realtime import Channel
-from acme.client.types import FileView, OrgKind, Role
+from acme.client.types.common import Role
+from acme.client.types.media import FileView
+from acme.client.types.tenancy import OrgKind
 
 ORG = {
     "id": "0199a4c0-0000-7000-8000-0000000000bb",

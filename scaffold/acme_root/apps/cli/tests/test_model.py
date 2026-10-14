@@ -5,7 +5,7 @@ from uuid import UUID, uuid4
 import pytest
 
 from acme.apps.cli.model import choose_org, describe, human_size, org_lines
-from acme.client.types import MembershipChoiceView
+from acme.client.types.tenancy import MembershipChoiceView
 
 TARGET = UUID("0199a4c0-0000-7000-8000-0000000000dd")
 

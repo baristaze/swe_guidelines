@@ -1,4 +1,4 @@
-import type { MembershipChoiceView } from "@acme/client";
+import type { tenancy } from "@acme/client";
 import { placeNote } from "../../app/orgChipModel";
 import { Card, Muted } from "../../design/kit";
 
@@ -9,8 +9,8 @@ export function ChooseOrgCard({
   onPick,
   busy = false,
 }: {
-  memberships: MembershipChoiceView[];
-  onPick: (membership: MembershipChoiceView) => void;
+  memberships: tenancy.MembershipChoiceView[];
+  onPick: (membership: tenancy.MembershipChoiceView) => void;
   busy?: boolean;
 }) {
   return (

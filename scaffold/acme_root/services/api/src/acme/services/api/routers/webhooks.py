@@ -3,19 +3,21 @@ the provider's. A route takes no credential and no rate limit; it is
 authenticated by the provider's signature over the body and its timestamp,
 checked before anything is queued, and a worker does what the call means.
 
-The identity provider delivers its events to `/webhooks/identity`."""
+The identity provider delivers its events to `/webhooks/identity`. A route's
+tag names the namespace whose provider delivers to it, so its operation is
+in that namespace's document."""
 
 from fastapi import APIRouter
 
 from acme.services.api.gateway.auth import Rctx
 from acme.services.api.gateway.resolve import WebhooksService
 from acme.services.api.gateway.webhooks import IdentityDelivery
-from acme.services.api.types.webhooks import DeliveryReceivedView
+from acme.services.api.types.common import DeliveryReceivedView
 
-router = APIRouter(prefix="/webhooks", tags=["webhooks"])
+router = APIRouter(prefix="/webhooks")
 
 
-@router.post("/identity", response_model=DeliveryReceivedView)
+@router.post("/identity", response_model=DeliveryReceivedView, tags=["tenancy"])
 async def identity_delivery(
     rctx: Rctx, webhooks: WebhooksService, delivery: IdentityDelivery
 ) -> DeliveryReceivedView:

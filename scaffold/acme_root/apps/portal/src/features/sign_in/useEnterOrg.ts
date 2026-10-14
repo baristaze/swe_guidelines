@@ -1,4 +1,4 @@
-import type { IssuedLoginView, MembershipChoiceView } from "@acme/client";
+import type { tenancy } from "@acme/client";
 import { useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { adoptAuthSession } from "../../app/adoptAuthSession";
@@ -22,7 +22,7 @@ export function useEnterOrg() {
   const [held, setHeld] = useState<{ token: string; returnTo: string } | null>(null);
   const choosing = useRef(inFlight());
 
-  const enter = async (token: string, membership: MembershipChoiceView, returnTo: string) => {
+  const enter = async (token: string, membership: tenancy.MembershipChoiceView, returnTo: string) => {
     const issued = await exchange.mutateAsync({ loginToken: token, body: { org_id: membership.org.id } });
     // A tab already signed in (another org, another person) drops that
     // session here, so nothing fetched under it is shown under this one,
@@ -36,7 +36,7 @@ export function useEnterOrg() {
   };
 
   /** Goes on with a sign-in; the answer is what to say, or null. */
-  const signedIn = async (issued: IssuedLoginView, returnTo: string): Promise<string | null> => {
+  const signedIn = async (issued: tenancy.IssuedLoginView, returnTo: string): Promise<string | null> => {
     const next = chooseOrg(issued.memberships);
     setHeld({ token: issued.token, returnTo });
     setChoice(next);
@@ -48,7 +48,7 @@ export function useEnterOrg() {
   // Choosing an org can be refused too (the sign-in expired, the API is
   // away); the refusal is said the way a failed write is. One choice sends
   // one exchange: a click while one is in flight is dropped.
-  const pick = async (membership: MembershipChoiceView) => {
+  const pick = async (membership: tenancy.MembershipChoiceView) => {
     if (!held) return;
     await oneAtATime(choosing.current, async () => {
       try {

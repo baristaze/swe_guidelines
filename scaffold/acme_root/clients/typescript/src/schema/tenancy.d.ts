@@ -16,7 +16,7 @@ export interface paths {
          * @description Who the plane admitted and what the entry grants; the check a skill
          *     makes before its first read.
          */
-        get: operations["operator_me_v1_admin_me_get"];
+        get: operations["operator_me"];
         put?: never;
         post?: never;
         delete?: never;
@@ -38,7 +38,7 @@ export interface paths {
          *     names, whoever minted them (the caller, or the grant job for a machine
          *     identity). Never a token's secret.
          */
-        get: operations["list_tokens_v1_admin_me_tokens_get"];
+        get: operations["list_tokens"];
         put?: never;
         /**
          * Mint Token
@@ -47,7 +47,7 @@ export interface paths {
          *     factor, which it ends, so a token never mints a token and a sign-in
          *     mints one.
          */
-        post: operations["mint_token_v1_admin_me_tokens_post"];
+        post: operations["mint_token"];
         delete?: never;
         options?: never;
         head?: never;
@@ -70,7 +70,7 @@ export interface paths {
          *     refused. Ending one ended already answers it as stored. Another
          *     operator's token is `404`: ending it is the grant job's disable.
          */
-        delete: operations["revoke_token_v1_admin_me_tokens__token_id__delete"];
+        delete: operations["revoke_token"];
         options?: never;
         head?: never;
         patch?: never;
@@ -92,7 +92,7 @@ export interface paths {
          *     retry is safe: minting again replaces a secret that was never confirmed,
          *     so it takes no Idempotency-Key. Refused once one is confirmed.
          */
-        post: operations["enrol_totp_v1_admin_me_totp_post"];
+        post: operations["enrol_totp"];
         delete?: never;
         options?: never;
         head?: never;
@@ -113,7 +113,7 @@ export interface paths {
          * @description The first code confirms the secret. From then on the plane admits
          *     this identity only on a sign-in that verified a code.
          */
-        post: operations["confirm_totp_v1_admin_me_totp_confirm_post"];
+        post: operations["confirm_totp"];
         delete?: never;
         options?: never;
         head?: never;
@@ -127,11 +127,11 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List Orgs */
-        get: operations["list_orgs_v1_admin_orgs_get"];
+        /** Operator List Orgs */
+        get: operations["operator_list_orgs"];
         put?: never;
-        /** Create Org */
-        post: operations["create_org_v1_admin_orgs_post"];
+        /** Operator Create Org */
+        post: operations["operator_create_org"];
         delete?: never;
         options?: never;
         head?: never;
@@ -145,29 +145,12 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Get Org */
-        get: operations["get_org_v1_admin_orgs__org_id__get"];
+        /** Operator Get Org */
+        get: operations["operator_get_org"];
         put?: never;
         post?: never;
-        /** Delete Org */
-        delete: operations["delete_org_v1_admin_orgs__org_id__delete"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/admin/orgs/{org_id}/change-events": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** List Change Events */
-        get: operations["list_change_events_v1_admin_orgs__org_id__change_events_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
+        /** Operator Delete Org */
+        delete: operations["operator_delete_org"];
         options?: never;
         head?: never;
         patch?: never;
@@ -180,66 +163,11 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List Members */
-        get: operations["list_members_v1_admin_orgs__org_id__members_get"];
+        /** Operator List Members */
+        get: operations["operator_list_members"];
         put?: never;
-        /** Add Member */
-        post: operations["add_member_v1_admin_orgs__org_id__members_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/admin/orgs/{org_id}/work/lanes/{lane}/cap": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get Tenant Cap
-         * @description The org's own cap on the lane; `404` when it has none, and the lane's
-         *     cap holds for it.
-         */
-        get: operations["get_tenant_cap_v1_admin_orgs__org_id__work_lanes__lane__cap_get"];
-        /**
-         * Set Tenant Cap
-         * @description Sets the org's own cap on the lane: the most items it holds claimed
-         *     there at once, in place of the lane's cap, from the next claim on.
-         */
-        put: operations["set_tenant_cap_v1_admin_orgs__org_id__work_lanes__lane__cap_put"];
-        post?: never;
-        /**
-         * Clear Tenant Cap
-         * @description Removes the org's own cap on the lane and answers the cap it removed;
-         *     the lane's cap holds for it from the next claim on. `404` when it has
-         *     none.
-         */
-        delete: operations["clear_tenant_cap_v1_admin_orgs__org_id__work_lanes__lane__cap_delete"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/admin/orgs/{org_id}/work/{item_id}/requeue": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Requeue Work
-         * @description Sends one failed work item back to the queue, available now, with its
-         *     attempts reset; the org's diary names the operator who did. Refused
-         *     with `409 work_not_failed` for an item that is not failed, so a second
-         *     call finds the first one's work done and says so.
-         */
-        post: operations["requeue_work_v1_admin_orgs__org_id__work__item_id__requeue_post"];
+        /** Operator Add Member */
+        post: operations["operator_add_member"];
         delete?: never;
         options?: never;
         head?: never;
@@ -259,7 +187,7 @@ export interface paths {
          *     the moment it did; the route counts nothing. `404` until the first
          *     count.
          */
-        get: operations["system_size_v1_admin_size_get"];
+        get: operations["system_size"];
         put?: never;
         post?: never;
         delete?: never;
@@ -276,10 +204,10 @@ export interface paths {
             cookie?: never;
         };
         /** List Api Keys */
-        get: operations["list_api_keys_v1_api_keys_get"];
+        get: operations["list_api_keys"];
         put?: never;
         /** Create Api Key */
-        post: operations["create_api_key_v1_api_keys_post"];
+        post: operations["create_api_key"];
         delete?: never;
         options?: never;
         head?: never;
@@ -297,7 +225,7 @@ export interface paths {
         put?: never;
         post?: never;
         /** Revoke Api Key */
-        delete: operations["revoke_api_key_v1_api_keys__api_key_id__delete"];
+        delete: operations["revoke_api_key"];
         options?: never;
         head?: never;
         patch?: never;
@@ -313,7 +241,7 @@ export interface paths {
         get?: never;
         put?: never;
         /** Finish Sign In */
-        post: operations["finish_sign_in_v1_auth_callback_post"];
+        post: operations["finish_sign_in"];
         delete?: never;
         options?: never;
         head?: never;
@@ -330,7 +258,7 @@ export interface paths {
         get?: never;
         put?: never;
         /** Dev Sign In */
-        post: operations["dev_sign_in_v1_auth_dev_sign_in_post"];
+        post: operations["dev_sign_in"];
         delete?: never;
         options?: never;
         head?: never;
@@ -347,7 +275,7 @@ export interface paths {
         get?: never;
         put?: never;
         /** Start Device Sign In */
-        post: operations["start_device_sign_in_v1_auth_device_post"];
+        post: operations["start_device_sign_in"];
         delete?: never;
         options?: never;
         head?: never;
@@ -364,7 +292,7 @@ export interface paths {
         get?: never;
         put?: never;
         /** Finish Device Sign In */
-        post: operations["finish_device_sign_in_v1_auth_device_token_post"];
+        post: operations["finish_device_sign_in"];
         delete?: never;
         options?: never;
         head?: never;
@@ -381,7 +309,7 @@ export interface paths {
         get?: never;
         put?: never;
         /** Logout */
-        post: operations["logout_v1_auth_logout_post"];
+        post: operations["logout"];
         delete?: never;
         options?: never;
         head?: never;
@@ -396,7 +324,7 @@ export interface paths {
             cookie?: never;
         };
         /** List My Memberships */
-        get: operations["list_my_memberships_v1_auth_memberships_get"];
+        get: operations["list_my_memberships"];
         put?: never;
         post?: never;
         delete?: never;
@@ -415,7 +343,7 @@ export interface paths {
         get?: never;
         put?: never;
         /** Verify Second Factor */
-        post: operations["verify_second_factor_v1_auth_second_factor_post"];
+        post: operations["verify_second_factor"];
         delete?: never;
         options?: never;
         head?: never;
@@ -430,10 +358,10 @@ export interface paths {
             cookie?: never;
         };
         /** List Auth Sessions */
-        get: operations["list_auth_sessions_v1_auth_sessions_get"];
+        get: operations["list_auth_sessions"];
         put?: never;
         /** Exchange Auth Session */
-        post: operations["exchange_auth_session_v1_auth_sessions_post"];
+        post: operations["exchange_auth_session"];
         delete?: never;
         options?: never;
         head?: never;
@@ -451,7 +379,7 @@ export interface paths {
         put?: never;
         post?: never;
         /** Revoke Auth Session */
-        delete: operations["revoke_auth_session_v1_auth_sessions__auth_session_id__delete"];
+        delete: operations["revoke_auth_session"];
         options?: never;
         head?: never;
         patch?: never;
@@ -467,24 +395,7 @@ export interface paths {
         get?: never;
         put?: never;
         /** Start Sign In */
-        post: operations["start_sign_in_v1_auth_sign_in_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/change-events": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** List Change Events */
-        get: operations["list_change_events_v1_change_events_get"];
-        put?: never;
-        post?: never;
+        post: operations["start_sign_in"];
         delete?: never;
         options?: never;
         head?: never;
@@ -504,7 +415,7 @@ export interface paths {
          *     client never decides what the server allows: an operation a flag gates
          *     is refused on the server whatever a client shows.
          */
-        get: operations["get_flags_v1_flags_get"];
+        get: operations["get_flags"];
         put?: never;
         post?: never;
         delete?: never;
@@ -521,10 +432,10 @@ export interface paths {
             cookie?: never;
         };
         /** List Invitations */
-        get: operations["list_invitations_v1_invitations_get"];
+        get: operations["list_invitations"];
         put?: never;
         /** Invite Member */
-        post: operations["invite_member_v1_invitations_post"];
+        post: operations["invite_member"];
         delete?: never;
         options?: never;
         head?: never;
@@ -542,7 +453,7 @@ export interface paths {
         put?: never;
         post?: never;
         /** Revoke Invitation */
-        delete: operations["revoke_invitation_v1_invitations__invitation_id__delete"];
+        delete: operations["revoke_invitation"];
         options?: never;
         head?: never;
         patch?: never;
@@ -558,203 +469,7 @@ export interface paths {
         get?: never;
         put?: never;
         /** Resend Invitation */
-        post: operations["resend_invitation_v1_invitations__invitation_id__resend_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/leases": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * List Leases
-         * @description The history: the org's leases, or one resource's, newest first, ended
-         *     ones included, each with the request it answered, a page at a time.
-         */
-        get: operations["list_leases_v1_leases_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/leases/leasable-resources/{leasable_resource_id}/wait-line": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Wait Line */
-        get: operations["wait_line_v1_leases_leasable_resources__leasable_resource_id__wait_line_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/leases/requests": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Ask
-         * @description Joins the line, last; granted at once only when no one waits in front.
-         *     The resource's kind may refuse the ask first: 403 for who asks, 422 for
-         *     what it asks. A replay answers what the first call saw: read the
-         *     request for where it stands now.
-         */
-        post: operations["ask_v1_leases_requests_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/leases/requests/{request_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Get Request */
-        get: operations["get_request_v1_leases_requests__request_id__get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/leases/requests/{request_id}/cancel": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Cancel
-         * @description Its asker's, or a manager's.
-         */
-        post: operations["cancel_v1_leases_requests__request_id__cancel_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/leases/requests/{request_id}/reorder": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Reorder
-         * @description A manager's: the request moves in front of `before_id`, or to the end.
-         */
-        post: operations["reorder_v1_leases_requests__request_id__reorder_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/leases/{lease_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Get Lease */
-        get: operations["get_lease_v1_leases__lease_id__get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/leases/{lease_id}/release": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Release
-         * @description Its holder's: the resource goes to its line.
-         */
-        post: operations["release_v1_leases__lease_id__release_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/leases/{lease_id}/renew": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Renew
-         * @description Its holder's: the lease runs the seconds the body names from now, or
-         *     its term again, within the resource's bound.
-         */
-        post: operations["renew_v1_leases__lease_id__renew_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/leases/{lease_id}/revoke": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Revoke
-         * @description A manager's: the lease ends and the resource goes to its line.
-         */
-        post: operations["revoke_v1_leases__lease_id__revoke_post"];
+        post: operations["resend_invitation"];
         delete?: never;
         options?: never;
         head?: never;
@@ -769,14 +484,14 @@ export interface paths {
             cookie?: never;
         };
         /** Me */
-        get: operations["me_v1_me_get"];
+        get: operations["me"];
         put?: never;
         post?: never;
         delete?: never;
         options?: never;
         head?: never;
         /** Update Me */
-        patch: operations["update_me_v1_me_patch"];
+        patch: operations["update_me"];
         trace?: never;
     };
     "/v1/me/deletion": {
@@ -789,7 +504,7 @@ export interface paths {
         get?: never;
         put?: never;
         /** Delete Account */
-        post: operations["delete_account_v1_me_deletion_post"];
+        post: operations["delete_account"];
         delete?: never;
         options?: never;
         head?: never;
@@ -804,147 +519,14 @@ export interface paths {
             cookie?: never;
         };
         /** My Identity */
-        get: operations["my_identity_v1_me_identity_get"];
+        get: operations["my_identity"];
         put?: never;
         post?: never;
         delete?: never;
         options?: never;
         head?: never;
         /** Update My Identity */
-        patch: operations["update_my_identity_v1_me_identity_patch"];
-        trace?: never;
-    };
-    "/v1/media/files": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * List Files
-         * @description The org's stored files, oldest first; a pending upload is not listed.
-         */
-        get: operations["list_files_v1_media_files_get"];
-        put?: never;
-        /**
-         * Start Upload
-         * @description A pending file, and nothing in the store yet: the upload form, the
-         *     bytes, and the confirm follow by its id.
-         */
-        post: operations["start_upload_v1_media_files_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/media/files/{file_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Get File */
-        get: operations["get_file_v1_media_files__file_id__get"];
-        put?: never;
-        post?: never;
-        /** Delete File */
-        delete: operations["delete_file_v1_media_files__file_id__delete"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/media/files/{file_id}/confirm": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Confirm File */
-        post: operations["confirm_file_v1_media_files__file_id__confirm_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/media/files/{file_id}/content": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Get Content */
-        get: operations["get_content_v1_media_files__file_id__content_get"];
-        /** Put Content */
-        put: operations["put_content_v1_media_files__file_id__content_put"];
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/media/files/{file_id}/download": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Issue Download
-         * @description `inline=true` is a preview the page shows; otherwise the link saves the
-         *     file under its own name.
-         */
-        get: operations["issue_download_v1_media_files__file_id__download_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/media/files/{file_id}/upload": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Issue Upload */
-        post: operations["issue_upload_v1_media_files__file_id__upload_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/media/usage": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Get Usage */
-        get: operations["get_usage_v1_media_usage_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
+        patch: operations["update_my_identity"];
         trace?: never;
     };
     "/v1/memberships": {
@@ -955,7 +537,7 @@ export interface paths {
             cookie?: never;
         };
         /** List Memberships */
-        get: operations["list_memberships_v1_memberships_get"];
+        get: operations["list_memberships"];
         put?: never;
         post?: never;
         delete?: never;
@@ -975,11 +557,11 @@ export interface paths {
         put?: never;
         post?: never;
         /** Remove Member */
-        delete: operations["remove_member_v1_memberships__user_id__delete"];
+        delete: operations["remove_member"];
         options?: never;
         head?: never;
         /** Update Membership */
-        patch: operations["update_membership_v1_memberships__user_id__patch"];
+        patch: operations["update_membership"];
         trace?: never;
     };
     "/v1/orgs": {
@@ -992,7 +574,7 @@ export interface paths {
         get?: never;
         put?: never;
         /** Create Org */
-        post: operations["create_org_v1_orgs_post"];
+        post: operations["create_org"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1007,7 +589,7 @@ export interface paths {
             cookie?: never;
         };
         /** Current Org */
-        get: operations["current_org_v1_orgs_current_get"];
+        get: operations["current_org"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1026,7 +608,7 @@ export interface paths {
         get?: never;
         put?: never;
         /** Delete Org */
-        post: operations["delete_org_v1_orgs_current_deletion_post"];
+        post: operations["delete_org"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1043,24 +625,7 @@ export interface paths {
         get?: never;
         put?: never;
         /** Sso Link */
-        post: operations["sso_link_v1_orgs_current_sso_link_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/realtime/tickets": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Mint Ticket */
-        post: operations["mint_ticket_v1_realtime_tickets_post"];
+        post: operations["sso_link"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1075,7 +640,7 @@ export interface paths {
             cookie?: never;
         };
         /** List Users */
-        get: operations["list_users_v1_users_get"];
+        get: operations["list_users"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1092,7 +657,7 @@ export interface paths {
             cookie?: never;
         };
         /** Get User */
-        get: operations["get_user_v1_users__user_id__get"];
+        get: operations["get_user"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1111,7 +676,7 @@ export interface paths {
         get?: never;
         put?: never;
         /** Identity Delivery */
-        post: operations["identity_delivery_webhooks_identity_post"];
+        post: operations["identity_delivery"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1199,38 +764,6 @@ export interface components {
             user_id: string;
         };
         /**
-         * AskRequest
-         * @description An ask for a lease: one resource by its id, or a selector, the labels
-         *     a resource of `kind` must offer. `payload` is in the shape the kind
-         *     fixes; the term is bounded by the resource's, and the ask expires in line
-         *     after `wait_seconds`. When the grant starts a job, `start_seconds` is the
-         *     window the job has to start in, bounded the same way; none gives it the
-         *     term.
-         */
-        AskRequest: {
-            kind: components["schemas"]["LeasableResourceKind"];
-            /** Labels */
-            labels?: string[] | null;
-            /** Leasable Resource Id */
-            leasable_resource_id?: string | null;
-            /** Payload */
-            payload?: {
-                [key: string]: unknown;
-            };
-            /** Start Seconds */
-            start_seconds?: number | null;
-            /**
-             * Term Seconds
-             * @default 60
-             */
-            term_seconds: number;
-            /**
-             * Wait Seconds
-             * @default 3600
-             */
-            wait_seconds: number;
-        };
-        /**
          * AuthSessionView
          * @description Only the hash of a token is ever kept, so a session view carries no secret.
          */
@@ -1253,33 +786,6 @@ export interface components {
             id: string;
             /** Revoked At */
             revoked_at: string | null;
-        };
-        /**
-         * ChangeEventView
-         * @description One record of the tenant's append-only stream, paged by `after_seq`.
-         *     `kind` is "<namespace>.<entity>.<action>", or an audit kind; the payload
-         *     stays inside, an event is a record and not a second read path.
-         */
-        ChangeEventView: {
-            /**
-             * Actor Id
-             * Format: uuid
-             */
-            actor_id: string;
-            /** Kind */
-            kind: string;
-            /**
-             * Produced At
-             * Format: date-time
-             */
-            produced_at: string;
-            /** Seq */
-            seq: number;
-            /**
-             * Target Id
-             * Format: uuid
-             */
-            target_id: string;
         };
         /**
          * ConfirmTotpRequest
@@ -1318,11 +824,6 @@ export interface components {
             slug?: string | null;
         };
         /**
-         * CredentialKind
-         * @enum {string}
-         */
-        CredentialKind: "api_key" | "auth_session_token" | "login" | "socket_ticket" | "operator_token" | "internal";
-        /**
          * DeleteAccountRequest
          * @description The account's email as the person typed it, which is how they say
          *     they mean it; and, as on the sign-out, where the identity provider sends
@@ -1342,14 +843,6 @@ export interface components {
         DeleteOrgRequest: {
             /** Name */
             name: string;
-        };
-        /**
-         * DeliveryReceivedView
-         * @description The delivery checked out and is queued; the provider stops retrying.
-         */
-        DeliveryReceivedView: {
-            /** Received */
-            received: boolean;
         };
         /**
          * DevSignInRequest
@@ -1402,30 +895,6 @@ export interface components {
             device_code: string;
         };
         /**
-         * EndReason
-         * @description Why a request left its line without a lease.
-         * @enum {string}
-         */
-        EndReason: "asked" | "waiter_gone" | "refused" | "retired";
-        /** ErrorBody */
-        ErrorBody: {
-            /** Code */
-            code: string;
-            last_owner?: components["schemas"]["LastOwnerDetail"] | null;
-            /** Message */
-            message: string;
-            /**
-             * Request Id
-             * Format: uuid
-             */
-            request_id: string;
-            stream?: components["schemas"]["StreamTruncatedDetail"] | null;
-        };
-        /** ErrorResponse */
-        ErrorResponse: {
-            error: components["schemas"]["ErrorBody"];
-        };
-        /**
          * ExchangeAuthSessionRequest
          * @description The org to enter. Presented with the sign-in credential, it opens the
          *     first session; presented with a session, it is a switch, and that session
@@ -1437,67 +906,6 @@ export interface components {
              * Format: uuid
              */
             org_id: string;
-        };
-        /**
-         * FilePageView
-         * @description One page of the org's stored files, oldest first. `next_cursor` fetches
-         *     the next page and is null on the last one.
-         */
-        FilePageView: {
-            /** Items */
-            items: components["schemas"]["FileView"][];
-            /** Next Cursor */
-            next_cursor: string | null;
-        };
-        /**
-         * FilePurpose
-         * @description Which context a file came from. The purpose decides the bounds an
-         *     upload is held to and what `subject_id` names. A product adds a purpose
-         *     per kind of file it keeps, with its bounds (`media.rules.BOUNDS`).
-         * @enum {string}
-         */
-        FilePurpose: "upload";
-        /**
-         * FileStatus
-         * @enum {string}
-         */
-        FileStatus: "pending" | "stored";
-        /**
-         * FileView
-         * @description A file the tenant keeps: its name, type, and size, never its bytes and
-         *     never where they live. `status` is `pending` until the upload is
-         *     confirmed, then `stored`.
-         */
-        FileView: {
-            /** Content Type */
-            content_type: string;
-            /**
-             * Created At
-             * Format: date-time
-             */
-            created_at: string;
-            /**
-             * Created By
-             * Format: uuid
-             */
-            created_by: string;
-            /** Deleted At */
-            deleted_at: string | null;
-            /** Extension */
-            extension: string;
-            /**
-             * Id
-             * Format: uuid
-             */
-            id: string;
-            /** Name */
-            name: string;
-            purpose: components["schemas"]["FilePurpose"];
-            /** Size Bytes */
-            size_bytes: number;
-            status: components["schemas"]["FileStatus"];
-            /** Subject Id */
-            subject_id: string | null;
         };
         /**
          * FlagsView
@@ -1512,11 +920,6 @@ export interface components {
             flags: {
                 [key: string]: boolean;
             };
-        };
-        /** HTTPValidationError */
-        HTTPValidationError: {
-            /** Detail */
-            detail?: components["schemas"]["ValidationError"][];
         };
         /**
          * IdentityView
@@ -1624,21 +1027,6 @@ export interface components {
             user: components["schemas"]["UserView"];
         };
         /**
-         * IssuedDownloadView
-         * @description A link to the file's bytes that works until `expires_at`. A null `url`
-         *     means the store cannot sign one: the bytes come from
-         *     `GET /v1/media/files/{id}/content`.
-         */
-        IssuedDownloadView: {
-            /**
-             * Expires At
-             * Format: date-time
-             */
-            expires_at: string;
-            /** Url */
-            url: string | null;
-        };
-        /**
          * IssuedLoginView
          * @description Carries the freshly minted login credential in the clear, once.
          */
@@ -1676,17 +1064,6 @@ export interface components {
             token: string | null;
         };
         /**
-         * IssuedTicketView
-         * @description Carries the freshly minted socket ticket in the clear, once; redeeming
-         *     it opens the channel and re-checks the credential behind it.
-         */
-        IssuedTicketView: {
-            /** Expires In Seconds */
-            expires_in_seconds: number;
-            /** Ticket */
-            ticket: string;
-        };
-        /**
          * IssuedTotpSecretView
          * @description A freshly minted TOTP secret, once, as the `otpauth://` URI an
          *     authenticator app reads. A replay carries none.
@@ -1694,193 +1071,6 @@ export interface components {
         IssuedTotpSecretView: {
             /** Otpauth Uri */
             otpauth_uri: string | null;
-        };
-        /**
-         * IssuedUploadView
-         * @description A form to post the file with, straight to the store: every field, in
-         *     order, then the file as the last field, named `file`. The signed policy
-         *     holds the post to the file's type and at most its size, until
-         *     `expires_at`. A null `url` means the store cannot take a post: the bytes
-         *     go to `PUT /v1/media/files/{id}/content` instead. Then the upload is
-         *     confirmed.
-         */
-        IssuedUploadView: {
-            /**
-             * Expires At
-             * Format: date-time
-             */
-            expires_at: string;
-            /** Fields */
-            fields: components["schemas"]["UploadFieldView"][];
-            /** Url */
-            url: string | null;
-        };
-        /**
-         * LastOwnerDetail
-         * @description What a `last_owner` refusal carries: every team org the person is the
-         *     last owner of, which they hand on or delete before their account goes.
-         */
-        LastOwnerDetail: {
-            /** Orgs */
-            orgs: components["schemas"]["OwnedOrgRef"][];
-        };
-        /**
-         * LeasableResourceKind
-         * @description A product adds its kinds here, each with the shape of what its ask
-         *     carries (`ASK_PAYLOADS`) and its hooks (`LeasableResourceKindInterface`).
-         * @enum {string}
-         */
-        LeasableResourceKind: "noop";
-        /**
-         * LeasableResourceView
-         * @description A resource and its anchor: the highest token granted on it, and the
-         *     lease that holds it until when.
-         */
-        LeasableResourceView: {
-            /** Available */
-            available: boolean;
-            /**
-             * Created At
-             * Format: date-time
-             */
-            created_at: string;
-            /** Fencing Token */
-            fencing_token: number;
-            /** Held Until */
-            held_until: string | null;
-            /**
-             * Id
-             * Format: uuid
-             */
-            id: string;
-            kind: components["schemas"]["LeasableResourceKind"];
-            /** Labels */
-            labels: string[];
-            /** Lease Id */
-            lease_id: string | null;
-            /** Max Term Seconds */
-            max_term_seconds: number;
-            /**
-             * Ref Id
-             * Format: uuid
-             */
-            ref_id: string;
-            /** Retired At */
-            retired_at: string | null;
-        };
-        /**
-         * LeaseEntryView
-         * @description One lease of a history, with the request it answered; none when the
-         *     request was purged first.
-         */
-        LeaseEntryView: {
-            lease: components["schemas"]["LeaseView"];
-            request: components["schemas"]["LeaseRequestView"] | null;
-        };
-        /**
-         * LeasePageView
-         * @description One page of a history, newest first. `next_cursor` fetches the next
-         *     page and is null on the last one.
-         */
-        LeasePageView: {
-            /** Items */
-            items: components["schemas"]["LeaseEntryView"][];
-            /** Next Cursor */
-            next_cursor: string | null;
-        };
-        /** LeaseRequestView */
-        LeaseRequestView: {
-            /**
-             * Created At
-             * Format: date-time
-             */
-            created_at: string;
-            /**
-             * Created By
-             * Format: uuid
-             */
-            created_by: string;
-            end_reason: components["schemas"]["EndReason"] | null;
-            /**
-             * Id
-             * Format: uuid
-             */
-            id: string;
-            kind: components["schemas"]["LeasableResourceKind"];
-            /** Labels */
-            labels: string[] | null;
-            /** Leasable Resource Id */
-            leasable_resource_id: string | null;
-            /** Lease Id */
-            lease_id: string | null;
-            /** Rank */
-            rank: number;
-            /** Start Seconds */
-            start_seconds: number | null;
-            status: components["schemas"]["RequestStatus"];
-            /** Term Seconds */
-            term_seconds: number;
-            /** Wait Until */
-            wait_until: string | null;
-            /** Waiter Id */
-            waiter_id: string | null;
-            waiter_kind: components["schemas"]["WaiterKind"] | null;
-        };
-        /**
-         * LeaseStatus
-         * @enum {string}
-         */
-        LeaseStatus: "active" | "released" | "expired" | "revoked";
-        /**
-         * LeaseView
-         * @description One grant: the holder acts on the resource under `fencing_token` until
-         *     it has used `expires_in_seconds`, counted from when it asked. The token is
-         *     no secret: it is the number the resource's own side refuses to go below.
-         *     A grant that started a job shows when the job started, and until then
-         *     expires at the end of the window the job has to start in.
-         */
-        LeaseView: {
-            /**
-             * Created At
-             * Format: date-time
-             */
-            created_at: string;
-            /** Ended At */
-            ended_at: string | null;
-            /**
-             * Expires At
-             * Format: date-time
-             */
-            expires_at: string;
-            /** Expires In Seconds */
-            expires_in_seconds: number;
-            /** Fencing Token */
-            fencing_token: number;
-            /**
-             * Holder Id
-             * Format: uuid
-             */
-            holder_id: string;
-            /**
-             * Id
-             * Format: uuid
-             */
-            id: string;
-            /**
-             * Leasable Resource Id
-             * Format: uuid
-             */
-            leasable_resource_id: string;
-            /**
-             * Request Id
-             * Format: uuid
-             */
-            request_id: string;
-            /** Started At */
-            started_at: string | null;
-            status: components["schemas"]["LeaseStatus"];
-            /** Term Seconds */
-            term_seconds: number;
         };
         /**
          * LogoutRequest
@@ -1959,48 +1149,6 @@ export interface components {
             permission: components["schemas"]["OperatorRole"];
         };
         /**
-         * OperatorChangeEventView
-         * @description The same record as an operator reads it, with the two provenance fields
-         *     a tenant's own feed leaves out: the request that produced it and the app
-         *     it came from, which is what a support investigation correlates on.
-         */
-        OperatorChangeEventView: {
-            /**
-             * Actor Id
-             * Format: uuid
-             */
-            actor_id: string;
-            /** App */
-            app: string;
-            /** Kind */
-            kind: string;
-            /**
-             * Produced At
-             * Format: date-time
-             */
-            produced_at: string;
-            /**
-             * Request Id
-             * Format: uuid
-             */
-            request_id: string;
-            /** Seq */
-            seq: number;
-            /**
-             * Target Id
-             * Format: uuid
-             */
-            target_id: string;
-        };
-        /**
-         * OperatorRole
-         * @description What an allowlist entry lets an operator do across every tenant. Write
-         *     includes read; the tenancy namespace's table says which permissions each
-         *     role holds, as it does for `Role`.
-         * @enum {string}
-         */
-        OperatorRole: "read" | "write";
-        /**
          * OperatorTokenPageView
          * @description One page of the caller's live operator tokens, newest first;
          *     `next_cursor` as on `UserPageView`.
@@ -2051,42 +1199,6 @@ export interface components {
              */
             identity_id: string;
             operator_role: components["schemas"]["OperatorRole"];
-        };
-        /**
-         * OperatorWorkItemView
-         * @description One background job as an operator reads it: what it does and for
-         *     which record, where it stands, and how many of its attempts are spent.
-         *     The payload and the claim stay the worker's.
-         */
-        OperatorWorkItemView: {
-            /** Attempts */
-            attempts: number;
-            /**
-             * Available At
-             * Format: date-time
-             */
-            available_at: string;
-            /**
-             * Id
-             * Format: uuid
-             */
-            id: string;
-            kind: components["schemas"]["WorkKind"];
-            /** Last Error */
-            last_error: string | null;
-            /** Max Attempts */
-            max_attempts: number;
-            status: components["schemas"]["WorkStatus"];
-            /**
-             * Target Id
-             * Format: uuid
-             */
-            target_id: string;
-            /**
-             * Updated At
-             * Format: date-time
-             */
-            updated_at: string;
         };
         /**
          * OrgDeletedView
@@ -2147,81 +1259,6 @@ export interface components {
             slug: string;
         };
         /**
-         * OwnedOrgRef
-         * @description An org named in a refusal: enough to find it and to say which.
-         */
-        OwnedOrgRef: {
-            /**
-             * Id
-             * Format: uuid
-             */
-            id: string;
-            /** Name */
-            name: string;
-            /** Slug */
-            slug: string;
-        };
-        /**
-         * Permission
-         * @enum {string}
-         */
-        Permission: "read" | "write" | "manage_members" | "manage_keys";
-        /**
-         * PlaceView
-         * @description A waiting request's place (1 is next in some line it stands in) and
-         *     the estimate of its wait in seconds, as its standing answers them.
-         */
-        PlaceView: {
-            /** Estimate Seconds */
-            estimate_seconds: number | null;
-            /** Place */
-            place: number | null;
-            /**
-             * Request Id
-             * Format: uuid
-             */
-            request_id: string;
-        };
-        /** PurposeUsageView */
-        PurposeUsageView: {
-            /** Count */
-            count: number;
-            /** Pending Count */
-            pending_count: number;
-            /** Pending Size Bytes */
-            pending_size_bytes: number;
-            purpose: components["schemas"]["FilePurpose"];
-            /** Size Bytes */
-            size_bytes: number;
-        };
-        /**
-         * RenewRequest
-         * @description A renewal: the lease runs `seconds` from now, within the resource's
-         *     bound, or its term again when it names none.
-         */
-        RenewRequest: {
-            /** Seconds */
-            seconds?: number | null;
-        };
-        /**
-         * ReorderRequest
-         * @description Moves a waiting request in front of `before_id`, or to the end.
-         */
-        ReorderRequest: {
-            /** Before Id */
-            before_id?: string | null;
-        };
-        /**
-         * RequestStatus
-         * @enum {string}
-         */
-        RequestStatus: "waiting" | "granted" | "cancelled" | "expired";
-        /**
-         * Role
-         * @enum {string}
-         */
-        Role: "owner" | "admin" | "member" | "viewer" | "service";
-        /**
          * SecondFactorRequest
          * @description The code from an authenticator, presented with a sign-in credential.
          *     The answer is a new sign-in that records the verified code, which the
@@ -2231,15 +1268,6 @@ export interface components {
         SecondFactorRequest: {
             /** Totp Code */
             totp_code: string;
-        };
-        /**
-         * SetTenantCapRequest
-         * @description An org's own cap on a lane: the most items it holds claimed there at
-         *     once, in place of the lane's cap.
-         */
-        SetTenantCapRequest: {
-            /** Cap */
-            cap: number;
         };
         /**
          * SignInCallbackRequest
@@ -2348,62 +1376,6 @@ export interface components {
             url: string;
         };
         /**
-         * StandingView
-         * @description Where a request stands: its lease once granted, or its place (1 is
-         *     next in some line it stands in) and an estimate of its wait in seconds,
-         *     while it waits.
-         */
-        StandingView: {
-            /** Estimate Seconds */
-            estimate_seconds: number | null;
-            lease: components["schemas"]["LeaseView"] | null;
-            /** Place */
-            place: number | null;
-            request: components["schemas"]["LeaseRequestView"];
-        };
-        /**
-         * StartUploadRequest
-         * @description An upload to start: the file's name as the uploader had it, its type,
-         *     and its size in bytes. The type must be one the purpose accepts and match
-         *     the name's extension; the size is the most the store will take.
-         */
-        StartUploadRequest: {
-            /** Content Type */
-            content_type: string;
-            /** Name */
-            name: string;
-            /** Size Bytes */
-            size_bytes: number;
-        };
-        /**
-         * StorageUsageView
-         * @description What the org keeps in the store, counted from its files: the stored ones
-         *     per purpose and in total, and the uploads started and not yet confirmed.
-         *     A removed file stops counting at once.
-         */
-        StorageUsageView: {
-            /** Pending Size Bytes */
-            pending_size_bytes: number;
-            /** Purposes */
-            purposes: components["schemas"]["PurposeUsageView"][];
-            /** Total Count */
-            total_count: number;
-            /** Total Size Bytes */
-            total_size_bytes: number;
-        };
-        /**
-         * StreamTruncatedDetail
-         * @description What a `stream_truncated` refusal carries: the floor, the highest seq
-         *     trimmed from the stream, and the head. A client drops its cursor, reads
-         *     afresh what it shows, and goes on from the head.
-         */
-        StreamTruncatedDetail: {
-            /** Floor */
-            floor: number;
-            /** Head */
-            head: number;
-        };
-        /**
          * SystemSizeView
          * @description How big the system is, what the first responder to an alarm reads
          *     before it escalates: live tenants and users, and the events produced in
@@ -2428,26 +1400,6 @@ export interface components {
             tenants: number;
             /** Users */
             users: number;
-        };
-        /**
-         * TenantCapView
-         * @description An org's own cap on a lane, with who last set it and when.
-         */
-        TenantCapView: {
-            /** Cap */
-            cap: number;
-            /** Lane */
-            lane: string;
-            /**
-             * Updated At
-             * Format: date-time
-             */
-            updated_at: string;
-            /**
-             * Updated By
-             * Format: uuid
-             */
-            updated_by: string;
         };
         /**
          * TotpConfirmedView
@@ -2487,13 +1439,6 @@ export interface components {
         UpdateMembershipRequest: {
             role: components["schemas"]["Role"];
         };
-        /** UploadFieldView */
-        UploadFieldView: {
-            /** Name */
-            name: string;
-            /** Value */
-            value: string;
-        };
         /**
          * UserPageView
          * @description One page of the tenant's members. `next_cursor` fetches the next page
@@ -2523,6 +1468,14 @@ export interface components {
              */
             id: string;
         };
+        /**
+         * OperatorRole
+         * @description What an allowlist entry lets an operator do across every tenant. Write
+         *     includes read; the tenancy namespace's table says which permissions each
+         *     role holds, as it does for `Role`.
+         * @enum {string}
+         */
+        OperatorRole: "read" | "write";
         /** ValidationError */
         ValidationError: {
             /** Context */
@@ -2536,35 +1489,88 @@ export interface components {
             /** Error Type */
             type: string;
         };
-        /**
-         * WaitLineView
-         * @description A leasable resource and the requests in its wait line, first first, with
-         *     each one's place and estimate in the same order.
-         */
-        WaitLineView: {
-            leasable_resource: components["schemas"]["LeasableResourceView"];
-            /** Places */
-            places: components["schemas"]["PlaceView"][];
-            /** Requests */
-            requests: components["schemas"]["LeaseRequestView"][];
+        /** HTTPValidationError */
+        HTTPValidationError: {
+            /** Detail */
+            detail?: components["schemas"]["ValidationError"][];
         };
         /**
-         * WaiterKind
-         * @description What waits on a request, so a grant wakes it. A product adds its own,
-         *     each with a `WaiterInterface`.
+         * Role
          * @enum {string}
          */
-        WaiterKind: "orchestration";
+        Role: "owner" | "admin" | "member" | "viewer" | "service";
         /**
-         * WorkKind
+         * CredentialKind
          * @enum {string}
          */
-        WorkKind: "NOOP" | "ORCHESTRATION" | "WAKE_PARKED" | "DELETE_ACCOUNT" | "DELETE_ORG";
+        CredentialKind: "api_key" | "auth_session_token" | "login" | "socket_ticket" | "operator_token" | "internal";
         /**
-         * WorkStatus
+         * Permission
          * @enum {string}
          */
-        WorkStatus: "queued" | "claimed" | "done" | "failed";
+        Permission: "read" | "write" | "manage_members" | "manage_keys";
+        /**
+         * OwnedOrgRef
+         * @description An org named in a refusal: enough to find it and to say which.
+         */
+        OwnedOrgRef: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+            /** Slug */
+            slug: string;
+        };
+        /**
+         * LastOwnerDetail
+         * @description What a `last_owner` refusal carries: every team org the person is the
+         *     last owner of, which they hand on or delete before their account goes.
+         */
+        LastOwnerDetail: {
+            /** Orgs */
+            orgs: components["schemas"]["OwnedOrgRef"][];
+        };
+        /**
+         * StreamTruncatedDetail
+         * @description What a `stream_truncated` refusal carries: the floor, the highest seq
+         *     trimmed from the stream, and the head. A client drops its cursor, reads
+         *     afresh what it shows, and goes on from the head.
+         */
+        StreamTruncatedDetail: {
+            /** Floor */
+            floor: number;
+            /** Head */
+            head: number;
+        };
+        /** ErrorBody */
+        ErrorBody: {
+            /** Code */
+            code: string;
+            last_owner?: components["schemas"]["LastOwnerDetail"] | null;
+            /** Message */
+            message: string;
+            /**
+             * Request Id
+             * Format: uuid
+             */
+            request_id: string;
+            stream?: components["schemas"]["StreamTruncatedDetail"] | null;
+        };
+        /** ErrorResponse */
+        ErrorResponse: {
+            error: components["schemas"]["ErrorBody"];
+        };
+        /**
+         * DeliveryReceivedView
+         * @description The delivery checked out and is queued; the provider stops retrying.
+         */
+        DeliveryReceivedView: {
+            /** Received */
+            received: boolean;
+        };
     };
     responses: never;
     parameters: never;
@@ -2574,7 +1580,7 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
-    operator_me_v1_admin_me_get: {
+    operator_me: {
         parameters: {
             query?: never;
             header?: {
@@ -2607,7 +1613,7 @@ export interface operations {
             };
         };
     };
-    list_tokens_v1_admin_me_tokens_get: {
+    list_tokens: {
         parameters: {
             query?: {
                 cursor?: string | null;
@@ -2643,7 +1649,7 @@ export interface operations {
             };
         };
     };
-    mint_token_v1_admin_me_tokens_post: {
+    mint_token: {
         parameters: {
             query?: never;
             header?: {
@@ -2680,7 +1686,7 @@ export interface operations {
             };
         };
     };
-    revoke_token_v1_admin_me_tokens__token_id__delete: {
+    revoke_token: {
         parameters: {
             query?: never;
             header?: {
@@ -2715,7 +1721,7 @@ export interface operations {
             };
         };
     };
-    enrol_totp_v1_admin_me_totp_post: {
+    enrol_totp: {
         parameters: {
             query?: never;
             header?: {
@@ -2748,7 +1754,7 @@ export interface operations {
             };
         };
     };
-    confirm_totp_v1_admin_me_totp_confirm_post: {
+    confirm_totp: {
         parameters: {
             query?: never;
             header?: {
@@ -2785,7 +1791,7 @@ export interface operations {
             };
         };
     };
-    list_orgs_v1_admin_orgs_get: {
+    operator_list_orgs: {
         parameters: {
             query?: {
                 cursor?: string | null;
@@ -2821,7 +1827,7 @@ export interface operations {
             };
         };
     };
-    create_org_v1_admin_orgs_post: {
+    operator_create_org: {
         parameters: {
             query?: never;
             header?: {
@@ -2859,7 +1865,7 @@ export interface operations {
             };
         };
     };
-    get_org_v1_admin_orgs__org_id__get: {
+    operator_get_org: {
         parameters: {
             query?: never;
             header?: {
@@ -2894,7 +1900,7 @@ export interface operations {
             };
         };
     };
-    delete_org_v1_admin_orgs__org_id__delete: {
+    operator_delete_org: {
         parameters: {
             query?: never;
             header?: {
@@ -2929,45 +1935,7 @@ export interface operations {
             };
         };
     };
-    list_change_events_v1_admin_orgs__org_id__change_events_get: {
-        parameters: {
-            query?: {
-                after_seq?: number;
-                limit?: number;
-            };
-            header?: {
-                authorization?: string | null;
-                "x-app"?: string | null;
-                "x-app-version"?: string | null;
-            };
-            path: {
-                org_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["OperatorChangeEventView"][];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    list_members_v1_admin_orgs__org_id__members_get: {
+    operator_list_members: {
         parameters: {
             query?: {
                 cursor?: string | null;
@@ -3005,7 +1973,7 @@ export interface operations {
             };
         };
     };
-    add_member_v1_admin_orgs__org_id__members_post: {
+    operator_add_member: {
         parameters: {
             query?: never;
             header?: {
@@ -3045,155 +2013,7 @@ export interface operations {
             };
         };
     };
-    get_tenant_cap_v1_admin_orgs__org_id__work_lanes__lane__cap_get: {
-        parameters: {
-            query?: never;
-            header?: {
-                authorization?: string | null;
-                "x-app"?: string | null;
-                "x-app-version"?: string | null;
-            };
-            path: {
-                org_id: string;
-                lane: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["TenantCapView"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    set_tenant_cap_v1_admin_orgs__org_id__work_lanes__lane__cap_put: {
-        parameters: {
-            query?: never;
-            header?: {
-                authorization?: string | null;
-                "x-app"?: string | null;
-                "x-app-version"?: string | null;
-            };
-            path: {
-                org_id: string;
-                lane: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["SetTenantCapRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["TenantCapView"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    clear_tenant_cap_v1_admin_orgs__org_id__work_lanes__lane__cap_delete: {
-        parameters: {
-            query?: never;
-            header?: {
-                authorization?: string | null;
-                "x-app"?: string | null;
-                "x-app-version"?: string | null;
-            };
-            path: {
-                org_id: string;
-                lane: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["TenantCapView"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    requeue_work_v1_admin_orgs__org_id__work__item_id__requeue_post: {
-        parameters: {
-            query?: never;
-            header?: {
-                authorization?: string | null;
-                "x-app"?: string | null;
-                "x-app-version"?: string | null;
-            };
-            path: {
-                org_id: string;
-                item_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["OperatorWorkItemView"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    system_size_v1_admin_size_get: {
+    system_size: {
         parameters: {
             query?: never;
             header?: {
@@ -3226,7 +2046,7 @@ export interface operations {
             };
         };
     };
-    list_api_keys_v1_api_keys_get: {
+    list_api_keys: {
         parameters: {
             query?: {
                 cursor?: string | null;
@@ -3262,7 +2082,7 @@ export interface operations {
             };
         };
     };
-    create_api_key_v1_api_keys_post: {
+    create_api_key: {
         parameters: {
             query?: never;
             header?: {
@@ -3300,7 +2120,7 @@ export interface operations {
             };
         };
     };
-    revoke_api_key_v1_api_keys__api_key_id__delete: {
+    revoke_api_key: {
         parameters: {
             query?: never;
             header?: {
@@ -3335,7 +2155,7 @@ export interface operations {
             };
         };
     };
-    finish_sign_in_v1_auth_callback_post: {
+    finish_sign_in: {
         parameters: {
             query?: never;
             header?: {
@@ -3371,7 +2191,7 @@ export interface operations {
             };
         };
     };
-    dev_sign_in_v1_auth_dev_sign_in_post: {
+    dev_sign_in: {
         parameters: {
             query?: never;
             header?: {
@@ -3407,7 +2227,7 @@ export interface operations {
             };
         };
     };
-    start_device_sign_in_v1_auth_device_post: {
+    start_device_sign_in: {
         parameters: {
             query?: never;
             header?: {
@@ -3439,7 +2259,7 @@ export interface operations {
             };
         };
     };
-    finish_device_sign_in_v1_auth_device_token_post: {
+    finish_device_sign_in: {
         parameters: {
             query?: never;
             header?: {
@@ -3475,7 +2295,7 @@ export interface operations {
             };
         };
     };
-    logout_v1_auth_logout_post: {
+    logout: {
         parameters: {
             query?: never;
             header?: {
@@ -3512,7 +2332,7 @@ export interface operations {
             };
         };
     };
-    list_my_memberships_v1_auth_memberships_get: {
+    list_my_memberships: {
         parameters: {
             query?: {
                 cursor?: string | null;
@@ -3548,7 +2368,7 @@ export interface operations {
             };
         };
     };
-    verify_second_factor_v1_auth_second_factor_post: {
+    verify_second_factor: {
         parameters: {
             query?: never;
             header?: {
@@ -3585,7 +2405,7 @@ export interface operations {
             };
         };
     };
-    list_auth_sessions_v1_auth_sessions_get: {
+    list_auth_sessions: {
         parameters: {
             query?: {
                 limit?: number;
@@ -3620,7 +2440,7 @@ export interface operations {
             };
         };
     };
-    exchange_auth_session_v1_auth_sessions_post: {
+    exchange_auth_session: {
         parameters: {
             query?: never;
             header?: {
@@ -3657,7 +2477,7 @@ export interface operations {
             };
         };
     };
-    revoke_auth_session_v1_auth_sessions__auth_session_id__delete: {
+    revoke_auth_session: {
         parameters: {
             query?: never;
             header?: {
@@ -3692,7 +2512,7 @@ export interface operations {
             };
         };
     };
-    start_sign_in_v1_auth_sign_in_post: {
+    start_sign_in: {
         parameters: {
             query?: never;
             header?: {
@@ -3728,43 +2548,7 @@ export interface operations {
             };
         };
     };
-    list_change_events_v1_change_events_get: {
-        parameters: {
-            query?: {
-                after_seq?: number;
-                limit?: number;
-            };
-            header?: {
-                authorization?: string | null;
-                "x-app"?: string | null;
-                "x-app-version"?: string | null;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ChangeEventView"][];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_flags_v1_flags_get: {
+    get_flags: {
         parameters: {
             query?: never;
             header?: {
@@ -3806,7 +2590,7 @@ export interface operations {
             };
         };
     };
-    list_invitations_v1_invitations_get: {
+    list_invitations: {
         parameters: {
             query?: {
                 cursor?: string | null;
@@ -3842,7 +2626,7 @@ export interface operations {
             };
         };
     };
-    invite_member_v1_invitations_post: {
+    invite_member: {
         parameters: {
             query?: never;
             header?: {
@@ -3880,7 +2664,7 @@ export interface operations {
             };
         };
     };
-    revoke_invitation_v1_invitations__invitation_id__delete: {
+    revoke_invitation: {
         parameters: {
             query?: never;
             header?: {
@@ -3915,7 +2699,7 @@ export interface operations {
             };
         };
     };
-    resend_invitation_v1_invitations__invitation_id__resend_post: {
+    resend_invitation: {
         parameters: {
             query?: never;
             header?: {
@@ -3950,406 +2734,7 @@ export interface operations {
             };
         };
     };
-    list_leases_v1_leases_get: {
-        parameters: {
-            query?: {
-                leasable_resource_id?: string | null;
-                cursor?: string | null;
-                limit?: number;
-            };
-            header?: {
-                authorization?: string | null;
-                "x-app"?: string | null;
-                "x-app-version"?: string | null;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["LeasePageView"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    wait_line_v1_leases_leasable_resources__leasable_resource_id__wait_line_get: {
-        parameters: {
-            query?: never;
-            header?: {
-                authorization?: string | null;
-                "x-app"?: string | null;
-                "x-app-version"?: string | null;
-            };
-            path: {
-                leasable_resource_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["WaitLineView"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    ask_v1_leases_requests_post: {
-        parameters: {
-            query?: never;
-            header?: {
-                authorization?: string | null;
-                "x-app"?: string | null;
-                "x-app-version"?: string | null;
-                "idempotency-key"?: string | null;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["AskRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["StandingView"];
-                };
-            };
-            /** @description not_authorized: the kind refuses this asker */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_request_v1_leases_requests__request_id__get: {
-        parameters: {
-            query?: never;
-            header?: {
-                authorization?: string | null;
-                "x-app"?: string | null;
-                "x-app-version"?: string | null;
-            };
-            path: {
-                request_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["StandingView"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    cancel_v1_leases_requests__request_id__cancel_post: {
-        parameters: {
-            query?: never;
-            header?: {
-                authorization?: string | null;
-                "x-app"?: string | null;
-                "x-app-version"?: string | null;
-            };
-            path: {
-                request_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["LeaseRequestView"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    reorder_v1_leases_requests__request_id__reorder_post: {
-        parameters: {
-            query?: never;
-            header?: {
-                authorization?: string | null;
-                "x-app"?: string | null;
-                "x-app-version"?: string | null;
-            };
-            path: {
-                request_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["ReorderRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["LeaseRequestView"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_lease_v1_leases__lease_id__get: {
-        parameters: {
-            query?: never;
-            header?: {
-                authorization?: string | null;
-                "x-app"?: string | null;
-                "x-app-version"?: string | null;
-            };
-            path: {
-                lease_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["LeaseView"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    release_v1_leases__lease_id__release_post: {
-        parameters: {
-            query?: never;
-            header?: {
-                authorization?: string | null;
-                "x-app"?: string | null;
-                "x-app-version"?: string | null;
-            };
-            path: {
-                lease_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["LeaseView"];
-                };
-            };
-            /** @description lease_ended: the lease no longer runs */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    renew_v1_leases__lease_id__renew_post: {
-        parameters: {
-            query?: never;
-            header?: {
-                authorization?: string | null;
-                "x-app"?: string | null;
-                "x-app-version"?: string | null;
-            };
-            path: {
-                lease_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: {
-            content: {
-                "application/json": components["schemas"]["RenewRequest"] | null;
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["LeaseView"];
-                };
-            };
-            /** @description lease_ended: the lease no longer runs */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    revoke_v1_leases__lease_id__revoke_post: {
-        parameters: {
-            query?: never;
-            header?: {
-                authorization?: string | null;
-                "x-app"?: string | null;
-                "x-app-version"?: string | null;
-            };
-            path: {
-                lease_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["LeaseView"];
-                };
-            };
-            /** @description lease_ended: the lease no longer runs */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    me_v1_me_get: {
+    me: {
         parameters: {
             query?: never;
             header?: {
@@ -4382,7 +2767,7 @@ export interface operations {
             };
         };
     };
-    update_me_v1_me_patch: {
+    update_me: {
         parameters: {
             query?: never;
             header?: {
@@ -4419,7 +2804,7 @@ export interface operations {
             };
         };
     };
-    delete_account_v1_me_deletion_post: {
+    delete_account: {
         parameters: {
             query?: never;
             header?: {
@@ -4474,7 +2859,7 @@ export interface operations {
             };
         };
     };
-    my_identity_v1_me_identity_get: {
+    my_identity: {
         parameters: {
             query?: never;
             header?: {
@@ -4507,7 +2892,7 @@ export interface operations {
             };
         };
     };
-    update_my_identity_v1_me_identity_patch: {
+    update_my_identity: {
         parameters: {
             query?: never;
             header?: {
@@ -4544,376 +2929,7 @@ export interface operations {
             };
         };
     };
-    list_files_v1_media_files_get: {
-        parameters: {
-            query?: {
-                cursor?: string | null;
-                limit?: number;
-            };
-            header?: {
-                authorization?: string | null;
-                "x-app"?: string | null;
-                "x-app-version"?: string | null;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["FilePageView"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    start_upload_v1_media_files_post: {
-        parameters: {
-            query?: never;
-            header?: {
-                authorization?: string | null;
-                "x-app"?: string | null;
-                "x-app-version"?: string | null;
-                "idempotency-key"?: string | null;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["StartUploadRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["FileView"];
-                };
-            };
-            /** @description feature_off: `media-uploads` is off */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_file_v1_media_files__file_id__get: {
-        parameters: {
-            query?: never;
-            header?: {
-                authorization?: string | null;
-                "x-app"?: string | null;
-                "x-app-version"?: string | null;
-            };
-            path: {
-                file_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["FileView"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    delete_file_v1_media_files__file_id__delete: {
-        parameters: {
-            query?: never;
-            header?: {
-                authorization?: string | null;
-                "x-app"?: string | null;
-                "x-app-version"?: string | null;
-            };
-            path: {
-                file_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["FileView"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    confirm_file_v1_media_files__file_id__confirm_post: {
-        parameters: {
-            query?: never;
-            header?: {
-                authorization?: string | null;
-                "x-app"?: string | null;
-                "x-app-version"?: string | null;
-            };
-            path: {
-                file_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["FileView"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_content_v1_media_files__file_id__content_get: {
-        parameters: {
-            query?: {
-                inline?: boolean;
-            };
-            header?: {
-                authorization?: string | null;
-                "x-app"?: string | null;
-                "x-app-version"?: string | null;
-            };
-            path: {
-                file_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/octet-stream": string;
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    put_content_v1_media_files__file_id__content_put: {
-        parameters: {
-            query?: never;
-            header?: {
-                authorization?: string | null;
-                "x-app"?: string | null;
-                "x-app-version"?: string | null;
-            };
-            path: {
-                file_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/octet-stream": string;
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["FileView"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    issue_download_v1_media_files__file_id__download_get: {
-        parameters: {
-            query?: {
-                inline?: boolean;
-            };
-            header?: {
-                authorization?: string | null;
-                "x-app"?: string | null;
-                "x-app-version"?: string | null;
-            };
-            path: {
-                file_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["IssuedDownloadView"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    issue_upload_v1_media_files__file_id__upload_post: {
-        parameters: {
-            query?: never;
-            header?: {
-                authorization?: string | null;
-                "x-app"?: string | null;
-                "x-app-version"?: string | null;
-            };
-            path: {
-                file_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["IssuedUploadView"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_usage_v1_media_usage_get: {
-        parameters: {
-            query?: never;
-            header?: {
-                authorization?: string | null;
-                "x-app"?: string | null;
-                "x-app-version"?: string | null;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["StorageUsageView"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    list_memberships_v1_memberships_get: {
+    list_memberships: {
         parameters: {
             query?: {
                 cursor?: string | null;
@@ -4949,7 +2965,7 @@ export interface operations {
             };
         };
     };
-    remove_member_v1_memberships__user_id__delete: {
+    remove_member: {
         parameters: {
             query?: never;
             header?: {
@@ -4984,7 +3000,7 @@ export interface operations {
             };
         };
     };
-    update_membership_v1_memberships__user_id__patch: {
+    update_membership: {
         parameters: {
             query?: never;
             header?: {
@@ -5023,7 +3039,7 @@ export interface operations {
             };
         };
     };
-    create_org_v1_orgs_post: {
+    create_org: {
         parameters: {
             query?: never;
             header?: {
@@ -5061,7 +3077,7 @@ export interface operations {
             };
         };
     };
-    current_org_v1_orgs_current_get: {
+    current_org: {
         parameters: {
             query?: never;
             header?: {
@@ -5094,7 +3110,7 @@ export interface operations {
             };
         };
     };
-    delete_org_v1_orgs_current_deletion_post: {
+    delete_org: {
         parameters: {
             query?: never;
             header?: {
@@ -5149,7 +3165,7 @@ export interface operations {
             };
         };
     };
-    sso_link_v1_orgs_current_sso_link_post: {
+    sso_link: {
         parameters: {
             query?: never;
             header?: {
@@ -5186,40 +3202,7 @@ export interface operations {
             };
         };
     };
-    mint_ticket_v1_realtime_tickets_post: {
-        parameters: {
-            query?: never;
-            header?: {
-                authorization?: string | null;
-                "x-app"?: string | null;
-                "x-app-version"?: string | null;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["IssuedTicketView"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    list_users_v1_users_get: {
+    list_users: {
         parameters: {
             query?: {
                 cursor?: string | null;
@@ -5255,7 +3238,7 @@ export interface operations {
             };
         };
     };
-    get_user_v1_users__user_id__get: {
+    get_user: {
         parameters: {
             query?: never;
             header?: {
@@ -5290,7 +3273,7 @@ export interface operations {
             };
         };
     };
-    identity_delivery_webhooks_identity_post: {
+    identity_delivery: {
         parameters: {
             query?: never;
             header?: {

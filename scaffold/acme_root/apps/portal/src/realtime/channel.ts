@@ -3,7 +3,7 @@
 // tab, the stream cursor, and the notices it hands over.
 // Everything it reaches for is handed in, so the loop runs in a test over a
 // fake socket and fake timers. The provider owns one of these per session.
-import type { ChangeEventView } from "@acme/client";
+import type { change_events } from "@acme/client";
 import type { ConnectionState } from "../store/connection";
 import {
   entityOf,
@@ -44,7 +44,7 @@ export interface SocketLike {
 export interface ChannelDeps {
   requestTicket(): Promise<string>;
   openSocket(ticket: string): SocketLike;
-  fetchChangeEventsAfter(after: number, limit: number): Promise<ChangeEventView[]>;
+  fetchChangeEventsAfter(after: number, limit: number): Promise<change_events.ChangeEventView[]>;
   /** Hands one envelope to the router; the query cache is behind it. A
    * record read back from the stream (a replay, the first catch-up) comes
    * here too, only the last record of each entity. It tells the person
@@ -173,7 +173,7 @@ export function openChannel(deps: ChannelDeps): Channel {
     try {
       let from = after;
       while (!stopped) {
-        let page: ChangeEventView[];
+        let page: change_events.ChangeEventView[];
         try {
           page = await deps.fetchChangeEventsAfter(from, deps.pageSize);
         } catch (error) {
@@ -255,7 +255,7 @@ export function openChannel(deps: ChannelDeps): Channel {
     }
     if (head <= 0) return;
     const after = Math.max(0, head - deps.pageSize);
-    let tail: ChangeEventView[];
+    let tail: change_events.ChangeEventView[];
     try {
       tail = await deps.fetchChangeEventsAfter(after, deps.pageSize);
     } catch {

@@ -22,9 +22,10 @@ import typer
 from acme.apps.cli import config
 from acme.apps.cli.listen import listen as run_listener
 from acme.apps.cli.model import choose_org, human_size, org_lines
-from acme.client.client import ApiClient, ApiError
+from acme.client.client import ApiClient
 from acme.client.realtime import ChannelRefused
-from acme.client.types import IssuedAuthSessionView, IssuedLoginView
+from acme.client.transport import ApiError
+from acme.client.types.tenancy import IssuedAuthSessionView, IssuedLoginView
 
 EXIT_REFUSED = 1
 EXIT_USAGE = 2

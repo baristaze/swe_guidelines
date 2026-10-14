@@ -1,8 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
-import { ApiError, type IssuedAuthSessionView } from "@acme/client";
+import { ApiError, type tenancy } from "@acme/client";
 import { deleteOrg, type DeleteOrgEffects } from "./deleteOrg";
 
-const HOME: IssuedAuthSessionView = {
+const HOME: tenancy.IssuedAuthSessionView = {
   token: "ses_home",
   expires_at: "2026-10-01T00:00:00Z",
   org: { id: "p1", name: "Ann", slug: "ann-x1", kind: "personal", created_at: "2026-09-01T00:00:00Z" },

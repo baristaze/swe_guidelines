@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import type { MeView } from "@acme/client";
+import type { tenancy } from "@acme/client";
 import { adoptAuthSession } from "../../app/adoptAuthSession";
 import { forgetAuthSession, holdAuthSession } from "../../app/forgetAuthSession";
 import { useDeleteOrg } from "../../queries/tenancy";
@@ -11,7 +11,7 @@ import { confirmsName, mayDeleteOrg } from "./deleteOrgModel";
 /** The "Delete this organization" card: an owner of a team org opens it,
  * types the org's name, and confirms. Everyone in the org loses it at once;
  * the owner lands in their personal org, told what went. */
-export function useDeleteOrgVm(me: MeView | undefined) {
+export function useDeleteOrgVm(me: tenancy.MeView | undefined) {
   const navigate = useNavigate();
   const remove = useDeleteOrg();
   const notify = useNoticesStore((s) => s.notify);

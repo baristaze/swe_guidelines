@@ -5,14 +5,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, createElement, useEffect } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import {
-  ApiError,
-  type ApiKeyPageView,
-  type ApiKeyView,
-  type MembershipPageView,
-  type MeView,
-  type UserPageView,
-} from "@acme/client";
+import { ApiError, type tenancy } from "@acme/client";
 import { useNoticesStore } from "../../store/notices";
 import { useSettingsVm, type SettingsVm } from "./useSettingsVm";
 
@@ -40,7 +33,7 @@ vi.mock("../../app/api", () => ({
 vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
 let root: ReturnType<typeof createRoot>;
 
-const me: MeView = {
+const me: tenancy.MeView = {
   app: "portal",
   role: "owner",
   permissions: ["read", "write", "manage_keys"],
@@ -50,7 +43,7 @@ const me: MeView = {
 
 const bob = { id: "u2", email: "bob@example.test", display_name: "Bob", created_at: "2026-09-02T00:00:00Z" };
 
-const keyOf = (id: string, name: string): ApiKeyView => ({
+const keyOf = (id: string, name: string): tenancy.ApiKeyView => ({
   id,
   name,
   role: "member",
@@ -98,13 +91,13 @@ beforeEach(() => {
       { id: "m2", user_id: "u2", role: "member", teams: [] },
     ],
     next_cursor: null,
-  } satisfies MembershipPageView);
+  } satisfies tenancy.MembershipPageView);
   net.reads.set("/v1/me", me);
-  net.reads.set("/v1/users", { items: [me.user, bob], next_cursor: null } satisfies UserPageView);
+  net.reads.set("/v1/users", { items: [me.user, bob], next_cursor: null } satisfies tenancy.UserPageView);
   net.reads.set("/v1/api-keys", {
     items: [keyOf("k1", "first"), keyOf("k2", "second")],
     next_cursor: null,
-  } satisfies ApiKeyPageView);
+  } satisfies tenancy.ApiKeyPageView);
   useNoticesStore.setState({ notices: [] });
 });
 

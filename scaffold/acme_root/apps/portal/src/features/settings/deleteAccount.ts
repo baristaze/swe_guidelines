@@ -5,12 +5,12 @@
 // to the identity provider's logout when the server named one, so the
 // provider's session in this browser ends as well. A refusal changes
 // nothing: the person is still signed in, and it is said.
-import type { AccountDeletedView, OwnedOrg } from "@acme/client";
+import type { OwnedOrg, tenancy } from "@acme/client";
 import { ownedAlone, refusalText } from "./deleteAccountModel";
 
 export interface DeleteAccountEffects {
   /** The deletion, made with the token the session still holds. */
-  remove: () => Promise<Pick<AccountDeletedView, "provider_logout_url">>;
+  remove: () => Promise<Pick<tenancy.AccountDeletedView, "provider_logout_url">>;
   /** Notes, for the page the browser lands on, that the account is gone. */
   note: () => void;
   /** Drops the token and everything fetched under it. */

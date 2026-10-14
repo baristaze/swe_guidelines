@@ -7,7 +7,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, createElement, useEffect } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { ApiError, type IssuedAuthSessionView, type MembershipChoiceView } from "@acme/client";
+import { ApiError, type tenancy } from "@acme/client";
 import { useAuthSessionStore } from "../../store/authSession";
 import { useNewOrgVm } from "./useNewOrgVm";
 
@@ -37,8 +37,8 @@ let root: ReturnType<typeof createRoot>;
 
 const org = { id: "o2", name: "Dee's Bakery", slug: "dee-s-bakery-1a2b", kind: "team" as const, created_at: "2026-09-01T00:00:00Z" };
 const user = { id: "u2", email: "dee@example.test", display_name: "Dee", created_at: "2026-09-01T00:00:00Z" };
-const place: MembershipChoiceView = { org, user, role: "owner" };
-const session: IssuedAuthSessionView = { token: "ses_team", expires_at: "2026-09-02T00:00:00Z", org, user, role: "owner" };
+const place: tenancy.MembershipChoiceView = { org, user, role: "owner" };
+const session: tenancy.IssuedAuthSessionView = { token: "ses_team", expires_at: "2026-09-02T00:00:00Z", org, user, role: "owner" };
 
 const held: { vm?: ReturnType<typeof useNewOrgVm> } = {};
 const vm = () => held.vm!;

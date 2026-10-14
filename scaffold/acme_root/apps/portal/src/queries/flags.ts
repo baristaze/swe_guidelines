@@ -3,7 +3,7 @@
 // person and answers the ones marked for clients. A flag here only shows or
 // hides: the server checks it again on the operation it gates.
 import { queryOptions, useQuery } from "@tanstack/react-query";
-import type { FlagsView } from "@acme/client";
+import type { tenancy } from "@acme/client";
 import { api } from "../app/api";
 import { keys } from "./keys";
 
@@ -22,7 +22,7 @@ export const FLAGS_REFRESH_MS = 5 * 60_000;
  * it with every other answer of the old tenant (adoptAuthSession). */
 const snapshotQuery = queryOptions({
   queryKey: keys.flags,
-  queryFn: ({ signal }) => api.get<FlagsView>("/v1/flags", { signal }),
+  queryFn: ({ signal }) => api.get<tenancy.FlagsView>("/v1/flags", { signal }),
 });
 
 /** The shell's query of the snapshot, the one that reads it again on focus
@@ -37,7 +37,7 @@ export const flagsQuery = queryOptions({
 
 /** One flag's value in a snapshot: off until the snapshot arrives, and off
  * for a name it does not carry. */
-export function flagOn(snapshot: FlagsView | undefined, flag: FlagName): boolean {
+export function flagOn(snapshot: tenancy.FlagsView | undefined, flag: FlagName): boolean {
   return snapshot?.flags[flag] === true;
 }
 

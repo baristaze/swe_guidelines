@@ -1,4 +1,5 @@
-"""The two bases every wire type uses, the error envelope, and the list limit."""
+"""The two bases every wire type uses, the error envelope, the answer to a
+provider's delivery, and the list limit."""
 
 from typing import ClassVar
 from uuid import UUID
@@ -56,6 +57,12 @@ class ErrorBody(View):
 
 class ErrorResponse(View):
     error: ErrorBody
+
+
+class DeliveryReceivedView(View):
+    """The delivery checked out and is queued; the provider stops retrying."""
+
+    received: bool
 
 
 def clamp_limit(limit: int) -> int:

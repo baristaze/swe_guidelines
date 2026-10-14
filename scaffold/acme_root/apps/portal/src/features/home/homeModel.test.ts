@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
-import type { MeView } from "@acme/client";
+import type { tenancy } from "@acme/client";
 import { homeCard, membersLine } from "./homeModel";
 
-const me: MeView = {
+const me: tenancy.MeView = {
   app: "portal",
   role: "admin",
   permissions: ["read", "write", "manage_members"],

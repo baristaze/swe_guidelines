@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import type { StorageUsageView } from "@acme/client";
+import type { media } from "@acme/client";
 import { api } from "../app/api";
 import { keys } from "./keys";
 
@@ -8,6 +8,6 @@ export function useStorageUsage(enabled = true) {
   return useQuery({
     queryKey: keys.files.usage,
     enabled,
-    queryFn: ({ signal }) => api.get<StorageUsageView>("/v1/media/usage", { signal }),
+    queryFn: ({ signal }) => api.get<media.StorageUsageView>("/v1/media/usage", { signal }),
   });
 }

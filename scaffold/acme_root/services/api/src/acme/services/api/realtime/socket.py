@@ -32,7 +32,6 @@ from acme.services.api.realtime.envelopes import (
     ClientCommand,
     ErrorEnvelope,
     HelloEnvelope,
-    IssuedTicketView,
     PongEnvelope,
     SubscribedEnvelope,
     UnsubscribedEnvelope,
@@ -40,9 +39,10 @@ from acme.services.api.realtime.envelopes import (
 from acme.services.api.realtime.send_buffer import SendBuffer
 from acme.services.api.realtime.timeouts import IDLE_TIMEOUT_SECONDS
 from acme.services.api.services.realtime import RIGHTS_CHANGED, RealtimeServiceInterface
+from acme.services.api.types.change_events import IssuedTicketView
 
 log = logging.getLogger(__name__)
-router = APIRouter(prefix="/realtime", tags=["realtime"])
+router = APIRouter(prefix="/realtime", tags=["change_events"])
 
 CREDENTIAL_EXPIRED = "credential_expired"
 """The close reason when the credential behind the ticket reached its expiry."""

@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
-import type { MeView } from "@acme/client";
+import type { tenancy } from "@acme/client";
 import { confirmsName, mayDeleteOrg, ORG_GONE_LINE } from "./deleteOrgModel";
 
-const owner: MeView = {
+const owner: tenancy.MeView = {
   user: { id: "u1", email: "ann@example.test", display_name: "Ann", created_at: "2026-09-01T00:00:00Z" },
   org: { id: "o1", name: "Ajax", slug: "ajax", kind: "team", created_at: "2026-09-01T00:00:00Z" },
   role: "owner",

@@ -17,7 +17,7 @@ from typing import Literal, Protocol
 import httpx
 import websockets
 
-from acme.client.client import LIMIT_MAX, ApiClient, ApiError, trust_store
+from acme.client.client import ApiClient
 from acme.client.envelopes import (
     ENTITY_CHANGED,
     PING_COMMAND,
@@ -30,6 +30,7 @@ from acme.client.envelopes import (
     subscribe_command,
 )
 from acme.client.stream import Cursor, Gap, Next, Seen, behind, is_last_page, place
+from acme.client.transport import LIMIT_MAX, ApiError, trust_store
 
 log = logging.getLogger(__name__)
 

@@ -1,4 +1,4 @@
-import { ApiError, type ChangeEventView } from "@acme/client";
+import { ApiError, type change_events } from "@acme/client";
 import { describe, expect, it } from "vitest";
 import {
   behind,
@@ -43,7 +43,7 @@ describe("behind", () => {
 
 describe("changeEventEnvelope", () => {
   it("turns a replayed record into the envelope the socket would have carried", () => {
-    const event: ChangeEventView = {
+    const event: change_events.ChangeEventView = {
       seq: 4,
       kind: "tenancy.user.updated",
       target_id: "u1",
@@ -66,7 +66,7 @@ describe("changeEventEnvelope", () => {
 });
 
 describe("the first catch-up's window", () => {
-  const at = (seq: number, time: string): ChangeEventView => ({
+  const at = (seq: number, time: string): change_events.ChangeEventView => ({
     seq,
     kind: "tenancy.user.updated",
     target_id: `u${seq}`,

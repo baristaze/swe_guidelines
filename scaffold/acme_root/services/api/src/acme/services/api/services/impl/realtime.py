@@ -14,14 +14,14 @@ from acme.om.context import ActorScope, TenantContext
 from acme.om.exceptions import NotAuthenticated, ValidationFailed
 from acme.om.tenancy import TenancyManagerInterface
 from acme.om.tenancy.types.socket_ticket import SocketPrincipal
-from acme.services.api.realtime.envelopes import ChangeEventEnvelope, IssuedTicketView
+from acme.services.api.realtime.envelopes import ChangeEventEnvelope
 from acme.services.api.services.realtime import (
     CREDENTIAL_REVOKED,
     MEMBERSHIP_ENDED,
     RIGHTS_CHANGED,
     RealtimeServiceInterface,
 )
-from acme.services.api.types.change_events import EntityChangedView
+from acme.services.api.types.change_events import EntityChangedView, IssuedTicketView
 
 PROJECTIONS: dict[Topics, Callable[[TopicPayload], EntityChangedView]] = {
     Topics.ENTITY_CHANGED: EntityChangedView.model_validate,

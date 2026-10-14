@@ -1,6 +1,6 @@
 // Members written into a real query cache from the reads a push leads to.
 import { QueryClient, type InfiniteData } from "@tanstack/react-query";
-import { ApiError, type MeView, type UserPageView, type UserView } from "@acme/client";
+import { ApiError, type tenancy } from "@acme/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createHints, HINT_BURST, HINT_WINDOW_MS } from "../realtime/hints";
 import { routeEnvelope } from "../realtime/router";
@@ -8,9 +8,9 @@ import { parseEnvelope } from "../realtime/envelopes";
 import { keys } from "./keys";
 import { placeInPages, removeFromPages, userHintEffects } from "./userCache";
 
-type Pages = InfiniteData<UserPageView, string | null>;
+type Pages = InfiniteData<tenancy.UserPageView, string | null>;
 
-const user = (id: string, name = id): UserView => ({
+const user = (id: string, name = id): tenancy.UserView => ({
   id,
   display_name: name,
   email: `${id}@example.test`,
@@ -63,18 +63,18 @@ describe("removeFromPages", () => {
 
 describe("userHintEffects", () => {
   let queryClient: QueryClient;
-  const me: MeView = {
+  const me: tenancy.MeView = {
     app: "portal",
-    org: { id: "o1" } as MeView["org"],
+    org: { id: "o1" } as tenancy.MeView["org"],
     permissions: [],
     role: "owner",
     user: user("c", "Cleo"),
-  } as MeView;
+  } as tenancy.MeView;
 
   beforeEach(() => {
     queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     queryClient.setQueryData<Pages>(LIST, pages([["a", "c"], null]));
-    queryClient.setQueryData<MeView>(keys.me, me);
+    queryClient.setQueryData<tenancy.MeView>(keys.me, me);
   });
 
   afterEach(() => queryClient.clear());
@@ -86,7 +86,7 @@ describe("userHintEffects", () => {
     effects.place(user("c", "Cleo B."), effects.stamp());
     effects.place(user("b"), effects.stamp());
     expect(idsOf(queryClient.getQueryData<Pages>(LIST))).toEqual([["a", "b", "c"]]);
-    expect(queryClient.getQueryData<MeView>(keys.me)!.user.display_name).toBe("Cleo B.");
+    expect(queryClient.getQueryData<tenancy.MeView>(keys.me)!.user.display_name).toBe("Cleo B.");
   });
 
   it("never lets a late answer overwrite one from a read issued after it", () => {
@@ -96,7 +96,7 @@ describe("userHintEffects", () => {
     effects.place(user("c", "New"), late);
     effects.place(user("c", "Old"), early);
     expect(queryClient.getQueryData<Pages>(LIST)!.pages[0]!.items[1]!.display_name).toBe("New");
-    expect(queryClient.getQueryData<MeView>(keys.me)!.user.display_name).toBe("New");
+    expect(queryClient.getQueryData<tenancy.MeView>(keys.me)!.user.display_name).toBe("New");
     effects.remove("c", early);
     expect(idsOf(queryClient.getQueryData<Pages>(LIST))).toEqual([["a", "c"]]);
   });
@@ -106,7 +106,7 @@ describe("userHintEffects", () => {
     const before = effects.stamp();
     effects.remove("c", effects.stamp());
     expect(idsOf(queryClient.getQueryData<Pages>(LIST))).toEqual([["a"]]);
-    expect(queryClient.getQueryData<MeView>(keys.me)).toEqual(me);
+    expect(queryClient.getQueryData<tenancy.MeView>(keys.me)).toEqual(me);
     // A read issued before the removal never brings the member back.
     effects.place(user("c"), before);
     expect(idsOf(queryClient.getQueryData<Pages>(LIST))).toEqual([["a"]]);
@@ -114,12 +114,12 @@ describe("userHintEffects", () => {
 
   it("places a member again once a list being read when it was placed lands", async () => {
     const effects = effectsOf();
-    let land!: (page: UserPageView) => void;
+    let land!: (page: tenancy.UserPageView) => void;
     const reading = queryClient.fetchInfiniteQuery({
       queryKey: LIST,
       initialPageParam: null as string | null,
-      getNextPageParam: (last: UserPageView) => last.next_cursor,
-      queryFn: () => new Promise<UserPageView>((resolve) => (land = resolve)),
+      getNextPageParam: (last: tenancy.UserPageView) => last.next_cursor,
+      queryFn: () => new Promise<tenancy.UserPageView>((resolve) => (land = resolve)),
     });
     effects.place(user("b"), effects.stamp());
     expect(idsOf(queryClient.getQueryData<Pages>(LIST))).toEqual([["a", "b", "c"]]);
@@ -197,11 +197,11 @@ describe("a push about a user", () => {
 });
 
 describe("a switch of org", () => {
-  const listRead = (queryClient: QueryClient, queryFn: () => Promise<UserPageView>) =>
+  const listRead = (queryClient: QueryClient, queryFn: () => Promise<tenancy.UserPageView>) =>
     queryClient.fetchInfiniteQuery({
       queryKey: LIST,
       initialPageParam: null as string | null,
-      getNextPageParam: (last: UserPageView) => last.next_cursor,
+      getNextPageParam: (last: tenancy.UserPageView) => last.next_cursor,
       queryFn,
     });
 
@@ -210,7 +210,7 @@ describe("a switch of org", () => {
   // list is read under the same key.
   it.each([
     ["failed", () => Promise.reject(new Error("offline"))],
-    ["abandoned", () => new Promise<UserPageView>(() => {})],
+    ["abandoned", () => new Promise<tenancy.UserPageView>(() => {})],
   ])("shows none of the old org's members in the new org's list when the read under the old one %s", async (_, queryFn) => {
     const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     const effects = userHintEffects(queryClient, () => Promise.reject(new Error("not read here")));

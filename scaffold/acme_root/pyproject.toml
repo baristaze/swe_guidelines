@@ -37,8 +37,8 @@ dev = [
     "ruff>=0.16.8",
     "pyright>=1.1.414",
     "httpx>=0.28.1",
-    # Pinned exactly: `make openapi` regenerates clients/python/src/acme/client/schema.py
-    # with it and CI checks the committed file is current.
+    # Pinned exactly: `make openapi` regenerates clients/python/src/acme/client/schema/
+    # with it and CI checks the committed files are current.
     "datamodel-code-generator==0.82.0",
 ]
 

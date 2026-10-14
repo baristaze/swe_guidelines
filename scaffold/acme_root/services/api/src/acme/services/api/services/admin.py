@@ -6,7 +6,8 @@ from uuid import UUID
 
 from acme.om.context import OperatorContext
 from acme.om.idempotency.types.attempt import Attempt
-from acme.services.api.types.admin import (
+from acme.services.api.types.change_events import OperatorChangeEventView
+from acme.services.api.types.tenancy import (
     AddMemberRequest,
     ConfirmTotpRequest,
     CreateOrgRequest,
@@ -16,14 +17,14 @@ from acme.services.api.types.admin import (
     OperatorTokenPageView,
     OperatorTokenView,
     OperatorView,
-    OperatorWorkItemView,
-    SetTenantCapRequest,
+    OrgPageView,
+    OrgView,
     SystemSizeView,
-    TenantCapView,
     TotpConfirmedView,
+    UserPageView,
+    UserView,
 )
-from acme.services.api.types.change_events import OperatorChangeEventView
-from acme.services.api.types.tenancy import OrgPageView, OrgView, UserPageView, UserView
+from acme.services.api.types.work import OperatorWorkItemView, SetTenantCapRequest, TenantCapView
 
 
 class AdminServiceInterface(ABC):

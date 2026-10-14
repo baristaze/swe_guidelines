@@ -5,7 +5,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 
 from acme.om.context import RequestContext
-from acme.services.api.types.webhooks import DeliveryReceivedView
+from acme.services.api.types.common import DeliveryReceivedView
 
 
 @dataclass(frozen=True)

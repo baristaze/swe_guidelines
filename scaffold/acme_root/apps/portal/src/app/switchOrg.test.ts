@@ -1,11 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { ApiError, type IssuedAuthSessionView } from "@acme/client";
+import { ApiError, type tenancy } from "@acme/client";
 import { chipChoices } from "./orgChipModel";
 import { switchOrg, type SwitchEffects } from "./switchOrg";
 
 const org = (id: string, name: string) => ({ id, name, slug: id, kind: "team" as const, created_at: "2026-09-01T00:00:00Z" });
 const user = { id: "u", email: "ann@example.test", display_name: "Ann", created_at: "2026-09-01T00:00:00Z" };
-const issued: IssuedAuthSessionView = {
+const issued: tenancy.IssuedAuthSessionView = {
   token: "ses_new",
   expires_at: "2026-09-02T00:00:00Z",
   org: org("beta", "Beta"),

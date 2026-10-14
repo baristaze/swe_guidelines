@@ -1,5 +1,5 @@
 import { useState } from "react";
-import type { MeView, OwnedOrg } from "@acme/client";
+import type { OwnedOrg, tenancy } from "@acme/client";
 import { forgetAuthSession } from "../../app/forgetAuthSession";
 import { useDeleteAccount } from "../../queries/tenancy";
 import { noteAccountDeleted, noteSignedOut } from "../../store/signInState";
@@ -10,7 +10,7 @@ import { confirms, strandedHere } from "./deleteAccountModel";
  * and confirms. The deletion leaves the portal: the browser goes to the
  * provider's logout, or straight to `/signed-out`, which says the account is
  * gone. A refusal stays on the card, said in one line. */
-export function useDeleteAccountVm(me: MeView | undefined) {
+export function useDeleteAccountVm(me: tenancy.MeView | undefined) {
   const remove = useDeleteAccount();
   const [open, setOpen] = useState(false);
   const [typed, setTyped] = useState("");

@@ -5,7 +5,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, createElement } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import type { IdentityView } from "@acme/client";
+import type { tenancy } from "@acme/client";
 import { useTimeZoneSync } from "./useTimeZoneSync";
 
 const net = vi.hoisted(() => ({
@@ -21,13 +21,13 @@ vi.mock("./api", () => ({
       net.patches.push({ path, body });
       return net.fail
         ? Promise.reject(new Error("refused"))
-        : Promise.resolve({ ...(net.identity as IdentityView), time_zone: body.time_zone });
+        : Promise.resolve({ ...(net.identity as tenancy.IdentityView), time_zone: body.time_zone });
     },
   },
 }));
 vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
 
-const identity = (time_zone: string | null): IdentityView => ({
+const identity = (time_zone: string | null): tenancy.IdentityView => ({
   id: "i1", email: "ann@example.test", operator_role: null, created_at: "2026-09-01T00:00:00Z", time_zone,
 });
 

@@ -8,8 +8,9 @@ from uuid import UUID, uuid4
 import httpx
 import pytest
 
-from acme.client.client import IDEMPOTENCY_HEADER, ApiClient
+from acme.client.client import ApiClient
 from acme.client.leases import MIN_RENEW_SECONDS, Fence, LeaseClock
+from acme.client.transport import IDEMPOTENCY_HEADER
 
 DOCK = uuid4()
 

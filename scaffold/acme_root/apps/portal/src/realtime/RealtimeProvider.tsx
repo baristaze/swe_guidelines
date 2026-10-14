@@ -5,7 +5,7 @@
 // not a failure.
 import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, type ReactNode } from "react";
-import type { IssuedTicketView } from "@acme/client";
+import type { change_events } from "@acme/client";
 import { api } from "../app/api";
 import { forgetAuthSessionIfHeld } from "../app/forgetAuthSession";
 import { Banner } from "../design/kit";
@@ -30,7 +30,7 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
     // a switch starts with none of the old tenant's answers.
     const readers: HintReaders = { user: createHints(userHintEffects(queryClient, fetchUser)) };
     const channel = openChannel({
-      requestTicket: async () => (await api.post<IssuedTicketView>("/v1/realtime/tickets")).ticket,
+      requestTicket: async () => (await api.post<change_events.IssuedTicketView>("/v1/realtime/tickets")).ticket,
       openSocket: (ticket) =>
         new WebSocket(api.websocketUrl(`/v1/realtime?ticket=${encodeURIComponent(ticket)}`)),
       fetchChangeEventsAfter,

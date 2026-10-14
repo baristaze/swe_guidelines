@@ -12,12 +12,12 @@
 // org, so when the session ends, every answer heard and every query watched
 // goes with it.
 import type { InfiniteData, Query, QueryClient, QueryKey } from "@tanstack/react-query";
-import { ApiError, type MeView, type UserPageView, type UserView } from "@acme/client";
+import { ApiError, type tenancy } from "@acme/client";
 import type { HintEffects } from "../realtime/hints";
 import { keys } from "./keys";
 import { createLedger } from "./ledger";
 
-type Pages = InfiniteData<UserPageView, string | null>;
+type Pages = InfiniteData<tenancy.UserPageView, string | null>;
 
 function isPages(data: unknown): data is Pages {
   return typeof data === "object" && data !== null && Array.isArray((data as Partial<Pages>).pages);
@@ -25,7 +25,7 @@ function isPages(data: unknown): data is Pages {
 
 /** The pages with the member in its place; the same pages when it has none
  * among them yet. */
-export function placeInPages(data: Pages, user: UserView): Pages {
+export function placeInPages(data: Pages, user: tenancy.UserView): Pages {
   const held = data.pages.findIndex((page) => page.items.some((item) => item.id === user.id));
   if (held >= 0) {
     const page = data.pages[held]!;
@@ -54,9 +54,9 @@ const UNDECIDED = Symbol("undecided");
 
 /** One query's data with the member written in, or UNDECIDED when its shape
  * does not say where the member goes. */
-function rewrite(queryKey: QueryKey, data: unknown, id: string, user: UserView | null): unknown {
+function rewrite(queryKey: QueryKey, data: unknown, id: string, user: tenancy.UserView | null): unknown {
   if (queryKey[0] === keys.me[0]) {
-    const me = data as MeView;
+    const me = data as tenancy.MeView;
     return user && me.user.id === id ? { ...me, user } : me;
   }
   if (!isPages(data)) return UNDECIDED;
@@ -67,12 +67,12 @@ function rewrite(queryKey: QueryKey, data: unknown, id: string, user: UserView |
  * ledger of its own, so a late answer never overwrites a newer one. */
 export function userHintEffects(
   queryClient: QueryClient,
-  read: (id: string) => Promise<UserView>,
-): HintEffects<UserView> {
+  read: (id: string) => Promise<tenancy.UserView>,
+): HintEffects<tenancy.UserView> {
   const cache = queryClient.getQueryCache();
   const ledger = createLedger();
   // The newest answer heard of each member: the member, or null when gone.
-  const heard = new Map<string, UserView | null>();
+  const heard = new Map<string, tenancy.UserView | null>();
   // The members placed into a query while it was being read, by its hash.
   const pending = new Map<string, Set<string>>();
   let unsubscribe: (() => void) | null = null;
@@ -109,7 +109,7 @@ export function userHintEffects(
     });
   };
 
-  const write = (id: string, user: UserView | null) => {
+  const write = (id: string, user: tenancy.UserView | null) => {
     heard.set(id, user);
     const queries = [...cache.findAll({ queryKey: keys.users.all }), ...cache.findAll({ queryKey: keys.me, exact: true })];
     for (const query of queries) writeInto(query, id);

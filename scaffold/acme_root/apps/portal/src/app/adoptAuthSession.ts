@@ -6,11 +6,11 @@
 // session. The signed-in shell is keyed by the org (routes.tsx), so the new
 // org mounts it afresh: every screen reads again under the new session, and
 // the realtime provider opens a new socket.
-import type { IssuedAuthSessionView } from "@acme/client";
+import type { tenancy } from "@acme/client";
 import { useAuthSessionStore } from "../store/authSession";
 import { queryClient } from "./queryClient";
 
-export function adoptAuthSession(issued: Pick<IssuedAuthSessionView, "token" | "org">): void {
+export function adoptAuthSession(issued: Pick<tenancy.IssuedAuthSessionView, "token" | "org">): void {
   queryClient.clear();
   useAuthSessionStore.getState().setAuthSession(issued.token, issued.org.slug);
 }

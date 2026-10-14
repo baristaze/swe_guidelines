@@ -1,6 +1,6 @@
 // The socket loop over a fake socket and fake timers: what it sends, when it
 // reconnects, and how it moves the stream cursor.
-import { ApiError, type ChangeEventView } from "@acme/client";
+import { ApiError, type change_events } from "@acme/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useConnectionStore } from "../store/connection";
 import { CLOSE_UNAUTHENTICATED, openChannel, SOCKET_OPEN, type Channel, type SocketLike } from "./channel";
@@ -40,7 +40,7 @@ class FakeSocket implements SocketLike {
   }
 }
 
-function event(seq: number): ChangeEventView {
+function event(seq: number): change_events.ChangeEventView {
   return { seq, kind: "tenancy.user.updated", target_id: `u${seq}`, produced_at: "2026-09-16T12:00:00Z", actor_id: "u1" };
 }
 
@@ -53,7 +53,7 @@ const seqOf = (e: Envelope) => (e as { payload: { seq: number } }).payload.seq;
 const hello = (seq: number) => ({ type: "hello", sent_at: null, org_id: "o1", user_id: "u1", seq, ping_interval_seconds: 25 });
 
 /** The stream in storage, as pages after a seq. */
-type Pages = (after: number) => ChangeEventView[];
+type Pages = (after: number) => change_events.ChangeEventView[];
 
 function harness(
   pages: Pages = () => [],
@@ -325,7 +325,7 @@ describe("stream cursor", () => {
     // A tab that wakes far behind replays a full page at a time. Each record
     // routed cancels and restarts the refetch of every query its entity is
     // read from, so one route per record would read the same list per record.
-    const stream: ChangeEventView[] = [];
+    const stream: change_events.ChangeEventView[] = [];
     for (let seq = 6; seq <= 25; seq += 1) {
       stream.push({ ...event(seq), kind: seq % 2 === 0 ? "media.file.updated" : "tenancy.user.deleted" });
     }
@@ -411,7 +411,7 @@ describe("stream cursor", () => {
 describe("a notice", () => {
   // A record the person is told about, not only refreshed by. Which records
   // are notices is a product's call; here, an invitation as it is accepted.
-  const accepted = (seq: number, invitation = `i${seq}`): ChangeEventView => ({
+  const accepted = (seq: number, invitation = `i${seq}`): change_events.ChangeEventView => ({
     ...event(seq),
     kind: "tenancy.invitation.updated",
     target_id: invitation,
@@ -431,7 +431,7 @@ describe("a notice", () => {
   }
 
   /** The same, then dropped and reconnected: the open replays from 5. */
-  async function reconnected(stream: ChangeEventView[], pageSize = 200) {
+  async function reconnected(stream: change_events.ChangeEventView[], pageSize = 200) {
     const h = await open((after) => stream.filter((e) => e.seq > after).slice(0, pageSize), pageSize);
     h.sockets[0]!.drop();
     await vi.advanceTimersByTimeAsync(1_000);
@@ -538,7 +538,7 @@ describe("a notice", () => {
     const announce = (envelopes: ChangeEventEnvelope[]) => void announced.push(envelopes.map(seqOf));
     // The old replay read a page that holds a notice, and its next page is
     // still on its way when the switch stops the channel.
-    let resolvePage!: (page: ChangeEventView[]) => void;
+    let resolvePage!: (page: change_events.ChangeEventView[]) => void;
     const oldSocket = new FakeSocket();
     const old = openChannel({
       requestTicket: async () => "tkt",
@@ -546,7 +546,7 @@ describe("a notice", () => {
       fetchChangeEventsAfter: (after) =>
         after === 0
           ? Promise.resolve([accepted(1), event(2)])
-          : new Promise<ChangeEventView[]>((resolve) => { resolvePage = resolve; }),
+          : new Promise<change_events.ChangeEventView[]>((resolve) => { resolvePage = resolve; }),
       route: vi.fn(),
       isAnnounced: isNotice,
       announce,
@@ -592,7 +592,7 @@ describe("a notice", () => {
 describe("a stream trimmed past the cursor", () => {
   // The trim took everything up to 7; the stream holds 8 and 9. A read after
   // a seq below 7 is refused as the API refuses it, naming the head.
-  const trimmed = (stream: ChangeEventView[], floor = 7) => (after: number) => {
+  const trimmed = (stream: change_events.ChangeEventView[], floor = 7) => (after: number) => {
     if (after < floor) {
       const head = stream[stream.length - 1]!.seq;
       throw new ApiError(410, "stream_truncated", "gone", null, undefined, { floor, head });
@@ -693,7 +693,7 @@ describe("the first catch-up", () => {
   // The page began reading at 12:00:00 on the server's clock: the hello was
   // sent at 12:00:03, three seconds after the channel opened.
   const helloAt = (seq: number) => ({ ...hello(seq), sent_at: "2026-09-16T12:00:03Z" });
-  const at = (seq: number, time: string, kind = "tenancy.user.updated"): ChangeEventView => ({
+  const at = (seq: number, time: string, kind = "tenancy.user.updated"): change_events.ChangeEventView => ({
     ...event(seq),
     kind,
     produced_at: `2026-09-16T${time}Z`,
@@ -828,10 +828,10 @@ it("ignores an old session's late authentication close after a new session opens
 });
 
 it("does not apply or continue a replay that finishes after stop", async () => {
-  let resolvePage!: (page: ChangeEventView[]) => void;
+  let resolvePage!: (page: change_events.ChangeEventView[]) => void;
   const socket = new FakeSocket();
   const route = vi.fn();
-  const fetchChangeEventsAfter = vi.fn(() => new Promise<ChangeEventView[]>((resolve) => { resolvePage = resolve; }));
+  const fetchChangeEventsAfter = vi.fn(() => new Promise<change_events.ChangeEventView[]>((resolve) => { resolvePage = resolve; }));
   channel = openChannel({
     requestTicket: async () => "tkt", openSocket: () => socket,
     fetchChangeEventsAfter, route, refreshAll: async () => undefined,

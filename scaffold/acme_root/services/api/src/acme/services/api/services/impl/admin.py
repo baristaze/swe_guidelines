@@ -8,7 +8,9 @@ from acme.om.tenancy.types.auth_session import AuthSession
 from acme.om.work import WorkOperatorManagerInterface
 from acme.services.api.services.admin import AdminServiceInterface
 from acme.services.api.services.impl.tenancy import decode_cursor, encode_cursor
-from acme.services.api.types.admin import (
+from acme.services.api.types.change_events import OperatorChangeEventView
+from acme.services.api.types.common import clamp_limit
+from acme.services.api.types.tenancy import (
     AddMemberRequest,
     ConfirmTotpRequest,
     CreateOrgRequest,
@@ -18,15 +20,14 @@ from acme.services.api.types.admin import (
     OperatorTokenPageView,
     OperatorTokenView,
     OperatorView,
-    OperatorWorkItemView,
-    SetTenantCapRequest,
+    OrgPageView,
+    OrgView,
     SystemSizeView,
-    TenantCapView,
     TotpConfirmedView,
+    UserPageView,
+    UserView,
 )
-from acme.services.api.types.change_events import OperatorChangeEventView
-from acme.services.api.types.common import clamp_limit
-from acme.services.api.types.tenancy import OrgPageView, OrgView, UserPageView, UserView
+from acme.services.api.types.work import OperatorWorkItemView, SetTenantCapRequest, TenantCapView
 
 
 class AdminServiceImpl(AdminServiceInterface):

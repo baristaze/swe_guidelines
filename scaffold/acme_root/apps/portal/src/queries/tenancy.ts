@@ -1,39 +1,6 @@
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect } from "react";
-import type {
-  AccountDeletedView,
-  AddApiKeyRequest,
-  ApiKeyPageView,
-  ApiKeyView,
-  CreateTeamOrgRequest,
-  DeleteAccountRequest,
-  DeleteOrgRequest,
-  DevSignInRequest,
-  ExchangeAuthSessionRequest,
-  IdentityView,
-  IssuedApiKeyView,
-  IssuedLoginView,
-  IssuedAuthSessionView,
-  InvitationPageView,
-  InvitationView,
-  InviteMemberRequest,
-  LogoutRequest,
-  MembershipChoicePageView,
-  MembershipChoiceView,
-  MembershipPageView,
-  MembershipView,
-  MeView,
-  OrgDeletedView,
-  SignedOutView,
-  SignInCallbackRequest,
-  SignInStartRequest,
-  SignInStartView,
-  SsoLinkRequest,
-  SsoLinkView,
-  UpdateMembershipRequest,
-  UserPageView,
-  UserView,
-} from "@acme/client";
+import type { tenancy } from "@acme/client";
 import { api } from "../app/api";
 import { keys } from "./keys";
 
@@ -48,14 +15,14 @@ export const INVITATIONS_PAGE_SIZE = 50;
 const MY_MEMBERSHIPS_PAGE_SIZE = 200;
 
 export function useMe() {
-  return useQuery({ queryKey: keys.me, queryFn: ({ signal }) => api.get<MeView>("/v1/me", { signal }) });
+  return useQuery({ queryKey: keys.me, queryFn: ({ signal }) => api.get<tenancy.MeView>("/v1/me", { signal }) });
 }
 
 /** The person behind the session, across every org: the time zone lives here. */
 export function useIdentity() {
   return useQuery({
     queryKey: keys.identity,
-    queryFn: ({ signal }) => api.get<IdentityView>("/v1/me/identity", { signal }),
+    queryFn: ({ signal }) => api.get<tenancy.IdentityView>("/v1/me/identity", { signal }),
   });
 }
 
@@ -67,10 +34,10 @@ export function useUsers() {
   const query = useInfiniteQuery({
     queryKey: keys.users.list(USERS_PAGE_SIZE),
     initialPageParam: null as string | null,
-    getNextPageParam: (last: UserPageView) => last.next_cursor,
+    getNextPageParam: (last: tenancy.UserPageView) => last.next_cursor,
     queryFn: ({ pageParam, signal }) => {
       const cursor = pageParam ? `&cursor=${encodeURIComponent(pageParam)}` : "";
-      return api.get<UserPageView>(`/v1/users?limit=${USERS_PAGE_SIZE}${cursor}`, { signal });
+      return api.get<tenancy.UserPageView>(`/v1/users?limit=${USERS_PAGE_SIZE}${cursor}`, { signal });
     },
   });
   const { hasNextPage, isFetchingNextPage, isFetchNextPageError, fetchNextPage } = query;
@@ -84,7 +51,7 @@ export function useUsers() {
   }, [walking, isFetchingNextPage, fetchNextPage]);
   return {
     ...query,
-    data: query.data?.pages.flatMap((page) => page.items) as UserView[] | undefined,
+    data: query.data?.pages.flatMap((page) => page.items) as tenancy.UserView[] | undefined,
     /** Pending until the whole list is in hand: a caller that maps ids to
      * names would otherwise call a member still on the way a former member. */
     isPending: query.isPending || walking,
@@ -93,8 +60,8 @@ export function useUsers() {
 
 /** One member by its id: the read a push about a user leads to
  * (`userCache.ts`). */
-export function fetchUser(id: string): Promise<UserView> {
-  return api.get<UserView>(`/v1/users/${encodeURIComponent(id)}`);
+export function fetchUser(id: string): Promise<tenancy.UserView> {
+  return api.get<tenancy.UserView>(`/v1/users/${encodeURIComponent(id)}`);
 }
 
 /** Every membership of the org, page after page, as the member list is read:
@@ -104,10 +71,10 @@ export function useMemberships() {
   const query = useInfiniteQuery({
     queryKey: keys.memberships.list(USERS_PAGE_SIZE),
     initialPageParam: null as string | null,
-    getNextPageParam: (last: MembershipPageView) => last.next_cursor,
+    getNextPageParam: (last: tenancy.MembershipPageView) => last.next_cursor,
     queryFn: ({ pageParam, signal }) => {
       const cursor = pageParam ? `&cursor=${encodeURIComponent(pageParam)}` : "";
-      return api.get<MembershipPageView>(`/v1/memberships?limit=${USERS_PAGE_SIZE}${cursor}`, { signal });
+      return api.get<tenancy.MembershipPageView>(`/v1/memberships?limit=${USERS_PAGE_SIZE}${cursor}`, { signal });
     },
   });
   const { hasNextPage, isFetchingNextPage, isFetchNextPageError, fetchNextPage } = query;
@@ -117,7 +84,7 @@ export function useMemberships() {
   }, [walking, isFetchingNextPage, fetchNextPage]);
   return {
     ...query,
-    data: query.data?.pages.flatMap((page) => page.items) as MembershipView[] | undefined,
+    data: query.data?.pages.flatMap((page) => page.items) as tenancy.MembershipView[] | undefined,
     isPending: query.isPending || walking,
   };
 }
@@ -128,8 +95,8 @@ export function useMemberships() {
 export function useUpdateMemberRole() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ userId, body }: { userId: string; body: UpdateMembershipRequest }) =>
-      api.patch<MembershipView>(`/v1/memberships/${userId}`, body),
+    mutationFn: ({ userId, body }: { userId: string; body: tenancy.UpdateMembershipRequest }) =>
+      api.patch<tenancy.MembershipView>(`/v1/memberships/${userId}`, body),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: keys.memberships.all }),
   });
 }
@@ -143,10 +110,10 @@ export function useApiKeys(enabled = true) {
   const query = useInfiniteQuery({
     queryKey: keys.apiKeys.list(API_KEYS_PAGE_SIZE),
     initialPageParam: null as string | null,
-    getNextPageParam: (last: ApiKeyPageView) => last.next_cursor,
+    getNextPageParam: (last: tenancy.ApiKeyPageView) => last.next_cursor,
     queryFn: ({ pageParam, signal }) => {
       const cursor = pageParam ? `&cursor=${encodeURIComponent(pageParam)}` : "";
-      return api.get<ApiKeyPageView>(`/v1/api-keys?limit=${API_KEYS_PAGE_SIZE}${cursor}`, {
+      return api.get<tenancy.ApiKeyPageView>(`/v1/api-keys?limit=${API_KEYS_PAGE_SIZE}${cursor}`, {
         signal,
       });
     },
@@ -154,15 +121,15 @@ export function useApiKeys(enabled = true) {
   });
   return {
     ...query,
-    data: query.data?.pages.flatMap((page) => page.items) as ApiKeyView[] | undefined,
+    data: query.data?.pages.flatMap((page) => page.items) as tenancy.ApiKeyView[] | undefined,
   };
 }
 
 export function useCreateApiKey() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (body: AddApiKeyRequest) =>
-      api.post<IssuedApiKeyView>("/v1/api-keys", body, { idempotencyKey: crypto.randomUUID() }),
+    mutationFn: (body: tenancy.AddApiKeyRequest) =>
+      api.post<tenancy.IssuedApiKeyView>("/v1/api-keys", body, { idempotencyKey: crypto.randomUUID() }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: keys.apiKeys.all }),
   });
 }
@@ -170,7 +137,7 @@ export function useCreateApiKey() {
 export function useRevokeApiKey() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (apiKeyId: string) => api.del<ApiKeyView>(`/v1/api-keys/${apiKeyId}`),
+    mutationFn: (apiKeyId: string) => api.del<tenancy.ApiKeyView>(`/v1/api-keys/${apiKeyId}`),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: keys.apiKeys.all }),
   });
 }
@@ -181,10 +148,10 @@ export function useMyMemberships() {
   const query = useInfiniteQuery({
     queryKey: keys.myMemberships.list(MY_MEMBERSHIPS_PAGE_SIZE),
     initialPageParam: null as string | null,
-    getNextPageParam: (last: MembershipChoicePageView) => last.next_cursor,
+    getNextPageParam: (last: tenancy.MembershipChoicePageView) => last.next_cursor,
     queryFn: ({ pageParam, signal }) => {
       const cursor = pageParam ? `&cursor=${encodeURIComponent(pageParam)}` : "";
-      return api.get<MembershipChoicePageView>(
+      return api.get<tenancy.MembershipChoicePageView>(
         `/v1/auth/memberships?limit=${MY_MEMBERSHIPS_PAGE_SIZE}${cursor}`,
         { signal },
       );
@@ -197,7 +164,7 @@ export function useMyMemberships() {
   }, [walking, isFetchingNextPage, fetchNextPage]);
   return {
     ...query,
-    data: query.data?.pages.flatMap((page) => page.items) as MembershipChoiceView[] | undefined,
+    data: query.data?.pages.flatMap((page) => page.items) as tenancy.MembershipChoiceView[] | undefined,
     isPending: query.isPending || walking,
   };
 }
@@ -206,8 +173,8 @@ export function useMyMemberships() {
  * with no bearer: nothing is signed in yet. */
 export function useStartSignIn() {
   return useMutation({
-    mutationFn: (body: SignInStartRequest) =>
-      api.post<SignInStartView>("/v1/auth/sign-in", body, { token: null }),
+    mutationFn: (body: tenancy.SignInStartRequest) =>
+      api.post<tenancy.SignInStartView>("/v1/auth/sign-in", body, { token: null }),
   });
 }
 
@@ -216,16 +183,16 @@ export function useStartSignIn() {
  * knew is signed up by it, with their personal org. */
 export function useFinishSignIn() {
   return useMutation({
-    mutationFn: (body: SignInCallbackRequest) =>
-      api.post<IssuedLoginView>("/v1/auth/callback", body, { token: null }),
+    mutationFn: (body: tenancy.SignInCallbackRequest) =>
+      api.post<tenancy.IssuedLoginView>("/v1/auth/callback", body, { token: null }),
   });
 }
 
 /** The local stack's sign-in by address alone; a deployed API answers 404. */
 export function useDevSignIn() {
   return useMutation({
-    mutationFn: (body: DevSignInRequest) =>
-      api.post<IssuedLoginView>("/v1/auth/dev-sign-in", body, { token: null }),
+    mutationFn: (body: tenancy.DevSignInRequest) =>
+      api.post<tenancy.IssuedLoginView>("/v1/auth/dev-sign-in", body, { token: null }),
   });
 }
 
@@ -234,7 +201,7 @@ export function useDevSignIn() {
  * behind it, which sends the browser back to `return_to`. */
 export function useLogout() {
   return useMutation({
-    mutationFn: (body: LogoutRequest) => api.post<SignedOutView>("/v1/auth/logout", body),
+    mutationFn: (body: tenancy.LogoutRequest) => api.post<tenancy.SignedOutView>("/v1/auth/logout", body),
   });
 }
 
@@ -243,7 +210,7 @@ export function useLogout() {
  * sends no `return_to`, and its answer's provider logout is not followed. */
 export function useEndReplacedAuthSession() {
   return useMutation({
-    mutationFn: (token: string) => api.post<SignedOutView>("/v1/auth/logout", undefined, { token }),
+    mutationFn: (token: string) => api.post<tenancy.SignedOutView>("/v1/auth/logout", undefined, { token }),
   });
 }
 
@@ -252,7 +219,7 @@ export function useEndReplacedAuthSession() {
  * sign-out does. Sent once: a retry would meet a session that is gone. */
 export function useDeleteAccount() {
   return useMutation({
-    mutationFn: (body: DeleteAccountRequest) => api.post<AccountDeletedView>("/v1/me/deletion", body),
+    mutationFn: (body: tenancy.DeleteAccountRequest) => api.post<tenancy.AccountDeletedView>("/v1/me/deletion", body),
   });
 }
 
@@ -261,14 +228,14 @@ export function useDeleteAccount() {
  * Sent once: a retry would meet a session that is gone. */
 export function useDeleteOrg() {
   return useMutation({
-    mutationFn: (body: DeleteOrgRequest) => api.post<OrgDeletedView>("/v1/orgs/current/deletion", body),
+    mutationFn: (body: tenancy.DeleteOrgRequest) => api.post<tenancy.OrgDeletedView>("/v1/orgs/current/deletion", body),
   });
 }
 
 export function useExchangeAuthSession() {
   return useMutation({
-    mutationFn: ({ loginToken, body }: { loginToken: string; body: ExchangeAuthSessionRequest }) =>
-      api.post<IssuedAuthSessionView>("/v1/auth/sessions", body, { token: loginToken }),
+    mutationFn: ({ loginToken, body }: { loginToken: string; body: tenancy.ExchangeAuthSessionRequest }) =>
+      api.post<tenancy.IssuedAuthSessionView>("/v1/auth/sessions", body, { token: loginToken }),
   });
 }
 
@@ -276,7 +243,7 @@ export function useExchangeAuthSession() {
  * server ends that session in the same write and answers with the new one. */
 export function useSwitchOrg() {
   return useMutation({
-    mutationFn: (orgId: string) => api.post<IssuedAuthSessionView>("/v1/auth/sessions", { org_id: orgId }),
+    mutationFn: (orgId: string) => api.post<tenancy.IssuedAuthSessionView>("/v1/auth/sessions", { org_id: orgId }),
   });
 }
 
@@ -287,8 +254,8 @@ export function useSwitchOrg() {
 export function useCreateOrg() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (body: CreateTeamOrgRequest) =>
-      api.post<MembershipChoiceView>("/v1/orgs", body, { idempotencyKey: crypto.randomUUID() }),
+    mutationFn: (body: tenancy.CreateTeamOrgRequest) =>
+      api.post<tenancy.MembershipChoiceView>("/v1/orgs", body, { idempotencyKey: crypto.randomUUID() }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: keys.myMemberships.all }),
   });
 }
@@ -299,10 +266,10 @@ export function useInvitations(enabled = true) {
   const query = useInfiniteQuery({
     queryKey: keys.invitations.list(INVITATIONS_PAGE_SIZE),
     initialPageParam: null as string | null,
-    getNextPageParam: (last: InvitationPageView) => last.next_cursor,
+    getNextPageParam: (last: tenancy.InvitationPageView) => last.next_cursor,
     queryFn: ({ pageParam, signal }) => {
       const cursor = pageParam ? `&cursor=${encodeURIComponent(pageParam)}` : "";
-      return api.get<InvitationPageView>(`/v1/invitations?limit=${INVITATIONS_PAGE_SIZE}${cursor}`, {
+      return api.get<tenancy.InvitationPageView>(`/v1/invitations?limit=${INVITATIONS_PAGE_SIZE}${cursor}`, {
         signal,
       });
     },
@@ -310,7 +277,7 @@ export function useInvitations(enabled = true) {
   });
   return {
     ...query,
-    data: query.data?.pages.flatMap((page) => page.items) as InvitationView[] | undefined,
+    data: query.data?.pages.flatMap((page) => page.items) as tenancy.InvitationView[] | undefined,
   };
 }
 
@@ -319,8 +286,8 @@ export function useInvitations(enabled = true) {
 export function useInviteMember() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (body: InviteMemberRequest) =>
-      api.post<InvitationView>("/v1/invitations", body, { idempotencyKey: crypto.randomUUID() }),
+    mutationFn: (body: tenancy.InviteMemberRequest) =>
+      api.post<tenancy.InvitationView>("/v1/invitations", body, { idempotencyKey: crypto.randomUUID() }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: keys.invitations.all }),
   });
 }
@@ -328,7 +295,7 @@ export function useInviteMember() {
 export function useResendInvitation() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (invitationId: string) => api.post<InvitationView>(`/v1/invitations/${invitationId}/resend`),
+    mutationFn: (invitationId: string) => api.post<tenancy.InvitationView>(`/v1/invitations/${invitationId}/resend`),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: keys.invitations.all }),
   });
 }
@@ -336,7 +303,7 @@ export function useResendInvitation() {
 export function useRevokeInvitation() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (invitationId: string) => api.del<InvitationView>(`/v1/invitations/${invitationId}`),
+    mutationFn: (invitationId: string) => api.del<tenancy.InvitationView>(`/v1/invitations/${invitationId}`),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: keys.invitations.all }),
   });
 }
@@ -344,6 +311,6 @@ export function useRevokeInvitation() {
 /** A short-lived link to the identity provider's admin portal for this org. */
 export function useSsoLink() {
   return useMutation({
-    mutationFn: (body: SsoLinkRequest) => api.post<SsoLinkView>("/v1/orgs/current/sso-link", body),
+    mutationFn: (body: tenancy.SsoLinkRequest) => api.post<tenancy.SsoLinkView>("/v1/orgs/current/sso-link", body),
   });
 }

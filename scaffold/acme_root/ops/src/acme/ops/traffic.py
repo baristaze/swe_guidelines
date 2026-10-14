@@ -51,10 +51,11 @@ from uuid import UUID, uuid4
 
 import httpx
 
-from acme.client.client import REQUEST_ID_HEADER, ApiClient, ApiError, trust_store
+from acme.client.client import ApiClient
 from acme.client.envelopes import EntityChanged
 from acme.client.realtime import Channel, Connect, State
-from acme.client.types import ApiKeyView, IssuedApiKeyView, UserView
+from acme.client.transport import REQUEST_ID_HEADER, ApiError, trust_store
+from acme.client.types.tenancy import ApiKeyView, IssuedApiKeyView, UserView
 from acme.ops.environments import Environment
 from acme.ops.profiles import Profile
 from acme.ops.report import Report, Sample, Sessions

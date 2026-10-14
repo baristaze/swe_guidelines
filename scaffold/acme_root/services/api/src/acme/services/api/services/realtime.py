@@ -11,7 +11,8 @@ from collections.abc import Callable
 from acme.infra.topics import Topics
 from acme.om.context import ActorScope, TenantContext
 from acme.om.tenancy.types.socket_ticket import SocketPrincipal
-from acme.services.api.realtime.envelopes import ChangeEventEnvelope, IssuedTicketView
+from acme.services.api.realtime.envelopes import ChangeEventEnvelope
+from acme.services.api.types.change_events import IssuedTicketView
 
 CREDENTIAL_REVOKED = "credential_revoked"
 """The close reason when the session or the api key behind the socket was revoked."""

@@ -8,7 +8,7 @@
 import { focusManager, QueryClientProvider, QueryObserver } from "@tanstack/react-query";
 import { act, createElement, type FunctionComponent } from "react";
 import { createRoot } from "react-dom/client";
-import type { FlagsView } from "@acme/client";
+import type { tenancy } from "@acme/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { adoptAuthSession } from "../app/adoptAuthSession";
 import { queryClient, STALE_MS } from "../app/queryClient";
@@ -21,14 +21,14 @@ vi.mock("../app/api", () => ({
   api: {
     get: (path: string) => {
       net.reads.push(path);
-      return Promise.resolve({ flags: { "media-uploads": true } } satisfies FlagsView);
+      return Promise.resolve({ flags: { "media-uploads": true } } satisfies tenancy.FlagsView);
     },
   },
 }));
 
 vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
 
-const snapshot = (on: boolean): FlagsView => ({ flags: { "media-uploads": on } });
+const snapshot = (on: boolean): tenancy.FlagsView => ({ flags: { "media-uploads": on } });
 const org = (slug: string) => ({ id: slug, name: slug, slug, kind: "team" as const, created_at: "2026-09-01T00:00:00Z" });
 
 beforeEach(() => {

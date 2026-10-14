@@ -1,4 +1,4 @@
-import type { ApiKeyView, InvitationView, MeView } from "@acme/client";
+import type { tenancy } from "@acme/client";
 import { describe, expect, it } from "vitest";
 import {
   apiKeyRows,
@@ -15,7 +15,7 @@ import {
 
 const now = new Date("2026-09-16T12:00:00Z");
 
-const key = (overrides: Partial<ApiKeyView>): ApiKeyView => ({
+const key = (overrides: Partial<tenancy.ApiKeyView>): tenancy.ApiKeyView => ({
   id: "k1",
   name: "ci",
   role: "member",
@@ -26,7 +26,7 @@ const key = (overrides: Partial<ApiKeyView>): ApiKeyView => ({
   ...overrides,
 });
 
-const me: MeView = {
+const me: tenancy.MeView = {
   user: { id: "u1", email: "a@b.c", display_name: "Ann", created_at: "2026-09-01T00:00:00Z" },
   org: { id: "o1", name: "Ajax", slug: "ajax", kind: "team", created_at: "2026-09-01T00:00:00Z" },
   role: "owner",
@@ -58,7 +58,7 @@ describe("settings model", () => {
 });
 
 describe("members and single sign-on", () => {
-  const as = (role: MeView["role"], permissions: MeView["permissions"], kind: "team" | "personal" = "team"): MeView => ({
+  const as = (role: tenancy.MeView["role"], permissions: tenancy.MeView["permissions"], kind: "team" | "personal" = "team"): tenancy.MeView => ({
     ...me,
     role,
     permissions,
@@ -82,7 +82,7 @@ describe("members and single sign-on", () => {
   });
 
   it("lists pending invitations with their expiry", () => {
-    const invitation = (expires_at: string): InvitationView => ({
+    const invitation = (expires_at: string): tenancy.InvitationView => ({
       id: "i1",
       email: "bob@example.test",
       role: "member",
@@ -106,7 +106,7 @@ describe("members and single sign-on", () => {
 describe("the role control", () => {
   const bob = { id: "u2", email: "bob@b.c", display_name: "Bob", created_at: "2026-09-02T00:00:00Z" };
   const cid = { id: "u3", email: "cid@b.c", display_name: "Cid", created_at: "2026-09-03T00:00:00Z" };
-  const as = (role: MeView["role"], permissions: MeView["permissions"]): MeView => ({ ...me, role, permissions });
+  const as = (role: tenancy.MeView["role"], permissions: tenancy.MeView["permissions"]): tenancy.MeView => ({ ...me, role, permissions });
   const admin = as("admin", ["read", "write", "manage_members", "manage_keys"]);
 
   it("pairs each member with their role and what the caller may give them", () => {

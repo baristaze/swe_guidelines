@@ -1,9 +1,9 @@
-import type { MembershipChoiceView } from "@acme/client";
+import type { tenancy } from "@acme/client";
 import { describe, expect, it } from "vitest";
 import type { PendingSignIn } from "../../store/signInState";
 import { callbackStep, checkEmail, chooseOrg, landingPath, readStart } from "./signInModel";
 
-const membership = (name: string, kind: "personal" | "team" = "team"): MembershipChoiceView => ({
+const membership = (name: string, kind: "personal" | "team" = "team"): tenancy.MembershipChoiceView => ({
   org: { id: name, name, slug: name.toLowerCase(), kind, created_at: "2026-01-01T00:00:00Z" },
   user: { id: "u", email: "a@b.c", display_name: "A", created_at: "2026-01-01T00:00:00Z" },
   role: "member",
