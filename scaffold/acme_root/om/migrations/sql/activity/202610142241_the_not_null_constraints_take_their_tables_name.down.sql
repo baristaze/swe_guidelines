@@ -1,0 +1,15 @@
+-- Gives each not-null constraint of a renamed table the name it had.
+
+ALTER TABLE activity.change_events RENAME CONSTRAINT change_events_payload_not_null TO events_payload_not_null;
+ALTER TABLE activity.change_events RENAME CONSTRAINT change_events_app_not_null TO events_app_not_null;
+ALTER TABLE activity.change_events RENAME CONSTRAINT change_events_request_id_not_null TO events_request_id_not_null;
+ALTER TABLE activity.change_events RENAME CONSTRAINT change_events_actor_id_not_null TO events_actor_id_not_null;
+ALTER TABLE activity.change_events RENAME CONSTRAINT change_events_produced_at_not_null TO events_produced_at_not_null;
+ALTER TABLE activity.change_events RENAME CONSTRAINT change_events_target_id_not_null TO events_target_id_not_null;
+ALTER TABLE activity.change_events RENAME CONSTRAINT change_events_kind_not_null TO events_kind_not_null;
+ALTER TABLE activity.change_events RENAME CONSTRAINT change_events_seq_not_null TO events_seq_not_null;
+ALTER TABLE activity.change_events RENAME CONSTRAINT change_events_org_id_not_null TO events_org_id_not_null;
+ALTER TABLE activity.change_events RENAME CONSTRAINT change_events_id_not_null TO events_id_not_null;
+ALTER TABLE activity.change_event_cursors RENAME CONSTRAINT change_event_cursors_floor_not_null TO event_cursors_floor_not_null;
+ALTER TABLE activity.change_event_cursors RENAME CONSTRAINT change_event_cursors_head_not_null TO event_cursors_head_not_null;
+ALTER TABLE activity.change_event_cursors RENAME CONSTRAINT change_event_cursors_org_id_not_null TO event_cursors_org_id_not_null;
