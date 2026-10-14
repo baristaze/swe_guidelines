@@ -11,8 +11,8 @@ from acme.integrations.identity import IdentityProviderInterface
 from acme.integrations.identity.absent import IdentityProviderAbsentImpl
 from acme.integrations.root import IntegrationsInterface
 from acme.om.base import utcnow
-from acme.om.events import EventsManagerInterface
-from acme.om.events.impl.manager import EventsManagerImpl, EventsOptions
+from acme.om.change_events import ChangeEventsManagerInterface
+from acme.om.change_events.impl.manager import ChangeEventsManagerImpl, ChangeEventsOptions
 from acme.om.idempotency import IdempotencyManagerInterface
 from acme.om.idempotency.impl.manager import IdempotencyManagerImpl, IdempotencyOptions
 from acme.om.leases import LeasesManagerInterface
@@ -48,7 +48,7 @@ class Managers:
     work_operator: WorkOperatorManagerInterface
     media: MediaManagerInterface
     idempotency: IdempotencyManagerInterface
-    events: EventsManagerInterface
+    change_events: ChangeEventsManagerInterface
     outbox: OutboxRelayInterface
     orchestrations: OrchestrationsManagerInterface
     leases: LeasesManagerInterface
@@ -110,7 +110,7 @@ def build_managers(
     *,
     media_options: MediaOptions | None = None,
     idempotency_options: IdempotencyOptions | None = None,
-    events_options: EventsOptions | None = None,
+    change_events_options: ChangeEventsOptions | None = None,
     work_options: WorkOptions | None = None,
     orchestrations_options: OrchestrationsOptions | None = None,
     leases_options: LeasesOptions | None = None,
@@ -130,7 +130,7 @@ def build_managers(
     # and the graph the root hands back is still whole.
     outbox = OutboxRelayImpl(
         storage.get_outbox_storage(),
-        storage.get_event_storage(),
+        storage.get_change_event_storage(),
         infra.get_topics(),
         lambda: managers.work,
     )
@@ -145,13 +145,13 @@ def build_managers(
             else integrations.get_identity_provider()
         ),
     )
-    events = EventsManagerImpl(
-        storage.get_event_storage(), tenancy, events_options or EventsOptions()
+    change_events = ChangeEventsManagerImpl(
+        storage.get_change_event_storage(), tenancy, change_events_options or ChangeEventsOptions()
     )
     work = WorkManagerImpl(
         storage.get_work_storage(),
         tenancy,
-        events,
+        change_events,
         infra.get_topics(),
         work_options or WorkOptions(),
     )
@@ -186,7 +186,7 @@ def build_managers(
     )
     tenancy_operator = TenancyOperatorManagerImpl(
         storage.get_tenancy_storage(),
-        storage.get_event_storage(),
+        storage.get_change_event_storage(),
         outbox,
         operator_options or TenancyOperatorOptions(),
     )
@@ -197,12 +197,12 @@ def build_managers(
         work_operator=WorkOperatorManagerImpl(
             storage.get_work_storage(),
             storage.get_tenancy_storage(),
-            storage.get_event_storage(),
+            storage.get_change_event_storage(),
             infra.get_topics(),
         ),
         media=media,
         idempotency=idempotency,
-        events=events,
+        change_events=change_events,
         outbox=outbox,
         orchestrations=orchestrations,
         leases=leases,

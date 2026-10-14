@@ -325,7 +325,7 @@ async def test_requeue_stale_runs_once_across_tenants_and_dead_letters_in_each(
     assert await managers.work.requeue_stale(request(), limit=2) == 1
     assert await managers.work.requeue_stale(request(), limit=2) == 0
 
-    events = await managers.events.get_events(ctx, after_seq=0, limit=10)
+    events = await managers.change_events.get_change_events(ctx, after_seq=0, limit=10)
     assert [(e.kind, e.target_id, e.payload["last_error"]) for e in events] == [
         (DEAD_LETTER_KIND, exhausted.id, "lease expired")
     ]
@@ -333,7 +333,7 @@ async def test_requeue_stale_runs_once_across_tenants_and_dead_letters_in_each(
     assert [(p.org_id, p.kind) for p in seen if isinstance(p, EntityChangedPayload)] == [
         (ctx.org_id, DEAD_LETTER_KIND)
     ]
-    assert await managers.events.get_events(bob, after_seq=0, limit=10) == []
+    assert await managers.change_events.get_change_events(bob, after_seq=0, limit=10) == []
     ids = set()
     for _ in range(2):
         again = await managers.work.claim(request(), "default", [WorkKind.NOOP], "w2", LEASE)
@@ -369,7 +369,7 @@ async def test_a_dead_letter_in_a_gone_tenant_is_counted_without_an_event(
     assert OUTCOMES.labels(subsystem="work", outcome="dead_letter")._value.get() == counted + 1
     failed = await storage.get_work_storage().read_item(ctx.org_id, doomed.id)
     assert failed is not None and failed.status is WorkStatus.FAILED
-    assert await storage.get_event_storage().read_after(ctx.org_id, 0, 10) == []
+    assert await storage.get_change_event_storage().read_after(ctx.org_id, 0, 10) == []
     moved = await storage.get_work_storage().read_item(bob.org_id, bobs.id)
     assert moved is not None and moved.status is WorkStatus.QUEUED
 
@@ -504,7 +504,7 @@ async def test_a_failed_item_is_a_dead_letter_with_an_audit_event(
     work_ctx, claimed_item = claimed
     failed = await managers.work.fail(work_ctx, claimed_item, "boom")
     assert failed.status is WorkStatus.FAILED and failed.updated_by == EMPTY_UUID
-    events = await managers.events.get_events(ctx, after_seq=0, limit=10)
+    events = await managers.change_events.get_change_events(ctx, after_seq=0, limit=10)
     assert [(e.kind, e.target_id, e.payload["last_error"]) for e in events] == [
         (DEAD_LETTER_KIND, item.id, "boom")
     ]
@@ -526,7 +526,7 @@ async def test_a_failure_for_good_is_a_dead_letter_with_attempts_left(
     failed = await managers.work.fail_for_good(claimed[0], claimed[1], "refused: no")
     assert failed.status is WorkStatus.FAILED and failed.claim_token is None
     assert (failed.attempts, failed.last_error) == (1, "refused: no")
-    events = await managers.events.get_events(ctx, after_seq=0, limit=10)
+    events = await managers.change_events.get_change_events(ctx, after_seq=0, limit=10)
     assert [(e.kind, e.target_id, e.payload["attempts"]) for e in events] == [
         (DEAD_LETTER_KIND, item.id, 1)
     ]
@@ -575,7 +575,7 @@ async def test_an_operator_requeues_a_failed_item_as_a_fresh_one(
     assert [p.kind for p in woken if isinstance(p, WorkAvailablePayload)] == ["NOOP"]
 
     # The diary names the requeue, who made it, and what the item was.
-    events = await managers.events.get_events(ctx, after_seq=0, limit=10)
+    events = await managers.change_events.get_change_events(ctx, after_seq=0, limit=10)
     assert [e.kind for e in events] == [DEAD_LETTER_KIND, REQUEUED_KIND]
     audit = events[-1]
     assert (audit.target_id, audit.actor_id, audit.request_id) == (
@@ -605,7 +605,7 @@ async def test_a_requeue_of_an_item_that_is_not_failed_is_refused(
     await managers.work.complete(claimed[0], claimed[1])
     with pytest.raises(WorkNotFailed):  # done
         await managers.work_operator.requeue(operator(), ctx.org_id, item_id)
-    events = await managers.events.get_events(ctx, after_seq=0, limit=10)
+    events = await managers.change_events.get_change_events(ctx, after_seq=0, limit=10)
     assert [e.kind for e in events].count(REQUEUED_KIND) == 1
 
 
@@ -633,7 +633,7 @@ async def test_a_retry_that_still_has_attempts_is_not_a_dead_letter(
     work_ctx, claimed_item = claimed
     requeued = await managers.work.fail(work_ctx, claimed_item, "again")
     assert requeued.status is WorkStatus.QUEUED
-    assert await managers.events.get_events(ctx, after_seq=0, limit=10) == []
+    assert await managers.change_events.get_change_events(ctx, after_seq=0, limit=10) == []
 
 
 async def test_purge_items_takes_done_and_failed_items_past_the_retention(

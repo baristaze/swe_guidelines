@@ -16,11 +16,11 @@ security policy, and scope the storage funnel uses.
 `[--scale <n>] [--focus <namespace,...>] [--contention]`
 
 `--scale` is the seed's, `1` by default (5,000 people with a personal
-org each, a team org of 200 members, a million events, 50,000 work
+org each, a team org of 200 members, a million change events, 50,000 work
 items); `0.01`
 is a quick run with the same shape, whose times prove the wiring and
 nothing about scale. `--focus` narrows the audit, the hot paths of step
-5 included, to some namespaces (`tenancy`, `events`, `work`, ...); every
+5 included, to some namespaces (`tenancy`, `change_events`, `work`, ...); every
 namespace by default. `--contention` adds the measure of locks held
 across round trips. The audit reads and runs the checkout, tools and
 code alike; to audit another commit, run it from a checkout of that
@@ -76,11 +76,11 @@ and drops. It holds no cloud credential and reads no environment.
    page or the key), `risk` (linear in something that grows, but fine
    today), `gap` (reads far more than it returns where it runs often).
 5. The hot paths. For each of the per-request baseline, the member and
-   API key lists, the event append, the queue claim, the outbox relay,
+   API key lists, the change event append, the queue claim, the outbox relay,
    and the sweep's pass, say what it costs and what grows it, from the
    plans and from the frequency of step 2. A per-tenant cost times the
    number of tenants is the sweep's; a lock held across round trips (the
-   event cursor) caps a tenant's write rate. With `--contention`, measure those locks with the
+   change event cursor) caps a tenant's write rate. With `--contention`, measure those locks with the
    storage impls as `references/statements.md` shows; without
    it, say they were not measured.
 6. Read the inventory now, before any candidate adds scans: an index

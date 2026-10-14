@@ -15,8 +15,8 @@ from api_support import OWNER, add_member, build_container, seed_request
 
 from acme.infra.topics import EntityChangedPayload, Topics
 from acme.om.base import new_id, utcnow
+from acme.om.change_events.types.change_event import ChangeEvent
 from acme.om.context import Role, TenantContext
-from acme.om.events.types.event import Event
 from acme.om.tenancy.rules import hash_token
 from acme.om.tenancy.types.socket_ticket import SocketPrincipal
 from acme.services.api.container import AppContainer
@@ -248,7 +248,7 @@ class Heads:
     def __init__(self, container: AppContainer, max_age: float) -> None:
         self.clock = Clock()
         self.reads = 0
-        events = container.managers.events
+        events = container.managers.change_events
         read = events.get_head
 
         async def counted(ctx: TenantContext) -> int:
@@ -287,9 +287,9 @@ async def add_file(container: AppContainer, owner: TenantContext, name: str) -> 
 async def append_unheard(container: AppContainer, owner: TenantContext) -> None:
     """An event the bus never carried to this process: its subscription was
     down, or the publish was lost. The head moves; nothing is heard."""
-    await container.managers.events.append_event(
+    await container.managers.change_events.append_change_event(
         owner,
-        Event(
+        ChangeEvent(
             id=new_id(),
             org_id=owner.org_id,
             kind="media.file.updated",

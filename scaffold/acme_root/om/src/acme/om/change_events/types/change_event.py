@@ -12,7 +12,7 @@ from pydantic import Field
 from acme.om.base import FrozenMapping, Identifiable
 
 
-class Event(Identifiable):
+class ChangeEvent(Identifiable):
     org_id: UUID  # carried on the event: the relay appends it with no context
     seq: int = 0  # per tenant, gapless; 0 until storage assigns it on append
     kind: str  # "<namespace>.<entity>.<created|updated|deleted>", or an audit kind

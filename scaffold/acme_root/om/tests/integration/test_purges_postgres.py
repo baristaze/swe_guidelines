@@ -27,8 +27,8 @@ from typing import Any
 from uuid import UUID, uuid4
 
 import pytest
-from contracts.event_storage import append_one, make_event
-from contracts.event_storage import drained as drained_events
+from contracts.change_event_storage import append_one, make_change_event
+from contracts.change_event_storage import drained as drained_events
 from contracts.factories import make_auth_session, make_socket_ticket
 from contracts.idempotency_storage import drained as drained_records
 from contracts.idempotency_storage import make_record
@@ -42,7 +42,7 @@ from sqlalchemy import event, text
 from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 
 from acme.om.base import EMPTY_UUID, new_id, utcnow
-from acme.om.events.storage.impl.postgres import EventStoragePostgresImpl
+from acme.om.change_events.storage.impl.postgres import ChangeEventStoragePostgresImpl
 from acme.om.idempotency.storage.impl.postgres import IdempotencyStoragePostgresImpl
 from acme.om.idempotency.types.attempt import lease_bound
 from acme.om.media.storage.impl.postgres import MediaStoragePostgresImpl
@@ -212,10 +212,10 @@ async def test_every_purge_across_tenants_reads_an_index_led_by_its_retention(
     assert served(records, "ix_idempotency_records_created_at"), records
     assert "ix_idempotency_records_attempt_id" in records, records
     (trim,) = await across(
-        DatabaseRole.ACTIVITY, lambda: EventStoragePostgresImpl(sessions).trim(cut, 1000)
+        DatabaseRole.ACTIVITY, lambda: ChangeEventStoragePostgresImpl(sessions).trim(cut, 1000)
     )
-    assert served(trim, "ix_events_produced_at"), trim
-    assert "uq_events_org_id_seq" in trim and "pk_event_cursors" in trim, trim
+    assert served(trim, "ix_change_events_produced_at"), trim
+    assert "uq_change_events_org_id_seq" in trim and "pk_change_event_cursors" in trim, trim
     (settled,) = await across(
         DatabaseRole.CORE,
         lambda: OrchestrationsStoragePostgresImpl(sessions).purge_settled(cut, 1000),
@@ -274,17 +274,19 @@ async def test_the_trim_skips_a_stream_an_append_holds_and_trims_the_others(
     """An append holds its tenant's cursor row to its commit. The trim takes
     every other tenant's run in the meantime and leaves that one for its next
     call, never waiting on it; the floor of each tenant moves with its own."""
-    storage = EventStoragePostgresImpl(pg_sessions)
+    storage = ChangeEventStoragePostgresImpl(pg_sessions)
     now = await drained_events(storage)
     busy, idle = new_id(), new_id()
     for org in (busy, idle):
         for _ in range(2):
-            await append_one(storage, org, make_event(org, produced_at=now - timedelta(days=100)))
+            await append_one(
+                storage, org, make_change_event(org, produced_at=now - timedelta(days=100))
+            )
     before = now - timedelta(days=90)
     async with pg_sessions[DatabaseRole.ACTIVITY]() as holder:
         await set_scope(holder, busy, None, None)
         await holder.execute(
-            text("SELECT head FROM activity.event_cursors WHERE org_id = :org FOR UPDATE"),
+            text("SELECT head FROM activity.change_event_cursors WHERE org_id = :org FOR UPDATE"),
             {"org": busy},
         )
         assert await storage.trim(before, 1000) == 2, "the idle tenant's, not the busy one's"

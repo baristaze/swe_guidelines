@@ -2,8 +2,8 @@ from pathlib import Path
 
 from acme.infra.impl.local import InfraLocalImpl
 from acme.integrations.impl.configured import absent_integrations
-from acme.om.events import EventsManagerInterface
-from acme.om.events.storage import EventStorageInterface
+from acme.om.change_events import ChangeEventsManagerInterface
+from acme.om.change_events.storage import ChangeEventStorageInterface
 from acme.om.idempotency import IdempotencyManagerInterface
 from acme.om.idempotency.storage import IdempotencyStorageInterface
 from acme.om.leases import LeasesManagerInterface
@@ -38,7 +38,7 @@ async def test_memory_root_serves_every_storage() -> None:
     assert isinstance(root.get_work_storage(), WorkStorageInterface)
     assert isinstance(root.get_media_storage(), MediaStorageInterface)
     assert isinstance(root.get_idempotency_storage(), IdempotencyStorageInterface)
-    assert isinstance(root.get_event_storage(), EventStorageInterface)
+    assert isinstance(root.get_change_event_storage(), ChangeEventStorageInterface)
     assert isinstance(root.get_outbox_storage(), OutboxStorageInterface)
     assert isinstance(root.get_orchestrations_storage(), OrchestrationsStorageInterface)
     assert isinstance(root.get_lease_storage(), LeasesStorageInterface)
@@ -114,7 +114,7 @@ def test_business_root_has_a_field_per_manager(tmp_path: Path) -> None:
     assert isinstance(managers.work_operator, WorkOperatorManagerInterface)
     assert isinstance(managers.media, MediaManagerInterface)
     assert isinstance(managers.idempotency, IdempotencyManagerInterface)
-    assert isinstance(managers.events, EventsManagerInterface)
+    assert isinstance(managers.change_events, ChangeEventsManagerInterface)
     assert isinstance(managers.outbox, OutboxRelayInterface)
     assert isinstance(managers.orchestrations, OrchestrationsManagerInterface)
     assert isinstance(managers.leases, LeasesManagerInterface)

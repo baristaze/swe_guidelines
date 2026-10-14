@@ -6,9 +6,9 @@ from pydantic import ValidationError
 from acme.infra.observability import OUTCOMES
 from acme.infra.topics import EntityChangedPayload, Topics, TopicsInterface, WorkAvailablePayload
 from acme.om.base import new_id, utcnow
+from acme.om.change_events.storage import ChangeEventStorageInterface
+from acme.om.change_events.types.change_event import ChangeEvent
 from acme.om.context import OperatorContext, OperatorPermission
-from acme.om.events.storage import EventStorageInterface
-from acme.om.events.types.event import Event
 from acme.om.exceptions import NotFound, ValidationFailed, WorkNotFailed
 from acme.om.tenancy.storage import TenancyStorageInterface
 from acme.om.work.manager import WorkOperatorManagerInterface
@@ -32,12 +32,12 @@ class WorkOperatorManagerImpl(WorkOperatorManagerInterface):
         self,
         storage: WorkStorageInterface,
         tenancy: TenancyStorageInterface,
-        events: EventStorageInterface,
+        change_events: ChangeEventStorageInterface,
         topics: TopicsInterface,
     ) -> None:
         self._storage = storage
         self._tenancy = tenancy
-        self._events = events
+        self._change_events = change_events
         self._topics = topics
 
     async def requeue(self, admin: OperatorContext, org_id: UUID, item_id: UUID) -> WorkItem:
@@ -155,10 +155,10 @@ class WorkOperatorManagerImpl(WorkOperatorManagerInterface):
         stream in `core`, so this follows the write, as the dead letter's
         event does: a crash between the two loses the entry, never the
         requeue."""
-        (event,) = await self._events.append_events(
+        (event,) = await self._change_events.append_change_events(
             org_id,
             [
-                Event(
+                ChangeEvent(
                     id=new_id(),
                     org_id=org_id,
                     kind=REQUEUED_KIND,

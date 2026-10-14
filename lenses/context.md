@@ -403,7 +403,7 @@ base of every payload; the rest is judged.
 sign-up, a sign-in, a claim, a sweep, a webhook token, an integration
 acting for a person) take the request stage and produce the stage the
 work runs under; a test names each.
-The outbox relay and its two handoffs, the event append and the work
+The outbox relay and its two handoffs, the change event append and the work
 enqueue, take `(org_id, row)` instead: the row carries tenant, actor,
 request id.
 

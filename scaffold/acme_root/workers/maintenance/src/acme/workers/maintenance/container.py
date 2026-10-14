@@ -11,7 +11,7 @@ from acme.integrations.identity import IdentityProviderInterface
 from acme.integrations.identity.twin import IdentityProviderTwinImpl
 from acme.integrations.impl.configured import IntegrationsConfiguredImpl, IntegrationsOverImpl
 from acme.integrations.root import IntegrationsInterface
-from acme.om.events.impl.manager import EventsOptions
+from acme.om.change_events.impl.manager import ChangeEventsOptions
 from acme.om.idempotency.impl.manager import IdempotencyOptions
 from acme.om.leases.impl.manager import LeasesOptions
 from acme.om.media.impl.manager import MediaOptions
@@ -34,11 +34,11 @@ LEASE_SWEEP_BATCH = LeasesOptions().sweep_batch
 or more may have left some due."""
 
 
-def events_options(settings: MaintenanceSettings) -> EventsOptions:
+def change_events_options(settings: MaintenanceSettings) -> ChangeEventsOptions:
     """The sweep's trim of each living org's stream, 90 days by default and
     off at 0, a batch per call like every purge."""
-    days = settings.event_retention_days
-    return EventsOptions(
+    days = settings.change_event_retention_days
+    return ChangeEventsOptions(
         retention=timedelta(days=days) if days else None, purge_batch=settings.worker_purge_batch
     )
 
@@ -71,7 +71,7 @@ def worker_managers(
         idempotency_options=IdempotencyOptions(
             retention=timedelta(hours=settings.idempotency_retention_hours), purge_batch=batch
         ),
-        events_options=events_options(settings),
+        change_events_options=change_events_options(settings),
         work_options=WorkOptions(
             retention=timedelta(days=settings.work_retention_days), purge_batch=batch
         ),

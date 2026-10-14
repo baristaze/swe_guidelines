@@ -39,8 +39,8 @@ from acme.infra.observability import (
     JsonFormatter,
 )
 from acme.om.base import EMPTY_UUID, new_id, utcnow
+from acme.om.change_events.manager import audit_change_event
 from acme.om.context import CredentialKind, RequestContext, Role, TenantContext, build_context
-from acme.om.events.manager import audit_event
 from acme.om.media.types.file import File
 from acme.om.orchestrations.types.orchestration import (
     Orchestration,
@@ -522,7 +522,7 @@ async def rows_of(container: WorkerContainer, org_id: UUID) -> dict[str, int]:
         "users": len(await storage.get_tenancy_storage().read_users(org_id, None, limit=10)),
         "files": len(await storage.get_media_storage().read_every_file(org_id, None, 10)),
         "records": len(await orchestrations.read_recent(org_id, OrchestrationKind.NOOP, 10)),
-        "events": len(await storage.get_event_storage().read_after(org_id, 0, 100)),
+        "change_events": len(await storage.get_change_event_storage().read_after(org_id, 0, 100)),
     }
 
 
@@ -550,10 +550,10 @@ async def test_a_deleted_tenant_is_marked_purged_once_nothing_is_left_and_skippe
         "users": 0,
         "files": 0,
         "records": 0,
-        "events": 0,
+        "change_events": 0,
     }
     assert not await buckets.exists(expired, Buckets.USER_FILE_UPLOADS, file.key)
-    assert await container.storage.get_event_storage().read_head(expired) == 0
+    assert await container.storage.get_change_event_storage().read_head(expired) == 0
 
     await loop._sweep_once()  # pyright: ignore[reportPrivateUsage]
     marked = await tenancy.read_org(expired)
@@ -828,7 +828,7 @@ async def test_each_purge_across_tenants_runs_once_a_pass_after_the_tenants(
     stages: set[UUID] = set()
 
     async def events(rctx: RequestContext) -> int:
-        calls.append("events")
+        calls.append("change_events")
         stages.add(rctx.request_id)
         return 0
 
@@ -843,12 +843,12 @@ async def test_each_purge_across_tenants_runs_once_a_pass_after_the_tenants(
         work,
         {"tenant": tenant},
         fast_options(sweep_budget=timedelta(0)),
-        across={"media": across_recording(calls, "media"), "events": events},
+        across={"media": across_recording(calls, "media"), "change_events": events},
     )
     await loop._sweep_once()  # pyright: ignore[reportPrivateUsage]
-    assert calls == ["tenant", "media", "events"], "one tenant, then each purge once"
+    assert calls == ["tenant", "media", "change_events"], "one tenant, then each purge once"
     await loop._sweep_once()  # pyright: ignore[reportPrivateUsage]
-    assert calls[3:] == ["tenant", "media", "events"]
+    assert calls[3:] == ["tenant", "media", "change_events"]
 
 
 async def test_a_full_purge_across_tenants_runs_again_while_the_budget_lasts(
@@ -969,7 +969,7 @@ async def test_a_living_tenant_costs_the_purges_nothing(
         storage.get_media_storage(),
         storage.get_tenancy_storage(),
         storage.get_idempotency_storage(),
-        storage.get_event_storage(),
+        storage.get_change_event_storage(),
         storage.get_orchestrations_storage(),
     ):
         for name in (*PURGE_READS, "purge_tenant", "read_every_file"):
@@ -993,7 +993,7 @@ async def test_a_living_tenant_costs_the_purges_nothing(
     assert per_tenant == [], "no living tenant is purged in its own right"
     assert len(calls) == len(set(calls)), f"each purge once a pass: {calls}"
     assert sorted(calls) == [
-        "EventStorageMemoryImpl.trim",
+        "ChangeEventStorageMemoryImpl.trim",
         "IdempotencyStorageMemoryImpl.purge_records",
         "MediaStorageMemoryImpl.purge_files_across_tenants",
         "MediaStorageMemoryImpl.read_purgeable",
@@ -1011,7 +1011,7 @@ CLOCKS = (
     "acme.om.tenancy.impl.manager",
     "acme.om.media.impl.manager",
     "acme.om.idempotency.impl.manager",
-    "acme.om.events.impl.manager",
+    "acme.om.change_events.impl.manager",
     "acme.om.work.impl.manager",
     "acme.om.outbox.impl.relay",
 )
@@ -1080,8 +1080,10 @@ async def test_a_pass_purges_every_row_past_its_retention_and_keeps_what_lives(
     await work.complete(*claimed)
     queued = await work.enqueue(ann, make_item(ann))
 
-    events = container.storage.get_event_storage()
-    await events.append_events(org, [audit_event(ann, new_id(), "tenancy.test.noted", org, {})])
+    events = container.storage.get_change_event_storage()
+    await events.append_change_events(
+        org, [audit_change_event(ann, new_id(), "tenancy.test.noted", org, {})]
+    )
     head = await events.read_head(org)
 
     storage = container.storage

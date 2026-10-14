@@ -4,10 +4,10 @@ page may have a hole below it, and the head is what a caller replays to when
 it has."""
 
 from acme.om.base import OmBase
-from acme.om.events.types.event import Event
+from acme.om.change_events.types.change_event import ChangeEvent
 
 
 class StreamPage(OmBase):
-    events: tuple[Event, ...]
+    change_events: tuple[ChangeEvent, ...]
     floor: int  # the highest seq the trim removed; 0 while it removed none
     head: int  # the last seq assigned; 0 before the first append

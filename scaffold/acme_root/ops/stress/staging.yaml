@@ -30,4 +30,4 @@ weights:
   update_display_name: 1
   create_api_key: 1
   revoke_api_key: 1
-  list_events: 1
+  list_change_events: 1

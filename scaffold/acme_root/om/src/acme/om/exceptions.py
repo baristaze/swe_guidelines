@@ -208,10 +208,10 @@ class LeaseEnded(LeasesException, Conflict):
     code = "lease_ended"
 
 
-class EventsException(OmException): ...
+class ChangeEventsException(OmException): ...
 
 
-class StreamTruncated(EventsException):
+class StreamTruncated(ChangeEventsException):
     """A read of the stream after a seq below the tenant's floor: the events
     between that seq and the floor are trimmed, so no page can close the gap.
     The caller stops replaying, reads afresh what it shows, and goes on from

@@ -1,5 +1,5 @@
 """Wire types of the operator plane. The views a tenant's rows are read into
-are the tenant's own (`OrgView`, `UserPageView`, `EventView`): an operator
+are the tenant's own (`OrgView`, `UserPageView`, `ChangeEventView`): an operator
 sees what the tenant sees, under the tenant named in the path."""
 
 from datetime import datetime
@@ -54,7 +54,7 @@ class SystemSizeView(View):
 
     tenants: int
     users: int
-    events_last_24h: int
+    change_events_last_24h: int
     since: datetime
     counted_at: datetime
 

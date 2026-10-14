@@ -1,4 +1,4 @@
-"""The events swimlane: the append-only stream behind every realtime push.
+"""The change events swimlane: the append-only stream behind every realtime push.
 The outbox relay appends one event per entity write through the event
 storage; an audit producer (the work manager's dead letter) appends through
 this manager under its context, which stamps the provenance. A client
@@ -12,13 +12,13 @@ from collections.abc import Mapping
 from uuid import UUID
 
 from acme.om.base import utcnow
+from acme.om.change_events.types.change_event import ChangeEvent
 from acme.om.context import ProvenanceScope, TenantContext
-from acme.om.events.types.event import Event
 
 
-class EventsManagerInterface(ABC):
+class ChangeEventsManagerInterface(ABC):
     @abstractmethod
-    async def append_event(self, ctx: TenantContext, event: Event) -> Event:
+    async def append_change_event(self, ctx: TenantContext, event: ChangeEvent) -> ChangeEvent:
         """Appends an audit event under the caller's tenant. An append is a
         write, so WRITE is required, and the provenance the row records (the
         actor, the request, the app) is stamped from the context, never taken
@@ -29,7 +29,9 @@ class EventsManagerInterface(ABC):
         ...
 
     @abstractmethod
-    async def get_events(self, ctx: TenantContext, after_seq: int, limit: int) -> list[Event]:
+    async def get_change_events(
+        self, ctx: TenantContext, after_seq: int, limit: int
+    ) -> list[ChangeEvent]:
         """The tenant's events after `after_seq`, oldest first. Refused with
         `StreamTruncated`, which names the floor and the head, when `after_seq`
         is below the floor: the events after it are no longer all there."""
@@ -61,12 +63,12 @@ class EventsManagerInterface(ABC):
         ...
 
 
-def audit_event(
+def audit_change_event(
     ctx: ProvenanceScope, event_id: UUID, kind: str, target_id: UUID, facts: Mapping[str, object]
-) -> Event:
+) -> ChangeEvent:
     """An audit entry: the event shape plus the tenant, the actor, the request,
     and the app, which is all it reads from the context."""
-    return Event(
+    return ChangeEvent(
         id=event_id,
         org_id=ctx.org_id,
         kind=kind,

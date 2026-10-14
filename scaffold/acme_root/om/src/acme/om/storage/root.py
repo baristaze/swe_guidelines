@@ -2,7 +2,7 @@
 
 from abc import ABC, abstractmethod
 
-from acme.om.events.storage import EventStorageInterface
+from acme.om.change_events.storage import ChangeEventStorageInterface
 from acme.om.idempotency.storage import IdempotencyStorageInterface
 from acme.om.leases.storage import LeasesStorageInterface
 from acme.om.media.storage import MediaStorageInterface
@@ -26,7 +26,7 @@ class StorageInterface(ABC):
     def get_idempotency_storage(self) -> IdempotencyStorageInterface: ...
 
     @abstractmethod
-    def get_event_storage(self) -> EventStorageInterface: ...
+    def get_change_event_storage(self) -> ChangeEventStorageInterface: ...
 
     @abstractmethod
     def get_outbox_storage(self) -> OutboxStorageInterface: ...

@@ -21,7 +21,7 @@ import inspect
 import pkgutil
 
 from contracts import (
-    event_storage,
+    change_event_storage,
     idempotency_storage,
     lease_storage,
     media_storage,
@@ -58,7 +58,7 @@ STORAGE_EXCEPTIONS: frozenset[tuple[str, str]] = frozenset(
         # tenant, and the one global row they are kept in, which the operator
         # plane reads instead of counting in a request.
         ("TenancyStorageInterface", "count_orgs_and_users"),
-        ("EventStorageInterface", "count_since"),
+        ("ChangeEventStorageInterface", "count_since"),
         ("TenancyStorageInterface", "write_system_size"),
         ("TenancyStorageInterface", "read_system_size"),
         ("TenancyStorageInterface", "read_users_by_identity"),
@@ -86,7 +86,7 @@ STORAGE_EXCEPTIONS: frozenset[tuple[str, str]] = frozenset(
         ("IdempotencyStorageInterface", "purge_records"),
         ("MediaStorageInterface", "read_purgeable"),
         ("MediaStorageInterface", "purge_files_across_tenants"),
-        ("EventStorageInterface", "trim"),
+        ("ChangeEventStorageInterface", "trim"),
         ("OrchestrationsStorageInterface", "purge_settled"),
         ("LeasesStorageInterface", "purge_settled"),
         # The leases' sweep finds the orgs with a lease lapsed, a request past
@@ -105,7 +105,7 @@ STORAGE_EXCEPTIONS: frozenset[tuple[str, str]] = frozenset(
 )
 
 CROSS_TENANT_CASES: dict[str, frozenset[str]] = {
-    "EventStorageInterface": event_storage.CROSS_TENANT_CASES,
+    "ChangeEventStorageInterface": change_event_storage.CROSS_TENANT_CASES,
     "IdempotencyStorageInterface": idempotency_storage.CROSS_TENANT_CASES,
     "LeasesStorageInterface": lease_storage.CROSS_TENANT_CASES,
     "MediaStorageInterface": media_storage.CROSS_TENANT_CASES,
@@ -141,7 +141,7 @@ MANAGER_EXCEPTIONS: frozenset[tuple[str, str]] = frozenset(
         ("MediaManagerInterface", "purge_across_tenants"),
         ("TenancyManagerInterface", "purge_across_tenants"),
         ("IdempotencyManagerInterface", "purge_across_tenants"),
-        ("EventsManagerInterface", "purge_across_tenants"),
+        ("ChangeEventsManagerInterface", "purge_across_tenants"),
         ("OrchestrationsManagerInterface", "purge_across_tenants"),
         ("LeasesManagerInterface", "purge_across_tenants"),
         # The sweep's gauges of the queue, read across tenants like the purge.

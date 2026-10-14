@@ -8,7 +8,7 @@ A frame and a replayed record carry the identity of a change (`seq`,
 `kind`, `target_id`, the actor) and no field of the entity (Realtime at
 the Edge). NET-30 lets one field through: the record's compare-and-set
 `version`, which the write's outbox row carries and the relay copies
-onto the event and the publish.
+onto the change event and the publish.
 
 A client that follows the stream reads a record each time a push names
 it, the tab that made the write included. That tab already holds the
@@ -50,8 +50,8 @@ tells every member that a record changed, when, and by whom, so the
 count of changes is no new fact, and the payload holds nothing a
 person's erasure has to find.
 
-The event's payload is the row's, so the event keeps the version too.
-The replay (`GET /v1/events`) does not serve the payload, so only the
+The change event's payload is the row's, so the change event keeps the version too.
+The replay (`GET /v1/change-events`) does not serve the payload, so only the
 socket's frame changes.
 
 The frame's field is optional: a client that does not know it ignores it

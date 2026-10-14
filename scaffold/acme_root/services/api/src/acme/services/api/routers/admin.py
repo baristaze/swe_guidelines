@@ -41,8 +41,8 @@ from acme.services.api.types.admin import (
     TenantCapView,
     TotpConfirmedView,
 )
+from acme.services.api.types.change_events import OperatorChangeEventView
 from acme.services.api.types.common import LIMIT_DEFAULT
-from acme.services.api.types.events import OperatorEventView
 from acme.services.api.types.tenancy import OrgPageView, OrgView, UserPageView, UserView
 
 router = APIRouter(prefix="/admin", tags=["admin"])
@@ -169,15 +169,15 @@ async def add_member(
     return await idem.run(201, lambda attempt: service.add_member(admin, org_id, body, attempt))
 
 
-@router.get("/orgs/{org_id}/events", response_model=list[OperatorEventView])
-async def list_events(
+@router.get("/orgs/{org_id}/change-events", response_model=list[OperatorChangeEventView])
+async def list_change_events(
     admin: OperatorCtx,
     service: AdminService,
     org_id: UUID,
     after_seq: Annotated[int, Query(ge=0)] = 0,
     limit: int = LIMIT_DEFAULT,
-) -> list[OperatorEventView]:
-    return await service.get_events(admin, org_id, after_seq, limit)
+) -> list[OperatorChangeEventView]:
+    return await service.get_change_events(admin, org_id, after_seq, limit)
 
 
 @router.post("/orgs/{org_id}/work/{item_id}/requeue", response_model=OperatorWorkItemView)

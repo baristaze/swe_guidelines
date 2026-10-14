@@ -15,8 +15,8 @@ import httpx
 import truststore
 
 from acme.client.types import (
+    ChangeEventView,
     DeviceSignInView,
-    EventView,
     FilePageView,
     FileView,
     InvitationPageView,
@@ -33,7 +33,7 @@ from acme.client.types import (
     MembershipChoicePageView,
     MembershipChoiceView,
     MeView,
-    OperatorEventView,
+    OperatorChangeEventView,
     OperatorTokenPageView,
     OperatorTokenView,
     OperatorView,
@@ -737,13 +737,15 @@ class ApiClient:
             raise ApiError(fetched.status_code, "download_refused", fetched.text[:200], None)
         return fetched.content
 
-    # Events and the channel
+    # Change events and the channel
 
-    async def events_after(self, after_seq: int, limit: int = LIMIT_MAX) -> list[EventView]:
+    async def change_events_after(
+        self, after_seq: int, limit: int = LIMIT_MAX
+    ) -> list[ChangeEventView]:
         body = await self.request(
-            "GET", "/v1/events", params={"after_seq": after_seq, "limit": limit}
+            "GET", "/v1/change-events", params={"after_seq": after_seq, "limit": limit}
         )
-        return [EventView.model_validate(e) for e in cast(list[Any], body)]
+        return [ChangeEventView.model_validate(e) for e in cast(list[Any], body)]
 
     async def ticket(self) -> IssuedTicketView:
         return IssuedTicketView.model_validate(await self.request("POST", "/v1/realtime/tickets"))
@@ -834,15 +836,15 @@ class ApiClient:
         body = await self.request("GET", f"/v1/admin/orgs/{org_id}/members", params=params)
         return UserPageView.model_validate(body)
 
-    async def admin_events(
+    async def admin_change_events(
         self, org_id: UUID, after_seq: int = 0, limit: int = LIMIT_MAX
-    ) -> list[OperatorEventView]:
+    ) -> list[OperatorChangeEventView]:
         body = await self.request(
             "GET",
-            f"/v1/admin/orgs/{org_id}/events",
+            f"/v1/admin/orgs/{org_id}/change-events",
             params={"after_seq": after_seq, "limit": limit},
         )
-        return [OperatorEventView.model_validate(e) for e in cast(list[Any], body)]
+        return [OperatorChangeEventView.model_validate(e) for e in cast(list[Any], body)]
 
     async def admin_requeue_work(self, org_id: UUID, item_id: UUID) -> OperatorWorkItemView:
         """One failed work item back to the queue, with its attempts reset; a

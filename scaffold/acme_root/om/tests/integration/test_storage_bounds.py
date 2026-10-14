@@ -22,7 +22,7 @@ from sqlalchemy.exc import DBAPIError
 from sqlalchemy.exc import TimeoutError as PoolTimeoutError
 
 from acme.om.base import EMPTY_UUID, new_id
-from acme.om.events.storage.tables.events import Events
+from acme.om.change_events.storage.tables.change_events import ChangeEvents
 from acme.om.exceptions import Unavailable
 from acme.om.media.storage.tables.files import Files
 from acme.om.storage.impl.pg_base import LoginSessions, PgStorageBase
@@ -99,7 +99,7 @@ async def test_a_checkout_past_the_pool_waits_its_bound_and_fails(
 
 A_TABLE_OF: dict[DatabaseRole, type[Any]] = {
     DatabaseRole.CORE: Files,
-    DatabaseRole.ACTIVITY: Events,
+    DatabaseRole.ACTIVITY: ChangeEvents,
     DatabaseRole.QUEUE: WorkItems,
     DatabaseRole.ADMIN: SystemSizes,
 }

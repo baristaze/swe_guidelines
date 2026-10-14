@@ -115,7 +115,7 @@ file.
 
    ```bash
    uv run python ops/audit/auditdb.py create audit_credential_lifetimes_<yyyymmdd>
-   uv run python ops/audit/dbcalls.py run audit_credential_lifetimes_<yyyymmdd> --only sign_in,events \
+   uv run python ops/audit/dbcalls.py run audit_credential_lifetimes_<yyyymmdd> --only sign_in,change_events \
      --out ~/Downloads/acme_credential_lifetimes_<yyyy-mm-dd>/calls.json \
      [--flows ~/Downloads/acme_credential_lifetimes_<yyyy-mm-dd>/more_flows.py]
    uv run python ops/audit/dbcalls.py summary ~/Downloads/acme_credential_lifetimes_<yyyy-mm-dd>/calls.json
@@ -123,7 +123,7 @@ file.
 
    The built-in `sign_in` flow measures the auth session and the API key on
    `GET /v1/me` (area `baseline`) and the sign-in credential on
-   `GET /v1/auth/memberships` (area `auth`); `events` measures the
+   `GET /v1/auth/memberships` (area `auth`); `change_events` measures the
    ticket's redemption and the socket's recheck (area `realtime`). The
    check's cost is the credential's own transactions in each call's
    `detail`, apart from what the route reads after it; tally

@@ -94,7 +94,7 @@ def build_loop(container: WorkerContainer, lane: str | None = None) -> WorkerLoo
             # Every file's object, then its row.
             "media": managers.media.purge_tenant,
             "tenancy": managers.tenancy.purge_tenant,
-            "events": managers.events.purge_tenant,
+            "change_events": managers.change_events.purge_tenant,
             "orchestrations": managers.orchestrations.purge_tenant,
             "leases": managers.leases.purge_tenant,
             "work": managers.work.purge_tenant,
@@ -106,8 +106,8 @@ def build_loop(container: WorkerContainer, lane: str | None = None) -> WorkerLoo
             "media": unstaged(managers.media.purge_across_tenants),
             "tenancy": unstaged(managers.tenancy.purge_across_tenants),
             "idempotency": unstaged(managers.idempotency.purge_across_tenants),
-            # The trim: each tenant's floor moves with its events.
-            "events": unstaged(managers.events.purge_across_tenants),
+            # The trim: each tenant's floor moves with its change events.
+            "change_events": unstaged(managers.change_events.purge_across_tenants),
             "orchestrations": unstaged(managers.orchestrations.purge_across_tenants),
             "leases": unstaged(managers.leases.purge_across_tenants),
             # Not a purge: the leases past their expiry and the skew margin
@@ -155,7 +155,7 @@ def build_consumer(container: WorkerContainer) -> DeliveryConsumer:
     return DeliveryConsumer(
         queues=container.infra.get_queues(),
         tenancy=container.managers.tenancy,
-        providers={"identity": IdentityDeliveriesImpl(container.managers.events)},
+        providers={"identity": IdentityDeliveriesImpl(container.managers.change_events)},
         options=DeliveryOptions(worker_id=container.settings.worker_id),
     )
 

@@ -1,6 +1,6 @@
 # Outbox rows
 
-The note written beside every change, from which the event, the push,
+The note written beside every change, from which the change event, the push,
 and any follow-up work come. This is one of the kinds of thing
 [Acme is made of](../../../../README.md).
 
@@ -12,7 +12,7 @@ and any follow-up work come. This is one of the kinds of thing
   relayed, the attempts the sweep spent, when the next is due, its last
   error, and whether it failed for good.
 - **Kind** is the row's destination. `<namespace>.<entity>.<action>`
-  announces a change and becomes an event and a push. `work.<kind>`
+  announces a change and becomes a change event and a push. `work.<kind>`
   asks for a job and becomes a work item.
 
 ## What can happen
@@ -37,7 +37,7 @@ and any follow-up work come. This is one of the kinds of thing
   does.
 - **Ids, never values.** A payload names records and counters, never a
   field a person's erasure has to find.
-- **Relaying twice is harmless.** The event is appended once and the
+- **Relaying twice is harmless.** The change event is appended once and the
   work item enqueued once, both keyed on the row's id.
 - **Done means someone was told.** A change's row is done once the bus
   took its push; a dropped push leaves it pending for the sweep. A

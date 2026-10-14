@@ -511,7 +511,7 @@ pages, after a failed read, and after a stop.
 component that opens its own socket; a polling endpoint or a poll on a
 timer used while the channel is up; envelopes without a type field or
 routed by ad hoc inspection. A poll of what no push names, since its
-change is no event the system records, is not one: the flags snapshot
+change is no change event the system records, is not one: the flags snapshot
 (DEL-52) is such a poll. A notice hidden by a replay's collapse to the
 last record of each entity, dropped when a later page fails, or told
 twice, by the route and by its hand-over (one handed over after a
@@ -541,33 +541,33 @@ idle timeout defined in two places that can drift in separate changes.
 
 **Severity.** medium
 
-## NET-22 The event row and its per-tenant seq
+## NET-22 The change event row and its per-tenant seq
 
-**Principle.** The record behind every push is an `Event` in the
+**Principle.** The record behind every push is a `ChangeEvent` in the
 `activity` role, appended by one named atomic method that assigns
 `seq`, per tenant and gapless above the tenant's floor, from a cursor
 row updated and returned inside the append's transaction, never from
-`MAX(seq) + 1` with a retry. A manager records one event per write
+`MAX(seq) + 1` with a retry. A manager records one change event per write
 through the outbox. The trim deletes the oldest run past the retention
 and moves the floor in the same transaction; a read below the floor is
 `410 stream_truncated`, naming the floor and the head.
 
 **Source.** The Network Layer, Realtime at the Edge.
 
-**Look for.** The `Event` type (`Identifiable` plus `org_id`, `seq`,
+**Look for.** The `ChangeEvent` type (`Identifiable` plus `org_id`, `seq`,
 `kind`, `target_id`, `actor_id`, the request id, the app, a typed
 payload) and its table's role; the audit kinds, which ride the same
 type; the append method, the cursor row it locks, and where the head
 `seq` the pong carries is read from; the trim, the floor on the cursor
 row, and the `after_seq` read that compares with it. (Whether the
-event row rides an outbox row of the core write is STO-20.)
+change event row rides an outbox row of the core write is STO-20.)
 
 **Violation.** `seq` minted in Python, global across tenants, or with
 gaps above the floor; `MAX(seq) + 1` computed in the append and retried
-on the collision; an event table in the `core` role; an event with no
-`actor_id`, request id, or app; an audit entry of a type or a table of
-its own while audit has no reader of its own and no retention longer
-than the stream's (OM-16); a trim that deletes
+on the collision; a change event table in the `core` role; a change
+event with no `actor_id`, request id, or app; an audit entry of a type
+or a table of its own while audit has no reader of its own and no
+retention longer than the stream's (OM-16); a trim that deletes
 without moving the floor, or moves it in another transaction; a read
 below the floor answered with a page, or a client that asks the same
 read again instead of reading afresh and going on from the head; code

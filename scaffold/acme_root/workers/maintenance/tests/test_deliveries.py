@@ -17,8 +17,8 @@ from acme.infra.queues import QueueMessage, Queues
 from acme.integrations.identity import ProvidedDelivery
 from acme.integrations.identity.twin import IdentityProviderTwinImpl
 from acme.om.base import new_id, utcnow
+from acme.om.change_events.types.change_event import ChangeEvent
 from acme.om.context import TenantContext
-from acme.om.events.types.event import Event
 from acme.workers.maintenance.container import WorkerContainer
 from acme.workers.maintenance.deliveries import DeliveryConsumer, DeliveryOptions
 from acme.workers.maintenance.main import build_consumer
@@ -65,8 +65,8 @@ def body_of(delivery: ProvidedDelivery, provider: str = "identity") -> bytes:
     ).encode()
 
 
-async def received(container: WorkerContainer, ctx: TenantContext) -> list[Event]:
-    events = await container.managers.events.get_events(ctx, after_seq=0, limit=100)
+async def received(container: WorkerContainer, ctx: TenantContext) -> list[ChangeEvent]:
+    events = await container.managers.change_events.get_change_events(ctx, after_seq=0, limit=100)
     return [event for event in events if event.kind == RECEIVED]
 
 
@@ -122,10 +122,10 @@ async def test_a_failed_append_leaves_the_message_to_come_back(
     ctx = await sign_in(container)
     consumer = consumer_of(container)
 
-    async def down(*_: object) -> Event:
+    async def down(*_: object) -> ChangeEvent:
         raise ConnectionResetError("the database went away")
 
-    monkeypatch.setattr(container.managers.events, "append_event", down)
+    monkeypatch.setattr(container.managers.change_events, "append_change_event", down)
     delivery = delivery_about(container, str(ctx.org_id))
     assert await consumer.handle(await queued(container, body_of(delivery))) == "failed"
     assert await depth(container) == (0, 1), "received, not deleted: back after its visibility"

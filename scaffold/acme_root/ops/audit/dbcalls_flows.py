@@ -385,25 +385,30 @@ async def files(w: Any) -> None:
 # ---------------------------------------------------------------- events
 
 
-async def events(w: Any) -> None:
+async def change_events(w: Any) -> None:
     h = w.state["H"]
     area = "realtime"
     await w.http(
-        area, "GET /v1/events?after_seq=0", "GET", "/v1/events", headers=h, params={"after_seq": 0}
+        area,
+        "GET /v1/change-events?after_seq=0",
+        "GET",
+        "/v1/change-events",
+        headers=h,
+        params={"after_seq": 0},
     )
     await w.http(
         area,
-        "GET /v1/events?limit=200",
+        "GET /v1/change-events?limit=200",
         "GET",
-        "/v1/events",
+        "/v1/change-events",
         headers=h,
         params={"after_seq": 0, "limit": 200},
     )
     await w.http(
         area,
-        "GET /v1/events (past the head)",
+        "GET /v1/change-events (past the head)",
         "GET",
-        "/v1/events",
+        "/v1/change-events",
         headers=h,
         params={"after_seq": 10**9},
     )
@@ -593,7 +598,7 @@ FLOWS = [
     api_keys,
     switch,
     files,
-    events,
+    change_events,
     org_deleted,
     account_deleted,
     sweep,

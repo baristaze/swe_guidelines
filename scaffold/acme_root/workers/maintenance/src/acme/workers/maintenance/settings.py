@@ -68,4 +68,4 @@ class MaintenanceSettings(StorageSettings, InfraSettings, IntegrationsSettings):
     # How many days a living org's events are kept; the sweep trims what is
     # older, a batch per org per call. 0 keeps every event and never moves a
     # floor (ADR 0040).
-    event_retention_days: int = Field(default=90, ge=0)
+    change_event_retention_days: int = Field(default=90, ge=0)

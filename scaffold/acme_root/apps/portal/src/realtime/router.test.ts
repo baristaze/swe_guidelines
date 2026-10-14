@@ -18,7 +18,7 @@ function recording() {
 function pushOf(kind: string, extra: Record<string, unknown> = {}) {
   const envelope = parseEnvelope(
     JSON.stringify({
-      type: "event",
+      type: "change_event",
       sent_at: null,
       topic: "entity_changed",
       payload: { kind, target_id: "x", seq: 3, actor_id: "u1", ...extra },
@@ -62,7 +62,7 @@ describe("routeEnvelope", () => {
     const { queryClient, seen } = recording();
     const envelope = parseEnvelope(
       JSON.stringify({
-        type: "event",
+        type: "change_event",
         sent_at: null,
         topic: "entity_changed",
         payload: { kind: "tenancy.api_key.created", target_id: "x", seq: 3, added_later: 1 },
@@ -155,7 +155,7 @@ describe("routeEnvelope", () => {
     expect(parseEnvelope("not json")).toBeNull();
     expect(parseEnvelope(JSON.stringify({ type: "mystery" }))).toBeNull();
     const bare = parseEnvelope(
-      JSON.stringify({ type: "event", sent_at: null, topic: "entity_changed", payload: {} }),
+      JSON.stringify({ type: "change_event", sent_at: null, topic: "entity_changed", payload: {} }),
     );
     expect(routeEnvelope(queryClient, bare!)).toEqual({ invalidated: [] });
   });
@@ -185,7 +185,7 @@ describe("replayKey", () => {
     const reader: Hints = { hint: () => undefined, stop: () => undefined };
     const of = (kind: string, target: string) => {
       const envelope = pushOf(kind, { target_id: target });
-      if (envelope.type !== "event") throw new Error("not a push");
+      if (envelope.type !== "change_event") throw new Error("not a push");
       return envelope;
     };
     const readers = { user: reader };

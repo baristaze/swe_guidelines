@@ -35,6 +35,19 @@ class StartSeconds(RootModel[int]):
     root: Annotated[int, Field(ge=1, le=604800, title='Start Seconds')]
 
 
+class ChangeEventView(BaseModel):
+    """
+    One record of the tenant's append-only stream, paged by `after_seq`.
+    `kind` is "<namespace>.<entity>.<action>", or an audit kind; the payload
+    stays inside, an event is a record and not a second read path.
+    """
+    actor_id: Annotated[UUID, Field(title='Actor Id')]
+    kind: Annotated[str, Field(title='Kind')]
+    produced_at: Annotated[AwareDatetime, Field(title='Produced At')]
+    seq: Annotated[int, Field(title='Seq')]
+    target_id: Annotated[UUID, Field(title='Target Id')]
+
+
 class ConfirmTotpRequest(BaseModel):
     """
     The first code from the authenticator, which confirms the secret.
@@ -175,19 +188,6 @@ class EndReason(StrEnum):
     retired = 'retired'
 
 
-class EventView(BaseModel):
-    """
-    One record of the tenant's append-only stream, paged by `after_seq`.
-    `kind` is "<namespace>.<entity>.<action>", or an audit kind; the payload
-    stays inside, an event is a record and not a second read path.
-    """
-    actor_id: Annotated[UUID, Field(title='Actor Id')]
-    kind: Annotated[str, Field(title='Kind')]
-    produced_at: Annotated[AwareDatetime, Field(title='Produced At')]
-    seq: Annotated[int, Field(title='Seq')]
-    target_id: Annotated[UUID, Field(title='Target Id')]
-
-
 class ExchangeAuthSessionRequest(BaseModel):
     """
     The org to enter. Presented with the sign-in credential, it opens the
@@ -319,7 +319,7 @@ class ExpiresIn(RootModel[int]):
     root: Annotated[int, Field(ge=1, le=3600, title='Expires In')]
 
 
-class OperatorEventView(BaseModel):
+class OperatorChangeEventView(BaseModel):
     """
     The same record as an operator reads it, with the two provenance fields
     a tenant's own feed leaves out: the request that produced it and the app
@@ -650,8 +650,8 @@ class SystemSizeView(BaseModel):
     worker counts it every few minutes, and this is its latest count:
     `counted_at` says how old the answer is.
     """
+    change_events_last_24h: Annotated[int, Field(title='Change Events Last 24H')]
     counted_at: Annotated[AwareDatetime, Field(title='Counted At')]
-    events_last_24h: Annotated[int, Field(title='Events Last 24H')]
     since: Annotated[AwareDatetime, Field(title='Since')]
     tenants: Annotated[int, Field(title='Tenants')]
     users: Annotated[int, Field(title='Users')]

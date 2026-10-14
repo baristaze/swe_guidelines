@@ -23,7 +23,7 @@ async def test_the_middleware_logs_the_template_not_the_query(
     client: httpx.AsyncClient, caplog: pytest.LogCaptureFixture
 ) -> None:
     with caplog.at_level(logging.INFO, logger="acme.services.api.gateway.observability"):
-        response = await client.get("/v1/events?after_seq=7&ticket=wst_secret")
+        response = await client.get("/v1/change-events?after_seq=7&ticket=wst_secret")
     assert response.status_code == 401
     lines = [
         r.getMessage()
@@ -31,7 +31,7 @@ async def test_the_middleware_logs_the_template_not_the_query(
         if r.name == "acme.services.api.gateway.observability"
     ]
     assert len(lines) == 1, lines
-    assert "GET /v1/events 401" in lines[0]
+    assert "GET /v1/change-events 401" in lines[0]
     assert "wst_secret" not in lines[0] and "after_seq" not in lines[0]
 
 
@@ -41,12 +41,12 @@ async def test_the_access_line_carries_the_route_and_its_time_as_fields(
     """The fields the alarms module's log metric filter reads a route's
     latency from."""
     with caplog.at_level(logging.INFO, logger="acme.services.api.gateway.observability"):
-        await client.get("/v1/events?after_seq=7")
+        await client.get("/v1/change-events?after_seq=7")
     (access,) = [r for r in caplog.records if r.name == "acme.services.api.gateway.observability"]
     fields = access.http  # type: ignore[attr-defined]
     assert {k: fields[k] for k in ("method", "route", "status")} == {
         "method": "GET",
-        "route": "/v1/events",
+        "route": "/v1/change-events",
         "status": 401,
     }
     assert isinstance(fields["duration_ms"], float) and fields["duration_ms"] >= 0
@@ -59,7 +59,7 @@ async def test_the_access_line_carries_the_request_id(
     still be in the log context when it runs, not reset above it."""
     caplog.handler.addFilter(RequestIdFilter())
     with caplog.at_level(logging.INFO, logger="acme.services.api.gateway.observability"):
-        response = await client.get("/v1/events?after_seq=7")
+        response = await client.get("/v1/change-events?after_seq=7")
     lines = [r for r in caplog.records if r.name == "acme.services.api.gateway.observability"]
     assert len(lines) == 1, [r.getMessage() for r in lines]
     assert lines[0].request_id == response.headers["x-request-id"]  # type: ignore[attr-defined]

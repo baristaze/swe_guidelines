@@ -17,6 +17,7 @@ from acme.integrations.identity import InvitationState as ProvidedState
 from acme.integrations.identity.absent import IdentityProviderAbsentImpl
 from acme.integrations.identity.twin import TWIN_ISSUER, IdentityProviderTwinImpl
 from acme.om.base import new_id, utcnow
+from acme.om.change_events.storage.impl.memory import ChangeEventStorageMemoryImpl
 from acme.om.context import (
     AppContext,
     AppType,
@@ -26,7 +27,6 @@ from acme.om.context import (
     Role,
     TenantContext,
 )
-from acme.om.events.storage.impl.memory import EventStorageMemoryImpl
 from acme.om.exceptions import (
     Conflict,
     CredentialExpired,
@@ -100,7 +100,7 @@ def build(
     *,
     dev_sign_in: bool = True,
 ) -> TenancyManagerInterface:
-    relay = OutboxRelayImpl(outbox, EventStorageMemoryImpl(), infra.get_topics())
+    relay = OutboxRelayImpl(outbox, ChangeEventStorageMemoryImpl(), infra.get_topics())
     return build_tenancy(
         storage,
         relay,

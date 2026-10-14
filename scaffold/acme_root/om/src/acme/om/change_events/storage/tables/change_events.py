@@ -8,8 +8,8 @@ from sqlalchemy.orm import Mapped, mapped_column
 from acme.om.storage.tables.base import Base, IdentifiableMixin
 
 
-class Events(IdentifiableMixin, Base):
-    __tablename__ = "events"
+class ChangeEvents(IdentifiableMixin, Base):
+    __tablename__ = "change_events"
     # A stream read by seq: org_id leads the one compound index, so it gets no
     # index of its own, and the read by id is served by the primary key. The
     # unique (org_id, seq) is a guard on the cursor row's invariant; the append
@@ -19,8 +19,8 @@ class Events(IdentifiableMixin, Base):
     # land at the right edge, so an append pays little for it.
     __org_id_index__ = False
     __table_args__ = (
-        Index("uq_events_org_id_seq", "org_id", "seq", unique=True),
-        Index("ix_events_produced_at", "produced_at"),
+        Index("uq_change_events_org_id_seq", "org_id", "seq", unique=True),
+        Index("ix_change_events_produced_at", "produced_at"),
     )
     # The same number as the cursor row's head, and the same width.
     seq: Mapped[int] = mapped_column(BigInteger)

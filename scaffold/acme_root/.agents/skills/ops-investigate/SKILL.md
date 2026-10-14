@@ -69,7 +69,7 @@ and their handling is in `/acme/<env>/maintenance`.
 
    When it refuses the env file for holding the provisioner's token,
    stop, and give the person the line it printed: no later step runs,
-   and none sources the file. It prints tenants, users, and the events
+   and none sources the file. It prints tenants, users, and the change events
    produced in the last day,
    through `GET /v1/admin/size`
    with the env file's operator token (`uv run acme-ops size --env <env>`,
@@ -477,7 +477,7 @@ and their handling is in `/acme/<env>/maintenance`.
 # Investigation: <env>, last <since>
 
 **Credential.** <profile and the Arn it resolved to, or local>
-**Size.** <tenants> tenants, <users> users, <n> events in the last day, counted <age> ago
+**Size.** <tenants> tenants, <users> users, <n> change events in the last day, counted <age> ago
 
 ## Alarms
 

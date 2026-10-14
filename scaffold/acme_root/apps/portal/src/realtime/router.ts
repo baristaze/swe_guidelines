@@ -8,7 +8,7 @@
 // query, or through none.
 import type { QueryClient, QueryKey } from "@tanstack/react-query";
 import { keys } from "../queries/keys";
-import { entityOf, isEntityChanged, type Envelope, type EventEnvelope } from "./envelopes";
+import { entityOf, isEntityChanged, type Envelope, type ChangeEventEnvelope } from "./envelopes";
 import type { Hints } from "./hints";
 
 export interface RouteOutcome {
@@ -86,7 +86,7 @@ export function routeEnvelope(
 /** What a page read back from the stream keeps one push of, the last: the
  * record, for an entity whose reader reads each record, and the entity for
  * any other, since one invalidation reads all of it again. */
-export function replayKey(envelope: EventEnvelope, readers: HintReaders = {}): string {
+export function replayKey(envelope: ChangeEventEnvelope, readers: HintReaders = {}): string {
   const entity = entityOf(envelope.payload.kind);
   return readers[entity] ? `${entity}/${envelope.payload.target_id}` : entity;
 }

@@ -22,7 +22,7 @@ file are there.
 `--env` is where the stores outside the database are read: `staging` by
 default, `local` to read none and say so. `--scale` is the seed's, `1`
 by default (5,000 people with a personal org each, a team org of 200
-members, a million events); `0.01` is a quick run with the same shape,
+members, a million change events); `0.01` is a quick run with the same shape,
 whose plans prove the wiring: a sequential scan on a small table is the
 planner's choice, and a quick run's plan findings say "verify at scale
 1". The
@@ -77,7 +77,7 @@ holds. It reads no env file and no token: it calls no route.
    (`delete_batch`, `LIMIT`) or everything at once, and which index serves
    its `WHERE`. A table no purge reaches is a gap, unless the product keeps
    its rows as the record (the org row), as one row per tenant (the
-   event cursor) or one for the system (its size), or as a person's
+   change event cursor) or one for the system (its size), or as a person's
    until they are erased (the identity), or it is live data (a living
    org's members and files); say which.
    `references/purges.md`, in this skill's folder, lists the purges the

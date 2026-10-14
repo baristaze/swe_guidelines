@@ -16,7 +16,7 @@ from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING
 from uuid import UUID
 
-from acme.om.events.types.event import Event
+from acme.om.change_events.types.change_event import ChangeEvent
 from acme.om.idempotency.types.attempt import Attempt
 from acme.om.tenancy.types.auth_session import AuthSession
 from acme.om.tenancy.types.identity import Identity
@@ -170,9 +170,9 @@ class TenancyOperatorManagerInterface(ABC):
         ...
 
     @abstractmethod
-    async def get_events(
+    async def get_change_events(
         self, admin: OperatorContext, org_id: UUID, after_seq: int, limit: int
-    ) -> list[Event]:
+    ) -> list[ChangeEvent]:
         """The tenant's events after `after_seq`, oldest first, as the tenant's
         own replay reads them."""
         ...

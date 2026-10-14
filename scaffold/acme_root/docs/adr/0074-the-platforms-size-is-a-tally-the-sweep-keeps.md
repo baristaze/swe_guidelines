@@ -9,7 +9,7 @@ role: a report reads a mirror or a periodic copy, never a role the
 application writes to.
 
 `GET /v1/admin/size` answers the system's size: the live orgs, the
-live users, and the events produced in the last day. The first
+live users, and the change events produced in the last day. The first
 responder reads it before escalating an alarm (`acme-ops size`), so it
 is read when something is already wrong. Counted in the handler, it is
 two statements across every tenant, one on `core` and one on
@@ -19,7 +19,7 @@ two statements across every tenant, one on `core` and one on
 
 **The sweep counts, the handler reads.** The operator manager's
 `tally_size()` is the sweep's count: the live orgs and users in one
-statement (`count_orgs_and_users`, on `core`), the events produced in
+statement (`count_orgs_and_users`, on `core`), the change events produced in
 the day (`count_since`, on `activity`), then one write of the result.
 It takes no context, since it counts for no tenant and no principal,
 and it is listed with the other principal-less methods. `size` reads

@@ -10,17 +10,19 @@ from collections.abc import Sequence
 from datetime import datetime
 from uuid import UUID
 
-from acme.om.events.types.event import Event
-from acme.om.events.types.page import StreamPage
+from acme.om.change_events.types.change_event import ChangeEvent
+from acme.om.change_events.types.page import StreamPage
 
 
-class EventStorageInterface(ABC):
+class ChangeEventStorageInterface(ABC):
     @abstractmethod
-    async def append_events(self, org_id: UUID, events: Sequence[Event]) -> tuple[Event, ...]:
+    async def append_change_events(
+        self, org_id: UUID, change_events: Sequence[ChangeEvent]
+    ) -> tuple[ChangeEvent, ...]:
         """One transaction: takes as many of the tenant's next seqs as there are
-        new events from its cursor row, writes the events with them in the
+        new change events from its cursor row, writes the change events with them in the
         order given, and returns every event in that order. One event is a
-        batch of one. The numbers of one call are contiguous, and the events
+        batch of one. The numbers of one call are contiguous, and the change events
         commit together, so a reader never sees a later number before an
         earlier one. Two concurrent appends queue on the cursor and never share
         a seq or leave a gap behind; an append that rolls back returns its
@@ -31,7 +33,7 @@ class EventStorageInterface(ABC):
         ...
 
     @abstractmethod
-    async def read_after(self, org_id: UUID, after_seq: int, limit: int) -> list[Event]:
+    async def read_after(self, org_id: UUID, after_seq: int, limit: int) -> list[ChangeEvent]:
         """The tenant's events with seq greater than `after_seq`, ascending."""
         ...
 

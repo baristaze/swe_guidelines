@@ -20,7 +20,7 @@ from acme.om.outbox.types.row import OutboxRow
 class OutboxRelayInterface(ABC):
     @abstractmethod
     async def relay(self, org_id: UUID, row: OutboxRow) -> bool:
-        """The row's kind is its destination. An entity change appends the `Event`
+        """The row's kind is its destination. An entity change appends the `ChangeEvent`
         the row describes (idempotent on the row's id) and publishes
         ENTITY_CHANGED with (kind, target_id, seq); a row of kind `work.<kind>`
         enqueues the work item it names, under the row's id as the item's

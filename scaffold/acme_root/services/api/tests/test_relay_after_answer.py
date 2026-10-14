@@ -21,8 +21,8 @@ from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanE
 
 from acme.infra.observability import RequestIdFilter
 from acme.infra.topics import EntityChangedPayload, TopicPayload, Topics
+from acme.om.change_events.types.change_event import ChangeEvent
 from acme.om.context import Role
-from acme.om.events.types.event import Event
 from acme.om.exceptions import Unavailable
 from acme.om.outbox.impl.relay import OutboxOptions, OutboxRelayImpl
 from acme.services.api.container import AppContainer
@@ -66,7 +66,7 @@ def the_sweep(container: AppContainer) -> OutboxRelayImpl:
     storage = container.storage
     return OutboxRelayImpl(
         storage.get_outbox_storage(),
-        storage.get_event_storage(),
+        storage.get_change_event_storage(),
         container.infra.get_topics(),
         lambda: container.managers.work,
         OutboxOptions(grace=timedelta(0)),
@@ -135,12 +135,12 @@ async def test_a_relay_that_fails_after_the_answer_is_logged_and_the_sweep_relay
     monkeypatch: pytest.MonkeyPatch,
     caplog: pytest.LogCaptureFixture,
 ) -> None:
-    events = container.storage.get_event_storage()
+    events = container.storage.get_change_event_storage()
 
-    async def refused(org_id: UUID, appended: Sequence[Event]) -> tuple[Event, ...]:
+    async def refused(org_id: UUID, appended: Sequence[ChangeEvent]) -> tuple[ChangeEvent, ...]:
         raise RuntimeError("the stream is down")
 
-    monkeypatch.setattr(events, "append_events", refused)
+    monkeypatch.setattr(events, "append_change_events", refused)
     caplog.handler.addFilter(RequestIdFilter())
     with caplog.at_level(logging.ERROR, logger="acme.om.outbox.impl.relay"):
         response = await client.post(FILES, headers=owner, json=UPLOAD)
@@ -168,12 +168,12 @@ async def test_a_relay_the_stream_did_not_answer_in_time_is_a_warning(
     """The stream's database did not answer in time: the sweep relays the rows
     later, as on any failure of the relay, and the line is a warning, not an
     error the tracker reports."""
-    events = container.storage.get_event_storage()
+    events = container.storage.get_change_event_storage()
 
-    async def not_in_time(org_id: UUID, appended: Sequence[Event]) -> tuple[Event, ...]:
+    async def not_in_time(org_id: UUID, appended: Sequence[ChangeEvent]) -> tuple[ChangeEvent, ...]:
         raise Unavailable("the database did not answer in time: a statement passed its deadline")
 
-    monkeypatch.setattr(events, "append_events", not_in_time)
+    monkeypatch.setattr(events, "append_change_events", not_in_time)
     with caplog.at_level(logging.WARNING, logger="acme.om.outbox.impl.relay"):
         response = await client.post(FILES, headers=owner, json=UPLOAD)
     assert response.status_code == 201
@@ -221,16 +221,16 @@ async def test_the_access_line_times_the_answer_not_the_relay(
     too would run its 300 ms past that. A fixed bound never tells the two
     apart: on a loaded machine the answer alone can take that long, when a
     pass of the garbage collector lands inside it."""
-    events = container.storage.get_event_storage()
-    append = events.append_events
+    events = container.storage.get_change_event_storage()
+    append = events.append_change_events
     relay_started: list[float] = []
 
-    async def slow(org_id: UUID, appended: Sequence[Event]) -> tuple[Event, ...]:
+    async def slow(org_id: UUID, appended: Sequence[ChangeEvent]) -> tuple[ChangeEvent, ...]:
         relay_started.append(time.perf_counter())
         await asyncio.sleep(0.3)
         return await append(org_id, appended)
 
-    monkeypatch.setattr(events, "append_events", slow)
+    monkeypatch.setattr(events, "append_change_events", slow)
     with caplog.at_level(logging.INFO, logger="acme.services.api.gateway.observability"):
         sent = time.perf_counter()
         response = await client.post(FILES, headers=owner, json=UPLOAD)

@@ -20,7 +20,7 @@ Terraform serves no `admin.` name.
 
 Operators work through the API. `acme-ops` calls `/v1/admin/*` with an
 operator token ([ADR 0068](0068-an-operator-credential-ends-by-itself.md)):
-the system's size, the orgs and their members and events, an org's
+the system's size, the orgs and their members and change events, an org's
 deletion, and the requeue of a failed work item.
 
 The console lands in `apps/admin` when operators need a screen. It

@@ -8,8 +8,8 @@ from uuid import UUID
 from acme.infra.observability import OUTCOMES, described, failure_level
 from acme.infra.topics import EntityChangedPayload, Topics, TopicsInterface
 from acme.om.base import OmBase, new_id, utcnow
-from acme.om.events.storage import EventStorageInterface
-from acme.om.events.types.event import Event
+from acme.om.change_events.storage import ChangeEventStorageInterface
+from acme.om.change_events.types.change_event import ChangeEvent
 from acme.om.outbox.relay import OutboxRelayInterface
 from acme.om.outbox.storage import OutboxStorageInterface
 from acme.om.outbox.types.row import OutboxRow
@@ -48,7 +48,7 @@ class OutboxRelayImpl(OutboxRelayInterface):
     def __init__(
         self,
         storage: OutboxStorageInterface,
-        events: EventStorageInterface,
+        change_events: ChangeEventStorageInterface,
         topics: TopicsInterface,
         work: Callable[[], WorkManagerInterface] | None = None,
         options: OutboxOptions | None = None,
@@ -58,7 +58,7 @@ class OutboxRelayImpl(OutboxRelayInterface):
         at call time and hands back one whole graph. A relay built without one
         relays entity changes and refuses a row that asks for work."""
         self._storage = storage
-        self._events = events
+        self._change_events = change_events
         self._topics = topics
         self._work = work
         self._options = options or OutboxOptions()
@@ -232,7 +232,7 @@ class OutboxRelayImpl(OutboxRelayInterface):
         if changes:
             # An event's id is its row's id: the append is idempotent on it, so
             # a second relay of the same rows gets the same events back, same seqs.
-            appended = await self._events.append_events(
+            appended = await self._change_events.append_change_events(
                 org_id, [self._event_of(row) for row in changes]
             )
             by_id = {row.id: row for row in changes}
@@ -258,8 +258,8 @@ class OutboxRelayImpl(OutboxRelayInterface):
         return unpublished
 
     @staticmethod
-    def _event_of(row: OutboxRow) -> Event:
-        return Event(
+    def _event_of(row: OutboxRow) -> ChangeEvent:
+        return ChangeEvent(
             id=row.id,
             org_id=row.org_id,
             kind=row.kind,
@@ -314,7 +314,7 @@ class OutboxRelayImpl(OutboxRelayInterface):
         )
         await self._storage.record_failure(org_id, row.id, error, now)
         OUTCOMES.labels(subsystem="outbox", outcome="dead_letter").inc()
-        audit = Event(
+        audit = ChangeEvent(
             id=new_id(),
             org_id=row.org_id,
             kind=DEAD_LETTER_KIND,
@@ -331,12 +331,12 @@ class OutboxRelayImpl(OutboxRelayInterface):
             app=row.app,
         )
         try:
-            (event,) = await self._events.append_events(org_id, [audit])
+            (event,) = await self._change_events.append_change_events(org_id, [audit])
             await self._publish(org_id, event)
         except Exception:
             log.exception("the dead letter audit event for %s could not be appended", row.id)
 
-    async def _publish(self, org_id: UUID, appended: Event) -> bool:
+    async def _publish(self, org_id: UUID, appended: ChangeEvent) -> bool:
         return await self._topics.publish(
             Topics.ENTITY_CHANGED,
             EntityChangedPayload(
@@ -352,7 +352,7 @@ class OutboxRelayImpl(OutboxRelayInterface):
         )
 
 
-def version_of(event: Event) -> int | None:
+def version_of(event: ChangeEvent) -> int | None:
     """The version the change wrote, which a versioned record's row names in
     its payload (`versioned_row`); None for every other row."""
     version = event.payload.get("version")

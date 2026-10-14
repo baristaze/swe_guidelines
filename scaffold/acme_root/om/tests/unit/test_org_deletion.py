@@ -15,8 +15,8 @@ from acme.infra.cache import CacheScope
 from acme.infra.impl.local import InfraLocalImpl
 from acme.integrations.identity.twin import IdentityProviderTwinImpl
 from acme.om.base import EMPTY_UUID, new_id
+from acme.om.change_events.storage.impl.memory import ChangeEventStorageMemoryImpl
 from acme.om.context import AppContext, AppType, RequestContext, Role, TenantContext
-from acme.om.events.storage.impl.memory import EventStorageMemoryImpl
 from acme.om.exceptions import (
     NotAuthenticated,
     NotAuthorized,
@@ -97,7 +97,9 @@ def twin() -> IdentityProviderTwinImpl:
 def relay(tmp_path: Path) -> SpyRelay:
     infra = InfraLocalImpl(tmp_path)
     return SpyRelay(
-        OutboxRelayImpl(OutboxStorageMemoryImpl(), EventStorageMemoryImpl(), infra.get_topics())
+        OutboxRelayImpl(
+            OutboxStorageMemoryImpl(), ChangeEventStorageMemoryImpl(), infra.get_topics()
+        )
     )
 
 

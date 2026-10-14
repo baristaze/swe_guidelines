@@ -18,9 +18,9 @@ from acme.infra.impl.local import InfraLocalImpl
 from acme.infra.observability import OUTCOMES, JsonFormatter, current_traceparent
 from acme.infra.topics import EntityChangedPayload, TopicPayload, Topics, WorkAvailablePayload
 from acme.om.base import EMPTY_UUID, new_id, utcnow
+from acme.om.change_events.storage.impl.memory import ChangeEventStorageMemoryImpl
+from acme.om.change_events.types.change_event import ChangeEvent
 from acme.om.context import AppContext, AppType, RequestContext, TenantContext
-from acme.om.events.storage.impl.memory import EventStorageMemoryImpl
-from acme.om.events.types.event import Event
 from acme.om.outbox.impl.relay import DEAD_LETTER_KIND, OutboxOptions, OutboxRelayImpl
 from acme.om.outbox.storage.impl.memory import OutboxStorageMemoryImpl
 from acme.om.outbox.types.row import OutboxRow, outbox_row, versioned_row
@@ -34,17 +34,19 @@ from acme.om.work.types.work_item import WORK_LANES, WorkKind, relayed_lane, wor
 NO_GRACE = OutboxOptions(grace=timedelta(0), backoff_base=timedelta(0), max_attempts=2)
 
 
-class PoisonedEvents(EventStorageMemoryImpl):
+class PoisonedEvents(ChangeEventStorageMemoryImpl):
     """The append refuses one row's event, as a bad payload downstream would."""
 
     def __init__(self, poison_id: UUID) -> None:
         super().__init__()
         self.poison_id = poison_id
 
-    async def append_events(self, org_id: UUID, events: Sequence[Event]) -> tuple[Event, ...]:
-        if any(event.id == self.poison_id for event in events):
+    async def append_change_events(
+        self, org_id: UUID, change_events: Sequence[ChangeEvent]
+    ) -> tuple[ChangeEvent, ...]:
+        if any(event.id == self.poison_id for event in change_events):
             raise RuntimeError("cannot append this one")
-        return await super().append_events(org_id, events)
+        return await super().append_change_events(org_id, change_events)
 
 
 @pytest.fixture
@@ -96,7 +98,7 @@ async def test_a_failed_relay_logs_its_exception_with_its_frames(
     line = json.loads(JsonFormatter().format(record))
     assert line["message"].endswith("failed on attempt 1: RuntimeError")
     assert line["exception"].endswith("\nRuntimeError")
-    assert ", in append_events\n" in line["exception"]
+    assert ", in append_change_events\n" in line["exception"]
 
 
 async def test_a_poison_row_does_not_block_the_rows_behind_it_and_dies_after_max_attempts(
@@ -149,7 +151,7 @@ async def test_the_sweep_leaves_a_row_younger_than_the_grace(infra: InfraLocalIm
     user = a_user()
     row = make_row(org, user.id, age=timedelta(0))
     await tenancy.write_user(org, user, (row,))
-    relay = OutboxRelayImpl(outbox, EventStorageMemoryImpl(), infra.get_topics())
+    relay = OutboxRelayImpl(outbox, ChangeEventStorageMemoryImpl(), infra.get_topics())
     assert await relay.relay_pending(10) == 0, "the request path relays a fresh row"
     assert await relay.relay(org, row)
     assert await claim_all(outbox) == []
@@ -165,7 +167,7 @@ async def test_purge_takes_done_and_failed_rows_past_the_retention(infra: InfraL
     await tenancy.write_user(org, failed, (failed_row,))
     await outbox.mark_done(org, [done_row.id])
     await outbox.record_failure(org, failed_row.id, "for good", utcnow())
-    relay = OutboxRelayImpl(outbox, EventStorageMemoryImpl(), infra.get_topics())
+    relay = OutboxRelayImpl(outbox, ChangeEventStorageMemoryImpl(), infra.get_topics())
     assert await relay.purge_done(timedelta(hours=1), 1000) == 0
     assert await relay.purge_done(timedelta(seconds=-1), 1000) == 2
 
@@ -366,7 +368,7 @@ async def test_a_batch_is_marked_done_in_one_call_and_relaying_it_again_changes_
     infra: InfraLocalImpl,
 ) -> None:
     outbox = CountedMarks()
-    events = EventStorageMemoryImpl()
+    events = ChangeEventStorageMemoryImpl()
     org = new_id()
     rows = await landed_rows(outbox, org, 5)
     relay = OutboxRelayImpl(outbox, events, infra.get_topics())
@@ -393,7 +395,7 @@ async def test_a_row_settled_meanwhile_keeps_its_mark_and_the_batch_lands(
     outbox = CountedMarks()
     org = new_id()
     rows = await landed_rows(outbox, org, 3)
-    relay = OutboxRelayImpl(outbox, EventStorageMemoryImpl(), infra.get_topics())
+    relay = OutboxRelayImpl(outbox, ChangeEventStorageMemoryImpl(), infra.get_topics())
     await outbox.mark_done(org, [rows[0].id])
     marked = {r.id: r for _, r in outbox._rows.values()}[rows[0].id].done_at
     assert await relay.relay_all(org, rows)
@@ -485,7 +487,7 @@ async def test_the_push_names_the_version_a_versioned_row_carries_and_none_other
     assert versioned_row(ctx, "tenancy.user.updated", rows[0].target_id, 4).payload == {
         "version": 4
     }
-    relay = OutboxRelayImpl(outbox, EventStorageMemoryImpl(), infra.get_topics())
+    relay = OutboxRelayImpl(outbox, ChangeEventStorageMemoryImpl(), infra.get_topics())
     assert await relay.relay_all(ctx.org_id, rows)
     assert [(p.target_id, p.version) for p in seen] == [
         (rows[0].target_id, 4),

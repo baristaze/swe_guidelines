@@ -300,8 +300,8 @@ ROOT_CAUSE_READS = [
     "orgs/<org_id>",
     "orgs/<org_id>/members",
     "orgs/<org_id>/members?cursor=<next_cursor>",
-    "orgs/<org_id>/events?after_seq=<n>&limit=1",
-    "orgs/<org_id>/events?after_seq=<seq>&limit=200",
+    "orgs/<org_id>/change-events?after_seq=<n>&limit=1",
+    "orgs/<org_id>/change-events?after_seq=<seq>&limit=200",
 ]
 
 
@@ -352,12 +352,12 @@ def test_the_root_cause_reads_print_what_the_report_needs() -> None:
         "request_id": "3" * 32,
         "app": "portal",
     }
-    probe = kept["orgs/<org_id>/events?after_seq=<n>&limit=1"]
+    probe = kept["orgs/<org_id>/change-events?after_seq=<n>&limit=1"]
     assert _jq(probe, [event]) == {"seq": 7, "produced_at": "2026-01-01T00:00:00Z"}
     assert _jq(probe, []) == {"seq": None, "produced_at": None}
-    page = kept["orgs/<org_id>/events?after_seq=<seq>&limit=200"]
-    assert _jq(page, [event]) == {"count": 1, "last_seq": 7, "events": [event]}
-    assert _jq(page, []) == {"count": 0, "last_seq": None, "events": []}
+    page = kept["orgs/<org_id>/change-events?after_seq=<seq>&limit=200"]
+    assert _jq(page, [event]) == {"count": 1, "last_seq": 7, "change_events": [event]}
+    assert _jq(page, []) == {"count": 0, "last_seq": None, "change_events": []}
     # A 401 prints as its code, which is how the run knows its token expired.
     for code in ("not_found", "not_authenticated"):
         refusal = {"error": {"code": code, "message": code, "request_id": "4" * 32}}
@@ -460,9 +460,9 @@ def test_the_root_cause_tracker_reads_keep_no_text_of_the_exception() -> None:
 ROOT_CAUSE_DECIDES = [
     "The tracker holds no tenant",
     "never an org id, so it is never read by the tenant or by a tag guessed for one",
-    "Without `--request-id`, when the window's events hold no request tied to the symptom, "
+    "Without `--request-id`, when the window's change events hold no request tied to the symptom, "
     "the run makes no pass",
-    "so a run whose only such events are writes that landed still makes its passes",
+    "so a run whose only such change events are writes that landed still makes its passes",
     "which a read through its `jq` prints as the error code `not_authenticated`",
     'The pass writes its error leg as "not read", with which of the three it was, '
     "and goes on to the logs",

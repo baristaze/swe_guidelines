@@ -16,7 +16,7 @@ support credential delete an org.
 `OperatorRole | None`: `read` or `write`, and write includes read.
 `admit_operator` fills `OperatorContext.permissions` from it, and every
 operator operation requires one. The reads (`get_orgs`, `get_org`,
-`get_members`, `get_events`, `size`) require read. The writes
+`get_members`, `get_change_events`, `size`) require read. The writes
 (`create_org`, `add_member`, `delete_org`, a work item's requeue)
 require write.
 

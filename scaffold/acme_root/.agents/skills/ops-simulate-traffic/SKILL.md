@@ -10,7 +10,7 @@ One generator, four profiles. The generator rides `clients/python` and
 the operator plane, drives the edge (never a manager), and plays
 realistic sessions: sign in, open the socket, read the person, list
 the members, rename the person, create an API key and revoke it, read
-the events, see one of its own changes arrive on the socket, sign out.
+the change events, see one of its own changes arrive on the socket, sign out.
 The profiles differ by tenants, members, concurrency, and think time.
 
 Read `../_shared/ops-preamble.md`, a path from this skill's folder,

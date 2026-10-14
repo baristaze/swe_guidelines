@@ -102,7 +102,7 @@ async def test_a_404_and_a_405_answer_the_envelope(client: httpx.AsyncClient) ->
     assert body["code"] == "not_found"
     assert body["request_id"] == missing.headers["x-request-id"]
 
-    wrong_method = await client.delete("/v1/events")
+    wrong_method = await client.delete("/v1/change-events")
     assert wrong_method.status_code == 405
     assert wrong_method.json()["error"]["code"] == "method_not_allowed"
 
@@ -124,6 +124,6 @@ async def test_a_500_is_answered_inside_cors(app: FastAPI, client: httpx.AsyncCl
     assert "x-request-id" in failed.headers["access-control-expose-headers"].lower()
 
     # The same headers a refusal already carried.
-    refused = await client.get("/v1/events", headers=origin)
+    refused = await client.get("/v1/change-events", headers=origin)
     assert refused.status_code == 401
     assert refused.headers["access-control-allow-origin"] == "http://localhost:5173"

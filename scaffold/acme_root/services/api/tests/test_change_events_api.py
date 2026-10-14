@@ -1,5 +1,5 @@
 """Every push is also a record: a file's write appears on the channel with its
-stream position and again on /v1/events after the last seq a client saw."""
+stream position and again on /v1/change-events after the last seq a client saw."""
 
 from datetime import timedelta
 from pathlib import Path
@@ -24,7 +24,7 @@ async def test_events_are_paged_by_seq(client: httpx.AsyncClient, owner: dict[st
     assert confirmed.status_code == 200, confirmed.text
     await client.delete(f"/v1/media/files/{file_id}", headers=owner)
 
-    everything = await client.get("/v1/events", headers=owner, params={"after_seq": 0})
+    everything = await client.get("/v1/change-events", headers=owner, params={"after_seq": 0})
     assert everything.status_code == 200, everything.text
     events = everything.json()
     assert [e["seq"] for e in events] == [1, 2, 3]
@@ -38,12 +38,14 @@ async def test_events_are_paged_by_seq(client: httpx.AsyncClient, owner: dict[st
     me = (await client.get("/v1/me", headers=owner)).json()["user"]["id"]
     assert all(e["actor_id"] == me for e in events)
 
-    tail = await client.get("/v1/events", headers=owner, params={"after_seq": 2, "limit": 10})
+    tail = await client.get(
+        "/v1/change-events", headers=owner, params={"after_seq": 2, "limit": 10}
+    )
     assert [e["seq"] for e in tail.json()] == [3]
     assert (
-        await client.get("/v1/events", headers=owner, params={"after_seq": -1})
+        await client.get("/v1/change-events", headers=owner, params={"after_seq": -1})
     ).status_code == 422
-    assert (await client.get("/v1/events")).status_code == 401
+    assert (await client.get("/v1/change-events")).status_code == 401
 
 
 async def test_a_read_below_the_floor_is_gone_and_names_the_head(
@@ -53,11 +55,11 @@ async def test_a_read_below_the_floor_is_gone_and_names_the_head(
     the floor cannot be caught up, and is told where the stream goes on from."""
     for name in ("one.pdf", "two.pdf", "three.pdf"):
         await client.post("/v1/media/files", headers=owner, json={**REPORT, "name": name})
-    events = container.storage.get_event_storage()
+    events = container.storage.get_change_event_storage()
     assert await events.trim(utcnow() + timedelta(seconds=1), 2) == 2
 
     for below in (0, 1):
-        gone = await client.get("/v1/events", headers=owner, params={"after_seq": below})
+        gone = await client.get("/v1/change-events", headers=owner, params={"after_seq": below})
         assert gone.status_code == 410, gone.text
         error = gone.json()["error"]
         assert error["code"] == "stream_truncated"
@@ -65,9 +67,9 @@ async def test_a_read_below_the_floor_is_gone_and_names_the_head(
         assert "last_owner" not in error
         assert error["request_id"] == gone.headers["x-request-id"]
 
-    at_floor = await client.get("/v1/events", headers=owner, params={"after_seq": 2})
+    at_floor = await client.get("/v1/change-events", headers=owner, params={"after_seq": 2})
     assert at_floor.status_code == 200 and [e["seq"] for e in at_floor.json()] == [3]
-    above = await client.get("/v1/events", headers=owner, params={"after_seq": 3})
+    above = await client.get("/v1/change-events", headers=owner, params={"after_seq": 3})
     assert above.status_code == 200 and above.json() == []
 
 
@@ -99,14 +101,14 @@ def test_a_push_carries_the_stream_position(tmp_path: Path) -> None:
             created = tc.post("/v1/media/files", headers=headers, json=REPORT)
             assert created.status_code == 201, created.text
             event = ws.receive_json()
-            assert event["type"] == "event" and event["topic"] == "entity_changed"
+            assert event["type"] == "change_event" and event["topic"] == "entity_changed"
             assert event["payload"] == {
                 "kind": "media.file.created",
                 "target_id": created.json()["id"],
                 "seq": 1,
                 "actor_id": session.json()["user"]["id"],
             }
-        replay = tc.get("/v1/events", headers=headers, params={"after_seq": 0})
+        replay = tc.get("/v1/change-events", headers=headers, params={"after_seq": 0})
         assert [e["seq"] for e in replay.json()] == [1]
         # A socket opened now starts at the stream's position.
         ticket = tc.post("/v1/realtime/tickets", headers=headers).json()["ticket"]

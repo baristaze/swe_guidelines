@@ -55,7 +55,7 @@ cross-tenant sweep may instead get the tenant back beside each row
 JSON; an entity carrying an attribute that exists only for a
 column's sake; `org_id` on an entity every reader of which holds a
 context; an entity a reader without one takes, such as an `OutboxRow`
-or an `Event`, declared without it.
+or a `ChangeEvent`, declared without it.
 
 **Severity.** medium
 
@@ -157,7 +157,7 @@ entity-to-entity inheritance; the rest is judged.
 ## OM-06 Append-only records carry identity and a time of their own
 
 **Principle.** A record that is never updated and never hidden (an
-audit entry, a ledger line, an event) is `Identifiable` and carries
+audit entry, a ledger line, a change event) is `Identifiable` and carries
 its time in a field of its own, `created_at` or a name of its own such
 as `produced_at`: no `updated_at`, no `deleted_at`. Its time is never
 read out of its id.
@@ -167,7 +167,7 @@ read out of its id.
 **Look for.** Entities whose managers only ever create them; the mixins
 those entities compose; where a record's time is read from.
 
-**Violation.** An audit or event entity composed with `Trackable` or
+**Violation.** An audit or change event entity composed with `Trackable` or
 `SoftDeletable`; an `updated_at` on a record no code path updates; a
 record's time taken from the timestamp inside its id.
 
@@ -418,10 +418,10 @@ functions of a rules module; the rest is judged.
 **Principle.** Tenancy (organizations, users, memberships,
 credentials) is a first-class swimlane with its own types, manager, and
 storage, not a utility hanging off the root. Audit (who did what, when,
-from which app) is a kind of event: an audit entry is an `Event` with an
-audit kind, appended to the events namespace's stream. Audit becomes a
-namespace of its own when it gains a reader of its own, or must be kept
-longer than the stream.
+from which app) is a kind of change event: an audit entry is a
+`ChangeEvent` with an audit kind, appended to the change events
+namespace's stream. Audit becomes a namespace of its own when it gains a
+reader of its own, or must be kept longer than the stream.
 
 **Source.** Namespaces as Swimlanes.
 
@@ -432,11 +432,11 @@ kinds that mark one.
 
 **Violation.** User and organization classes in `base.py` or a `utils`
 module; audit rows written by a helper function with no storage
-interface, or kept anywhere but the event stream while it is still a
-kind of event; credential handling
+interface, or kept anywhere but the change event stream while it is still a
+kind of change event; credential handling
 spread across services with no owning namespace; audit that has a
 screen or an export of its own, or must be kept longer than the stream,
-while it is still a kind of event.
+while it is still a kind of change event.
 
 **Severity.** medium
 

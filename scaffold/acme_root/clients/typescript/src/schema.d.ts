@@ -156,15 +156,15 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/v1/admin/orgs/{org_id}/events": {
+    "/v1/admin/orgs/{org_id}/change-events": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        /** List Events */
-        get: operations["list_events_v1_admin_orgs__org_id__events_get"];
+        /** List Change Events */
+        get: operations["list_change_events_v1_admin_orgs__org_id__change_events_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -474,15 +474,15 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/v1/events": {
+    "/v1/change-events": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        /** List Events */
-        get: operations["list_events_v1_events_get"];
+        /** List Change Events */
+        get: operations["list_change_events_v1_change_events_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1255,6 +1255,33 @@ export interface components {
             revoked_at: string | null;
         };
         /**
+         * ChangeEventView
+         * @description One record of the tenant's append-only stream, paged by `after_seq`.
+         *     `kind` is "<namespace>.<entity>.<action>", or an audit kind; the payload
+         *     stays inside, an event is a record and not a second read path.
+         */
+        ChangeEventView: {
+            /**
+             * Actor Id
+             * Format: uuid
+             */
+            actor_id: string;
+            /** Kind */
+            kind: string;
+            /**
+             * Produced At
+             * Format: date-time
+             */
+            produced_at: string;
+            /** Seq */
+            seq: number;
+            /**
+             * Target Id
+             * Format: uuid
+             */
+            target_id: string;
+        };
+        /**
          * ConfirmTotpRequest
          * @description The first code from the authenticator, which confirms the secret.
          */
@@ -1397,33 +1424,6 @@ export interface components {
         /** ErrorResponse */
         ErrorResponse: {
             error: components["schemas"]["ErrorBody"];
-        };
-        /**
-         * EventView
-         * @description One record of the tenant's append-only stream, paged by `after_seq`.
-         *     `kind` is "<namespace>.<entity>.<action>", or an audit kind; the payload
-         *     stays inside, an event is a record and not a second read path.
-         */
-        EventView: {
-            /**
-             * Actor Id
-             * Format: uuid
-             */
-            actor_id: string;
-            /** Kind */
-            kind: string;
-            /**
-             * Produced At
-             * Format: date-time
-             */
-            produced_at: string;
-            /** Seq */
-            seq: number;
-            /**
-             * Target Id
-             * Format: uuid
-             */
-            target_id: string;
         };
         /**
          * ExchangeAuthSessionRequest
@@ -1927,12 +1927,12 @@ export interface components {
             permission: components["schemas"]["OperatorRole"];
         };
         /**
-         * OperatorEventView
+         * OperatorChangeEventView
          * @description The same record as an operator reads it, with the two provenance fields
          *     a tenant's own feed leaves out: the request that produced it and the app
          *     it came from, which is what a support investigation correlates on.
          */
-        OperatorEventView: {
+        OperatorChangeEventView: {
             /**
              * Actor Id
              * Format: uuid
@@ -2424,13 +2424,13 @@ export interface components {
          *     `counted_at` says how old the answer is.
          */
         SystemSizeView: {
+            /** Change Events Last 24H */
+            change_events_last_24h: number;
             /**
              * Counted At
              * Format: date-time
              */
             counted_at: string;
-            /** Events Last 24H */
-            events_last_24h: number;
             /**
              * Since
              * Format: date-time
@@ -2929,7 +2929,7 @@ export interface operations {
             };
         };
     };
-    list_events_v1_admin_orgs__org_id__events_get: {
+    list_change_events_v1_admin_orgs__org_id__change_events_get: {
         parameters: {
             query?: {
                 after_seq?: number;
@@ -2953,7 +2953,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["OperatorEventView"][];
+                    "application/json": components["schemas"]["OperatorChangeEventView"][];
                 };
             };
             /** @description Validation Error */
@@ -3728,7 +3728,7 @@ export interface operations {
             };
         };
     };
-    list_events_v1_events_get: {
+    list_change_events_v1_change_events_get: {
         parameters: {
             query?: {
                 after_seq?: number;
@@ -3750,7 +3750,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["EventView"][];
+                    "application/json": components["schemas"]["ChangeEventView"][];
                 };
             };
             /** @description Validation Error */

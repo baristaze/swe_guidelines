@@ -57,7 +57,7 @@ async def test_a_run_makes_seeds_reads_and_drops_its_own_database(
     assert "#### the members, first page (runtime" in printed
     assert "#### the tenant fence holds (system" in printed
     assert printed.count(", generic plan)") == 2  # a prepared statement never outlives its plan
-    assert "| core.users |" in printed and "| activity.events |" in printed
+    assert "| core.users |" in printed and "| activity.change_events |" in printed
     assert printed.rstrip().endswith("heavy")
 
     results = tmp_path / "calls.json"

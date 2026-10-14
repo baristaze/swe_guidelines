@@ -65,7 +65,7 @@ class Stream:
         self._seq = 0
 
     async def latest(self) -> EntityChanged:
-        event = (await self._reader.events_after(self._seq))[-1]
+        event = (await self._reader.change_events_after(self._seq))[-1]
         self._seq = event.seq
         return EntityChanged.of_event(event)
 

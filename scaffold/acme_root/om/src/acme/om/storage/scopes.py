@@ -102,8 +102,8 @@ TABLE_SCOPES: dict[str, TableScope] = {
     # planner must see how many there are to walk its index in order.
     "work_items": TableScope(ScopeKind.ORG, by_login=True),
     "tenant_caps": TableScope(ScopeKind.ORG),
-    "events": TableScope(ScopeKind.ORG),
-    "event_cursors": TableScope(ScopeKind.ORG),
+    "change_events": TableScope(ScopeKind.ORG),
+    "change_event_cursors": TableScope(ScopeKind.ORG),
     "orchestrations": TableScope(ScopeKind.ORG),
     "resources": TableScope(ScopeKind.ORG),
     "leases": TableScope(ScopeKind.ORG),

@@ -201,7 +201,7 @@ class StoragePostgresImpl(StorageInterface):
         return None
 """,
     UP: """\
--- The first tables. A comment may say CREATE FUNCTION and activity.events freely.
+-- The first tables. A comment may say CREATE FUNCTION and activity.change_events freely.
 CREATE TABLE core.widgets (id uuid PRIMARY KEY, org_id uuid NOT NULL);
 CREATE TABLE core.catalog (id uuid PRIMARY KEY, title text NOT NULL DEFAULT 'activity.x');
 ALTER TABLE core.widgets ENABLE ROW LEVEL SECURITY;
@@ -681,7 +681,7 @@ def test_sto_17_a_missing_table_a_stale_key_a_schema_and_a_cross_role_key(tmp_pa
 
 def test_sto_18_a_lone_file_a_bad_name_a_fat_wrapper_and_a_foreign_table(tmp_path):
     files = {
-        "om/migrations/sql/core/202601020000_more.up.sql": "ALTER TABLE activity.events ADD COLUMN x int;\n",
+        "om/migrations/sql/core/202601020000_more.up.sql": "ALTER TABLE activity.change_events ADD COLUMN x int;\n",
         "om/migrations/sql/core/notes.sql": "",
         "om/migrations/versions/core/202601020000_more.py": (
             'revision = "202601020000"\n'
@@ -704,7 +704,7 @@ def test_sto_18_a_lone_file_a_bad_name_a_fat_wrapper_and_a_foreign_table(tmp_pat
         [
             "a migration file not named <YYYYMMDDHHMM>_<slug>.up.sql or .down.sql",
             "a migration outside the OM; migrations live with the OM",
-            "activity.events is in role activity; this file is core's",
+            "activity.change_events is in role activity; this file is core's",
             "downgrade() runs role activity; the wrapper is in core/",
             "202601020000_more has no .down.sql",
             "upgrade() is not one run_sql() call; the SQL file holds the migration",
@@ -1019,12 +1019,12 @@ def test_sto_17_a_foreign_key_constraint_across_roles(tmp_path):
     files = edit(
         WIDGETS,
         "    __table_args__ = (\n",
-        '    __table_args__ = (\n        ForeignKeyConstraint(["parent_id"], ["activity.events.id"]),\n',
+        '    __table_args__ = (\n        ForeignKeyConstraint(["parent_id"], ["activity.change_events.id"]),\n',
     )
     code, report = run(tmp_path, "STO-17", files)
     assert code == 1
     assert messages(report) == ["Widgets has a foreign key into role activity; it is in core"]
-    files[WIDGETS] = files[WIDGETS].replace('["activity.events.id"]', '["core.catalog.id"]')
+    files[WIDGETS] = files[WIDGETS].replace('["activity.change_events.id"]', '["core.catalog.id"]')
     assert run(tmp_path, "STO-17", files)[0] == 0
 
 
@@ -1100,13 +1100,13 @@ def test_sto_05_an_event_trigger_and_an_aggregate_the_chain_leaves(tmp_path):
 
 def test_sto_18_a_quoted_schema_of_another_role(tmp_path):
     files = {
-        "om/migrations/sql/core/202601020000_more.up.sql": 'ALTER TABLE "activity"."events" ADD COLUMN x int;\n',
+        "om/migrations/sql/core/202601020000_more.up.sql": 'ALTER TABLE "activity"."change_events" ADD COLUMN x int;\n',
         "om/migrations/sql/core/202601020000_more.down.sql": 'ALTER TABLE "core"."widgets" DROP COLUMN x;\n',
         "om/migrations/versions/core/202601020000_more.py": GOOD[WRAPPER].replace("202601010000_initial", "202601020000_more"),
     }
     code, report = run(tmp_path, "STO-18", files)
     assert code == 1
-    assert messages(report) == ["activity.events is in role activity; this file is core's"]
+    assert messages(report) == ["activity.change_events is in role activity; this file is core's"]
 
 
 def test_sto_12_an_entity_that_shares_a_tables_plural_name(tmp_path):

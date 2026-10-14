@@ -77,7 +77,7 @@ not with the tenants.
 The client treats a head above its cursor as a gap and replays, so the
 head must never hide a gap for long.
 
-- It is never above the truth: a `seq` is published after its event
+- It is never above the truth: a `seq` is published after its change event
   committed.
 - It is never below what this client got from this process. The
   socket's hints and the head come off the same subscription. A hint the

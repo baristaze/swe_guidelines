@@ -282,7 +282,7 @@ async def test_the_namespaces_setting_mounts_the_media_routes_alone(tmp_path: Pa
     app = create_app(build_container(tmp_path, namespaces=["media"]))
     paths = set(app.openapi()["paths"])
     assert {"/v1/media/usage", "/v1/media/files"} <= paths
-    assert not any(p.startswith(("/v1/auth", "/v1/events", "/v1/admin")) for p in paths)
+    assert not any(p.startswith(("/v1/auth", "/v1/change-events", "/v1/admin")) for p in paths)
     whole = set(create_app(build_container(tmp_path)).openapi()["paths"])
     assert paths < whole
 

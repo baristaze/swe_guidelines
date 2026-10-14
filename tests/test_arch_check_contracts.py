@@ -324,12 +324,12 @@ def test_a_constructor_typed_by_interface_passes_con_06(tmp_path):
 def test_an_untyped_any_or_impl_dependency_and_a_self_built_one_are_con_06(tmp_path):
     impl = (
         "class TasksManagerImpl(TasksManagerInterface):\n"
-        "    def __init__(self, storage, cache: Any, peer: 'EventsManagerImpl | None') -> None:\n"
-        "        self._events = EventsManagerImpl()\n"
+        "    def __init__(self, storage, cache: Any, peer: 'ChangeEventsManagerImpl | None') -> None:\n"
+        "        self._events = ChangeEventsManagerImpl()\n"
     )
     iface = (
         "from abc import ABC, abstractmethod\n\n\nclass TasksManagerInterface(ABC):\n"
-        "    @abstractmethod\n    async def move(self, ctx, events: EventsManagerInterface): ...\n"
+        "    @abstractmethod\n    async def move(self, ctx, events: ChangeEventsManagerInterface): ...\n"
     )
     code, found, messages = run(tmp_path, "CON-06", {f"{OM}/tasks/impl/manager.py": impl, f"{OM}/tasks/manager.py": iface})
     assert code == 1
@@ -342,9 +342,9 @@ def test_an_untyped_any_or_impl_dependency_and_a_self_built_one_are_con_06(tmp_p
     ]
     assert "untyped" in messages[0]
     assert "as Any" in messages[1]
-    assert "as EventsManagerImpl" in messages[2]
-    assert "constructs EventsManagerImpl" in messages[3]
-    assert "takes a EventsManagerInterface" in messages[4]
+    assert "as ChangeEventsManagerImpl" in messages[2]
+    assert "constructs ChangeEventsManagerImpl" in messages[3]
+    assert "takes a ChangeEventsManagerInterface" in messages[4]
 
 
 def test_a_root_may_construct_impls_under_con_06(tmp_path):
@@ -360,7 +360,7 @@ def test_a_dataclass_impl_field_typed_by_an_impl_or_any_is_con_06(tmp_path):
     impl = (
         "from dataclasses import dataclass, field\nfrom typing import Any, ClassVar\n\n\n"
         "@dataclass(frozen=True)\nclass TasksManagerImpl(TasksManagerInterface):\n"
-        "    storage: TasksStoragePostgresImpl\n    cache: Any\n    events: EventsManagerInterface\n"
+        "    storage: TasksStoragePostgresImpl\n    cache: Any\n    events: ChangeEventsManagerInterface\n"
         "    LIMIT: ClassVar[int] = 10\n"
     )
     code, found, messages = run(tmp_path, "CON-06", {f"{OM}/tasks/impl/manager.py": impl})
@@ -466,10 +466,10 @@ def test_a_root_class_or_a_container_setting_a_peer_private_attribute_is_con_08(
 def test_two_namespaces_importing_each_others_impl_are_con_08(tmp_path):
     files = {
         f"{OM}/tasks/impl/__init__.py": "",
-        f"{OM}/tasks/impl/manager.py": "from acme.om.events.impl.manager import EventsManagerImpl\n",
-        f"{OM}/events/__init__.py": "",
-        f"{OM}/events/impl/__init__.py": "",
-        f"{OM}/events/impl/manager.py": "from acme.om.tasks.impl import manager\n",
+        f"{OM}/tasks/impl/manager.py": "from acme.om.change_events.impl.manager import ChangeEventsManagerImpl\n",
+        f"{OM}/change_events/__init__.py": "",
+        f"{OM}/change_events/impl/__init__.py": "",
+        f"{OM}/change_events/impl/manager.py": "from acme.om.tasks.impl import manager\n",
     }
     code, found, _ = run(tmp_path, "CON-08", files)
     assert code == 1
@@ -478,9 +478,9 @@ def test_two_namespaces_importing_each_others_impl_are_con_08(tmp_path):
 
 def test_one_direction_between_namespace_impls_passes_con_08(tmp_path):
     files = {
-        f"{OM}/tasks/impl/__init__.py": "from acme.om.events.impl import x\n",
-        f"{OM}/events/__init__.py": "",
-        f"{OM}/events/impl/__init__.py": "",
+        f"{OM}/tasks/impl/__init__.py": "from acme.om.change_events.impl import x\n",
+        f"{OM}/change_events/__init__.py": "",
+        f"{OM}/change_events/impl/__init__.py": "",
     }
     code, _, _ = run(tmp_path, "CON-08", files)
     assert code == 0

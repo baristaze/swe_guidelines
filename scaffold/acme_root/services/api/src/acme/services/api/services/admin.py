@@ -22,7 +22,7 @@ from acme.services.api.types.admin import (
     TenantCapView,
     TotpConfirmedView,
 )
-from acme.services.api.types.events import OperatorEventView
+from acme.services.api.types.change_events import OperatorChangeEventView
 from acme.services.api.types.tenancy import OrgPageView, OrgView, UserPageView, UserView
 
 
@@ -81,9 +81,9 @@ class AdminServiceInterface(ABC):
     ) -> UserView: ...
 
     @abstractmethod
-    async def get_events(
+    async def get_change_events(
         self, admin: OperatorContext, org_id: UUID, after_seq: int, limit: int
-    ) -> list[OperatorEventView]: ...
+    ) -> list[OperatorChangeEventView]: ...
 
     @abstractmethod
     async def delete_org(self, admin: OperatorContext, org_id: UUID) -> OrgView: ...

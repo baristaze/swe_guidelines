@@ -9,7 +9,7 @@ import type { IssuedTicketView } from "@acme/client";
 import { api } from "../app/api";
 import { forgetAuthSessionIfHeld } from "../app/forgetAuthSession";
 import { Banner } from "../design/kit";
-import { EVENTS_PAGE, fetchEventsAfter } from "../queries/events";
+import { CHANGE_EVENTS_PAGE, fetchChangeEventsAfter } from "../queries/changeEvents";
 import { fetchUser } from "../queries/tenancy";
 import { userHintEffects } from "../queries/userCache";
 import { useConnectionStore } from "../store/connection";
@@ -33,12 +33,12 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
       requestTicket: async () => (await api.post<IssuedTicketView>("/v1/realtime/tickets")).ticket,
       openSocket: (ticket) =>
         new WebSocket(api.websocketUrl(`/v1/realtime?ticket=${encodeURIComponent(ticket)}`)),
-      fetchEventsAfter,
+      fetchChangeEventsAfter,
       route: (envelope) => void routeEnvelope(queryClient, envelope, readers),
       replayKey: (envelope) => replayKey(envelope, readers),
       refreshAll: () => queryClient.invalidateQueries(),
       connection: useConnectionStore,
-      pageSize: EVENTS_PAGE,
+      pageSize: CHANGE_EVENTS_PAGE,
       // A socket opened under a session a switch has ended closes with 4401
       // too; only a close for the session the tab still holds signs it out.
       onUnauthenticated: () => forgetAuthSessionIfHeld(token),

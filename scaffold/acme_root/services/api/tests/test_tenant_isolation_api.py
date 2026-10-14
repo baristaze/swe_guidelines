@@ -155,7 +155,7 @@ LISTS: tuple[str, ...] = (
     "/v1/api-keys",
     "/v1/invitations",
     "/v1/media/files",
-    "/v1/events",
+    "/v1/change-events",
 )
 """Every route that answers with rows of its own choosing rather than an id
 the caller named. `/v1/me`, `/v1/me/identity`, `/v1/orgs/current`, and
@@ -318,8 +318,8 @@ async def test_the_event_stream_stops_at_the_tenant_boundary(
     are the same numbers over different rows: A asks from the beginning and
     gets its own."""
     caller, other = tenants
-    mine = await client.get("/v1/events", headers=caller.headers, params={"after_seq": 0})
-    theirs = await client.get("/v1/events", headers=other.headers, params={"after_seq": 0})
+    mine = await client.get("/v1/change-events", headers=caller.headers, params={"after_seq": 0})
+    theirs = await client.get("/v1/change-events", headers=other.headers, params={"after_seq": 0})
     assert mine.status_code == 200 and theirs.status_code == 200, mine.text
     assert [e["seq"] for e in mine.json()] == [e["seq"] for e in theirs.json()] != []
     assert not ids_in(mine.json()) & other.ids
@@ -381,5 +381,5 @@ def test_a_socket_of_one_tenant_never_hears_a_change_in_another(tmp_path: Path) 
             own = tc.post("/v1/media/files", headers=mine, json=UPLOAD)
             assert own.status_code == 201, own.text
             event = ws.receive_json()
-            assert event["type"] == "event" and event["topic"] == "entity_changed"
+            assert event["type"] == "change_event" and event["topic"] == "entity_changed"
             assert event["payload"]["target_id"] == own.json()["id"]

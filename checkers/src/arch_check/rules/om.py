@@ -179,10 +179,10 @@ def org_id_only_where_no_tenant(project: Project) -> Iterator[Violation]:
     column is judged.
 
     Option `[tool.arch-check.options.OM-02]`: `tenantless`, the class names
-    of those entities (default `["OutboxRow", "Event"]`, the guideline's).
+    of those entities (default `["OutboxRow", "ChangeEvent"]`, the guideline's).
     The tenancy namespace is OM-16's `namespace` option (default `"tenancy"`).
     """
-    tenantless = set(project.option("OM-02", "tenantless", ["OutboxRow", "Event"], {"tenantless"}))
+    tenantless = set(project.option("OM-02", "tenantless", ["OutboxRow", "ChangeEvent"], {"tenantless"}))
     tenancy = project.sub(f"om.{project.option('OM-16', 'namespace', 'tenancy', {'namespace'})}")
     idx = index(project)
 
@@ -880,7 +880,7 @@ def tenancy_is_a_namespace(project: Project) -> Iterator[Violation]:
     """`<pkg>.om` has a tenancy namespace, and neither the base module nor
     any `util*` or `helper*` module of the OM defines `User`, `Org`,
     `Organization`, `Membership`, `Credential`, `ApiKey`, `AuditEntry`, or
-    `AuditRecord`. An audit entry is an event with an audit kind, so no
+    `AuditRecord`. An audit entry is a change event with an audit kind, so no
     audit namespace is asked for. Where audit is appended, and whether it
     has gained a reader of its own, is judged.
 

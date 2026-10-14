@@ -15,6 +15,6 @@ from acme.om.base import OmBase
 class SystemSize(OmBase):
     tenants: int  # live orgs
     users: int  # live users across every tenant; a person in two orgs counts twice
-    events_last_24h: int  # events produced in the window, every tenant's stream
+    change_events_last_24h: int  # events produced in the window, every tenant's stream
     since: datetime  # where the window starts; it ends at `counted_at`
     counted_at: datetime  # when the sweep counted it: the answer is as old as this

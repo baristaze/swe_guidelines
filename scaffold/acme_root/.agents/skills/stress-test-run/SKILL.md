@@ -102,7 +102,7 @@ token, stop, and give the person the line it printed.
    route and status, p50, p95, p99, and the error ratio, then two
    totals and the notes. The totals are the two groups the target
    reads: the working requests, the person, member, and API key
-   routes, the event stream, and the socket's ticket, whose p95 the
+   routes, the change event stream, and the socket's ticket, whose p95 the
    target judges, and the
    sign-in and sign-out beside them, one of each per person for the
    whole run, reported with their own p95 and judged by nothing. The

@@ -246,7 +246,7 @@ class TenancyStorageContract:
         first = SystemSize(
             tenants=3,
             users=5,
-            events_last_24h=11,
+            change_events_last_24h=11,
             since=at - timedelta(hours=24),
             counted_at=at,
         )

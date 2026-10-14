@@ -14,7 +14,7 @@ from contracts.outbox_storage import a_user, claim_all, make_row
 
 from acme.infra.impl.local import InfraLocalImpl
 from acme.om.base import new_id
-from acme.om.events.storage.impl.memory import EventStorageMemoryImpl
+from acme.om.change_events.storage.impl.memory import ChangeEventStorageMemoryImpl
 from acme.om.outbox.impl.relay import OutboxOptions, OutboxRelayImpl
 from acme.om.outbox.storage.impl.memory import OutboxStorageMemoryImpl
 from acme.om.outbox.types.row import OutboxRow
@@ -57,13 +57,13 @@ def outbox() -> CountedMarks:
 
 
 @pytest.fixture
-def events() -> EventStorageMemoryImpl:
-    return EventStorageMemoryImpl()
+def events() -> ChangeEventStorageMemoryImpl:
+    return ChangeEventStorageMemoryImpl()
 
 
 @pytest.fixture
 def relay(
-    outbox: CountedMarks, events: EventStorageMemoryImpl, infra: InfraLocalImpl
+    outbox: CountedMarks, events: ChangeEventStorageMemoryImpl, infra: InfraLocalImpl
 ) -> OutboxRelayImpl:
     return OutboxRelayImpl(
         outbox, events, infra.get_topics(), options=OutboxOptions(grace=timedelta(0))
@@ -71,7 +71,7 @@ def relay(
 
 
 async def test_a_held_request_relays_on_release_each_org_together(
-    relay: OutboxRelayImpl, outbox: CountedMarks, events: EventStorageMemoryImpl
+    relay: OutboxRelayImpl, outbox: CountedMarks, events: ChangeEventStorageMemoryImpl
 ) -> None:
     """Two writes of one org and one of another, in one request: nothing is
     appended or marked while the hold is open; the release makes one append
@@ -101,7 +101,7 @@ async def test_a_held_request_relays_on_release_each_org_together(
 
 
 async def test_a_row_of_another_request_relays_at_once(
-    relay: OutboxRelayImpl, outbox: CountedMarks, events: EventStorageMemoryImpl
+    relay: OutboxRelayImpl, outbox: CountedMarks, events: ChangeEventStorageMemoryImpl
 ) -> None:
     """A worker's rows, or another request's, never wait on a hold."""
     org = new_id()
@@ -116,7 +116,7 @@ async def test_a_row_of_another_request_relays_at_once(
 
 
 async def test_two_holds_of_one_request_id_relay_every_row(
-    relay: OutboxRelayImpl, outbox: CountedMarks, events: EventStorageMemoryImpl
+    relay: OutboxRelayImpl, outbox: CountedMarks, events: ChangeEventStorageMemoryImpl
 ) -> None:
     """A caller may send the same request id twice at once. Each release
     relays what is held when it runs, so no row waits past the last one."""
@@ -153,7 +153,7 @@ async def test_a_hold_abandoned_leaves_the_rows_to_the_sweep(
 
 
 async def test_the_sweep_is_never_held(
-    relay: OutboxRelayImpl, outbox: CountedMarks, events: EventStorageMemoryImpl
+    relay: OutboxRelayImpl, outbox: CountedMarks, events: ChangeEventStorageMemoryImpl
 ) -> None:
     """The sweep claims rows by age, not by request: a row whose request is
     still held (a slow answer) is relayed by the sweep past its grace, and the

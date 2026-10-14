@@ -26,9 +26,9 @@ from acme.infra.observability import OUTCOMES, current_traceparent, request_id_v
 from acme.infra.queues import QueueMessage, Queues, QueuesInterface
 from acme.integrations.identity import ProvidedDelivery
 from acme.om.base import EMPTY_UUID, OmBase, derived_id, new_id
+from acme.om.change_events import ChangeEventsManagerInterface
+from acme.om.change_events.manager import audit_change_event
 from acme.om.context import AppContext, AppType, RequestContext, TenantContext
-from acme.om.events import EventsManagerInterface
-from acme.om.events.manager import audit_event
 from acme.om.exceptions import InvalidCredential
 from acme.om.tenancy import TenancyManagerInterface
 
@@ -65,8 +65,8 @@ class IdentityDeliveriesImpl(DeliveryProviderInterface[ProvidedDelivery]):
 
     KIND = "identity.event.received"
 
-    def __init__(self, events: EventsManagerInterface) -> None:
-        self._events = events
+    def __init__(self, change_events: ChangeEventsManagerInterface) -> None:
+        self._change_events = change_events
 
     def read(self, delivery: object) -> ProvidedDelivery:
         return ProvidedDelivery.model_validate(delivery)
@@ -80,14 +80,14 @@ class IdentityDeliveriesImpl(DeliveryProviderInterface[ProvidedDelivery]):
             return None
 
     async def apply(self, ctx: TenantContext, delivery: ProvidedDelivery) -> bool:
-        event = audit_event(
+        event = audit_change_event(
             ctx,
             derived_id(delivery.key, delivery.created),
             self.KIND,
             ctx.org_id,
             {"event_id": delivery.event_id, "event_type": delivery.event_type},
         )
-        stored = await self._events.append_event(ctx, event)
+        stored = await self._change_events.append_change_event(ctx, event)
         # A copy meets the event a first handling stored, which names the
         # request of that handling and not this one.
         return stored.request_id == ctx.request_id

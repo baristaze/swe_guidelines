@@ -7,6 +7,8 @@ from uuid import UUID
 from pydantic import Field
 
 from acme.om.base import EMPTY_UUID, OmBase, new_id, utcnow
+from acme.om.change_events.storage import ChangeEventStorageInterface
+from acme.om.change_events.types.change_event import ChangeEvent
 from acme.om.context import (
     CredentialKind,
     OperatorContext,
@@ -14,8 +16,6 @@ from acme.om.context import (
     OperatorRole,
     Role,
 )
-from acme.om.events.storage import EventStorageInterface
-from acme.om.events.types.event import Event
 from acme.om.exceptions import (
     Conflict,
     InvalidCredential,
@@ -82,13 +82,13 @@ class TenancyOperatorManagerImpl(TenancyOperatorManagerInterface):
     def __init__(
         self,
         storage: TenancyStorageInterface,
-        events: EventStorageInterface,
+        change_events: ChangeEventStorageInterface,
         relay: OutboxRelayInterface,
         options: TenancyOperatorOptions,
         clock: Callable[[], datetime] = utcnow,
     ) -> None:
         self._storage = storage
-        self._events = events
+        self._change_events = change_events
         self._relay = relay
         self._options = options
         self._totp = TotpSealer(options.totp_encryption_key)
@@ -226,7 +226,7 @@ class TenancyOperatorManagerImpl(TenancyOperatorManagerInterface):
         size = SystemSize(
             tenants=tenants,
             users=users,
-            events_last_24h=await self._events.count_since(since),
+            change_events_last_24h=await self._change_events.count_since(since),
             since=since,
             counted_at=counted_at,
         )
@@ -316,13 +316,13 @@ class TenancyOperatorManagerImpl(TenancyOperatorManagerInterface):
             log.info("operator %s added user %s to org %s", admin.identity_id, user.id, org_id)
         return user
 
-    async def get_events(
+    async def get_change_events(
         self, admin: OperatorContext, org_id: UUID, after_seq: int, limit: int
-    ) -> list[Event]:
+    ) -> list[ChangeEvent]:
         admin.require(OperatorPermission.READ)
         await self._org(org_id)
-        events = await self._events.read_after(org_id, max(0, after_seq), self._clamp(limit))
-        self._trail(admin, org_id, "events")
+        events = await self._change_events.read_after(org_id, max(0, after_seq), self._clamp(limit))
+        self._trail(admin, org_id, "change_events")
         return events
 
     async def delete_org(self, admin: OperatorContext, org_id: UUID) -> Org:

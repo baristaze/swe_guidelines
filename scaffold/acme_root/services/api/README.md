@@ -15,7 +15,7 @@ A request passes four layers, each in its own folder under
   and the request's deadline, the credential, rate limits, idempotency,
   the error envelope, and the webhook's signed body.
 - **Routers** (`routers/`). One module per namespace: tenancy with the
-  operator plane, events, media, and webhooks. Each route makes one call
+  operator plane, change events, media, and webhooks. Each route makes one call
   into a service.
 - **Services** (`services/`). One interface per namespace, and its impl in
   `services/impl/`. An impl translates the request, calls a manager or a
@@ -87,7 +87,7 @@ app, and `main.py` is the `acme-api` command: `serve`, `migrate`,
   the org's storage used. (`/v1/media/files`,
   `/v1/media/files/{file_id}`, `.../upload`, `.../content`,
   `.../confirm`, `.../download`, `/v1/media/usage`)
-- **Events.** The org's diary after a sequence number. (`/v1/events`)
+- **Change events.** The org's diary after a sequence number. (`/v1/change-events`)
 - **Leases.** Ask for a resource, by its id or by a selector, under an
   idempotency key; read where the request stands, its place and its
   estimate, or its lease; cancel it; read a resource's line, with each
@@ -109,18 +109,18 @@ app, and `main.py` is the `acme-api` command: `serve`, `migrate`,
   single-use ticket. (`/v1/realtime`)
 - **The operator plane.** For an identity on the operator allowlist,
   across every org: create an org with its owner, add a member, read
-  an org, its members, and its events, list every org a page at a
+  an org, its members, and its change events, list every org a page at a
   time, delete a team org as its owner does (closed for everyone in it
   at once; the worker ends its providers and then deletes it; a
   personal org is refused), send one of an org's failed work items back
   to the queue, set, read, or clear an org's own cap on a lane (the
   most items it holds claimed there at once, in place of the lane's
   cap; `404` where it has none), and read the system's size: the
-  tenant count, the user count, and the events of twenty-four hours,
+  tenant count, the user count, and the change events of twenty-four hours,
   as the maintenance worker last counted them, with the moment it did
   (`404` before its first count; the route counts nothing).
   (`/v1/admin/orgs`, `/v1/admin/orgs/{org_id}`,
-  `/v1/admin/orgs/{org_id}/members`, `/v1/admin/orgs/{org_id}/events`,
+  `/v1/admin/orgs/{org_id}/members`, `/v1/admin/orgs/{org_id}/change-events`,
   `/v1/admin/orgs/{org_id}/work/{item_id}/requeue`,
   `/v1/admin/orgs/{org_id}/work/lanes/{lane}/cap`, `/v1/admin/size`). A read route
   needs an operator who may read; a write route one who may write.
@@ -221,7 +221,7 @@ app, and `main.py` is the `acme-api` command: `serve`, `migrate`,
   audience, and a narrower view is the client's filter. Every push carries the
   org's stream position, and each client holds a contiguous cursor, so
   a push the server withheld would be a gap. The replay of
-  `/v1/events` that fills a gap is unscoped, and it would hand back
+  `/v1/change-events` that fills a gap is unscoped, and it would hand back
   what was withheld. Filtering at the server needs a scoped replay and
   a frame counter per subscription, a second protocol, and it waits
   until the channel's traffic makes the filter worth that protocol.

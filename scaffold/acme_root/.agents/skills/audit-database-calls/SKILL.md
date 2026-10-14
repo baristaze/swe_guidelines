@@ -20,7 +20,7 @@ The audit counts the checkout, tools and code alike; to count another
 commit, run it from a checkout of that commit that has `ops/audit/`.
 Every command runs from the repository root. `--only` runs some of the
 built-in flows (`sign_in`, `members`, `invitations`, `api_keys`,
-`switch`, `files`, `events`, `org_deleted`, `account_deleted`, `sweep`,
+`switch`, `files`, `change_events`, `org_deleted`, `account_deleted`, `sweep`,
 `health`), such as `--only api_keys,sweep`; `seed` always runs first,
 and a flows file of the run's own always runs in full.
 

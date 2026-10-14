@@ -13,7 +13,7 @@ from typing import Any, cast
 from uuid import UUID
 
 import pytest
-from contracts.event_storage import make_event
+from contracts.change_event_storage import make_change_event
 from contracts.factories import make_identity, make_user
 from contracts.idempotency_storage import make_record
 from contracts.work_storage import make_cap, make_item
@@ -22,8 +22,8 @@ from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, create_async_engine
 
 from acme.om.base import EMPTY_UUID, new_id
-from acme.om.events.storage.impl.postgres import EventStoragePostgresImpl
-from acme.om.events.storage.tables.events import Events
+from acme.om.change_events.storage.impl.postgres import ChangeEventStoragePostgresImpl
+from acme.om.change_events.storage.tables.change_events import ChangeEvents
 from acme.om.idempotency.storage.impl.postgres import IdempotencyStoragePostgresImpl
 from acme.om.idempotency.storage.tables.idempotency_records import IdempotencyRecords
 from acme.om.storage.impl.pg_base import LoginSessions, set_scope
@@ -124,7 +124,7 @@ async def test_the_runtime_and_the_system_logins_own_nothing(pg_sessions: Sessio
 
 async def _event_ids(session: AsyncSession, org_id: UUID) -> list[UUID]:
     await set_scope(session, org_id, None, None)
-    return list((await session.execute(text("SELECT id FROM activity.events"))).scalars())
+    return list((await session.execute(text("SELECT id FROM activity.change_events"))).scalars())
 
 
 async def test_the_runtime_login_naming_the_system_scope_reads_nothing(
@@ -134,10 +134,10 @@ async def test_the_runtime_login_naming_the_system_scope_reads_nothing(
     request can name the system scope. The policy admits the system scope to
     the system login alone, and the runtime login naming it reads nothing,
     while the system login reads every tenant's rows."""
-    events = EventStoragePostgresImpl(pg_sessions)
+    events = ChangeEventStoragePostgresImpl(pg_sessions)
     first, second = new_id(), new_id()
-    await events.append_events(first, [make_event(first)])
-    await events.append_events(second, [make_event(second)])
+    await events.append_change_events(first, [make_change_event(first)])
+    await events.append_change_events(second, [make_change_event(second)])
 
     async with pg_sessions[DatabaseRole.ACTIVITY]() as session:
         assert await _event_ids(session, EMPTY_UUID) == []
@@ -148,12 +148,12 @@ async def test_the_runtime_login_naming_the_system_scope_reads_nothing(
 async def test_the_funnel_opens_the_system_scope_on_the_system_login(
     pg_sessions: Sessions,
 ) -> None:
-    events = EventStoragePostgresImpl(pg_sessions)
+    events = ChangeEventStoragePostgresImpl(pg_sessions)
     who = text("SELECT current_user")
-    async with events._session_for(Events, org_id=EMPTY_UUID) as session:
+    async with events._session_for(ChangeEvents, org_id=EMPTY_UUID) as session:
         assert (await session.execute(who)).scalar_one() == SYSTEM_LOGIN
     org = new_id()
-    async with events._session_for(Events, org_id=org) as session:
+    async with events._session_for(ChangeEvents, org_id=org) as session:
         assert (await session.execute(who)).scalar_one() == RUNTIME_LOGIN
 
 
@@ -167,11 +167,11 @@ async def test_the_policy_is_what_refuses_the_other_tenant(
     the policy is live and not only present. Turning it off takes the owner,
     so that step runs under the migration login, and the fence is put back
     whatever the assertions say."""
-    events = EventStoragePostgresImpl(pg_sessions)
+    events = ChangeEventStoragePostgresImpl(pg_sessions)
     mine, theirs = new_id(), new_id()
-    await events.append_events(mine, [make_event(mine)])
-    await events.append_events(theirs, [make_event(theirs)])
-    read = text("SELECT org_id FROM activity.events")
+    await events.append_change_events(mine, [make_change_event(mine)])
+    await events.append_change_events(theirs, [make_change_event(theirs)])
+    read = text("SELECT org_id FROM activity.change_events")
 
     async def orgs_seen() -> set[UUID]:
         async with pg_sessions[DatabaseRole.ACTIVITY]() as session:
@@ -182,11 +182,15 @@ async def test_the_policy_is_what_refuses_the_other_tenant(
     assert await orgs_seen() == {mine}
     try:
         async with owner.begin() as connection:
-            await connection.execute(text("ALTER TABLE activity.events DISABLE ROW LEVEL SECURITY"))
+            await connection.execute(
+                text("ALTER TABLE activity.change_events DISABLE ROW LEVEL SECURITY")
+            )
         assert await orgs_seen() == {mine, theirs}
     finally:
         async with owner.begin() as connection:
-            await connection.execute(text("ALTER TABLE activity.events ENABLE ROW LEVEL SECURITY"))
+            await connection.execute(
+                text("ALTER TABLE activity.change_events ENABLE ROW LEVEL SECURITY")
+            )
     assert await orgs_seen() == {mine}
 
 
@@ -273,17 +277,17 @@ async def test_a_transaction_with_no_scope_reads_nothing_and_writes_refuse(
     NULL is false, and the policy holds. The read going silently empty is the
     accepted price, and the write is refused outright."""
     org = new_id()
-    events = EventStoragePostgresImpl(pg_sessions)
-    (appended,) = await events.append_events(org, [make_event(org)])
+    events = ChangeEventStoragePostgresImpl(pg_sessions)
+    (appended,) = await events.append_change_events(org, [make_change_event(org)])
     assert await events.read_head(org) == 1
 
     async with pg_sessions[DatabaseRole.ACTIVITY]() as session:
-        assert (await session.execute(text("SELECT id FROM activity.events"))).all() == []
-        cursors = text("SELECT org_id FROM activity.event_cursors")
+        assert (await session.execute(text("SELECT id FROM activity.change_events"))).all() == []
+        cursors = text("SELECT org_id FROM activity.change_event_cursors")
         assert (await session.execute(cursors)).all() == []
         with pytest.raises(DBAPIError) as refused:
             await session.execute(
-                text("INSERT INTO activity.event_cursors (org_id, head) VALUES (:org, 1)"),
+                text("INSERT INTO activity.change_event_cursors (org_id, head) VALUES (:org, 1)"),
                 {"org": org},
             )
         assert "row-level security" in str(refused.value)

@@ -9,9 +9,9 @@ from pydantic import ValidationError
 from acme.infra.observability import OUTCOMES
 from acme.infra.topics import EntityChangedPayload, Topics, TopicsInterface, WorkAvailablePayload
 from acme.om.base import EMPTY_UUID, OmBase, derived_id, new_id, utcnow
+from acme.om.change_events import ChangeEventsManagerInterface
+from acme.om.change_events.manager import audit_change_event
 from acme.om.context import Permission, RequestContext, TenantContext
-from acme.om.events import EventsManagerInterface
-from acme.om.events.manager import audit_event
 from acme.om.exceptions import (
     InvalidCredential,
     LeaseLost,
@@ -100,13 +100,13 @@ class WorkManagerImpl(WorkManagerInterface):
         self,
         storage: WorkStorageInterface,
         tenancy: TenancyManagerInterface,
-        events: EventsManagerInterface,
+        change_events: ChangeEventsManagerInterface,
         topics: TopicsInterface,
         options: WorkOptions,
     ) -> None:
         self._storage = storage
         self._tenancy = tenancy
-        self._events = events
+        self._change_events = change_events
         self._topics = topics
         self._options = options
 
@@ -470,9 +470,9 @@ class WorkManagerImpl(WorkManagerInterface):
             ctx.org_id,
             item.last_error,
         )
-        event = await self._events.append_event(
+        event = await self._change_events.append_change_event(
             ctx,
-            audit_event(
+            audit_change_event(
                 ctx,
                 new_id(),
                 DEAD_LETTER_KIND,

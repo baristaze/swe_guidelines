@@ -13,6 +13,7 @@ from acme.infra.cache import CacheScope
 from acme.infra.impl.local import InfraLocalImpl
 from acme.integrations.identity.absent import IdentityProviderAbsentImpl
 from acme.om.base import EMPTY_UUID, new_id
+from acme.om.change_events.storage.impl.memory import ChangeEventStorageMemoryImpl
 from acme.om.context import (
     ActorScope,
     AppContext,
@@ -31,7 +32,6 @@ from acme.om.context import (
     TenantScope,
     build_context,
 )
-from acme.om.events.storage.impl.memory import EventStorageMemoryImpl
 from acme.om.exceptions import InvalidCredential, NotAnOperator, NotAuthorized
 from acme.om.outbox.impl.relay import OutboxRelayImpl
 from acme.om.outbox.storage.impl.memory import OutboxStorageMemoryImpl
@@ -57,7 +57,7 @@ def request() -> RequestContext:
 def manager(tmp_path: Path) -> TenancyManagerInterface:
     outbox = OutboxStorageMemoryImpl()
     infra = InfraLocalImpl(tmp_path)
-    relay = OutboxRelayImpl(outbox, EventStorageMemoryImpl(), infra.get_topics())
+    relay = OutboxRelayImpl(outbox, ChangeEventStorageMemoryImpl(), infra.get_topics())
     return build_tenancy(
         TenancyStorageMemoryImpl(outbox),
         relay,

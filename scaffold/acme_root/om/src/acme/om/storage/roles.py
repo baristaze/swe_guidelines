@@ -25,8 +25,8 @@ TABLE_ROLES: dict[str, DatabaseRole] = {
     "tenant_caps": DatabaseRole.QUEUE,
     "files": DatabaseRole.CORE,
     "idempotency_records": DatabaseRole.CORE,
-    "events": DatabaseRole.ACTIVITY,
-    "event_cursors": DatabaseRole.ACTIVITY,
+    "change_events": DatabaseRole.ACTIVITY,
+    "change_event_cursors": DatabaseRole.ACTIVITY,
     "outbox_rows": DatabaseRole.CORE,
     "orchestrations": DatabaseRole.CORE,
     "resources": DatabaseRole.CORE,
@@ -36,6 +36,8 @@ TABLE_ROLES: dict[str, DatabaseRole] = {
 }
 
 DROPPED_TABLE_ROLES: dict[str, DatabaseRole] = {
+    "event_cursors": DatabaseRole.ACTIVITY,
+    "events": DatabaseRole.ACTIVITY,
     "platform_sizes": DatabaseRole.ADMIN,
     "sessions": DatabaseRole.CORE,
 }

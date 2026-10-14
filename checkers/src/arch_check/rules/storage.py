@@ -904,7 +904,7 @@ def migration_layout(project: Project) -> Iterator[Violation]:
         seen_roles = {rel.split("/")[-2] for rel in project.files(f"{sql_dir}/*/*", f"{versions_dir}/*/*.py")}
         for role in sorted(seen_roles - roles):
             yield Violation(f"{sql_dir}/{role}", 1, 1, f"{role} is not a role of {name}")
-        # a role's schema, bare or quoted, then a table: `activity.events`, `"activity"."events"`
+        # a role's schema, bare or quoted, then a table: `activity.change_events`, `"activity"."change_events"`
         pattern = re.compile(r'(?<![\w$])"?(' + "|".join(re.escape(r) for r in sorted(roles)) + r')"?\s*\.\s*"?([A-Za-z_]\w*)')
         for f in good:
             code = sql_code(project.read(f.rel) or "")

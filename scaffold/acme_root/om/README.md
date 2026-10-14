@@ -55,13 +55,13 @@ store, never in the record.
 No person creates these and no screen shows them, but each belongs to
 an org like everything else.
 
-An **event** is a line in the org's diary: what changed, how, by whom,
-and when. The lines are numbered with no gaps. An **audit entry** is an
-event the system records about itself, such as a job that failed for
+A **change event** is a line in the org's diary: what changed, how, by whom,
+and when. The lines are numbered with no gaps. An **audit entry** is a
+change event the system records about itself, such as a job that failed for
 good.
 
 An **outbox row** is a note written in the same stroke as a change,
-saying "tell everyone about this". The event and the live push come
+saying "tell everyone about this". The change event and the live push come
 from it, so no change goes unannounced.
 
 A **work item** is a job for later. It waits in a queue until a worker
@@ -84,9 +84,9 @@ arrive twice, so the second copy gets the first one's answer.
   a membership with a role.
 - An auth session or an API key belongs to a user, so everything done with
   it is done as that user in that org.
-- Every change a screen acts on writes an outbox row, which becomes an
-  event in the org's diary, which reaches every open screen of the org.
-- A work item, an orchestration, an idempotency record, an event, and
+- Every change a screen acts on writes an outbox row, which becomes a
+  change event in the org's diary, which reaches every open screen of the org.
+- A work item, an orchestration, an idempotency record, a change event, and
   an outbox row each name their org, so the fence between orgs holds
   for them too.
 
@@ -94,7 +94,7 @@ arrive twice, so the second copy gets the first one's answer.
 
 - [Orgs, identities, users, memberships, and credentials](src/acme/om/tenancy/README.md)
 - [Files](src/acme/om/media/README.md)
-- [Events](src/acme/om/events/README.md)
+- [Change events](src/acme/om/change_events/README.md)
 - [Outbox rows](src/acme/om/outbox/README.md)
 - [Work items](src/acme/om/work/README.md)
 - [Orchestrations](src/acme/om/orchestrations/README.md)

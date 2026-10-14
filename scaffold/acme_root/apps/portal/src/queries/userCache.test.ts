@@ -157,7 +157,7 @@ describe("a push about a user", () => {
 
   const pushOf = (target: string, kind = "tenancy.user.updated") =>
     parseEnvelope(
-      JSON.stringify({ type: "event", sent_at: null, topic: "entity_changed", payload: { kind, target_id: target, seq: 1, actor_id: "u1" } }),
+      JSON.stringify({ type: "change_event", sent_at: null, topic: "entity_changed", payload: { kind, target_id: target, seq: 1, actor_id: "u1" } }),
     )!;
 
   it("reads that one member and places it, or takes it out when the read finds nothing", async () => {

@@ -1,9 +1,11 @@
 from datetime import timedelta
 
 import pytest
-from contracts.event_storage import IDENTITY, make_event
+from contracts.change_event_storage import IDENTITY, make_change_event
 
 from acme.om.base import new_id, utcnow
+from acme.om.change_events.impl.manager import ChangeEventsManagerImpl, ChangeEventsOptions
+from acme.om.change_events.storage.impl.memory import ChangeEventStorageMemoryImpl
 from acme.om.context import (
     AppContext,
     AppType,
@@ -13,8 +15,6 @@ from acme.om.context import (
     TenantContext,
     build_context,
 )
-from acme.om.events.impl.manager import EventsManagerImpl, EventsOptions
-from acme.om.events.storage.impl.memory import EventStorageMemoryImpl
 from acme.om.exceptions import NotAuthorized, StreamTruncated
 from acme.om.tenancy import TenancyManagerInterface
 from acme.om.tenancy.rules import permissions_of
@@ -34,7 +34,7 @@ def context(role: Role = Role.MEMBER) -> TenantContext:
 
 
 class Retention(TenancyManagerInterface):
-    """The one question the events sweep asks of tenancy, answered as the
+    """The one question the change events sweep asks of tenancy, answered as the
     case sets it; any other method fails loudly as unimplemented."""
 
     def __init__(self) -> None:
@@ -53,33 +53,39 @@ def retention() -> Retention:
 
 
 @pytest.fixture
-def manager(retention: Retention) -> EventsManagerImpl:
-    return EventsManagerImpl(EventStorageMemoryImpl(), retention, EventsOptions(max_limit=2))
+def manager(retention: Retention) -> ChangeEventsManagerImpl:
+    return ChangeEventsManagerImpl(
+        ChangeEventStorageMemoryImpl(), retention, ChangeEventsOptions(max_limit=2)
+    )
 
 
 async def test_append_sequences_per_tenant_and_reads_back_by_seq(
-    manager: EventsManagerImpl,
+    manager: ChangeEventsManagerImpl,
 ) -> None:
     ann, bob = context(), context()
-    first = await manager.append_event(ann, make_event(ann.org_id))
-    second = await manager.append_event(ann, make_event(ann.org_id, "tenancy.user.updated"))
-    elsewhere = await manager.append_event(bob, make_event(bob.org_id))
+    first = await manager.append_change_event(ann, make_change_event(ann.org_id))
+    second = await manager.append_change_event(
+        ann, make_change_event(ann.org_id, "tenancy.user.updated")
+    )
+    elsewhere = await manager.append_change_event(bob, make_change_event(bob.org_id))
     assert (first.seq, second.seq, elsewhere.seq) == (1, 2, 1)
     assert first.kind == "tenancy.user.created" and first.payload == {"identity_id": IDENTITY}
-    assert await manager.get_events(ann, after_seq=1, limit=10) == [second]
-    assert await manager.get_events(bob, after_seq=0, limit=10) == [elsewhere]
+    assert await manager.get_change_events(ann, after_seq=1, limit=10) == [second]
+    assert await manager.get_change_events(bob, after_seq=0, limit=10) == [elsewhere]
 
 
 async def test_get_events_clamps_the_limit_and_tolerates_a_negative_cursor(
-    manager: EventsManagerImpl,
+    manager: ChangeEventsManagerImpl,
 ) -> None:
     ctx = context()
     for _ in range(3):
-        await manager.append_event(ctx, make_event(ctx.org_id))
-    assert [e.seq for e in await manager.get_events(ctx, after_seq=-5, limit=1000)] == [1, 2]
+        await manager.append_change_event(ctx, make_change_event(ctx.org_id))
+    assert [e.seq for e in await manager.get_change_events(ctx, after_seq=-5, limit=1000)] == [1, 2]
 
 
-async def test_the_stream_is_read_with_read_and_is_append_only(manager: EventsManagerImpl) -> None:
+async def test_the_stream_is_read_with_read_and_is_append_only(
+    manager: ChangeEventsManagerImpl,
+) -> None:
     # An append-only entity: no update, no delete, and the read needs READ.
     member = context(Role.MEMBER)
     viewer = member.model_copy(
@@ -89,29 +95,29 @@ async def test_the_stream_is_read_with_read_and_is_append_only(manager: EventsMa
             )
         }
     )
-    await manager.append_event(member, make_event(member.org_id))
-    assert [e.seq for e in await manager.get_events(viewer, after_seq=0, limit=10)] == [1]
+    await manager.append_change_event(member, make_change_event(member.org_id))
+    assert [e.seq for e in await manager.get_change_events(viewer, after_seq=0, limit=10)] == [1]
     assert not hasattr(manager, "update_event") and not hasattr(manager, "delete_event")
     no_read = viewer.model_copy(
         update={"security": viewer.security.model_copy(update={"permissions": ()})}
     )
     with pytest.raises(NotAuthorized):
-        await manager.get_events(no_read, after_seq=0, limit=10)
+        await manager.get_change_events(no_read, after_seq=0, limit=10)
 
 
 async def test_an_append_is_a_write_and_carries_the_contexts_provenance(
-    manager: EventsManagerImpl,
+    manager: ChangeEventsManagerImpl,
 ) -> None:
     # A viewer reads the stream and appends nothing to it.
     viewer = context(Role.VIEWER)
     with pytest.raises(NotAuthorized):
-        await manager.append_event(viewer, make_event(viewer.org_id))
+        await manager.append_change_event(viewer, make_change_event(viewer.org_id))
     assert await manager.get_head(viewer) == 0
     # A caller-built event names whatever tenant and whoever it likes; the row
     # records the context.
     member = context(Role.MEMBER)
-    foreign = make_event(new_id(), "work.item.failed")
-    appended = await manager.append_event(member, foreign)
+    foreign = make_change_event(new_id(), "work.item.failed")
+    appended = await manager.append_change_event(member, foreign)
     assert (appended.org_id, appended.actor_id, appended.request_id, appended.app) == (
         member.org_id,
         member.user_id,
@@ -126,43 +132,45 @@ async def test_an_append_is_a_write_and_carries_the_contexts_provenance(
     )
     assert appended.org_id != foreign.org_id and appended.actor_id != foreign.actor_id
     assert appended.request_id != foreign.request_id
-    assert await manager.get_events(member, after_seq=0, limit=10) == [appended]
+    assert await manager.get_change_events(member, after_seq=0, limit=10) == [appended]
 
 
-async def test_the_head_is_the_last_seq_of_the_callers_tenant(manager: EventsManagerImpl) -> None:
+async def test_the_head_is_the_last_seq_of_the_callers_tenant(
+    manager: ChangeEventsManagerImpl,
+) -> None:
     ctx, other = context(), context()
     assert await manager.get_head(ctx) == 0
-    await manager.append_event(ctx, make_event(ctx.org_id))
-    await manager.append_event(ctx, make_event(ctx.org_id))
-    await manager.append_event(other, make_event(other.org_id))
+    await manager.append_change_event(ctx, make_change_event(ctx.org_id))
+    await manager.append_change_event(ctx, make_change_event(ctx.org_id))
+    await manager.append_change_event(other, make_change_event(other.org_id))
     assert await manager.get_head(ctx) == 2
     assert await manager.get_head(other) == 1
 
 
 async def test_the_sweep_drops_a_stream_only_once_its_tenant_has_expired(
-    manager: EventsManagerImpl, retention: Retention
+    manager: ChangeEventsManagerImpl, retention: Retention
 ) -> None:
     ann = context(Role.OWNER)
-    await manager.append_event(ann, make_event(ann.org_id))
-    await manager.append_event(ann, make_event(ann.org_id, "tenancy.user.updated"))
+    await manager.append_change_event(ann, make_change_event(ann.org_id))
+    await manager.append_change_event(ann, make_change_event(ann.org_id, "tenancy.user.updated"))
     assert await manager.purge_tenant(ann) == 0
-    assert len(await manager.get_events(ann, 0, 2)) == 2
+    assert len(await manager.get_change_events(ann, 0, 2)) == 2
     retention.expired = True
     assert await manager.purge_tenant(ann) == 2
-    assert await manager.get_events(ann, 0, 2) == []
+    assert await manager.get_change_events(ann, 0, 2) == []
     assert await manager.get_head(ann) == 0
 
 
-def keeping(retention: Retention, days: int | None, batch: int = 1000) -> EventsManagerImpl:
+def keeping(retention: Retention, days: int | None, batch: int = 1000) -> ChangeEventsManagerImpl:
     kept = None if days is None else timedelta(days=days)
-    options = EventsOptions(retention=kept, purge_batch=batch)
-    return EventsManagerImpl(EventStorageMemoryImpl(), retention, options)
+    options = ChangeEventsOptions(retention=kept, purge_batch=batch)
+    return ChangeEventsManagerImpl(ChangeEventStorageMemoryImpl(), retention, options)
 
 
-async def append_aged(manager: EventsManagerImpl, ctx: TenantContext, *days_ago: int) -> None:
+async def append_aged(manager: ChangeEventsManagerImpl, ctx: TenantContext, *days_ago: int) -> None:
     for days in days_ago:
-        aged = make_event(ctx.org_id, produced_at=utcnow() - timedelta(days=days))
-        await manager.append_event(ctx, aged)
+        aged = make_change_event(ctx.org_id, produced_at=utcnow() - timedelta(days=days))
+        await manager.append_change_event(ctx, aged)
 
 
 async def test_with_no_retention_the_sweep_keeps_every_event(retention: Retention) -> None:
@@ -171,7 +179,7 @@ async def test_with_no_retention_the_sweep_keeps_every_event(retention: Retentio
     ctx = context(Role.OWNER)
     await append_aged(manager, ctx, 400, 200)
     assert await manager.purge_across_tenants() == 0
-    assert [e.seq for e in await manager.get_events(ctx, 0, 10)] == [1, 2]
+    assert [e.seq for e in await manager.get_change_events(ctx, 0, 10)] == [1, 2]
 
 
 async def test_the_sweep_trims_one_batch_of_what_is_past_the_retention(
@@ -185,13 +193,13 @@ async def test_the_sweep_trims_one_batch_of_what_is_past_the_retention(
     assert await manager.purge_across_tenants() == 2, "one batch a call"
     assert await manager.purge_across_tenants() == 1
     assert await manager.purge_across_tenants() == 0, "the young events stay"
-    assert [e.seq for e in await manager.get_events(ctx, 3, 10)] == [4]
-    assert [e.seq for e in await manager.get_events(other, 0, 10)] == [1]
+    assert [e.seq for e in await manager.get_change_events(ctx, 3, 10)] == [4]
+    assert [e.seq for e in await manager.get_change_events(other, 0, 10)] == [1]
     # A tenant past its own retention loses the rest, floor and all.
     retention.expired = True
     assert await manager.purge_tenant(ctx) == 1
     assert await manager.get_head(ctx) == 0
-    assert await manager.get_events(ctx, 0, 10) == []
+    assert await manager.get_change_events(ctx, 0, 10) == []
 
 
 async def test_a_read_below_the_floor_is_refused_with_the_head(retention: Retention) -> None:
@@ -201,14 +209,14 @@ async def test_a_read_below_the_floor_is_refused_with_the_head(retention: Retent
     assert await manager.purge_across_tenants() == 2
     for below in (0, 1, -5):
         with pytest.raises(StreamTruncated) as refused:
-            await manager.get_events(ctx, below, 10)
+            await manager.get_change_events(ctx, below, 10)
         assert (refused.value.floor, refused.value.head) == (2, 4)
         assert (refused.value.http_status, refused.value.code) == (410, "stream_truncated")
     # At the floor and above it, the stream reads as it always did.
-    assert [e.seq for e in await manager.get_events(ctx, 2, 10)] == [3, 4]
-    assert [e.seq for e in await manager.get_events(ctx, 3, 10)] == [4]
-    assert await manager.get_events(ctx, 4, 10) == []
+    assert [e.seq for e in await manager.get_change_events(ctx, 2, 10)] == [3, 4]
+    assert [e.seq for e in await manager.get_change_events(ctx, 3, 10)] == [4]
+    assert await manager.get_change_events(ctx, 4, 10) == []
     # The floor is the tenant's own: another tenant reads from 0.
     other = context()
-    await manager.append_event(other, make_event(other.org_id))
-    assert [e.seq for e in await manager.get_events(other, 0, 10)] == [1]
+    await manager.append_change_event(other, make_change_event(other.org_id))
+    assert [e.seq for e in await manager.get_change_events(other, 0, 10)] == [1]

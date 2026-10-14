@@ -1,7 +1,7 @@
 """The in-memory storage root: the default for unit tests and the fast gate."""
 
-from acme.om.events.storage import EventStorageInterface
-from acme.om.events.storage.impl.memory import EventStorageMemoryImpl
+from acme.om.change_events.storage import ChangeEventStorageInterface
+from acme.om.change_events.storage.impl.memory import ChangeEventStorageMemoryImpl
 from acme.om.idempotency.storage import IdempotencyStorageInterface
 from acme.om.idempotency.storage.impl.memory import IdempotencyStorageMemoryImpl
 from acme.om.leases.storage import LeasesStorageInterface
@@ -33,7 +33,7 @@ class StorageMemoryImpl(StorageInterface):
         # Postgres impl runs its statement in the request's transaction.
         self._leases = LeasesStorageMemoryImpl(self._outbox, self._orchestrations)
         self._media = MediaStorageMemoryImpl(self._outbox)
-        self._events = EventStorageMemoryImpl()
+        self._change_events = ChangeEventStorageMemoryImpl()
 
     def get_tenancy_storage(self) -> TenancyStorageInterface:
         return self._tenancy
@@ -47,8 +47,8 @@ class StorageMemoryImpl(StorageInterface):
     def get_idempotency_storage(self) -> IdempotencyStorageInterface:
         return self._idempotency
 
-    def get_event_storage(self) -> EventStorageInterface:
-        return self._events
+    def get_change_event_storage(self) -> ChangeEventStorageInterface:
+        return self._change_events
 
     def get_outbox_storage(self) -> OutboxStorageInterface:
         return self._outbox

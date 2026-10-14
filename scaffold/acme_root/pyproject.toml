@@ -105,8 +105,8 @@ reason = "a static page with no script and no state; the portal and every app th
 # om/tests/unit/test_storage_exceptions.py holds.
 [tool.arch-check.options.CTX-12]
 tenantless = [
-    "EventStorageInterface.count_since",
-    "EventStorageInterface.trim",
+    "ChangeEventStorageInterface.count_since",
+    "ChangeEventStorageInterface.trim",
     "IdempotencyStorageInterface.purge_records",
     "LeasesStorageInterface.purge_settled",
     "LeasesStorageInterface.read_due_orgs",

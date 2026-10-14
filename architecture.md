@@ -308,9 +308,9 @@ does.
 | `Trackable`     | its lifecycle is recorded, by whom and when |
 | `SoftDeletable` | it can be hidden without being purged       |
 
-An append-only record, an event or a ledger line, is `Identifiable`
+An append-only record, a change event or a ledger line, is `Identifiable`
 and carries its time in a field of its own: `created_at` from `Created`,
-or a name of its own, as an event's `produced_at`. It is never updated,
+or a name of its own, as a change event's `produced_at`. It is never updated,
 so it has no `updated_at`, and never hidden, so no `deleted_at`. The one
 write it takes after its birth is erasure, which redacts a person's
 fields in place.
@@ -443,10 +443,11 @@ caller asks for (`get_orders`), or the domain's own verb
 (`place_order`). A work handler is `<Kind>HandlerImpl`, its kind in
 CamelCase.
 
-Cross-cutting concerns are namespaces like any other: tenancy, events,
-the outbox, idempotency, work. None is a utility off the root. Audit,
-who did what and from which app, is a kind of event: an audit entry is
-an `Event` with an audit kind, in the events namespace's stream
+Cross-cutting concerns are namespaces like any other: tenancy, change
+events, the outbox, idempotency, work. None is a utility off the root.
+Audit, who did what and from which app, is a kind of change event: an
+audit entry is a `ChangeEvent` with an audit kind, in the change events
+namespace's stream
 ([Realtime at the Edge](#realtime-at-the-edge)). Audit becomes a
 namespace of its own when it gains a reader of its own, such as a
 screen that lists who did what, or an export, or when it must be kept
@@ -933,7 +934,7 @@ class OutboxRow(Identifiable, Created):
 
 A row the relay cannot carry keeps its error and waits a growing delay,
 so it stops nothing behind it, and past its last attempt it is failed, a
-dead letter that an audit event names.
+dead letter that an audit entry names.
 
 A few tables hold no tenant's rows. A global table's methods take no
 tenant, an identity table's take `identity_id`, a cross-tenant sweep
@@ -1024,7 +1025,7 @@ exactly one, named in one map
 | Role       | Holds                                                  |
 |------------|--------------------------------------------------------|
 | `core`     | the system of record: tenancy, catalog, orders, config |
-| `activity` | append-only streams: events, audit, ledgers            |
+| `activity` | append-only streams: change events, audit, ledgers     |
 | `queue`    | the work queue and the channels that wake workers      |
 | `admin`    | the operator plane's own state, global rows            |
 
@@ -1041,7 +1042,7 @@ Nothing crosses a role, so a handoff after a core write is never a
 second write a manager remembers. The manager writes the core row and
 its outbox rows in one atomic method, and the relay carries each row to
 where its `kind` says, at once or from the sweep, and marks it done. An
-entity change becomes an `Event` in `activity` and an `ENTITY_CHANGED`
+entity change becomes a `ChangeEvent` in `activity` and an `ENTITY_CHANGED`
 publish; a `work.<kind>` row becomes a work item in `queue` and a
 `WORK_AVAILABLE` wake-up. The relay is idempotent on the row's key. This
 is the transactional outbox
@@ -1051,7 +1052,7 @@ is the transactional outbox
 flowchart LR
     Mgr[Manager write] -->|one transaction| Core[(core: row + outbox rows)]
     Core --> Relay[Outbox relay: now, or the sweep]
-    Relay -->|append, seq| Act[(activity: Event)]
+    Relay -->|append, seq| Act[(activity: ChangeEvent)]
     Relay -->|publish| Bus[[Topic bus]]
     Relay -->|enqueue| Q[(queue: work item)]
     Bus --> Sock[Sockets on every replica]
@@ -1059,7 +1060,7 @@ flowchart LR
     Sock -.->|reconnect: after_seq| Act
 ```
 
-An entity change is done when its event is appended and the bus took the
+An entity change is done when its change event is appended and the bus took the
 publish, so a dropped push is relayed again. A work row is done once its
 item is queued: the wake-up is a hint, and workers also poll. Relaying
 from the sweep alone, every second or two, is the cheaper first step;
@@ -1075,7 +1076,7 @@ period to restore it, or gone at once: one atomic write deletes their
 identity and every user, membership, and credential it holds, outside
 the sweep, so the fields they asked to lose wait out no retention. What
 they made in a team org stays the org's, under their id. Payloads and
-events, audit entries among them, carry ids, never a personal value, so
+change events, audit entries among them, carry ids, never a personal value, so
 an erasure has nothing to redact in them.
 
 <!-- agents-only
@@ -1663,14 +1664,14 @@ subscribes, a producer publishes once, and each socket filters by tenant
 and stream, so no process needs to know which replica holds whom
 ([`realtime/`](scaffold/acme_root/services/api/src/acme/services/api/realtime/)).
 
-Every push is also a record: an `Event` in `activity`, with `org_id`,
+Every push is also a record: a `ChangeEvent` in `activity`, with `org_id`,
 `seq`, `kind`, `target_id`, `actor_id`, the request, and the app, and a
 payload of ids
-([`event.py`](scaffold/acme_root/om/src/acme/om/events/types/event.py)).
+([`change_event.py`](scaffold/acme_root/om/src/acme/om/change_events/types/change_event.py)).
 One atomic method appends it and takes `seq` from a cursor row per
 tenant, so the sequence is gapless and a client reads a gap as a loss.
-`seq` orders events, not writes. An audit entry is an event with an
-audit kind, so one stream records both.
+`seq` orders change events, not writes. An audit entry is a change
+event with an audit kind, so one stream records both.
 
 The stream is a stream of hints: a frame names the change, and its
 `version` when the entity has one, and nothing else of it, so a client
@@ -1693,8 +1694,8 @@ and ping; commands go over REST.
 Replay reaches back as far as the stream is kept. The stream's
 retention is a setting of the worker that trims it, longer than the
 backups and the outbox keep theirs, so a restore never needs a trimmed
-event. The trim deletes the oldest run of events past the retention
-and, in the same transaction, moves the tenant's floor to the last
+change event. The trim deletes the oldest run of change events past the
+retention and, in the same transaction, moves the tenant's floor to the last
 `seq` it deleted. The stream is gapless above the floor. A read below
 the floor is `410 stream_truncated`, naming the floor and the head.
 Asking again never succeeds, so the client reads afresh what it shows
@@ -2198,7 +2199,7 @@ snapshot of the flags marked for clients
 exchange is done and keeps it in the query cache under a key of its key
 factory, so a switch drops it with the old tenant's caches. It reads it
 again when the window regains focus and on an interval. It polls because
-no push names a flag's change, which is no event the system records, and
+no push names a flag's change, which is no change event the system records, and
 the snapshot's `ETag` turns a read that finds nothing new into a `304`.
 Until the snapshot arrives, a flag reads off.
 
@@ -2765,8 +2766,8 @@ The shapes cover almost every case: `NotFound` (404), `Conflict` (409),
 (401), `NotAuthorized` (403), and `Unavailable` (503), for what cannot
 be reached right now, each with its name in snake case as its code. A
 namespace's exception inherits a shape. One that no shape fits sets a
-status and a code of its own under the root, as a read of the event
-stream below its floor is `410 stream_truncated`. A boundary catches
+status and a code of its own under the root, as a read of the change
+event stream below its floor is `410 stream_truncated`. A boundary catches
 both roots and translates them in one place; managers never format
 HTTP.
 

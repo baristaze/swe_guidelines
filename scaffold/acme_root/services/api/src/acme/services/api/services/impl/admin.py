@@ -24,8 +24,8 @@ from acme.services.api.types.admin import (
     TenantCapView,
     TotpConfirmedView,
 )
+from acme.services.api.types.change_events import OperatorChangeEventView
 from acme.services.api.types.common import clamp_limit
-from acme.services.api.types.events import OperatorEventView
 from acme.services.api.types.tenancy import OrgPageView, OrgView, UserPageView, UserView
 
 
@@ -130,11 +130,11 @@ class AdminServiceImpl(AdminServiceInterface):
         )
         return UserView.model_validate(user)
 
-    async def get_events(
+    async def get_change_events(
         self, admin: OperatorContext, org_id: UUID, after_seq: int, limit: int
-    ) -> list[OperatorEventView]:
-        events = await self._tenancy.get_events(admin, org_id, after_seq, clamp_limit(limit))
-        return [OperatorEventView.model_validate(e) for e in events]
+    ) -> list[OperatorChangeEventView]:
+        events = await self._tenancy.get_change_events(admin, org_id, after_seq, clamp_limit(limit))
+        return [OperatorChangeEventView.model_validate(e) for e in events]
 
     async def delete_org(self, admin: OperatorContext, org_id: UUID) -> OrgView:
         return OrgView.model_validate(await self._tenancy.delete_org(admin, org_id))

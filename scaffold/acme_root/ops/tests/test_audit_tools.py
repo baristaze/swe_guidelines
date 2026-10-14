@@ -58,7 +58,7 @@ def test_the_url_keeps_its_login_and_moves_to_the_audit_database() -> None:
 
 def test_scale_one_is_the_heavy_seed() -> None:
     counts = Counts.at(1)
-    assert (counts.people, counts.members, counts.files, counts.events) == (
+    assert (counts.people, counts.members, counts.files, counts.change_events) == (
         5000,
         200,
         20000,

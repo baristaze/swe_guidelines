@@ -24,7 +24,7 @@ plane. This is one of the kinds of thing
 - **API key**, **socket ticket**, **second factor** (an operator's
   TOTP), and **operator token**: each stored as a digest or sealed,
   never in the clear.
-- **System size**: the count of orgs, users, and the day's events the
+- **System size**: the count of orgs, users, and the day's change events the
   sweep keeps for the operator plane.
 
 ## What can happen
@@ -67,7 +67,7 @@ plane. This is one of the kinds of thing
   ([ADR 0068](../../../../../docs/adr/0068-an-operator-credential-ends-by-itself.md)).
 - **Another org's things do not exist.** A user, a membership, or a key
   of another org is answered as one that never existed.
-- **Events carry ids.** A change about a person names ids, never an
+- **Change events carry ids.** A change about a person names ids, never an
   email or a name, so erasing the person erases them.
 - **An integration acts as a proven member, or as nobody.** It names a
   person by an address its provider vouches is theirs, never one they

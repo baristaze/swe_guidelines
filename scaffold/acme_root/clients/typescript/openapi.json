@@ -288,6 +288,43 @@
         "title": "AuthSessionView",
         "type": "object"
       },
+      "ChangeEventView": {
+        "description": "One record of the tenant's append-only stream, paged by `after_seq`.\n`kind` is \"<namespace>.<entity>.<action>\", or an audit kind; the payload\nstays inside, an event is a record and not a second read path.",
+        "properties": {
+          "actor_id": {
+            "format": "uuid",
+            "title": "Actor Id",
+            "type": "string"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "produced_at": {
+            "format": "date-time",
+            "title": "Produced At",
+            "type": "string"
+          },
+          "seq": {
+            "title": "Seq",
+            "type": "integer"
+          },
+          "target_id": {
+            "format": "uuid",
+            "title": "Target Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "seq",
+          "kind",
+          "target_id",
+          "produced_at",
+          "actor_id"
+        ],
+        "title": "ChangeEventView",
+        "type": "object"
+      },
       "ConfirmTotpRequest": {
         "additionalProperties": false,
         "description": "The first code from the authenticator, which confirms the secret.",
@@ -589,43 +626,6 @@
           "error"
         ],
         "title": "ErrorResponse",
-        "type": "object"
-      },
-      "EventView": {
-        "description": "One record of the tenant's append-only stream, paged by `after_seq`.\n`kind` is \"<namespace>.<entity>.<action>\", or an audit kind; the payload\nstays inside, an event is a record and not a second read path.",
-        "properties": {
-          "actor_id": {
-            "format": "uuid",
-            "title": "Actor Id",
-            "type": "string"
-          },
-          "kind": {
-            "title": "Kind",
-            "type": "string"
-          },
-          "produced_at": {
-            "format": "date-time",
-            "title": "Produced At",
-            "type": "string"
-          },
-          "seq": {
-            "title": "Seq",
-            "type": "integer"
-          },
-          "target_id": {
-            "format": "uuid",
-            "title": "Target Id",
-            "type": "string"
-          }
-        },
-        "required": [
-          "seq",
-          "kind",
-          "target_id",
-          "produced_at",
-          "actor_id"
-        ],
-        "title": "EventView",
         "type": "object"
       },
       "ExchangeAuthSessionRequest": {
@@ -1713,7 +1713,7 @@
         "title": "MintOperatorTokenRequest",
         "type": "object"
       },
-      "OperatorEventView": {
+      "OperatorChangeEventView": {
         "description": "The same record as an operator reads it, with the two provenance fields\na tenant's own feed leaves out: the request that produced it and the app\nit came from, which is what a support investigation correlates on.",
         "properties": {
           "actor_id": {
@@ -1758,7 +1758,7 @@
           "request_id",
           "app"
         ],
-        "title": "OperatorEventView",
+        "title": "OperatorChangeEventView",
         "type": "object"
       },
       "OperatorRole": {
@@ -2666,14 +2666,14 @@
       "SystemSizeView": {
         "description": "How big the system is, what the first responder to an alarm reads\nbefore it escalates: live tenants and users, and the events produced in\nthe twenty-four hours from `since` to `counted_at`. The maintenance\nworker counts it every few minutes, and this is its latest count:\n`counted_at` says how old the answer is.",
         "properties": {
+          "change_events_last_24h": {
+            "title": "Change Events Last 24H",
+            "type": "integer"
+          },
           "counted_at": {
             "format": "date-time",
             "title": "Counted At",
             "type": "string"
-          },
-          "events_last_24h": {
-            "title": "Events Last 24H",
-            "type": "integer"
           },
           "since": {
             "format": "date-time",
@@ -2692,7 +2692,7 @@
         "required": [
           "tenants",
           "users",
-          "events_last_24h",
+          "change_events_last_24h",
           "since",
           "counted_at"
         ],
@@ -3891,9 +3891,9 @@
         ]
       }
     },
-    "/v1/admin/orgs/{org_id}/events": {
+    "/v1/admin/orgs/{org_id}/change-events": {
       "get": {
-        "operationId": "list_events_v1_admin_orgs__org_id__events_get",
+        "operationId": "list_change_events_v1_admin_orgs__org_id__change_events_get",
         "parameters": [
           {
             "in": "path",
@@ -3981,9 +3981,9 @@
               "application/json": {
                 "schema": {
                   "items": {
-                    "$ref": "#/components/schemas/OperatorEventView"
+                    "$ref": "#/components/schemas/OperatorChangeEventView"
                   },
-                  "title": "Response List Events V1 Admin Orgs  Org Id  Events Get",
+                  "title": "Response List Change Events V1 Admin Orgs  Org Id  Change Events Get",
                   "type": "array"
                 }
               }
@@ -4001,7 +4001,7 @@
             "description": "Validation Error"
           }
         },
-        "summary": "List Events",
+        "summary": "List Change Events",
         "tags": [
           "admin"
         ]
@@ -5975,9 +5975,9 @@
         ]
       }
     },
-    "/v1/events": {
+    "/v1/change-events": {
       "get": {
-        "operationId": "list_events_v1_events_get",
+        "operationId": "list_change_events_v1_change_events_get",
         "parameters": [
           {
             "in": "query",
@@ -6055,9 +6055,9 @@
               "application/json": {
                 "schema": {
                   "items": {
-                    "$ref": "#/components/schemas/EventView"
+                    "$ref": "#/components/schemas/ChangeEventView"
                   },
-                  "title": "Response List Events V1 Events Get",
+                  "title": "Response List Change Events V1 Change Events Get",
                   "type": "array"
                 }
               }
@@ -6075,9 +6075,9 @@
             "description": "Validation Error"
           }
         },
-        "summary": "List Events",
+        "summary": "List Change Events",
         "tags": [
-          "events"
+          "change_events"
         ]
       }
     },

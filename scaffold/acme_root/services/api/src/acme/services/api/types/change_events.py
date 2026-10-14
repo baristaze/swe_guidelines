@@ -1,4 +1,4 @@
-"""Wire types of the event stream: the record a client replays after the
+"""Wire types of the change event stream: the record a client replays after the
 last sequence it saw, and the projection a push carries on the channel."""
 
 from datetime import datetime
@@ -9,7 +9,7 @@ from pydantic import Field
 from acme.services.api.types.common import View
 
 
-class EventView(View):
+class ChangeEventView(View):
     """One record of the tenant's append-only stream, paged by `after_seq`.
     `kind` is "<namespace>.<entity>.<action>", or an audit kind; the payload
     stays inside, an event is a record and not a second read path."""
@@ -21,7 +21,7 @@ class EventView(View):
     actor_id: UUID
 
 
-class OperatorEventView(EventView):
+class OperatorChangeEventView(ChangeEventView):
     """The same record as an operator reads it, with the two provenance fields
     a tenant's own feed leaves out: the request that produced it and the app
     it came from, which is what a support investigation correlates on."""

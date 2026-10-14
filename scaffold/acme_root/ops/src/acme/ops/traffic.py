@@ -343,7 +343,7 @@ class Session:
 
         await self.clock.think()
         assert self._start_seq is not None
-        events = await client.events_after(self._start_seq)
+        events = await client.change_events_after(self._start_seq)
         if not any(e.actor_id == self._user_id for e in events):
             raise SessionFailed("the stream read back none of the session's own changes")
 

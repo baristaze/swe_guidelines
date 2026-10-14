@@ -27,7 +27,7 @@ The supporter holds a `read` operator token and changes nothing.
    - **The request id through every signal** (`acme-ops signals check`):
      the log lines, the metric, the trace, and the error event.
    - **The org's records on the plane**: the org, its members, and its
-     event stream around the time named. The stream is numbered without
+     change event stream around the time named. The stream is numbered without
      gaps, so a change that never reached a screen is either in the
      stream and not pushed, or not in it and never made.
    - **The errors** for the window, filtered on the environment
@@ -55,7 +55,7 @@ The supporter holds a `read` operator token and changes nothing.
 - **The skill stops on its identity check.** The profile or the token is
   not the read one. Sign in again under the investigate profile, and
   write a fresh `read` token.
-- **The stream starts after the time named.** Its oldest events are
+- **The stream starts after the time named.** Its oldest change events are
   trimmed past the retention, 90 days by default
   ([ADR 0040](../adr/0040-the-event-stream-has-a-floor.md)). The org's
   rows still show the state as it is.

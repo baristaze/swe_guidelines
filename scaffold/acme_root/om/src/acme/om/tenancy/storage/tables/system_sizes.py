@@ -16,6 +16,6 @@ class SystemSizes(GlobalIdentifiableMixin, Base):
     __tablename__ = "system_sizes"
     tenants: Mapped[int] = mapped_column(BigInteger)
     users: Mapped[int] = mapped_column(BigInteger)
-    events_last_24h: Mapped[int] = mapped_column(BigInteger)
+    change_events_last_24h: Mapped[int] = mapped_column(BigInteger)
     since: Mapped[datetime]
     counted_at: Mapped[datetime]

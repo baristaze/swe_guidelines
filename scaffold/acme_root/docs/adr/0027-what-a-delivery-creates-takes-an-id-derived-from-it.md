@@ -27,7 +27,7 @@ The one caller is the identity provider's webhook. The maintenance
 worker records each delivery that names an org as an audit entry,
 `identity.event.received`
 ([ADR 0011](0011-audit-entries-are-events.md)), under the derived id.
-The append is idempotent on the event's id, so a copy the queue hands
+The append is idempotent on the change event's id, so a copy the queue hands
 over again appends nothing.
 
 OM-12 names these ids, and those an orchestration step makes

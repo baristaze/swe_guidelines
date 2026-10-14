@@ -29,17 +29,17 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.sql.dml import ReturningInsert
 
 from acme.om.base import EMPTY_UUID
-from acme.om.events.storage import EventStorageInterface
-from acme.om.events.storage.tables.event_cursors import EventCursors
-from acme.om.events.storage.tables.events import Events
-from acme.om.events.types.event import Event
-from acme.om.events.types.page import StreamPage
+from acme.om.change_events.storage import ChangeEventStorageInterface
+from acme.om.change_events.storage.tables.change_event_cursors import ChangeEventCursors
+from acme.om.change_events.storage.tables.change_events import ChangeEvents
+from acme.om.change_events.types.change_event import ChangeEvent
+from acme.om.change_events.types.page import StreamPage
 from acme.om.exceptions import TenantMismatch, UniqueKeyTaken
 from acme.om.storage.impl.pg_base import PgStorageBase, delete_batch, deleted, violated_constraint
 from acme.om.storage.utils.translation import to_model, to_values
 
 WRITTEN: tuple[str, ...] = tuple(
-    name for name in cast(Table, Events.__table__).c.keys() if name not in ("org_id", "seq")
+    name for name in cast(Table, ChangeEvents.__table__).c.keys() if name not in ("org_id", "seq")
 )
 """The columns an append writes from the event; storage writes `org_id` and `seq`."""
 
@@ -58,8 +58,8 @@ def _append_statement() -> ReturningInsert[Any]:
 
     Built on the tables and not the mapped classes, so it runs as one Core
     statement with its arrays as plain parameters."""
-    table = cast(Table, Events.__table__)
-    cursors = cast(Table, EventCursors.__table__)
+    table = cast(Table, ChangeEvents.__table__)
+    cursors = cast(Table, ChangeEventCursors.__table__)
     org_id = bindparam("org_id", type_=Uuid())
     incoming = (
         func.unnest(
@@ -114,7 +114,7 @@ APPEND = _append_statement()
 def _trim_statement() -> Select[tuple[int, int]]:
     """The trim, across tenants, in one statement.
 
-    `old` walks `ix_events_produced_at` from its low end and takes the
+    `old` walks `ix_change_events_produced_at` from its low end and takes the
     `limit` events produced longest ago: they name the tenants the call
     trims, and each tenant's share of them bounds its run, so the call
     deletes `limit` events at most. `locked` takes each named tenant's cursor
@@ -129,8 +129,8 @@ def _trim_statement() -> Select[tuple[int, int]]:
 
     Built on the tables and not the mapped classes, so it runs as one Core
     statement, as the append does."""
-    events = cast(Table, Events.__table__)
-    cursors = cast(Table, EventCursors.__table__)
+    events = cast(Table, ChangeEvents.__table__)
+    cursors = cast(Table, ChangeEventCursors.__table__)
     before = bindparam("before", type_=DateTime(timezone=True))
     limit = bindparam("limit", type_=Integer())
     old = (
@@ -220,20 +220,22 @@ def _trim_statement() -> Select[tuple[int, int]]:
 TRIM = _trim_statement()
 
 
-class EventStoragePostgresImpl(PgStorageBase, EventStorageInterface):
-    async def append_events(self, org_id: UUID, events: Sequence[Event]) -> tuple[Event, ...]:
-        batch = list(events)
+class ChangeEventStoragePostgresImpl(PgStorageBase, ChangeEventStorageInterface):
+    async def append_change_events(
+        self, org_id: UUID, change_events: Sequence[ChangeEvent]
+    ) -> tuple[ChangeEvent, ...]:
+        batch = list(change_events)
         if len({event.id for event in batch}) != len(batch):
             raise ValueError("an append names one event id twice")
-        stored: dict[UUID, Event] = {}
+        stored: dict[UUID, ChangeEvent] = {}
         while pending := [event for event in batch if event.id not in stored]:
             try:
                 stored.update(await self._append(org_id, pending))
             except IntegrityError as error:
                 constraint = violated_constraint(error)
-                if constraint != cast(Table, Events.__table__).primary_key.name:
+                if constraint != cast(Table, ChangeEvents.__table__).primary_key.name:
                     raise UniqueKeyTaken(
-                        f"events of {org_id}: {constraint or 'a unique key'} is taken"
+                        f"change events of {org_id}: {constraint or 'a unique key'} is taken"
                     ) from error
                 # An id of the batch was appended since the statement read the
                 # stream: a relay that ran twice at once. The rollback returned
@@ -242,7 +244,7 @@ class EventStoragePostgresImpl(PgStorageBase, EventStorageInterface):
                 found = await self._read_ids(org_id, [event.id for event in pending])
                 if not found:
                     raise TenantMismatch(
-                        f"events {[str(event.id) for event in pending]}: an id is not in {org_id}"
+                        f"change events {[str(event.id) for event in pending]}: an id is not in {org_id}"
                     ) from error
                 stored.update(found)
                 continue
@@ -254,18 +256,20 @@ class EventStoragePostgresImpl(PgStorageBase, EventStorageInterface):
             break
         return tuple(stored[event.id] for event in batch)
 
-    async def _append(self, org_id: UUID, events: list[Event]) -> dict[UUID, Event]:
-        """`APPEND` for these events: the new ones take the next numbers from
+    async def _append(
+        self, org_id: UUID, change_events: list[ChangeEvent]
+    ) -> dict[UUID, ChangeEvent]:
+        """`APPEND` for these change events: the new ones take the next numbers from
         the cursor row and are written with them, and come back by id."""
-        rows = [to_values(event, Events) for event in events]
+        rows = [to_values(event, ChangeEvents) for event in change_events]
         params: dict[str, object] = {name: [row[name] for row in rows] for name in WRITTEN}
         # The payload travels as JSON text and is cast back in the statement.
         params["payload"] = [json.dumps(row["payload"]) for row in rows]
         params["org_id"] = org_id
-        async with self._session_for(Events, org_id=org_id) as session:
+        async with self._session_for(ChangeEvents, org_id=org_id) as session:
             try:
                 result = (await session.execute(APPEND, params)).all()
-                appended = {row.id: to_model(row, Event) for row in result}
+                appended = {row.id: to_model(row, ChangeEvent) for row in result}
                 await session.commit()
             except IntegrityError:
                 # The rollback returns the numbers with it, so the stream stays gapless.
@@ -273,42 +277,51 @@ class EventStoragePostgresImpl(PgStorageBase, EventStorageInterface):
                 raise
             return appended
 
-    async def _read_ids(self, org_id: UUID, event_ids: list[UUID]) -> dict[UUID, Event]:
-        stmt = select(Events).where(Events.org_id == org_id, Events.id.in_(event_ids))
+    async def _read_ids(self, org_id: UUID, event_ids: list[UUID]) -> dict[UUID, ChangeEvent]:
+        stmt = select(ChangeEvents).where(
+            ChangeEvents.org_id == org_id, ChangeEvents.id.in_(event_ids)
+        )
         async with self._session_for(stmt, org_id=org_id) as session:
-            return {row.id: to_model(row, Event) for row in (await session.execute(stmt)).scalars()}
+            return {
+                row.id: to_model(row, ChangeEvent)
+                for row in (await session.execute(stmt)).scalars()
+            }
 
-    async def read_after(self, org_id: UUID, after_seq: int, limit: int) -> list[Event]:
+    async def read_after(self, org_id: UUID, after_seq: int, limit: int) -> list[ChangeEvent]:
         stmt = (
-            select(Events)
-            .where(Events.org_id == org_id, Events.seq > after_seq)
-            .order_by(Events.seq)
+            select(ChangeEvents)
+            .where(ChangeEvents.org_id == org_id, ChangeEvents.seq > after_seq)
+            .order_by(ChangeEvents.seq)
             .limit(limit)
         )
         async with self._session_for(stmt, org_id=org_id) as session:
             result = await session.execute(stmt)
-            return [to_model(row, Event) for row in result.scalars()]
+            return [to_model(row, ChangeEvent) for row in result.scalars()]
 
     async def read_page(self, org_id: UUID, after_seq: int, limit: int) -> StreamPage:
         page = (
-            select(Events)
-            .where(Events.org_id == org_id, Events.seq > after_seq)
-            .order_by(Events.seq)
+            select(ChangeEvents)
+            .where(ChangeEvents.org_id == org_id, ChangeEvents.seq > after_seq)
+            .order_by(ChangeEvents.seq)
             .limit(limit)
         )
-        cursor = select(EventCursors.floor, EventCursors.head).where(EventCursors.org_id == org_id)
-        async with self._session_for(Events, org_id=org_id) as session:
-            events = tuple(to_model(row, Event) for row in (await session.execute(page)).scalars())
+        cursor = select(ChangeEventCursors.floor, ChangeEventCursors.head).where(
+            ChangeEventCursors.org_id == org_id
+        )
+        async with self._session_for(ChangeEvents, org_id=org_id) as session:
+            events = tuple(
+                to_model(row, ChangeEvent) for row in (await session.execute(page)).scalars()
+            )
             # Read committed: this statement sees every trim committed before
             # it, the ones before the page included.
             found = (await session.execute(cursor)).one_or_none()
         floor, head = (0, 0) if found is None else (int(found.floor), int(found.head))
-        return StreamPage(events=events, floor=floor, head=head)
+        return StreamPage(change_events=events, floor=floor, head=head)
 
     async def purge_tenant(self, org_id: UUID, limit: int) -> int:
-        events = delete_batch(Events, Events.org_id == org_id, limit=limit)
-        cursor = delete(EventCursors).where(EventCursors.org_id == org_id)
-        async with self._session_for(Events, org_id=org_id) as session:
+        events = delete_batch(ChangeEvents, ChangeEvents.org_id == org_id, limit=limit)
+        cursor = delete(ChangeEventCursors).where(ChangeEventCursors.org_id == org_id)
+        async with self._session_for(ChangeEvents, org_id=org_id) as session:
             purged = deleted(await session.execute(events))
             if purged < limit:
                 # The stream is empty now, so its counter goes too.
@@ -320,23 +333,25 @@ class EventStoragePostgresImpl(PgStorageBase, EventStorageInterface):
         # Every tenant's stream, so the system scope, spelled here. One
         # statement: the cursor rows are locked, the events deleted, and the
         # floors moved in one transaction, as the per-tenant trim did it.
-        async with self._session_for(Events, org_id=EMPTY_UUID) as session:
+        async with self._session_for(ChangeEvents, org_id=EMPTY_UUID) as session:
             trimmed = (await session.execute(TRIM, {"before": before, "limit": limit})).scalar_one()
             await session.commit()
             return int(trimmed)
 
     async def read_floor(self, org_id: UUID) -> int:
-        stmt = select(EventCursors.floor).where(EventCursors.org_id == org_id)
+        stmt = select(ChangeEventCursors.floor).where(ChangeEventCursors.org_id == org_id)
         async with self._session_for(stmt, org_id=org_id) as session:
             return int(await session.scalar(stmt) or 0)
 
     async def count_since(self, since: datetime) -> int:
-        stmt = select(func.count()).select_from(Events).where(Events.produced_at >= since)
+        stmt = (
+            select(func.count()).select_from(ChangeEvents).where(ChangeEvents.produced_at >= since)
+        )
         async with self._session_for(stmt, org_id=EMPTY_UUID) as session:
             return (await session.execute(stmt)).scalar_one()
 
     async def read_head(self, org_id: UUID) -> int:
         # The cursor row is the head: one row, never a scan of the stream.
-        stmt = select(EventCursors.head).where(EventCursors.org_id == org_id)
+        stmt = select(ChangeEventCursors.head).where(ChangeEventCursors.org_id == org_id)
         async with self._session_for(stmt, org_id=org_id) as session:
             return int(await session.scalar(stmt) or 0)

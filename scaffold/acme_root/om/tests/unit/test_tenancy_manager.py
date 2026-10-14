@@ -24,6 +24,7 @@ from acme.infra.impl.local import InfraLocalImpl
 from acme.infra.topics import EntityChangedPayload, TopicPayload, Topics
 from acme.integrations.identity.absent import IdentityProviderAbsentImpl
 from acme.om.base import EMPTY_UUID, new_id, utcnow
+from acme.om.change_events.storage.impl.memory import ChangeEventStorageMemoryImpl
 from acme.om.context import (
     AppContext,
     AppType,
@@ -36,7 +37,6 @@ from acme.om.context import (
     Role,
     TenantContext,
 )
-from acme.om.events.storage.impl.memory import EventStorageMemoryImpl
 from acme.om.exceptions import (
     Conflict,
     CredentialExpired,
@@ -174,7 +174,7 @@ def make_manager(
     # A relay over its own outbox is enough where the sweep never runs; the
     # fixture below shares the one the storage lands rows in.
     relay = OutboxRelayImpl(
-        outbox or OutboxStorageMemoryImpl(), EventStorageMemoryImpl(), infra.get_topics()
+        outbox or OutboxStorageMemoryImpl(), ChangeEventStorageMemoryImpl(), infra.get_topics()
     )
     return build_tenancy(
         storage,
@@ -208,7 +208,7 @@ def operator(
     outbox: OutboxStorageMemoryImpl,
     clock: SteppingClock,
 ) -> TenancyOperatorManagerImpl:
-    events = EventStorageMemoryImpl()
+    events = ChangeEventStorageMemoryImpl()
     relay = OutboxRelayImpl(outbox, events, infra.get_topics())
     return TenancyOperatorManagerImpl(
         storage, events, relay, TenancyOperatorOptions(totp_encryption_key=TOTP_KEY), clock
@@ -697,7 +697,7 @@ async def test_removing_a_member_soft_deletes_the_user_and_ends_access(
 async def test_removing_a_member_revokes_their_credentials_and_announces_each(
     storage: TenancyStorageMemoryImpl, infra: InfraLocalImpl, outbox: OutboxStorageMemoryImpl
 ) -> None:
-    relay = SpyRelay(OutboxRelayImpl(outbox, EventStorageMemoryImpl(), infra.get_topics()))
+    relay = SpyRelay(OutboxRelayImpl(outbox, ChangeEventStorageMemoryImpl(), infra.get_topics()))
     manager = build_tenancy(
         storage,
         relay,
@@ -744,7 +744,7 @@ async def test_no_event_about_a_user_carries_who_they_are(
     """The stream outlives a removed member; the purge that erases a person
     reaches the user row and not the stream, so the stream never holds the
     email or the name."""
-    relay = SpyRelay(OutboxRelayImpl(outbox, EventStorageMemoryImpl(), infra.get_topics()))
+    relay = SpyRelay(OutboxRelayImpl(outbox, ChangeEventStorageMemoryImpl(), infra.get_topics()))
     manager = build_tenancy(
         storage,
         relay,
@@ -962,7 +962,7 @@ async def test_revoking_a_session_announces_it_on_the_bus_without_its_token(
     """The socket that session opened lives in some process; the revocation
     reaches it as any change does, an outbox row the relay publishes. The
     event is a record, not a credential: its snapshot has no token hash."""
-    relay = SpyRelay(OutboxRelayImpl(outbox, EventStorageMemoryImpl(), infra.get_topics()))
+    relay = SpyRelay(OutboxRelayImpl(outbox, ChangeEventStorageMemoryImpl(), infra.get_topics()))
     manager = build_tenancy(
         storage,
         relay,
@@ -986,9 +986,11 @@ async def test_revoking_a_session_announces_it_on_the_bus_without_its_token(
     assert "token_hash" not in row.payload
     assert row.payload == {"user_id": str(ctx.user_id)}, "ids only"
     frames = [p for p in published if isinstance(p, EntityChangedPayload)]
-    assert [(f.kind, f.target_id, f.org_id) for f in frames if f.kind.startswith("tenancy.auth_session.")] == [
-        ("tenancy.auth_session.revoked", revoked.id, org.id)
-    ]
+    assert [
+        (f.kind, f.target_id, f.org_id)
+        for f in frames
+        if f.kind.startswith("tenancy.auth_session.")
+    ] == [("tenancy.auth_session.revoked", revoked.id, org.id)]
 
     # Logging out is the same revocation, announced the same way.
     third = await manager.sign_in.exchange_login(
@@ -1164,8 +1166,8 @@ async def test_a_process_without_the_totp_key_refuses_to_enrol(
     manager = make_manager(storage, infra, TenancyOptions(dev_sign_in=True), outbox=outbox)
     operator = TenancyOperatorManagerImpl(
         storage,
-        EventStorageMemoryImpl(),
-        OutboxRelayImpl(outbox, EventStorageMemoryImpl(), infra.get_topics()),
+        ChangeEventStorageMemoryImpl(),
+        OutboxRelayImpl(outbox, ChangeEventStorageMemoryImpl(), infra.get_topics()),
         TenancyOperatorOptions(),
     )
     await seed_operator(manager, "root@example.test")
@@ -1474,7 +1476,7 @@ async def test_each_credential_is_checked_in_the_fewest_reads(
 async def test_the_grant_job_puts_an_identity_on_the_allowlist_and_audits_it(
     storage: TenancyStorageMemoryImpl, infra: InfraLocalImpl, outbox: OutboxStorageMemoryImpl
 ) -> None:
-    relay = SpyRelay(OutboxRelayImpl(outbox, EventStorageMemoryImpl(), infra.get_topics()))
+    relay = SpyRelay(OutboxRelayImpl(outbox, ChangeEventStorageMemoryImpl(), infra.get_topics()))
     manager = build_tenancy(
         storage,
         relay,
@@ -2147,7 +2149,7 @@ def held_relay(
 ) -> OutboxRelayImpl:
     """A relay that holds the request's rows, so what an add landed stays
     pending in the outbox, where a test reads it."""
-    relay = OutboxRelayImpl(outbox, EventStorageMemoryImpl(), infra.get_topics())
+    relay = OutboxRelayImpl(outbox, ChangeEventStorageMemoryImpl(), infra.get_topics())
     relay.hold(rctx.request_id)
     return relay
 
@@ -2732,7 +2734,7 @@ async def test_the_memberships_of_an_identity_page_and_skip_the_gone(
 async def test_a_switch_ends_the_session_it_was_presented_with_in_the_same_write(
     storage: TenancyStorageMemoryImpl, infra: InfraLocalImpl, outbox: OutboxStorageMemoryImpl
 ) -> None:
-    relay = SpyRelay(OutboxRelayImpl(outbox, EventStorageMemoryImpl(), infra.get_topics()))
+    relay = SpyRelay(OutboxRelayImpl(outbox, ChangeEventStorageMemoryImpl(), infra.get_topics()))
     manager = build_tenancy(
         storage,
         relay,
