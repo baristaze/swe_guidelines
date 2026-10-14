@@ -889,6 +889,9 @@ def test_a_fold_on_a_base_takes_only_the_revisions_the_tree_owns() -> None:
         "`git ls-tree -r --name-only origin/scaffold -- om/migrations/sql om/migrations/versions`"
         in fold
     )
+    assert "Bash(git ls-tree:*)" in [
+        tool.strip() for tool in _allowed_tools("docs-compact").split(",")
+    ]
     assert "Each rendered file stays as the render gave it" in fold
     assert "The fold's parent is the base's head as the chain holds it" in fold
     assert "no rendered revision follows an owned one on any line" in fold
