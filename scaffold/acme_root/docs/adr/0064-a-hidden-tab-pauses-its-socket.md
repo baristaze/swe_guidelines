@@ -38,7 +38,7 @@ them), a window `focus`, and `online`. Several at once make one connect,
 since only a paused channel connects. The resume is a first connect: it
 asks for a fresh ticket, and the socket's open replays from the cursor.
 A stream trimmed past the cursor is a resync, as on any reconnect
-([ADR 0040](0040-the-event-stream-has-a-floor.md)). An `online` that
+([ADR 0040](0040-the-change-event-stream-has-a-floor.md)). An `online` that
 finds the tab still hidden starts the five minutes over.
 
 **While paused, no query counts as kept fresh by a push.** The query

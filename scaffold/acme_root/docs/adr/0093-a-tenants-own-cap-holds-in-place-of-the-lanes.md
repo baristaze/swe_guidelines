@@ -51,9 +51,9 @@ and this records how Acme holds it.
   and no restart of a worker.
 - A tenant's own cap can be above the lane's as well as below it, so
   one tenant can hold more workers than its neighbours.
-- With no row, the claim holds what it held before: the lane's cap for
-  every tenant, or no tenant passed over.
-- A claim on a lane with no cap now counts the lane's claimed items
+- With no row, the claim holds the lane's cap for every tenant, or
+  passes no tenant over when the lane has none.
+- A claim on a lane with no cap counts the lane's claimed items
   under a live lease and looks each one's tenant up in the caps' index.
   Those are as many rows as the lane's workers run. Measured with 50,000
   queued items, 40 claimed, and 500 caps on the lane, the claim runs in

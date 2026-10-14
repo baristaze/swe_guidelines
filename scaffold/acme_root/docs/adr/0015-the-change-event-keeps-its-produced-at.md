@@ -20,9 +20,9 @@ no `id`: without the column, the published record has no time and no id
 to derive one from. The topic envelope carries `produced_at` too. Two
 readers filter on the column through
 `ix_change_events_produced_at`: the trim of the stream
-([ADR 0040](0040-the-event-stream-has-a-floor.md)) and the count of the
+([ADR 0040](0040-the-change-event-stream-has-a-floor.md)) and the count of the
 day's change events behind the system's size
-([ADR 0074](0074-the-platforms-size-is-a-tally-the-sweep-keeps.md)).
+([ADR 0074](0074-the-systems-size-is-a-tally-the-sweep-keeps.md)).
 
 ## Decision
 

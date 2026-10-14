@@ -30,7 +30,7 @@ exchanges the sign-in for an auth session in one org and keeps it in
   keeps the new one. So the CLI never holds two auth sessions, the property
   an API key gives by construction.
 - A sign-in over a kept auth session ends the old one once the new one is
-  kept ([ADR 0047](0047-a-sign-in-over-a-held-session-ends-it-from-the-client.md)).
+  kept ([ADR 0047](0047-a-sign-in-over-a-held-auth-session-ends-it-from-the-client.md)).
 
 `ACME_TOKEN` may hold an API key, and then the CLI is exactly what
 DEL-17 describes. An API key there is the environment's credential: the

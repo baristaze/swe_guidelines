@@ -46,7 +46,7 @@ redact in the stream (STO-34).
 An audit entry is read by replaying the stream, filtered by kind; there
 is no place to query audit alone. The change events table's retention is the
 audit's retention
-([ADR 0040](0040-the-event-stream-has-a-floor.md)), and a purge of the
+([ADR 0040](0040-the-change-event-stream-has-a-floor.md)), and a purge of the
 stream is a purge of the audit.
 
 An `audit` namespace of its own, with its types, manager, and table,

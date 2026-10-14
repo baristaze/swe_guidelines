@@ -55,7 +55,7 @@ Namespace by namespace:
   tenant's run is the stretch of its window below its first young
   change event. The change events of each run go, and each floor moves to its run's
   top, in the same statement
-  ([ADR 0040](0040-the-event-stream-has-a-floor.md)).
+  ([ADR 0040](0040-the-change-event-stream-has-a-floor.md)).
 - **Outbox** and **work**: the done outbox rows and the settled work
   items, after every namespace's purge.
 

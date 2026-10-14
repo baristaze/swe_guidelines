@@ -108,11 +108,11 @@ impl at the root by its waiter kind's name, the same way. An orchestration waits
 step asks with `park`, and parks on `leasable_resource` until the grant
 wakes it, or its request's end without a lease does. Per-lease facts of
 a product's own live in its own table, keyed by the lease's id ([ADR
-0086](../../../../../docs/adr/0086-a-scarce-resource-is-leased-under-a-fencing-token.md)).
+0086](../../../../../docs/adr/0086-a-scarce-leasable-resource-is-leased-under-a-fencing-token.md)).
 A kind whose grant starts a job returns its work row among its grant
 rows, and the job's handler starts the lease, renews it, and releases it
 ([ADR
 0094](../../../../../docs/adr/0094-a-lease-is-kept-by-the-worker-that-runs-its-job.md)).
 An owner's update, the history, a wait line's places, and a kind's check
 at the ask are [ADR
-0098](../../../../../docs/adr/0098-a-resources-owner-updates-it-its-leases-are-listed-and-its-kind-checks-an-ask.md).
+0098](../../../../../docs/adr/0098-a-leasable-resources-owner-updates-it-its-leases-are-listed-and-its-kind-checks-an-ask.md).

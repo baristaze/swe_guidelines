@@ -9,7 +9,7 @@ a cold room, loses its ramp, goes out of service for a repair, and comes
 back. Its owner's row says so first, and the leasable resource must say
 the same in the same commit, or a request is granted a dock for what it
 no longer offers ([ADR
-0086](0086-a-scarce-resource-is-leased-under-a-fencing-token.md)). A
+0086](0086-a-scarce-leasable-resource-is-leased-under-a-fencing-token.md)). A
 person also reads what happened: who held the dock, for what, and when
 it ended. A lease names only its request, and the request holds what was
 asked, so a history that read each request apart would read once per
@@ -66,17 +66,17 @@ them.
   `ix_leases_org_id_created_at_id` and
   `ix_leases_org_id_leasable_resource_id_created_at_id`, which the two
   reads walk
-  backwards to the page's bound. No column changes.
+  backwards to the page's bound.
 - **A wait line answers each place and estimate.** `line` reads the
   leasable resource, its kind's leasable resources, and the waiting
   requests, and replays them once (`rules.replay_all`,
   `rules.places_of`), so its `Place` for each request is what that
   request's standing answers. The read count does not grow with the wait
-  line. `WaitLineView` gains `places`.
+  line. `WaitLineView` carries `places`.
 - **A kind may check an ask.** A kind that refuses some asks registers
   an `AskCheckInterface` at the root, beside its hooks
-  (`LeasesManagerImpl(asks=...)`); a kind with none accepts every ask,
-  so a kind registered before this takes asks as it did. The ask calls
+  (`LeasesManagerImpl(asks=...)`); a kind with none accepts every ask.
+  The ask calls
   `check_ask` once the payload has its kind's shape and the leasable
   resource it names is live, under the asker's context, with the request
   as it would land: its asker, its payload, and the leasable resource or

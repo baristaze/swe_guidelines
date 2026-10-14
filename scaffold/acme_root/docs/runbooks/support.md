@@ -57,5 +57,5 @@ The supporter holds a `read` operator token and changes nothing.
   write a fresh `read` token.
 - **The stream starts after the time named.** Its oldest change events are
   trimmed past the retention, 90 days by default
-  ([ADR 0040](../adr/0040-the-event-stream-has-a-floor.md)). The org's
+  ([ADR 0040](../adr/0040-the-change-event-stream-has-a-floor.md)). The org's
   rows still show the state as it is.

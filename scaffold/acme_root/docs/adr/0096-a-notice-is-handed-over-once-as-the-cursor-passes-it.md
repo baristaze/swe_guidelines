@@ -61,7 +61,7 @@ A person who comes back after a drop, a restart, or a paused tab
 what they missed.
 
 A stream trimmed past the cursor resyncs and reads no record
-([ADR 0040](0040-the-event-stream-has-a-floor.md)), so a notice in the
+([ADR 0040](0040-the-change-event-stream-has-a-floor.md)), so a notice in the
 trimmed stretch is never told. The retention outlasts the backups, so
 only a tab away that long misses one.
 

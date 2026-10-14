@@ -8,8 +8,8 @@ The guideline makes a read cache a projection with a generation
 (ASY-05). Its key carries the tenant's generation, a write bumps it once
 its transaction commits, the TTL is the backstop, and the cache fails
 open (ASY-06). The cache has the `increment` a generation needs, and a
-counter reads back through `get`. Nothing reads under it, so each
-manager that caches a read would build its own reader.
+counter reads back through `get`. Without a reader on it, each manager
+that caches a read would build its own.
 
 ## Decision
 

@@ -26,7 +26,7 @@ delivery's UUID v5, and `at` is when the provider made the delivery.
 The one caller is the identity provider's webhook. The maintenance
 worker records each delivery that names an org as an audit entry,
 `identity.event.received`
-([ADR 0011](0011-audit-entries-are-events.md)), under the derived id.
+([ADR 0011](0011-an-audit-entry-is-a-change-event.md)), under the derived id.
 The append is idempotent on the change event's id, so a copy the queue hands
 over again appends nothing.
 

@@ -46,7 +46,7 @@ A park reason says what wakes it: `provider_unavailable`, a provider a
 step calls did not answer or is marked out
 ([ADR 0088](0088-a-providers-outage-is-a-shared-signal.md)), and
 `leasable_resource`, the record waits in line for a lease ([ADR
-0086](0086-a-scarce-resource-is-leased-under-a-fencing-token.md)). The
+0086](0086-a-scarce-leasable-resource-is-leased-under-a-fencing-token.md)). The
 work item `WAKE_PARKED` clears a reason: it resumes the org's records
 parked for it, two seconds apart, or the one record it names, when the
 reason was that record's alone. A park that knows when its reason may

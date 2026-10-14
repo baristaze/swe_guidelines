@@ -9,14 +9,13 @@ resource, such as a loading dock, and what the grant starts is a job on
 the work queue: unload the truck at the dock. By the time the job runs,
 the holder may be gone, and only the holder could renew the lease or end
 it ([ADR
-0086](0086-a-scarce-resource-is-leased-under-a-fencing-token.md)). The
-job may wait in its lane past the lease's term, so the lease could lapse
-before the job started. A renewal ran the term again, so a job could not
-ask for the time it needs. A label was a short lower-case token, 32 to a
-leasable resource, so a leasable resource that says what it offers in
-words could not be registered. The guideline's "Leases on a Leasable
-Resource" lets the worker that claims the job act for the holder, and
-this records how Acme holds it.
+0086](0086-a-scarce-leasable-resource-is-leased-under-a-fencing-token.md)). The
+job may wait in its lane past the lease's term, and a lease that lapses
+before its job starts serves nobody. A job knows the time it needs,
+which may be more or less than a term. And a leasable resource says what
+it offers in words, often many of them. The guideline's "Leases on a
+Leasable Resource" lets the worker that claims the job act for the
+holder, and this records how Acme holds it.
 
 ## Decision
 
@@ -34,7 +33,7 @@ this records how Acme holds it.
   lease with no job, a token that is not the lease's, or a claim that
   no longer holds is refused (`NotAuthorized`). The principal the worker
   runs as gains nothing by it. Without a claim, the holder alone renews
-  and releases, as before. `LeasesManagerImpl` takes the work manager,
+  and releases. `LeasesManagerImpl` takes the work manager,
   and the root passes it.
 - **The job's acts are the manager's alone.** A worker reaches the
   manager in process, so no route carries a claim token, and the routes
@@ -61,16 +60,15 @@ this records how Acme holds it.
   written, and a leasable resource offers up to `MAX_LABELS`, 160. A
   leasable resource's bound on one lease, a request's term, its window,
   and a renewal run up to `MAX_TERM_SECONDS`, seven days. No column
-  checks them, so only the types change.
+  checks them: the types hold them.
 - **One migration on the `core` chain.**
   `202609280002_a_lease_kept_by_its_jobs_worker` adds `job_key` and
   `started_at` to `leases`, and `start_seconds` to `lease_requests`, all
-  nullable, so a lease its holder keeps, and every row before it, reads
-  as it did.
-- **The client gains the lengths, and its clock is unchanged.**
+  nullable, so a lease its holder keeps leaves them empty.
+- **The client takes the lengths.**
   `ask_lease` takes `start_seconds`, and `renew_lease` takes `seconds`.
   `LeaseClock` counts the seconds the answer gives from the send, so a
-  named length needs nothing new of it.
+  named length needs nothing more of it.
 
 ## Consequences
 

@@ -38,8 +38,8 @@ wherever their order carries no meaning. `build_managers` makes one
 builder call per manager. A test merges, with `git merge-tree`, an
 entry above every marker against one below it
 ([`test_registry_markers.py`](../../infra/tests/test_registry_markers.py)).
-A test that held a root to a list of its entries reads the root's own
-getters and fields instead.
+A test of a root reads the root's own getters and fields, never a list
+of its entries.
 
 **A rule that names methods is declared beside them.** A storage method
 that takes no tenant carries `@tenantless`, a manager method that takes

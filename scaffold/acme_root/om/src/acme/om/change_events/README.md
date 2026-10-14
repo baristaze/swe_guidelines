@@ -42,7 +42,7 @@ is one of the kinds of thing [Acme is made of](../../../../README.md).
 - **A push is a hint; the stream is the truth.** A screen keeps the
   last number it applied and replays the stream when a push runs ahead
   of it. A screen behind the floor reads afresh and goes on from the
-  head ([ADR 0040](../../../../../docs/adr/0040-the-event-stream-has-a-floor.md)).
+  head ([ADR 0040](../../../../../docs/adr/0040-the-change-event-stream-has-a-floor.md)).
 - **Ids, never values.** A payload names records and kinds, never a
   person's email or name.
 
@@ -53,5 +53,5 @@ turns it into an event, so a namespace never calls `append_change_event` for
 its own changes. A namespace that records something about the system
 builds an audit entry with `audit_change_event(ctx, id, kind, target_id,
 facts)` and appends it through `ChangeEventsManagerInterface.append_change_event`
-([ADR 0011](../../../../../docs/adr/0011-audit-entries-are-events.md)).
+([ADR 0011](../../../../../docs/adr/0011-an-audit-entry-is-a-change-event.md)).
 A client reads the stream through `GET /v1/change-events`.

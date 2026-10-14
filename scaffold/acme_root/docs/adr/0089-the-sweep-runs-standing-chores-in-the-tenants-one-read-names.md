@@ -15,8 +15,8 @@ not a statement across tenants, as a purge past its retention is
 
 A duty per tenant that asks every tenant on every pass whether it is due
 costs each living tenant a transaction a pass, and almost every answer
-is no. That cost grows with every tenant, as the purges per tenant did
-before ADR 0045.
+is no. That cost grows with every tenant, as a purge run per tenant
+would (ADR 0045).
 
 ## Decision
 

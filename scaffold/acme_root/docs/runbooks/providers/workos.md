@@ -62,7 +62,7 @@ revoked without the other.
    Leave the sign-up, invitation, and password reset URLs unset.
 5. **Set the Sessions tab by hand**: maximum session length 30 days,
    inactivity timeout 14 days, the same bounds as Acme's own auth session
-   ([ADR 0063](../../adr/0063-sessions-last-weeks.md)).
+   ([ADR 0063](../../adr/0063-auth-sessions-last-weeks.md)).
 6. **Turn on the sign-in methods**: email, Google, and GitHub, with
    passwords off. Production needs OAuth credentials of its own at Google
    and GitHub.
