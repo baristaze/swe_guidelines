@@ -31,7 +31,7 @@ from acme.om.orchestrations.rules import (
     stagger,
     with_row_errors,
 )
-from acme.om.orchestrations.steps import UPDATED, step_rows
+from acme.om.orchestrations.steps import UPDATED, orchestration_step_rows
 from acme.om.orchestrations.types.orchestration import (
     FailReason,
     Orchestration,
@@ -257,7 +257,10 @@ async def test_the_parks_on_one_mark_land_one_wake_that_resumes_them_staggered(
             park=ParkReason.PROVIDER_UNAVAILABLE,
         )  # fmt: skip
         await storage.write_orchestration(
-            ctx.org_id, parked, record.version, step_rows(ctx, parked, wake_at=retry_at)
+            ctx.org_id,
+            parked,
+            record.version,
+            orchestration_step_rows(ctx, parked, wake_at=retry_at),
         )
         parks.append(parked)
     wake_rows = [r for r in written if r.kind == work_row_kind(WorkKind.WAKE_PARKED)]
@@ -286,7 +289,7 @@ async def test_the_parks_on_one_mark_land_one_wake_that_resumes_them_staggered(
     assert relayed_key(WorkKind.WAKE_PARKED, wake_rows[0], retry_at) == wake_rows[0].id
     # A park that names no time lands its hint alone, and a wake that names
     # none runs at once.
-    assert len(step_rows(ctx, parks[0])) == 1
+    assert len(orchestration_step_rows(ctx, parks[0])) == 1
     at_once = WakeParkedPayload(reason=ParkReason.PROVIDER_UNAVAILABLE)
     assert not_before(WorkKind.WAKE_PARKED, at_once.model_dump(mode="json")) is None
 

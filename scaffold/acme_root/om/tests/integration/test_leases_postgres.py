@@ -54,8 +54,8 @@ from acme.om.orchestrations.types.orchestration import (
     Orchestration,
     OrchestrationKind,
     OrchestrationStatus,
+    OrchestrationStep,
     ParkReason,
-    Step,
 )
 from acme.om.root import Managers, build_managers
 from acme.om.storage.impl.pg_base import LoginSessions, PgStorageBase
@@ -375,7 +375,7 @@ async def test_a_parked_record_is_woken_with_its_lease_when_the_resource_frees(
     )  # fmt: skip
     ask = an_ask(dock, waiter=record.id)
     waits = await world.leases.ask(
-        owner, ask, Step(record=parked_at, expected_version=record.version)
+        owner, ask, OrchestrationStep(record=parked_at, expected_version=record.version)
     )
     assert waits.lease is None
     parked = await world.managers.orchestrations.get(owner, record.id)
@@ -430,7 +430,7 @@ async def test_a_parked_record_whose_request_expires_is_woken_and_reads_its_end(
     )  # fmt: skip
     ask = an_ask(dock, wait_seconds=60, waiter=record.id)
     waits = await world.leases.ask(
-        owner, ask, Step(record=parked_at, expected_version=record.version)
+        owner, ask, OrchestrationStep(record=parked_at, expected_version=record.version)
     )
     assert waits.lease is None
 

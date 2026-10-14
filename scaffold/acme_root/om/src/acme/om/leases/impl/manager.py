@@ -52,8 +52,8 @@ from acme.om.leases.types.request import (
     WaiterKind,
     WaitLine,
 )
-from acme.om.orchestrations.steps import step_rows
-from acme.om.orchestrations.types.orchestration import Step
+from acme.om.orchestrations.steps import orchestration_step_rows
+from acme.om.orchestrations.types.orchestration import OrchestrationStep
 from acme.om.outbox import OutboxRelayInterface
 from acme.om.outbox.types.row import OutboxRow, outbox_row
 from acme.om.tenancy import TenancyManagerInterface
@@ -202,7 +202,7 @@ class LeasesManagerImpl(LeasesManagerInterface):
     # The line.
 
     async def ask(
-        self, ctx: TenantContext, request: LeaseRequest, park: Step | None = None
+        self, ctx: TenantContext, request: LeaseRequest, park: OrchestrationStep | None = None
     ) -> Standing:
         ctx.require(Permission.WRITE)
         self._kind(request.kind)
@@ -249,7 +249,7 @@ class LeasesManagerImpl(LeasesManagerInterface):
                 await self._offer(ctx, resource.id)
             stored = await self._storage.read_request(ctx.org_id, stored.id) or stored
         if stored.status is RequestStatus.WAITING and park is not None:
-            parked_rows = step_rows(ctx, park.record)
+            parked_rows = orchestration_step_rows(ctx, park.record)
             stood = await self._storage.park_waiting(ctx.org_id, stored.id, park, parked_rows)
             if stood is not None and stood.status is RequestStatus.WAITING:
                 await self._relay.relay_all(ctx.org_id, parked_rows)

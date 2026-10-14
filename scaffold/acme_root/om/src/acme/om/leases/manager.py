@@ -24,7 +24,7 @@ from acme.om.leases.types.request import (
     WaiterKind,
     WaitLine,
 )
-from acme.om.orchestrations.types.orchestration import Step
+from acme.om.orchestrations.types.orchestration import OrchestrationStep
 
 
 class LeasesManagerInterface(ABC):
@@ -88,7 +88,7 @@ class LeasesManagerInterface(ABC):
         self,
         ctx: TenantContext,
         request: LeaseRequest,
-        park: Step | None = None,
+        park: OrchestrationStep | None = None,
     ) -> Standing:
         """Joins the line, last in the org's one rank order, and offers every
         free resource the request may take, so a direct ask is granted at once
@@ -98,7 +98,7 @@ class LeasesManagerInterface(ABC):
         check, when it registers one, may refuse the ask before anything
         lands (`AskCheckInterface`). An orchestration
         that waits on the request parks in the same call: `park` is its
-        `Step`, landed only while the request still waits, under the lock the
+        `OrchestrationStep`, landed only while the request still waits, under the lock the
         grant takes, so a grant either finds it parked and wakes it or comes
         first and leaves it running with its lease."""
         ...

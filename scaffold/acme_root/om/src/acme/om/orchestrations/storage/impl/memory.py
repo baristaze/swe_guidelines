@@ -3,13 +3,16 @@ from uuid import UUID
 
 from acme.om.exceptions import PreconditionFailed
 from acme.om.orchestrations.rules import is_settled
-from acme.om.orchestrations.storage import OrchestrationsStorageInterface, StepLandingInterface
+from acme.om.orchestrations.storage import (
+    OrchestrationsStorageInterface,
+    OrchestrationStepLandingInterface,
+)
 from acme.om.orchestrations.types.orchestration import (
     Orchestration,
     OrchestrationKind,
     OrchestrationStatus,
+    OrchestrationStep,
     ParkReason,
-    Step,
 )
 from acme.om.outbox.storage import OutboxLandingInterface
 from acme.om.outbox.types.row import OutboxRow
@@ -17,7 +20,7 @@ from acme.om.storage.impl.memory_base import MemoryStorageBase, MemoryTable
 
 
 class OrchestrationsStorageMemoryImpl(
-    MemoryStorageBase, OrchestrationsStorageInterface, StepLandingInterface
+    MemoryStorageBase, OrchestrationsStorageInterface, OrchestrationStepLandingInterface
 ):
     def __init__(self, outbox: OutboxLandingInterface | None = None) -> None:
         super().__init__(outbox)
@@ -89,10 +92,10 @@ class OrchestrationsStorageMemoryImpl(
     # Postgres. Both are synchronous, so nothing runs between the check and
     # the write.
 
-    def check_step(self, org_id: UUID, step: Step) -> None:
+    def check_orchestration_step(self, org_id: UUID, step: OrchestrationStep) -> None:
         self._check(org_id, step.record.id, step.expected_version)
 
-    def land_step(self, org_id: UUID, step: Step, applied: int) -> None:
+    def land_orchestration_step(self, org_id: UUID, step: OrchestrationStep, applied: int) -> None:
         record = step.record.model_copy(update={"applied": step.record.applied + applied})
         self._records[record.id] = (org_id, record)
 

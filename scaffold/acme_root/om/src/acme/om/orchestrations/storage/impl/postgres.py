@@ -13,8 +13,8 @@ from acme.om.orchestrations.types.orchestration import (
     Orchestration,
     OrchestrationKind,
     OrchestrationStatus,
+    OrchestrationStep,
     ParkReason,
-    Step,
 )
 from acme.om.outbox.storage.tables.outbox_rows import OutboxRows
 from acme.om.outbox.types.row import OutboxRow
@@ -40,7 +40,7 @@ def cas_statement(org_id: UUID, record: Orchestration, expected_version: int) ->
     )
 
 
-def step_statement(org_id: UUID, step: Step, applied: int) -> Update:
+def orchestration_step_statement(org_id: UUID, step: OrchestrationStep, applied: int) -> Update:
     """The step's companion statement, run by the storage of the namespace
     whose rows the step changes, in the transaction that changes them: the
     record as the step left it, its `applied` grown by the rows the effect
@@ -50,10 +50,14 @@ def step_statement(org_id: UUID, step: Step, applied: int) -> Update:
     return cas_statement(org_id, record, step.expected_version)
 
 
-async def land_step(session: AsyncSession, org_id: UUID, step: Step, applied: int) -> None:
-    """Runs `step_statement` in the caller's transaction and rolls it back,
+async def land_orchestration_step(
+    session: AsyncSession, org_id: UUID, step: OrchestrationStep, applied: int
+) -> None:
+    """Runs `orchestration_step_statement` in the caller's transaction and rolls it back,
     with the effect, when the record moved: `PreconditionFailed`."""
-    if (await session.execute(step_statement(org_id, step, applied))).scalar_one_or_none() is None:
+    if (
+        await session.execute(orchestration_step_statement(org_id, step, applied))
+    ).scalar_one_or_none() is None:
         await session.rollback()
         raise PreconditionFailed(
             f"orchestration {step.record.id} is no longer at version {step.expected_version}"

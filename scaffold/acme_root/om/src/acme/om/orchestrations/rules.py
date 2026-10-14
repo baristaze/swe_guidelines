@@ -56,7 +56,7 @@ def advanced(
     """A step that moved the cursor: the rows it skipped counted and the first
     few named; the record succeeded when the step was the last, or parked
     when a guard stopped it at the cursor. `applied` is not set here: the
-    step's own commit adds the rows its effect wrote (`Step`)."""
+    step's own commit adds the rows its effect wrote (`OrchestrationStep`)."""
     fields: dict[str, object] = {
         "cursor": cursor,
         "total": total,

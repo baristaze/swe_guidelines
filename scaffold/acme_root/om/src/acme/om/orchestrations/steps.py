@@ -21,7 +21,7 @@ CREATED = "orchestrations.orchestration.created"
 UPDATED = "orchestrations.orchestration.updated"
 
 
-def step_rows(
+def orchestration_step_rows(
     ctx: ProvenanceScope,
     record: Orchestration,
     *,

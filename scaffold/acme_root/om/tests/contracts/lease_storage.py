@@ -31,8 +31,8 @@ from acme.om.orchestrations.types.orchestration import (
     Orchestration,
     OrchestrationKind,
     OrchestrationStatus,
+    OrchestrationStep,
     ParkReason,
-    Step,
 )
 from contracts.racing import race
 
@@ -839,7 +839,7 @@ class LeaseStorageContract:
         assert await storage.purge_tenant(org, 100) == 0
 
 
-def parked(record: Orchestration) -> Step:
+def parked(record: Orchestration) -> OrchestrationStep:
     """The record parked on `resource` at its cursor, as a step would write it."""
     after = advanced(
         record,
@@ -850,4 +850,4 @@ def parked(record: Orchestration) -> Step:
         park=ParkReason.LEASABLE_RESOURCE,
     )
     assert after.status is OrchestrationStatus.PARKED
-    return Step(record=after, expected_version=record.version)
+    return OrchestrationStep(record=after, expected_version=record.version)

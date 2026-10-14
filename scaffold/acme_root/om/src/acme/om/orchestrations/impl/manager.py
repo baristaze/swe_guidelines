@@ -24,7 +24,7 @@ from acme.om.orchestrations.rules import (
     resumed,
     stagger,
 )
-from acme.om.orchestrations.steps import step_rows
+from acme.om.orchestrations.steps import orchestration_step_rows
 from acme.om.orchestrations.storage import OrchestrationsStorageInterface
 from acme.om.orchestrations.types.orchestration import (
     ORCHESTRATION_INPUTS,
@@ -93,7 +93,7 @@ class OrchestrationsManagerImpl(OrchestrationsManagerInterface):
                 "version": 1,
             }
         )
-        rows = step_rows(ctx, created, created=True)
+        rows = orchestration_step_rows(ctx, created, created=True)
         if not await self._storage.create_orchestration(ctx.org_id, created, rows):
             # A retry under the same id, or the period's record opened already.
             existing = await self._storage.read_orchestration(ctx.org_id, created.id)
@@ -265,7 +265,7 @@ class OrchestrationsManagerImpl(OrchestrationsManagerInterface):
     ) -> None:
         """The record and its rows in one compare-and-set, then the relay at
         once; the sweep relays what a crash left behind."""
-        rows = step_rows(ctx, record, not_before=not_before)
+        rows = orchestration_step_rows(ctx, record, not_before=not_before)
         await self._storage.write_orchestration(ctx.org_id, record, expected_version, rows)
         await self._relay_all(ctx, rows)
 

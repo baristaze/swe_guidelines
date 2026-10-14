@@ -1,7 +1,7 @@
 """Storage of the orchestrations swimlane. Every operation takes org_id first.
 A record's every write after the create is a compare-and-set on its
 version; a step's own write lands in the storage of the namespace whose rows
-it changes, with the record beside it (`Step`)."""
+it changes, with the record beside it (`OrchestrationStep`)."""
 
 from abc import ABC, abstractmethod
 from datetime import datetime
@@ -10,27 +10,27 @@ from uuid import UUID
 from acme.om.orchestrations.types.orchestration import (
     Orchestration,
     OrchestrationKind,
+    OrchestrationStep,
     ParkReason,
-    Step,
 )
 from acme.om.outbox.types.row import OutboxRow
 
 
-class StepLandingInterface(ABC):
+class OrchestrationStepLandingInterface(ABC):
     """What another namespace's memory storage needs to land a step in the
     same step as its effect, the twin of the statement the Postgres impls
-    share (`orchestrations.storage.impl.postgres.step_statement`)."""
+    share (`orchestrations.storage.impl.postgres.orchestration_step_statement`)."""
 
     @abstractmethod
-    def check_step(self, org_id: UUID, step: Step) -> None:
+    def check_orchestration_step(self, org_id: UUID, step: OrchestrationStep) -> None:
         """Raises `PreconditionFailed` when the stored record is gone or at
         another version than the step read, before anything is written."""
         ...
 
     @abstractmethod
-    def land_step(self, org_id: UUID, step: Step, applied: int) -> None:
+    def land_orchestration_step(self, org_id: UUID, step: OrchestrationStep, applied: int) -> None:
         """Writes the record as the step left it, its `applied` grown by the
-        rows the effect wrote. Called after `check_step`, in the same step."""
+        rows the effect wrote. Called after `check_orchestration_step`, in the same step."""
         ...
 
 

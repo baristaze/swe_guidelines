@@ -66,12 +66,12 @@ and this records how Acme holds it.
   is offered. The core's kind is `noop`, and its waiter is the
   orchestration.
 - **A waiting record parks on `leasable_resource`** (Long-Running
-  Orchestrations). A step asks with its `Step`, which lands under the
-  request's row lock only while the request still waits; a grant that
-  came first leaves the record running with its lease. The grant's
-  wake row is a `WAKE_PARKED` item naming the one record, and so is the
-  row of an end without a lease: an expiry, a cancel, a refusal, or a
-  retirement. The record's next step asks again and reads the end.
+  Orchestrations). A step asks with its `OrchestrationStep`, which lands
+  under the request's row lock only while the request still waits; a
+  grant that came first leaves the record running with its lease. The
+  grant's wake row is a `WAKE_PARKED` item naming the one record, and so
+  is the row of an end without a lease: an expiry, a cancel, a refusal,
+  or a retirement. The record's next step asks again and reads the end.
 - **The sweep is a step of the maintenance pass** (Maintenance Without a
   Scheduler). It visits the orgs with something due, as each org's
   service context: it ends each lease past its expiry and the margin,

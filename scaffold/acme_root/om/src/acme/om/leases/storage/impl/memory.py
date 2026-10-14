@@ -18,8 +18,8 @@ from acme.om.leases.types.request import (
     RequestStatus,
     WaiterKind,
 )
-from acme.om.orchestrations.storage import StepLandingInterface
-from acme.om.orchestrations.types.orchestration import Step
+from acme.om.orchestrations.storage import OrchestrationStepLandingInterface
+from acme.om.orchestrations.types.orchestration import OrchestrationStep
 from acme.om.outbox.storage import OutboxLandingInterface
 from acme.om.outbox.types.row import OutboxRow
 from acme.om.storage.impl.memory_base import MemoryStorageBase, MemoryTable
@@ -36,7 +36,7 @@ class LeasesStorageMemoryImpl(
     def __init__(
         self,
         outbox: OutboxLandingInterface | None = None,
-        steps: StepLandingInterface | None = None,
+        steps: OrchestrationStepLandingInterface | None = None,
     ) -> None:
         super().__init__(outbox)
         self._steps = steps
@@ -211,7 +211,11 @@ class LeasesStorageMemoryImpl(
             )
 
     async def park_waiting(
-        self, org_id: UUID, request_id: UUID, step: Step, outbox_rows: tuple[OutboxRow, ...]
+        self,
+        org_id: UUID,
+        request_id: UUID,
+        step: OrchestrationStep,
+        outbox_rows: tuple[OutboxRow, ...],
     ) -> LeaseRequest | None:
         if self._steps is None:
             raise RuntimeError("this memory storage was built without the records a step lands in")
@@ -219,9 +223,9 @@ class LeasesStorageMemoryImpl(
             request = self._get(self._requests, org_id, request_id)
             if request is None or request.status is not RequestStatus.WAITING:
                 return request
-            self._steps.check_step(org_id, step)
+            self._steps.check_orchestration_step(org_id, step)
             self._land(org_id, outbox_rows)
-            self._steps.land_step(org_id, step, 0)
+            self._steps.land_orchestration_step(org_id, step, 0)
             return request
 
     async def cancel_waiting_of(

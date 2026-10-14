@@ -129,7 +129,7 @@ ORCHESTRATION_INPUTS: dict[OrchestrationKind, type[OmBase]] = {
 """The input shape of every kind; the start validates a record's input against it."""
 
 
-class Step(OmBase):
+class OrchestrationStep(OmBase):
     """A step's companion write: the record as the step leaves it, landed in
     the same commit as the step's effect (the rows of the namespace it
     changes) and conditioned on the version the step read. The record's `applied` grows,

@@ -70,11 +70,11 @@ This is one of the kinds of thing [Acme is made of](../../../../README.md).
 ## How another namespace composes it
 
 A product adds a kind to `OrchestrationKind` and its input shape to
-`ORCHESTRATION_INPUTS`. A kind a person starts says what a second
-start does while one is open: it answers the open record, it is
-refused, or it starts beside it. The step lives in the namespace whose
-rows it changes: it writes its rows and the record's `Step` in one commit, the
-record's rows from `steps.step_rows` among them. The worker's
-orchestration handler maps the kind to that step. A guard adds a
-`ParkReason`, and whatever clears it asks for `WAKE_PARKED`
-([ADR 0039](../../../../../docs/adr/0039-long-running-work-is-a-record-a-guard-parks-and-a-bound-fails.md)).
+`ORCHESTRATION_INPUTS`. A kind a person starts says what a second start
+does while one is open: it answers the open record, it is refused, or it
+starts beside it. The step lives in the namespace whose rows it changes:
+it writes its rows and the record's `OrchestrationStep` in one commit,
+the record's rows from `steps.orchestration_step_rows` among them. The
+worker's orchestration handler maps the kind to that step. A guard adds
+a `ParkReason`, and whatever clears it asks for `WAKE_PARKED` ([ADR
+0039](../../../../../docs/adr/0039-long-running-work-is-a-record-a-guard-parks-and-a-bound-fails.md)).

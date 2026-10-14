@@ -21,7 +21,7 @@ from acme.om.leases.types.request import (
     RequestStatus,
     WaiterKind,
 )
-from acme.om.orchestrations.types.orchestration import Step
+from acme.om.orchestrations.types.orchestration import OrchestrationStep
 from acme.om.outbox.types.row import OutboxRow
 
 
@@ -203,9 +203,13 @@ class LeasesStorageInterface(ABC):
 
     @abstractmethod
     async def park_waiting(
-        self, org_id: UUID, request_id: UUID, step: Step, outbox_rows: tuple[OutboxRow, ...]
+        self,
+        org_id: UUID,
+        request_id: UUID,
+        step: OrchestrationStep,
+        outbox_rows: tuple[OutboxRow, ...],
     ) -> LeaseRequest | None:
-        """Lands the waiter's park (`Step`, with the record's rows) only while
+        """Lands the waiter's park (`OrchestrationStep`, with the record's rows) only while
         the request still waits,
         under its row's lock, which the grant takes too: a grant that came
         first leaves the record running, and one that comes after finds it

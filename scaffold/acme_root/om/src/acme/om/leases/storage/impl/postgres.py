@@ -40,8 +40,8 @@ from acme.om.leases.types.request import (
     RequestStatus,
     WaiterKind,
 )
-from acme.om.orchestrations.storage.impl.postgres import land_step
-from acme.om.orchestrations.types.orchestration import Step
+from acme.om.orchestrations.storage.impl.postgres import land_orchestration_step
+from acme.om.orchestrations.types.orchestration import OrchestrationStep
 from acme.om.outbox.storage.tables.outbox_rows import OutboxRows
 from acme.om.outbox.types.row import OutboxRow
 from acme.om.storage.impl.pg_base import PLAN_WITH_VALUES, PgStorageBase, delete_batch, deleted
@@ -376,7 +376,11 @@ class LeasesStoragePostgresImpl(PgStorageBase, LeasesStorageInterface):
             return await self._commit(session, org_id, row, outbox_rows)
 
     async def park_waiting(
-        self, org_id: UUID, request_id: UUID, step: Step, outbox_rows: tuple[OutboxRow, ...]
+        self,
+        org_id: UUID,
+        request_id: UUID,
+        step: OrchestrationStep,
+        outbox_rows: tuple[OutboxRow, ...],
     ) -> LeaseRequest | None:
         async with self._session_for(LeaseRequests, org_id=org_id) as session:
             stmt = (
@@ -392,7 +396,7 @@ class LeasesStoragePostgresImpl(PgStorageBase, LeasesStorageInterface):
             if row.status != WAITING:
                 await session.rollback()
                 return stood
-            await land_step(session, org_id, step, 0)
+            await land_orchestration_step(session, org_id, step, 0)
             _land(session, org_id, outbox_rows)
             await session.commit()
             return stood

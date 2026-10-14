@@ -26,10 +26,10 @@ it with its kinds. Each declares an input shape in
 `ORCHESTRATION_INPUTS` and a step in the namespace whose rows it
 changes.
 
-**A step is one commit.** A step's effect, the record's next cursor,
-and the work row that asks for the next step land in one transaction.
-The record rides it as a companion statement (`Step`), as an outbox row
-rides a core write: the namespace's storage runs the record's
+**A step is one commit.** A step's effect, the record's next cursor, and
+the work row that asks for the next step land in one transaction. The
+record rides it as a companion statement (`OrchestrationStep`), as an
+outbox row rides a core write: the namespace's storage runs the record's
 compare-and-set on its version in its own transaction, and rolls back
 the effect with it when the record moved. So a worker that dies leaves
 the record at its last committed step. A stale worker's step, one that

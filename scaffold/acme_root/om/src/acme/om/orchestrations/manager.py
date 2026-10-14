@@ -5,7 +5,7 @@ This namespace is the mechanism, the same for every kind: the record, its
 start, its failure, the two ways a parked record wakes (the event that
 clears its reason, or a person), and the way out that is no wake (a
 person's cancel). What one step of a kind does is the namespace whose rows
-it changes: that namespace lands the record beside its own rows (`Step`), a
+it changes: that namespace lands the record beside its own rows (`OrchestrationStep`), a
 park among them. The one kind this namespace steps
 itself is `noop`, which changes nothing else."""
 

@@ -18,14 +18,14 @@ from acme.om.leases.types.leasable_resource import LeasableResource, LeasableRes
 from acme.om.leases.types.lease import Lease
 from acme.om.leases.types.request import LeaseRequest, WaiterKind
 from acme.om.orchestrations.rules import advanced
-from acme.om.orchestrations.steps import step_rows
+from acme.om.orchestrations.steps import orchestration_step_rows
 from acme.om.orchestrations.types.orchestration import (
     FailReason,
     Orchestration,
     OrchestrationKind,
     OrchestrationStatus,
+    OrchestrationStep,
     ParkReason,
-    Step,
 )
 from acme.om.work.types.handler import WorkHandlerInterface
 from acme.om.work.types.work_item import WakeParkedPayload, WorkItem, WorkKind
@@ -94,7 +94,7 @@ class Guarded:
         )
         storage = self.container.storage.get_orchestrations_storage()
         await storage.write_orchestration(
-            ctx.org_id, parked, record.version, step_rows(ctx, parked)
+            ctx.org_id, parked, record.version, orchestration_step_rows(ctx, parked)
         )
         return parked
 
@@ -165,7 +165,7 @@ class Leasing:
             record, now, ctx.user_id, cursor=record.cursor, total=record.total,
             park=ParkReason.LEASABLE_RESOURCE,
         )  # fmt: skip
-        park = Step(record=parked, expected_version=record.version)
+        park = OrchestrationStep(record=parked, expected_version=record.version)
         standing = await self.container.managers.leases.ask(ctx, ask, park)
         if standing.lease is None:
             return parked

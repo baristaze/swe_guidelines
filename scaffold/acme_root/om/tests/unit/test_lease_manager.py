@@ -60,8 +60,8 @@ from acme.om.orchestrations.types.orchestration import (
     Orchestration,
     OrchestrationKind,
     OrchestrationStatus,
+    OrchestrationStep,
     ParkReason,
-    Step,
 )
 from acme.om.outbox.types.row import OutboxRow
 from acme.om.root import Managers, build_managers
@@ -614,12 +614,12 @@ async def a_running_record(world: World, ctx: TenantContext) -> Orchestration:
     )
 
 
-def park_of(record: Orchestration) -> Step:
+def park_of(record: Orchestration) -> OrchestrationStep:
     after = advanced(
         record, utcnow(), record.created_by, cursor=record.cursor, total=None,
         park=ParkReason.LEASABLE_RESOURCE,
     )  # fmt: skip
-    return Step(record=after, expected_version=record.version)
+    return OrchestrationStep(record=after, expected_version=record.version)
 
 
 async def test_a_parked_record_is_woken_with_its_lease_when_the_resource_frees(
