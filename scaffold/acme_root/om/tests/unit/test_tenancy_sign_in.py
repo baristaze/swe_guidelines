@@ -1,871 +1,583 @@
-"""Signing in through the identity provider, the local sign-in, invitations,
-single sign-on, and the member an integration acts as by the address a
-sign-in proved, over the memory storage and the provider's twin."""
+"""The sign-in delegate over the memory storage, with no identity
+provider: the local sign-in and the personal org it makes, the second
+factor, the exchange of a sign-in for a session and the switch between
+orgs, the places an identity holds, and the sign-out. A sign-in through the
+identity provider runs over its twin, in `test_tenancy_identity_provider.py`."""
 
+import asyncio
 from collections import Counter
-from datetime import timedelta
-from pathlib import Path
-from typing import Any
+from datetime import datetime, timedelta
 from uuid import UUID
 
 import pytest
-from contracts.second_factor import TOTP_KEY, SteppingClock
 
 from acme.infra.cache import CacheScope
 from acme.infra.impl.local import InfraLocalImpl
-from acme.integrations.identity import InvitationState as ProvidedState
 from acme.integrations.identity.absent import IdentityProviderAbsentImpl
-from acme.integrations.identity.twin import TWIN_ISSUER, IdentityProviderTwinImpl
-from acme.om.base import new_id, utcnow
+from acme.om.base import EMPTY_UUID, new_id, utcnow
 from acme.om.change_events.storage.impl.memory import ChangeEventStorageMemoryImpl
-from acme.om.context import (
-    AppContext,
-    AppType,
-    CredentialKind,
-    IdentityContext,
-    RequestContext,
-    Role,
-    TenantContext,
-)
+from acme.om.context import CredentialKind, OperatorRole, Role
 from acme.om.exceptions import (
-    Conflict,
     CredentialExpired,
-    EmailNotVerified,
     InvalidCredential,
-    InvitationClosed,
     NotAuthorized,
-    NotFound,
-    SignInPending,
-    SignInRefused,
-    SignInSlowDown,
-    Unavailable,
-    ValidationFailed,
+    SignInDelayed,
+    UniqueKeyTaken,
 )
-from acme.om.idempotency.storage.impl.memory import IdempotencyStorageMemoryImpl
-from acme.om.idempotency.types.attempt import Attempt
-from acme.om.idempotency.types.record import IdempotencyRecord
 from acme.om.outbox.impl.relay import OutboxRelayImpl
 from acme.om.outbox.storage.impl.memory import OutboxStorageMemoryImpl
 from acme.om.root import build_tenancy
 from acme.om.tenancy import TenancyManagerInterface
 from acme.om.tenancy.impl.manager import TenancyOptions
-from acme.om.tenancy.rules import email_digest, permissions_of, pkce_challenge
+from acme.om.tenancy.impl.operator import TenancyOperatorManagerImpl
+from acme.om.tenancy.rules import email_digest
 from acme.om.tenancy.storage.impl.memory import TenancyStorageMemoryImpl
-from acme.om.tenancy.types.invitation import InvitationState
-from acme.om.tenancy.types.issued import IssuedLogin
+from acme.om.tenancy.types.identity import Identity
+from acme.om.tenancy.types.issued import IssuedAuthSession, OrgMembership
+from acme.om.tenancy.types.membership import Membership
 from acme.om.tenancy.types.org import Org, OrgKind
+from acme.om.tenancy.types.user import User
 
-APP = AppContext(type=AppType.PORTAL, version="portal@test")
-CALLBACK = "http://localhost:55173/auth/callback"
-SETTINGS = "http://localhost:55173/settings"
-SIGNED_OUT = "http://localhost:55173/signed-out"
-
-
-def request() -> RequestContext:
-    return RequestContext(request_id=new_id(), app=APP)
-
-
-@pytest.fixture
-def infra(tmp_path: Path) -> InfraLocalImpl:
-    return InfraLocalImpl(tmp_path)
-
-
-@pytest.fixture
-def outbox() -> OutboxStorageMemoryImpl:
-    return OutboxStorageMemoryImpl()
+from contracts.factories import make_user
+from contracts.second_factor import SteppingClock, enrolled_operator, second_factor
+from contracts.tenancy import (
+    SpyRelay,
+    add_member,
+    make_manager,
+    request,
+    seed_operator,
+    sign_in,
+    team,
+    token_operator,
+)
 
 
-@pytest.fixture
-def markers() -> IdempotencyStorageMemoryImpl:
-    return IdempotencyStorageMemoryImpl()
-
-
-@pytest.fixture
-def storage(
-    outbox: OutboxStorageMemoryImpl, markers: IdempotencyStorageMemoryImpl
-) -> TenancyStorageMemoryImpl:
-    return TenancyStorageMemoryImpl(outbox, markers)
-
-
-@pytest.fixture
-def twin() -> IdentityProviderTwinImpl:
-    return IdentityProviderTwinImpl()
-
-
-def build(
+async def test_a_run_of_wrong_codes_makes_the_next_one_wait(
+    manager: TenancyManagerInterface,
+    operator: TenancyOperatorManagerImpl,
     storage: TenancyStorageMemoryImpl,
-    infra: InfraLocalImpl,
-    outbox: OutboxStorageMemoryImpl,
-    twin: IdentityProviderTwinImpl | None,
-    *,
-    dev_sign_in: bool = True,
-) -> TenancyManagerInterface:
-    relay = OutboxRelayImpl(outbox, ChangeEventStorageMemoryImpl(), infra.get_topics())
-    return build_tenancy(
+    clock: SteppingClock,
+) -> None:
+    """Counted per email, in the tenancy role's own storage: the wait holds
+    whatever address the guesses come from, and even the right code is not
+    checked before it has passed."""
+    await seed_operator(manager, "root@example.test")
+    _, secret = await enrolled_operator(manager, operator, clock, "root@example.test")
+    for _ in range(3):
+        with pytest.raises(InvalidCredential):
+            await second_factor(manager, "root@example.test", "000000")
+    with pytest.raises(SignInDelayed) as delayed:
+        await second_factor(manager, "root@example.test", clock.code(secret))
+    assert timedelta(0) < delayed.value.retry_after <= timedelta(seconds=1)
+    digest = email_digest("root@example.test")
+    run = await storage.read_sign_in_delay(digest)
+    assert run is not None and run.failures == 3
+    # Once the wait has passed, the right code verifies and ends the run.
+    await storage.record_failed_sign_in(digest, utcnow() - timedelta(minutes=1))
+    await second_factor(manager, "root@example.test", clock.code(secret))
+    assert await storage.read_sign_in_delay(digest) is None
+
+
+async def test_only_a_sign_in_credential_verifies_a_second_factor(
+    manager: TenancyManagerInterface,
+    operator: TenancyOperatorManagerImpl,
+    clock: SteppingClock,
+) -> None:
+    await seed_operator(manager, "root@example.test")
+    _, secret = await enrolled_operator(manager, operator, clock, "root@example.test")
+    login = await manager.sign_in.dev_sign_in(request(), "root@example.test")
+    ops = next(m.org for m in login.memberships if m.org.slug == "root")
+    session = await manager.sign_in.exchange_login(
+        await manager.authenticate_login(request(), login.token), ops.id
+    )
+    by_session = await manager.authenticate_login(request(), session.token)
+    with pytest.raises(InvalidCredential):
+        await manager.sign_in.verify_second_factor(by_session, clock.code(secret))
+    verified = await second_factor(manager, "root@example.test", clock.code(secret))
+    identity = await manager.authenticate_login(request(), verified.token)
+    assert identity.second_factor and identity.credential_kind is CredentialKind.LOGIN
+
+
+async def test_exchange_needs_a_membership_in_that_org(manager: TenancyManagerInterface) -> None:
+    await manager.bootstrap(request(), "Ajax", "ajax", "ann@example.test", "Ann")
+    _, other = await manager.bootstrap(request(), "Beta", "beta", "bob@example.test", "Bob")
+    login = await manager.sign_in.dev_sign_in(request(), "ann@example.test")
+    with pytest.raises(NotAuthorized):
+        await manager.sign_in.exchange_login(
+            await manager.authenticate_login(request(), login.token), other.id
+        )
+
+
+async def test_exchange_refuses_a_gone_org_or_membership_as_not_authorized(
+    manager: TenancyManagerInterface,
+    storage: TenancyStorageMemoryImpl,
+    operator: TenancyOperatorManagerImpl,
+) -> None:
+    # The sign-in is good; the tenant is not one the identity can enter. A 401
+    # would make both clients discard a valid login, so it is a 403, as the
+    # interface says.
+    _, org = await manager.bootstrap(request(), "Ajax", "ajax", "ann@example.test", "Ann")
+    bob = await add_member(storage, org.id, "bob@example.test", Role.MEMBER)
+    ended = await storage.read_membership_for_user(org.id, bob.id)
+    assert ended is not None
+    await storage.write_membership(
+        org.id, ended.model_copy(update={"deleted_at": utcnow(), "deleted_by": org.created_by})
+    )
+    login = await manager.sign_in.dev_sign_in(request(), "bob@example.test")
+    with pytest.raises(NotAuthorized):
+        await manager.sign_in.exchange_login(
+            await manager.authenticate_login(request(), login.token), org.id
+        )
+
+    await manager.bootstrap(
+        request(),
+        "Ops",
+        "ops",
+        "root@example.test",
+        "Root",
+        operator_role=OperatorRole.WRITE,
+    )
+    admin = await token_operator(manager, "root@example.test")
+    await operator.delete_org(admin, org.id)
+    login = await manager.sign_in.dev_sign_in(request(), "ann@example.test")
+    identity = await manager.authenticate_login(request(), login.token)
+    with pytest.raises(NotAuthorized):
+        await manager.sign_in.exchange_login(identity, org.id)
+    # The login itself still stands.
+    assert (
+        await manager.authenticate_login(request(), login.token)
+    ).identity_id == identity.identity_id
+
+
+async def test_the_second_factor_ends_the_sign_in_it_verified(
+    manager: TenancyManagerInterface, operator: TenancyOperatorManagerImpl, clock: SteppingClock
+) -> None:
+    """A person holds one sign-in at a time: a wrong code ends nothing, and
+    the right one ends the sign-in it was verified on."""
+    await seed_operator(manager, "root@example.test")
+    _, secret = await enrolled_operator(manager, operator, clock, "root@example.test")
+    plain = await manager.sign_in.dev_sign_in(request(), "root@example.test")
+    with pytest.raises(InvalidCredential):
+        await manager.sign_in.verify_second_factor(
+            await manager.authenticate_login(request(), plain.token), "000000"
+        )
+    verified = await manager.sign_in.verify_second_factor(
+        await manager.authenticate_login(request(), plain.token), clock.code(secret)
+    )
+    assert (await manager.authenticate_login(request(), verified.token)).second_factor
+    with pytest.raises(CredentialExpired):
+        await manager.authenticate_login(request(), plain.token)
+
+
+async def test_a_sign_out_ends_the_credential_presented_whichever_it_is(
+    manager: TenancyManagerInterface, operator: TenancyOperatorManagerImpl, clock: SteppingClock
+) -> None:
+    """A sign-in with no code, a sign-in with its code, and an operator token
+    each end on their own sign-out; the next use of each is refused."""
+    await manager.bootstrap(request(), "Ajax", "ajax", "ann@example.test", "Ann")
+    picker = await manager.sign_in.dev_sign_in(request(), "ann@example.test")
+    out = await manager.sign_in.logout(await manager.authenticate_login(request(), picker.token))
+    assert out.auth_session.credential_kind is CredentialKind.LOGIN and out.auth_session.revoked_at
+    with pytest.raises(CredentialExpired):
+        await manager.authenticate_login(request(), picker.token)
+
+    await seed_operator(manager, "root@example.test")
+    admin, secret = await enrolled_operator(manager, operator, clock, "root@example.test")
+    verified = await second_factor(manager, "root@example.test", clock.code(secret))
+    ictx = await manager.authenticate_login(request(), verified.token)
+    await manager.sign_in.logout(ictx)
+    with pytest.raises(CredentialExpired):
+        await manager.authenticate_login(request(), verified.token)
+    with pytest.raises(CredentialExpired):
+        await operator.issue_operator_token(await manager.admit_operator(ictx), OperatorRole.READ)
+
+    token = await manager.grant_operator_token(request(), "root@example.test")
+    signed_out = await manager.sign_in.logout(
+        await manager.authenticate_login(request(), token.token)
+    )
+    assert signed_out.auth_session.id == token.id and signed_out.provider_logout_url is None
+    with pytest.raises(CredentialExpired):
+        await manager.authenticate_login(request(), token.token)
+    assert token.id not in {
+        t.id for t in (await operator.get_operator_tokens(admin, None, limit=10)).items
+    }
+
+
+# One personal org per person, whoever makes it.
+
+
+class RacedPersonalStorage(TenancyStorageMemoryImpl):
+    """Every read of an identity's places misses: a person the sign-in finds
+    with no personal org, while another sign-in is making it."""
+
+    async def read_users_by_identity(
+        self, identity_id: UUID, limit: int
+    ) -> list[tuple[UUID, User]]:
+        return []
+
+
+async def test_a_person_has_one_personal_org_whatever_races_to_make_it(
+    infra: InfraLocalImpl, outbox: OutboxStorageMemoryImpl
+) -> None:
+    storage = RacedPersonalStorage(outbox)
+    manager = make_manager(storage, infra, outbox=outbox)
+    await manager.sign_in.dev_sign_in(request(), "dee@example.test", "Dee")
+    [personal_org] = [o for o in await storage.read_orgs(10) if o.personal]
+    # The sign-in reads no personal org and tries to make one; the unique key
+    # keeps the one the first sign-in made, and the sign-in still answers.
+    await manager.sign_in.dev_sign_in(request(), "dee@example.test")
+    orgs = await storage.read_orgs(10)
+    assert [o.id for o in orgs if o.personal] == [personal_org.id]
+    identity = await storage.read_identity_by_email_digest(email_digest("dee@example.test"))
+    assert identity is not None
+    other = personal_org.model_copy(update={"id": new_id(), "slug": "dee-again"})
+    with pytest.raises(UniqueKeyTaken):
+        await storage.write_org(other.id, other)
+
+
+async def test_a_person_with_no_personal_org_gets_one_at_sign_in(
+    manager: TenancyManagerInterface, storage: TenancyStorageMemoryImpl
+) -> None:
+    # An identity and a team org, and no personal org.
+    org, user = await tenant_with_no_personal_org(storage, "gus@example.test", "Gus", "gus-co")
+    login = await manager.sign_in.dev_sign_in(request(), "gus@example.test")
+    kinds = sorted((m.org.kind, m.org.name) for m in login.memberships)
+    assert kinds == [(OrgKind.PERSONAL, "Gus"), (OrgKind.TEAM, org.name)]
+    # Once: the next sign-in finds it.
+    again = await manager.sign_in.dev_sign_in(request(), "gus@example.test")
+    assert {m.org.id for m in again.memberships} == {m.org.id for m in login.memberships}
+    assert user.identity_id == next(
+        m.org.personal_identity_id for m in again.memberships if m.org.personal
+    )
+
+
+async def tenant_with_no_personal_org(
+    storage: TenancyStorageMemoryImpl, email: str, name: str, slug: str
+) -> tuple[Org, User]:
+    now = utcnow()
+    identity = Identity(
+        id=new_id(),
+        created_at=now,
+        updated_at=now,
+        created_by=EMPTY_UUID,
+        updated_by=EMPTY_UUID,
+        email=email,
+    )
+    user = make_user(identity.id, email).model_copy(update={"display_name": name})
+    org = Org(
+        id=new_id(),
+        name=f"{name} Co",
+        slug=slug,
+        created_at=now,
+        updated_at=now,
+        created_by=user.id,
+        updated_by=user.id,
+    )
+    membership = Membership(
+        id=new_id(),
+        created_at=now,
+        updated_at=now,
+        created_by=user.id,
+        updated_by=user.id,
+        user_id=user.id,
+        role=Role.OWNER,
+    )
+    await storage.create_org_with_owner(org.id, org, user, membership, identity)
+    return org, user
+
+
+async def test_the_memberships_of_an_identity_page_and_skip_the_gone(
+    manager: TenancyManagerInterface,
+    operator: TenancyOperatorManagerImpl,
+    storage: TenancyStorageMemoryImpl,
+) -> None:
+    orgs = []
+    for name in ("Ajax", "Beta", "Gamma"):
+        slug = name.lower()
+        if not orgs:
+            _, org = await manager.bootstrap(request(), name, slug, "ann@example.test", "Ann")
+        else:
+            _, org = await manager.bootstrap(request(), name, slug, f"owner@{slug}.test", "Owner")
+            await manager.add_member(request(), slug, "ann@example.test", "Ann", Role.MEMBER)
+        orgs.append(org)
+    login = await manager.sign_in.dev_sign_in(request(), "ann@example.test")
+    ictx = await manager.authenticate_login(request(), login.token)
+    every = await manager.sign_in.get_identity_memberships(ictx, None, limit=10)
+    # Three team orgs, and Ann's personal org.
+    personal = {m.org.id for m in every.items if m.org.personal}
+    assert len(personal) == 1 and not every.has_more
+    assert {m.org.id for m in every.items} - personal == {org.id for org in orgs}
+    assert [m.user.id for m in every.items] == sorted(m.user.id for m in every.items)
+    first = await manager.sign_in.get_identity_memberships(ictx, None, limit=3)
+    assert first.items == every.items[:3] and first.has_more
+    rest = await manager.sign_in.get_identity_memberships(ictx, first.items[-1].user.id, limit=3)
+    assert rest.items == every.items[3:] and not rest.has_more
+    # A deleted org is not a place anyone holds.
+    await manager.bootstrap(
+        request(),
+        "Ops",
+        "ops",
+        "root@example.test",
+        "Root",
+        operator_role=OperatorRole.WRITE,
+    )
+    admin = await token_operator(manager, "root@example.test")
+    await operator.delete_org(admin, orgs[1].id)
+    left = await manager.sign_in.get_identity_memberships(ictx, None, limit=10)
+    assert {m.org.id for m in left.items} == {orgs[0].id, orgs[2].id} | personal
+
+
+async def test_a_switch_ends_the_session_it_was_presented_with_in_the_same_write(
+    storage: TenancyStorageMemoryImpl, infra: InfraLocalImpl, outbox: OutboxStorageMemoryImpl
+) -> None:
+    relay = SpyRelay(OutboxRelayImpl(outbox, ChangeEventStorageMemoryImpl(), infra.get_topics()))
+    manager = build_tenancy(
         storage,
         relay,
         infra.get_cache(CacheScope.REALTIME_TICKET),
-        TenancyOptions(
-            dev_sign_in=dev_sign_in,
-            totp_encryption_key=TOTP_KEY,
-            sign_in_redirect_uris=(CALLBACK,),
-            sign_out_return_uris=(SIGNED_OUT,),
-        ),
-        SteppingClock(),
-        identity_provider=twin or IdentityProviderAbsentImpl(),
+        TenancyOptions(dev_sign_in=True),
+        identity_provider=IdentityProviderAbsentImpl(),
+    )
+    _, ajax = await manager.bootstrap(request(), "Ajax", "ajax", "ann@example.test", "Ann")
+    await manager.bootstrap(request(), "Beta", "beta", "bea@example.test", "Bea")
+    await manager.add_member(request(), "beta", "ann@example.test", "Ann", Role.MEMBER)
+    beta = await storage.read_org_by_slug("beta")
+    assert beta is not None
+    login = await manager.sign_in.dev_sign_in(request(), "ann@example.test")
+    ictx = await manager.authenticate_login(request(), login.token)
+    tab = await manager.sign_in.exchange_login(ictx, ajax.id)
+    other_login = await manager.sign_in.dev_sign_in(request(), "ann@example.test")
+    other_tab = await manager.sign_in.exchange_login(
+        await manager.authenticate_login(request(), other_login.token), ajax.id
     )
 
-
-@pytest.fixture
-def manager(
-    storage: TenancyStorageMemoryImpl,
-    infra: InfraLocalImpl,
-    outbox: OutboxStorageMemoryImpl,
-    twin: IdentityProviderTwinImpl,
-) -> TenancyManagerInterface:
-    return build(storage, infra, outbox, twin)
-
-
-async def enter(
-    manager: TenancyManagerInterface, login: IssuedLogin, org_id: UUID
-) -> TenantContext:
-    session = await manager.sign_in.exchange_login(
-        await manager.authenticate_login(request(), login.token), org_id
-    )
-    return await manager.authenticate(request(), session.token)
-
-
-async def signed_in_at(
-    manager: TenancyManagerInterface, login: IssuedLogin, org_id: UUID
-) -> tuple[TenantContext, IdentityContext]:
-    """A fresh session's tenant stage and the identity stage it proves, which
-    is what a sign-out takes."""
-    session = await manager.sign_in.exchange_login(
-        await manager.authenticate_login(request(), login.token), org_id
-    )
-    return (
-        await manager.authenticate(request(), session.token),
-        await manager.authenticate_login(request(), session.token),
-    )
-
-
-async def owner_of_team(
-    manager: TenancyManagerInterface, email: str = "ann@ajax.example"
-) -> TenantContext:
-    """The owner of a team org, in a session there."""
-    _, org = await manager.bootstrap(request(), "Ajax", "ajax", email, "Ann")
-    return await enter(manager, await manager.sign_in.dev_sign_in(request(), email), org.id)
-
-
-# Where the browser goes.
-
-
-async def test_the_sign_in_url_goes_to_the_provider_with_the_state(
-    manager: TenancyManagerInterface,
-) -> None:
-    started = await manager.sign_in.sign_in_url(request(), CALLBACK, "s" * 32, sign_up=True)
-    url = started.authorization_url
-    # The verifier stays with the caller; the provider sees its digest.
-    assert f"code_challenge={pkce_challenge(started.code_verifier)}" in url
-    assert started.code_verifier not in url
-    assert "state=" + "s" * 32 in url and "screen_hint=sign-up" in url
-    assert "redirect_uri=http%3A%2F%2Flocalhost%3A55173%2Fauth%2Fcallback" in url
-
-
-async def test_a_redirect_that_is_not_this_environments_or_no_state_is_refused(
-    manager: TenancyManagerInterface,
-) -> None:
-    with pytest.raises(ValidationFailed):
-        await manager.sign_in.sign_in_url(request(), "https://evil.example/auth/callback", "s" * 32)
-    with pytest.raises(ValidationFailed):
-        await manager.sign_in.sign_in_url(request(), CALLBACK, "")
-
-
-async def test_with_no_provider_every_sign_in_through_one_is_unavailable(
-    storage: TenancyStorageMemoryImpl, infra: InfraLocalImpl, outbox: OutboxStorageMemoryImpl
-) -> None:
-    manager = build(storage, infra, outbox, None)
-    with pytest.raises(Unavailable):
-        await manager.sign_in.sign_in_url(request(), CALLBACK, "s" * 32)
-    with pytest.raises(Unavailable):
-        await manager.sign_in.sign_in_with_code(request(), "any")
-    with pytest.raises(Unavailable):
-        await manager.sign_in.start_device_sign_in(request())
-
-
-# The code comes back.
-
-
-async def test_a_first_sign_in_makes_the_person_with_their_personal_org(
-    manager: TenancyManagerInterface,
-    storage: TenancyStorageMemoryImpl,
-    twin: IdentityProviderTwinImpl,
-) -> None:
-    code = twin.issue_code("dee@example.test", first_name="Dee", last_name="Doe")
-    login = await manager.sign_in.sign_in_with_code(request(), code)
-    assert login.token.startswith("lgn_")
-    [place] = login.memberships
-    assert place.org.kind is OrgKind.PERSONAL and place.org.name == "Dee Doe"
-    assert place.role is Role.OWNER and place.user.display_name == "Dee Doe"
-    identity = await storage.read_identity_by_email_digest(email_digest("dee@example.test"))
-    assert identity is not None
-    assert (identity.issuer, identity.subject) == (TWIN_ISSUER, twin.user("dee@example.test").id)
-    # A second sign-in finds the same person and the same one place.
-    again = await manager.sign_in.sign_in_with_code(request(), twin.issue_code("dee@example.test"))
-    assert [m.org.id for m in again.memberships] == [place.org.id]
-
-
-async def test_a_person_the_seeding_made_is_linked_by_the_verified_email(
-    manager: TenancyManagerInterface,
-    storage: TenancyStorageMemoryImpl,
-    twin: IdentityProviderTwinImpl,
-) -> None:
-    _, org = await manager.bootstrap(request(), "Ajax", "ajax", "ann@example.test", "Ann")
-    before = await storage.read_identity_by_email_digest(email_digest("ann@example.test"))
-    assert before is not None and before.subject is None
-    login = await manager.sign_in.sign_in_with_code(request(), twin.issue_code("ann@example.test"))
-    assert org.id in {m.org.id for m in login.memberships}
-    linked = await storage.read_identity(before.id)
-    assert linked is not None and linked.subject == twin.user("ann@example.test").id
-    assert linked.issuer == TWIN_ISSUER
-
-
-async def test_a_person_the_seeding_made_is_linked_whatever_the_case_of_the_address(
-    manager: TenancyManagerInterface,
-    storage: TenancyStorageMemoryImpl,
-    twin: IdentityProviderTwinImpl,
-) -> None:
-    """The seeding typed `Dee@Example.test` and the provider vouches for
-    `dee@EXAMPLE.test`: one address, so one person, linked on the first
-    sign-in, and nobody new."""
-    _, org = await manager.bootstrap(request(), "Ajax", "ajax", "Dee@Example.test", "Dee")
-    seeded = await storage.read_identity_by_email_digest(email_digest("dee@example.test"))
-    assert seeded is not None and seeded.email == "dee@example.test"
-    login = await manager.sign_in.sign_in_with_code(request(), twin.issue_code("dee@EXAMPLE.test"))
-    assert org.id in {m.org.id for m in login.memberships}
-    linked = await storage.read_identity(seeded.id)
-    assert linked is not None and linked.subject == twin.user("dee@EXAMPLE.test").id
-    assert await storage.count_orgs() == 2, "Ajax and Dee's personal org"
-
-
-async def test_a_linked_person_is_found_by_the_subject_whatever_their_address(
-    manager: TenancyManagerInterface,
-    storage: TenancyStorageMemoryImpl,
-    twin: IdentityProviderTwinImpl,
-) -> None:
-    first = await manager.sign_in.sign_in_with_code(request(), twin.issue_code("dee@example.test"))
-    person = twin.user("dee@example.test")
-    twin.users[person.id] = person.model_copy(update={"email": "dee@new.example"})
-    again = await manager.sign_in.sign_in_with_code(request(), twin.issue_code("dee@new.example"))
-    assert {m.org.id for m in again.memberships} == {m.org.id for m in first.memberships}
-    assert await storage.read_identity_by_email_digest(email_digest("dee@new.example")) is None
-
-
-async def test_an_unverified_address_or_the_platforms_is_refused(
-    manager: TenancyManagerInterface,
-    storage: TenancyStorageMemoryImpl,
-    twin: IdentityProviderTwinImpl,
-) -> None:
-    with pytest.raises(EmailNotVerified):
-        code = twin.issue_code("dee@example.test", email_verified=False)
-        await manager.sign_in.sign_in_with_code(request(), code)
-    with pytest.raises(InvalidCredential):
-        code = twin.issue_code("smoke@platform.acme.invalid")
-        await manager.sign_in.sign_in_with_code(request(), code)
-    assert await storage.count_orgs() == 0
-
-
-async def test_an_integration_acts_only_as_a_live_member_whose_address_is_proven(
-    manager: TenancyManagerInterface,
-    twin: IdentityProviderTwinImpl,
-) -> None:
-    """The context an integration's call acts under: the member's own role,
-    found by the address in any case, and nobody for an address no sign-in
-    proved, a person of another org, a removed member, or an unknown one."""
-    owner, org = await manager.bootstrap(request(), "Ajax", "ajax", "ann@example.test", "Ann")
-    _, bob, _ = await manager.add_member(request(), "ajax", "bob@example.test", "Bob", Role.MEMBER)
-    await manager.add_member(request(), "ajax", "dee@example.test", "Dee", Role.ADMIN)
-    _, beta = await manager.bootstrap(request(), "Beta", "beta", "cy@example.test", "Cy")
-    for email in ("ann@example.test", "bob@example.test", "cy@example.test"):
-        await manager.sign_in.sign_in_with_code(request(), twin.issue_code(email))
-
-    ann = await manager.member_context(request(), org.id, "Ann@Example.TEST")
-    assert ann is not None and ann.user_id == owner.user_id and ann.org_id == org.id
-    assert ann.role is Role.OWNER and ann.security.permissions == permissions_of(Role.OWNER)
-    assert ann.credential_kind is CredentialKind.INTERNAL
-    found = await manager.member_context(request(), org.id, "bob@example.test")
-    assert found is not None and found.user_id == bob.id
-    assert found.role is Role.MEMBER and found.security.permissions == permissions_of(Role.MEMBER)
-
-    # Dee is a member, but the seeding typed her address and no sign-in proved it.
-    assert await manager.member_context(request(), org.id, "dee@example.test") is None
-    await manager.sign_in.sign_in_with_code(request(), twin.issue_code("dee@example.test"))
-    dee = await manager.member_context(request(), org.id, "dee@example.test")
-    assert dee is not None and dee.role is Role.ADMIN
-
-    # Cy is proven, and a member of Beta, not of Ajax.
-    assert await manager.member_context(request(), org.id, "cy@example.test") is None
-    assert await manager.member_context(request(), beta.id, "cy@example.test") is not None
-    assert await manager.member_context(request(), org.id, "nobody@example.test") is None
-
-    await manager.members.remove_member(owner, bob.id)
-    assert await manager.member_context(request(), org.id, "bob@example.test") is None
-
-
-async def test_a_spent_code_is_refused(
-    manager: TenancyManagerInterface, twin: IdentityProviderTwinImpl
-) -> None:
-    code = twin.issue_code("dee@example.test")
-    await manager.sign_in.sign_in_with_code(request(), code)
-    with pytest.raises(SignInRefused):
-        await manager.sign_in.sign_in_with_code(request(), code)
-    with pytest.raises(SignInRefused):
-        await manager.sign_in.sign_in_with_code(request(), "never-issued")
-
-
-# The device.
-
-
-async def test_a_device_sign_in_waits_for_the_person_and_then_signs_them_in(
-    manager: TenancyManagerInterface, twin: IdentityProviderTwinImpl
-) -> None:
-    started = await manager.sign_in.start_device_sign_in(request())
-    assert started.user_code in started.verification_uri_complete
-    with pytest.raises(SignInPending):
-        await manager.sign_in.finish_device_sign_in(request(), started.device_code)
-    twin.confirm_device(started.user_code, "dee@example.test")
-    login = await manager.sign_in.finish_device_sign_in(request(), started.device_code)
-    assert [m.org.kind for m in login.memberships] == [OrgKind.PERSONAL]
-    with pytest.raises(SignInRefused):
-        await manager.sign_in.finish_device_sign_in(request(), started.device_code)
-
-
-async def test_a_device_sign_in_declined_or_expired_is_refused(
-    manager: TenancyManagerInterface, twin: IdentityProviderTwinImpl
-) -> None:
-    declined = await manager.sign_in.start_device_sign_in(request())
-    twin.confirm_device(declined.user_code, "dee@example.test", deny=True)
-    with pytest.raises(SignInRefused):
-        await manager.sign_in.finish_device_sign_in(request(), declined.device_code)
-    expired = await manager.sign_in.start_device_sign_in(request())
-    twin.expire_device(expired.user_code)
-    with pytest.raises(SignInRefused):
-        await manager.sign_in.finish_device_sign_in(request(), expired.device_code)
-
-
-async def test_a_device_asked_too_often_is_told_to_slow_down(
-    manager: TenancyManagerInterface,
-    twin: IdentityProviderTwinImpl,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    from acme.integrations.exceptions import DeviceSlowDown
-
-    async def slow(device_code: str, **_: object) -> None:
-        raise DeviceSlowDown("slow down")
-
-    monkeypatch.setattr(twin, "authenticate_device", slow)
-    with pytest.raises(SignInSlowDown):
-        await manager.sign_in.finish_device_sign_in(request(), "any")
-
-
-# The local sign-in.
-
-
-async def test_the_local_sign_in_is_not_there_unless_it_is_on(
-    storage: TenancyStorageMemoryImpl, infra: InfraLocalImpl, outbox: OutboxStorageMemoryImpl
-) -> None:
-    off = build(storage, infra, outbox, None, dev_sign_in=False)
-    with pytest.raises(NotFound):
-        await off.sign_in.dev_sign_in(request(), "dee@example.test")
-    assert await storage.count_orgs() == 0
-
-
-async def test_the_local_sign_in_makes_a_person_once_and_then_finds_them(
-    manager: TenancyManagerInterface, storage: TenancyStorageMemoryImpl
-) -> None:
-    first = await manager.sign_in.dev_sign_in(request(), "dee@example.test", "Dee")
-    [place] = first.memberships
-    assert place.org.personal and place.org.name == "Dee"
-    again = await manager.sign_in.dev_sign_in(request(), "dee@example.test")
-    assert [m.org.id for m in again.memberships] == [place.org.id]
-    with pytest.raises(ValidationFailed):
-        await manager.sign_in.dev_sign_in(request(), "not-an-address")
-    with pytest.raises(ValidationFailed):
-        await manager.sign_in.dev_sign_in(request(), "smoke@platform.acme.invalid")
-    assert await storage.count_orgs() == 1
-
-
-async def test_the_local_sign_in_finds_a_person_in_any_case(
-    manager: TenancyManagerInterface, storage: TenancyStorageMemoryImpl
-) -> None:
-    first = await manager.sign_in.dev_sign_in(request(), "Dee@Example.test", "Dee")
-    [place] = first.memberships
-    assert place.user.email == "dee@example.test"
-    again = await manager.sign_in.dev_sign_in(request(), "DEE@example.TEST")
-    assert [m.org.id for m in again.memberships] == [place.org.id]
-    assert await storage.count_orgs() == 1
-
-
-# Invitations.
-
-
-async def test_an_invitation_is_sent_through_the_provider_and_listed(
-    manager: TenancyManagerInterface,
-    storage: TenancyStorageMemoryImpl,
-    twin: IdentityProviderTwinImpl,
-) -> None:
-    ann = await owner_of_team(manager)
-    invitation = await manager.members.invite_member(ann, "bob@ajax.example", Role.ADMIN)
-    assert invitation.state is InvitationState.PENDING and invitation.role is Role.ADMIN
-    assert invitation.created_by == ann.user_id
-    [sent] = twin.sent
-    assert sent.email == "bob@ajax.example" and sent.id == invitation.provider_invitation_id
-    # The org's organization at the provider was made once and kept.
-    org = await storage.read_org(ann.org_id)
-    assert org is not None and org.provider_org_id is not None
-    assert org.provider_org_id == sent.organization_id
-    assert twin.organizations[org.provider_org_id].external_id == str(org.id)
-    await manager.members.invite_member(ann, "cat@ajax.example", Role.MEMBER)
-    assert len(twin.organizations) == 1
-    page = await manager.members.get_invitations(ann, None, limit=1)
-    assert [i.email for i in page.items] == ["cat@ajax.example"] and page.has_more
-    rest = await manager.members.get_invitations(ann, page.items[-1].id, limit=1)
-    assert [i.email for i in rest.items] == ["bob@ajax.example"] and not rest.has_more
-
-
-async def test_an_invitation_needs_a_member_manager_and_a_role_at_most_theirs(
-    manager: TenancyManagerInterface, twin: IdentityProviderTwinImpl
-) -> None:
-    ann = await owner_of_team(manager)
-    await manager.add_member(request(), "ajax", "vic@ajax.example", "Vic", Role.ADMIN)
-    vic = await enter(
-        manager, await manager.sign_in.dev_sign_in(request(), "vic@ajax.example"), ann.org_id
-    )
-    with pytest.raises(NotAuthorized):
-        await manager.members.invite_member(vic, "own@ajax.example", Role.OWNER)
-    await manager.add_member(request(), "ajax", "mem@ajax.example", "Mem", Role.MEMBER)
-    mem = await enter(
-        manager, await manager.sign_in.dev_sign_in(request(), "mem@ajax.example"), ann.org_id
-    )
-    with pytest.raises(NotAuthorized):
-        await manager.members.invite_member(mem, "x@ajax.example", Role.VIEWER)
-    for email, role in (
-        ("x@ajax.example", Role.SERVICE),
-        ("smoke@platform.acme.invalid", Role.MEMBER),
-        ("not-an-address", Role.MEMBER),
-    ):
-        with pytest.raises(ValidationFailed):
-            await manager.members.invite_member(ann, email, role)
-    assert twin.sent == []
-
-
-async def test_a_member_or_an_open_invitation_is_not_invited_again(
-    manager: TenancyManagerInterface, twin: IdentityProviderTwinImpl
-) -> None:
-    ann = await owner_of_team(manager)
-    with pytest.raises(Conflict):
-        await manager.members.invite_member(ann, "ann@ajax.example", Role.MEMBER)
-    await manager.members.invite_member(ann, "bob@ajax.example", Role.MEMBER)
-    with pytest.raises(Conflict):
-        await manager.members.invite_member(ann, "bob@ajax.example", Role.MEMBER)
-    assert len(twin.sent) == 1
-
-
-async def test_an_address_is_invited_once_in_any_case(
-    manager: TenancyManagerInterface, twin: IdentityProviderTwinImpl
-) -> None:
-    """The invitation keeps the address folded and sends it so. Another
-    spelling of a pending invitation's address, or of a member's, is the
-    same address."""
-    ann = await owner_of_team(manager)
-    invitation = await manager.members.invite_member(ann, "Bob@Ajax.example", Role.MEMBER)
-    assert invitation.email == "bob@ajax.example"
-    [sent] = twin.sent
-    assert sent.email == "bob@ajax.example"
-    with pytest.raises(Conflict):
-        await manager.members.invite_member(ann, "bob@AJAX.example", Role.MEMBER)
-    with pytest.raises(Conflict):
-        await manager.members.invite_member(ann, "ANN@ajax.example", Role.MEMBER)
-    assert len(twin.sent) == 1
-
-
-async def test_an_expired_invitation_is_replaced(
-    manager: TenancyManagerInterface,
-    storage: TenancyStorageMemoryImpl,
-    twin: IdentityProviderTwinImpl,
-) -> None:
-    ann = await owner_of_team(manager)
-    first = await manager.members.invite_member(ann, "bob@ajax.example", Role.MEMBER)
-    await storage.write_invitation(
-        ann.org_id, first.model_copy(update={"expires_at": utcnow() - timedelta(days=1)})
-    )
-    twin.invitations[first.provider_invitation_id] = twin.invitations[
-        first.provider_invitation_id
-    ].model_copy(update={"state": ProvidedState.EXPIRED})
-    second = await manager.members.invite_member(ann, "bob@ajax.example", Role.ADMIN)
-    assert second.id != first.id and second.role is Role.ADMIN
-    closed = await storage.read_invitation(ann.org_id, first.id)
-    assert closed is not None and closed.state is InvitationState.REVOKED
-    assert [i.id for i in (await manager.members.get_invitations(ann, None, 10)).items] == [
-        second.id
-    ]
-
-
-async def test_a_rerun_under_one_attempt_answers_with_the_invitation_it_made(
-    manager: TenancyManagerInterface,
-    markers: IdempotencyStorageMemoryImpl,
-    twin: IdentityProviderTwinImpl,
-) -> None:
-    ann = await owner_of_team(manager)
-    target, attempt_id = new_id(), new_id()
-    await markers.write_record(
-        ann.org_id,
-        IdempotencyRecord(
-            id=new_id(),
-            created_at=utcnow(),
-            user_id=ann.user_id,
-            key="invite-bob",
-            request_digest="digest",
-            target_id=target,
-            attempt_id=attempt_id,
-        ),
-    )
-    attempt = Attempt(target_id=target, attempt_id=attempt_id)
-    first = await manager.members.invite_member(ann, "bob@ajax.example", Role.MEMBER, attempt)
-    again = await manager.members.invite_member(ann, "bob@ajax.example", Role.MEMBER, attempt)
-    assert first.id == again.id == target and len(twin.sent) == 1
-
-
-async def test_an_invitation_pending_at_the_provider_is_adopted(
-    manager: TenancyManagerInterface,
-    storage: TenancyStorageMemoryImpl,
-    twin: IdentityProviderTwinImpl,
-) -> None:
-    """An earlier attempt sent it and lost its answer: the provider refuses a
-    second, and the one it holds is the one recorded."""
-    ann = await owner_of_team(manager)
-    await manager.members.invite_member(ann, "cat@ajax.example", Role.MEMBER)
-    org = await storage.read_org(ann.org_id)
-    assert org is not None and org.provider_org_id is not None
-    lost = await twin.send_invitation(
-        email="bob@ajax.example", organization_id=org.provider_org_id, expires_in_days=7
-    )
-    invitation = await manager.members.invite_member(ann, "bob@ajax.example", Role.MEMBER)
-    assert invitation.provider_invitation_id == lost.id
-
-
-async def test_an_invitation_is_sent_again_or_revoked_while_pending(
-    manager: TenancyManagerInterface, twin: IdentityProviderTwinImpl
-) -> None:
-    ann = await owner_of_team(manager)
-    invitation = await manager.members.invite_member(ann, "bob@ajax.example", Role.MEMBER)
-    resent = await manager.members.resend_invitation(ann, invitation.id)
-    assert resent.id == invitation.id and len(twin.sent) == 2
-    revoked = await manager.members.revoke_invitation(ann, invitation.id)
-    assert revoked.state is InvitationState.REVOKED
-    assert twin.invitations[invitation.provider_invitation_id].state is ProvidedState.REVOKED
-    with pytest.raises(InvitationClosed):
-        await manager.members.revoke_invitation(ann, invitation.id)
-    with pytest.raises(InvitationClosed):
-        await manager.members.resend_invitation(ann, invitation.id)
-    with pytest.raises(NotFound):
-        await manager.members.revoke_invitation(ann, new_id())
-    assert (await manager.members.get_invitations(ann, None, 10)).items == ()
-
-
-async def test_an_accepted_invitation_lands_the_membership_with_its_role(
-    manager: TenancyManagerInterface,
-    storage: TenancyStorageMemoryImpl,
-    twin: IdentityProviderTwinImpl,
-) -> None:
-    ann = await owner_of_team(manager)
-    invitation = await manager.members.invite_member(ann, "bob@ajax.example", Role.ADMIN)
-    code = twin.accept_invitation(invitation.provider_invitation_id)
-    login = await manager.sign_in.sign_in_with_code(request(), code)
-    [place] = [m for m in login.memberships if m.org.id == ann.org_id]
-    assert place.role is Role.ADMIN
-    assert place.user.created_by == ann.user_id, "recorded as the inviter's"
-    accepted = await storage.read_invitation(ann.org_id, invitation.id)
-    assert accepted is not None and accepted.state is InvitationState.ACCEPTED
-    assert accepted.accepted_user_id == place.user.id
-    assert any(m.org.personal for m in login.memberships)
-    assert (await manager.members.get_invitations(ann, None, 10)).items == ()
-
-
-async def test_an_invitation_accepted_with_another_address_of_the_domain_lands_it(
-    manager: TenancyManagerInterface, twin: IdentityProviderTwinImpl
-) -> None:
-    ann = await owner_of_team(manager)
-    invitation = await manager.members.invite_member(ann, "bob@ajax.example", Role.MEMBER)
-    code = twin.accept_invitation(invitation.provider_invitation_id, "robert@ajax.example")
-    login = await manager.sign_in.sign_in_with_code(request(), code)
-    [place] = [m for m in login.memberships if m.org.id == ann.org_id]
-    assert place.user.email == "robert@ajax.example" and place.role is Role.MEMBER
-
-
-async def test_a_member_accepting_an_invitation_keeps_their_place(
-    manager: TenancyManagerInterface,
-    storage: TenancyStorageMemoryImpl,
-    twin: IdentityProviderTwinImpl,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    ann = await owner_of_team(manager)
-    invitation = await manager.members.invite_member(ann, "bob@ajax.example", Role.ADMIN)
-    _, bob, _ = await manager.add_member(request(), "ajax", "bob@ajax.example", "Bob", Role.VIEWER)
-    calls = counted(twin, monkeypatch)
-    login = await manager.sign_in.sign_in_with_code(
-        request(), twin.accept_invitation(invitation.provider_invitation_id)
-    )
-    [place] = [m for m in login.memberships if m.org.id == ann.org_id]
-    assert place.user.id == bob.id and place.role is Role.VIEWER
-    closed = await storage.read_invitation(ann.org_id, invitation.id)
-    assert closed is not None and closed.state is InvitationState.ACCEPTED
-    assert closed.accepted_user_id == bob.id
-    # A member with an invitation to their address pending: the invitations
-    # are read, and the organization is not.
-    assert calls == {"accepted_invitation": 1}
-
-
-# Single sign-on.
-
-
-async def test_the_single_sign_on_link_is_a_team_orgs_for_a_member_manager(
-    manager: TenancyManagerInterface, storage: TenancyStorageMemoryImpl
-) -> None:
-    ann = await owner_of_team(manager)
-    link = await manager.members.sso_setup_link(ann, "sso", SETTINGS)
-    org = await storage.read_org(ann.org_id)
-    assert org is not None and org.provider_org_id is not None
-    assert f"organization={org.provider_org_id}" in link and "intent=sso" in link
-    with pytest.raises(ValidationFailed):
-        await manager.members.sso_setup_link(ann, "sso", "https://evil.example/settings")
-    login = await manager.sign_in.dev_sign_in(request(), "ann@ajax.example")
-    personal = next(m.org for m in login.memberships if m.org.personal)
-    in_personal = await enter(manager, login, personal.id)
-    with pytest.raises(ValidationFailed):
-        await manager.members.sso_setup_link(in_personal, "sso", SETTINGS)
-    await manager.add_member(request(), "ajax", "mem@ajax.example", "Mem", Role.MEMBER)
-    mem = await enter(
-        manager, await manager.sign_in.dev_sign_in(request(), "mem@ajax.example"), ann.org_id
-    )
-    with pytest.raises(NotAuthorized):
-        await manager.members.sso_setup_link(mem, "domain_verification", SETTINGS)
-
-
-async def provider_org(
-    manager: TenancyManagerInterface, storage: TenancyStorageMemoryImpl, ctx: TenantContext
-) -> Org:
-    await manager.members.sso_setup_link(ctx, "sso", SETTINGS)
-    org = await storage.read_org(ctx.org_id)
-    assert org is not None and org.provider_org_id is not None
-    return org
-
-
-async def test_a_single_sign_on_in_a_verified_domain_lands_a_member(
-    manager: TenancyManagerInterface,
-    storage: TenancyStorageMemoryImpl,
-    twin: IdentityProviderTwinImpl,
-) -> None:
-    ann = await owner_of_team(manager)
-    org = await provider_org(manager, storage, ann)
-    assert org.provider_org_id is not None
-    twin.verify_domain(org.provider_org_id, "Ajax.Example")
-    code = twin.issue_code("eve@ajax.example", organization_id=org.provider_org_id, via_sso=True)
-    login = await manager.sign_in.sign_in_with_code(request(), code)
-    [place] = [m for m in login.memberships if m.org.id == org.id]
-    assert place.role is Role.MEMBER
-
-
-async def test_a_single_sign_on_outside_a_verified_domain_lands_nothing(
-    manager: TenancyManagerInterface,
-    storage: TenancyStorageMemoryImpl,
-    twin: IdentityProviderTwinImpl,
-) -> None:
-    ann = await owner_of_team(manager)
-    org = await provider_org(manager, storage, ann)
-    assert org.provider_org_id is not None
-    for email, via_sso in (("eve@ajax.example", True), ("mal@other.example", True)):
-        if email.endswith("other.example"):
-            twin.verify_domain(org.provider_org_id, "ajax.example")
-        code = twin.issue_code(email, organization_id=org.provider_org_id, via_sso=via_sso)
-        login = await manager.sign_in.sign_in_with_code(request(), code)
-        assert org.id not in {m.org.id for m in login.memberships}
-    # Verified, but not through the org's single sign-on: nothing either.
-    code = twin.issue_code("sam@ajax.example", organization_id=org.provider_org_id)
-    login = await manager.sign_in.sign_in_with_code(request(), code)
-    assert org.id not in {m.org.id for m in login.memberships}
-
-
-async def test_a_personal_org_never_gets_a_member_through_single_sign_on(
-    manager: TenancyManagerInterface,
-    storage: TenancyStorageMemoryImpl,
-    twin: IdentityProviderTwinImpl,
-) -> None:
-    login = await manager.sign_in.dev_sign_in(request(), "ann@ajax.example", "Ann")
-    personal = login.memberships[0].org
-    ann = await enter(manager, login, personal.id)
-    # Invited into the personal org, its organization at the provider exists.
-    await manager.members.invite_member(ann, "friend@ajax.example", Role.MEMBER)
-    org = await storage.read_org(personal.id)
-    assert org is not None and org.provider_org_id is not None
-    twin.verify_domain(org.provider_org_id, "ajax.example")
-    code = twin.issue_code("eve@ajax.example", organization_id=org.provider_org_id, via_sso=True)
-    eve = await manager.sign_in.sign_in_with_code(request(), code)
-    assert personal.id not in {m.org.id for m in eve.memberships}
-
-
-async def test_an_organization_that_names_no_living_org_joins_nothing(
-    manager: TenancyManagerInterface, twin: IdentityProviderTwinImpl
-) -> None:
-    stray = await twin.ensure_organization(external_id="not-a-uuid", name="Stray")
-    twin.verify_domain(stray.id, "ajax.example")
-    code = twin.issue_code("eve@ajax.example", organization_id=stray.id, via_sso=True)
-    login = await manager.sign_in.sign_in_with_code(request(), code)
-    assert [m.org.kind for m in login.memberships] == [OrgKind.PERSONAL]
-
-
-# A sign-in through an organization asks the provider only what it must.
-
-
-def counted(twin: IdentityProviderTwinImpl, monkeypatch: pytest.MonkeyPatch) -> Counter[str]:
-    """How many times a sign-in asked the provider for the organization and
-    for the invitation the person accepted."""
-    calls: Counter[str] = Counter()
-    for name in ("get_organization", "accepted_invitation"):
-        real = getattr(twin, name)
-
-        async def call(*args: Any, _real: Any = real, _name: str = name, **kwargs: Any) -> Any:
-            calls[_name] += 1
-            return await _real(*args, **kwargs)
-
-        monkeypatch.setattr(twin, name, call)
-    return calls
-
-
-async def test_a_member_signing_in_through_the_organization_asks_the_provider_nothing(
-    manager: TenancyManagerInterface,
-    storage: TenancyStorageMemoryImpl,
-    twin: IdentityProviderTwinImpl,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    ann = await owner_of_team(manager)
-    invitation = await manager.members.invite_member(ann, "bob@ajax.example", Role.ADMIN)
-    await manager.members.invite_member(ann, "cy@ajax.example", Role.MEMBER)
-    calls = counted(twin, monkeypatch)
-    code = twin.accept_invitation(invitation.provider_invitation_id)
-    await manager.sign_in.sign_in_with_code(request(), code)
-    # A new invitee: the organization once, the invitations once.
-    assert calls == {"get_organization": 1, "accepted_invitation": 1}
-    org = await storage.read_org(ann.org_id)
-    assert org is not None and org.provider_org_id is not None
-    twin.verify_domain(org.provider_org_id, "ajax.example")
-    calls.clear()
-    for via_sso in (False, True):
-        code = twin.issue_code(
-            "bob@ajax.example", organization_id=org.provider_org_id, via_sso=via_sso
-        )
-        login = await manager.sign_in.sign_in_with_code(request(), code)
-        [place] = [m for m in login.memberships if m.org.id == ann.org_id]
-        assert place.role is Role.ADMIN
-    assert calls == {}
-
-
-async def test_a_removed_member_signing_in_through_the_organization_is_looked_up(
-    manager: TenancyManagerInterface,
-    storage: TenancyStorageMemoryImpl,
-    twin: IdentityProviderTwinImpl,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    ann = await owner_of_team(manager)
-    org = await provider_org(manager, storage, ann)
-    assert org.provider_org_id is not None
-    twin.verify_domain(org.provider_org_id, "ajax.example")
-    code = twin.issue_code("eve@ajax.example", organization_id=org.provider_org_id, via_sso=True)
-    login = await manager.sign_in.sign_in_with_code(request(), code)
-    [place] = [m for m in login.memberships if m.org.id == org.id]
-    await manager.members.remove_member(ann, place.user.id)
-    calls = counted(twin, monkeypatch)
-    code = twin.issue_code("eve@ajax.example", organization_id=org.provider_org_id, via_sso=True)
-    login = await manager.sign_in.sign_in_with_code(request(), code)
-    assert org.id in {m.org.id for m in login.memberships}
-    # No invitation is pending in the org, so the provider's are not read.
-    assert calls == {"get_organization": 1}
-
-
-# Signing out ends the provider's session too.
-
-
-async def test_a_sign_out_answers_the_providers_logout_for_the_session_the_sign_in_left(
-    manager: TenancyManagerInterface, twin: IdentityProviderTwinImpl
-) -> None:
-    code = twin.issue_code("dee@example.test")
-    login = await manager.sign_in.sign_in_with_code(request(), code)
-    org_id = login.memberships[0].org.id
-    first = await manager.sign_in.exchange_login(
-        await manager.authenticate_login(request(), login.token), org_id
-    )
-    # A switch ends the session presented and carries the provider's session on.
+    # The tab presents its session to the exchange with the other org's id.
     switched = await manager.sign_in.exchange_login(
-        await manager.authenticate_login(request(), first.token), org_id
+        await manager.authenticate_login(request(), tab.token), beta.id
     )
-    ictx = await manager.authenticate_login(request(), switched.token)
-    signed_out = await manager.sign_in.logout(ictx, SIGNED_OUT)
-    assert signed_out.auth_session.revoked_at is not None
-    url = signed_out.provider_logout_url
-    assert url is not None and url.startswith("https://identity.twin.invalid/logout?")
-    assert "session_id=twin_session_" in url
-    assert "return_to=http%3A%2F%2Flocalhost%3A55173%2Fsigned-out" in url
+    assert switched.org.id == beta.id and switched.role is Role.MEMBER
+    assert (await manager.authenticate(request(), switched.token)).org_id == beta.id
+    # The session it was presented with is over, announced under its own tenant.
+    with pytest.raises(CredentialExpired):
+        await manager.authenticate(request(), tab.token)
+    revoked = [(org_id, r) for org_id, r in relay.rows if r.kind == "tenancy.auth_session.revoked"]
+    assert len(revoked) == 1
+    org_id, row = revoked[0]
+    assert org_id == ajax.id and row.org_id == ajax.id
+    assert row.target_id == ictx.credential_id or row.payload.keys() == {"user_id"}, "ids only"
+    # Another tab's session is its own and is not touched.
+    assert (await manager.authenticate(request(), other_tab.token)).org_id == ajax.id
+    # A switch within the same org makes a new session too, and ends the old one.
+    same = await manager.sign_in.exchange_login(
+        await manager.authenticate_login(request(), switched.token), beta.id
+    )
     with pytest.raises(CredentialExpired):
         await manager.authenticate(request(), switched.token)
+    assert (await manager.authenticate(request(), same.token)).org_id == beta.id
+    # A switch into an org the person does not hold is refused, and ends nothing.
+    _, gamma = await manager.bootstrap(request(), "Gamma", "gamma", "gus@example.test", "Gus")
+    with pytest.raises(NotAuthorized):
+        await manager.sign_in.exchange_login(
+            await manager.authenticate_login(request(), same.token), gamma.id
+        )
+    assert (await manager.authenticate(request(), same.token)).org_id == beta.id
 
 
-async def test_a_sign_out_with_no_return_leaves_it_to_the_providers_default(
-    manager: TenancyManagerInterface, twin: IdentityProviderTwinImpl
+async def test_two_switches_on_one_session_admit_one(manager: TenancyManagerInterface) -> None:
+    _, ajax = await manager.bootstrap(request(), "Ajax", "ajax", "ann@example.test", "Ann")
+    login = await manager.sign_in.dev_sign_in(request(), "ann@example.test")
+    tab = await manager.sign_in.exchange_login(
+        await manager.authenticate_login(request(), login.token), ajax.id
+    )
+    # Both verified before either writes: the storage decides.
+    ictx_a = await manager.authenticate_login(request(), tab.token)
+    ictx_b = await manager.authenticate_login(request(), tab.token)
+    outcomes = await asyncio.gather(
+        manager.sign_in.exchange_login(ictx_a, ajax.id),
+        manager.sign_in.exchange_login(ictx_b, ajax.id),
+        return_exceptions=True,
+    )
+    won = [o for o in outcomes if not isinstance(o, BaseException)]
+    lost = [o for o in outcomes if isinstance(o, BaseException)]
+    assert len(won) == 1 and len(lost) == 1
+    assert isinstance(lost[0], CredentialExpired)
+    assert (await manager.authenticate(request(), won[0].token)).org_id == ajax.id
+
+
+async def test_a_session_made_from_a_session_keeps_its_deadline(
+    manager: TenancyManagerInterface, storage: TenancyStorageMemoryImpl, infra: InfraLocalImpl
 ) -> None:
-    login = await manager.sign_in.sign_in_with_code(request(), twin.issue_code("dee@example.test"))
-    _, ictx = await signed_in_at(manager, login, login.memberships[0].org.id)
-    url = (await manager.sign_in.logout(ictx)).provider_logout_url
-    assert url is not None and "session_id=" in url and "return_to" not in url
+    """Only the exchange of a sign-in starts an absolute lifetime. A switch,
+    into another org or within the same one, and the landing after an org's
+    deletion each make a session from a session, and it ends when the first
+    one would have: no session outlives its sign-in's lifetime."""
+    _, ajax = await manager.bootstrap(request(), "Ajax", "ajax", "ann@example.test", "Ann")
+    await manager.bootstrap(request(), "Beta", "beta", "bea@example.test", "Bea")
+    await manager.add_member(request(), "beta", "ann@example.test", "Ann", Role.MEMBER)
+    beta = await storage.read_org_by_slug("beta")
+    assert beta is not None
+
+    async def exchange(token: str, org_id: UUID) -> IssuedAuthSession:
+        return await manager.sign_in.exchange_login(
+            await manager.authenticate_login(request(), token), org_id
+        )
+
+    async def deadline(issued: IssuedAuthSession) -> datetime:
+        """The deadline on the row every request reads, which is the one issued."""
+        ctx = await manager.authenticate(request(), issued.token)
+        row = await storage.read_auth_session(ctx.org_id, ctx.security.credential_id)
+        assert row is not None and row.expires_at == issued.expires_at
+        return row.expires_at
+
+    login = await manager.sign_in.dev_sign_in(request(), "ann@example.test")
+    first = await exchange(login.token, ajax.id)
+    signed_in_until = await deadline(first)
+
+    elsewhere = await exchange(first.token, beta.id)
+    assert await deadline(elsewhere) == signed_in_until, "a switch into another org"
+    same = await exchange(elsewhere.token, beta.id)
+    assert await deadline(same) == signed_in_until, "a switch within the same org"
+    back = await exchange(same.token, ajax.id)
+    owner = await manager.authenticate(request(), back.token)
+    home = (await manager.org.delete_org(owner, "Ajax")).auth_session
+    assert home is not None and home.org.personal
+    assert await deadline(home) == signed_in_until, "the landing after an org's deletion"
+
+    # A new sign-in is what starts a new lifetime.
+    again = await exchange(
+        (await manager.sign_in.dev_sign_in(request(), "ann@example.test")).token, beta.id
+    )
+    assert await deadline(again) > signed_in_until
+    # A lifetime set shorter since the sign-in binds the next session too: the
+    # earlier of the two deadlines, never the later.
+    a_day = make_manager(
+        storage, infra, TenancyOptions(dev_sign_in=True, auth_session_ttl=timedelta(days=1))
+    )
+    capped = await a_day.sign_in.exchange_login(
+        await a_day.authenticate_login(request(), again.token), beta.id
+    )
+    assert capped.expires_at <= utcnow() + timedelta(days=1) < signed_in_until
 
 
-async def test_a_sign_out_to_a_return_not_listed_is_refused_and_ends_nothing(
-    manager: TenancyManagerInterface, twin: IdentityProviderTwinImpl
+async def test_a_sign_in_is_exchanged_once(
+    manager: TenancyManagerInterface, storage: TenancyStorageMemoryImpl
 ) -> None:
-    login = await manager.sign_in.sign_in_with_code(request(), twin.issue_code("dee@example.test"))
-    ctx, ictx = await signed_in_at(manager, login, login.memberships[0].org.id)
-    with pytest.raises(ValidationFailed):
-        await manager.sign_in.logout(ictx, "https://elsewhere.example/signed-out")
+    _, ajax = await manager.bootstrap(request(), "Ajax", "ajax", "ann@example.test", "Ann")
+    _, gamma = await manager.bootstrap(request(), "Gamma", "gamma", "gus@example.test", "Gus")
+    login = await manager.sign_in.dev_sign_in(request(), "ann@example.test")
+    ictx = await manager.authenticate_login(request(), login.token)
+    # A refused exchange ends nothing: the sign-in still stands.
+    with pytest.raises(NotAuthorized):
+        await manager.sign_in.exchange_login(ictx, gamma.id)
+    issued = await manager.sign_in.exchange_login(ictx, ajax.id)
+    ctx = await manager.authenticate(request(), issued.token)
+    # The sign-in ended in the write that made the session.
+    ended = await storage.read_auth_session_by_id(ictx.credential_id)
+    assert ended is not None and ended[0] == EMPTY_UUID
+    assert ended[1].revoked_at == ended[1].updated_at is not None
+    # A second exchange, a replay or a retry after a lost answer, lands nothing.
+    with pytest.raises(CredentialExpired, match="sign in again"):
+        await manager.sign_in.exchange_login(ictx, ajax.id)
+    # Presented again, the sign-in proves nothing any more, the list of
+    # places included; the session is what the person holds.
+    with pytest.raises(CredentialExpired, match="sign in again"):
+        await manager.authenticate_login(request(), login.token)
+    assert [s.id for s in await manager.credentials.get_auth_sessions(ctx, limit=10)] == [
+        ctx.security.credential_id
+    ]
+    # A new sign-in makes a new session.
+    again = await sign_in(manager, "ann@example.test", ajax.id)
+    assert again.security.credential_id != ctx.security.credential_id
+
+
+async def test_two_exchanges_of_one_sign_in_admit_one(
+    manager: TenancyManagerInterface, storage: TenancyStorageMemoryImpl
+) -> None:
+    """Three clicks on the picker at once, or a replayed request: the sign-in
+    ends in the write that lands the one session, so the others find it
+    ended."""
+    _, ajax = await manager.bootstrap(request(), "Ajax", "ajax", "ann@example.test", "Ann")
+    login = await manager.sign_in.dev_sign_in(request(), "ann@example.test")
+    # All verified before any writes: the storage decides.
+    proofs = [await manager.authenticate_login(request(), login.token) for _ in range(3)]
+    outcomes = await asyncio.gather(
+        *(manager.sign_in.exchange_login(ictx, ajax.id) for ictx in proofs), return_exceptions=True
+    )
+    won = [o for o in outcomes if not isinstance(o, BaseException)]
+    lost = [o for o in outcomes if isinstance(o, BaseException)]
+    assert len(won) == 1 and len(lost) == 2
+    assert all(isinstance(error, CredentialExpired) for error in lost)
+    ctx = await manager.authenticate(request(), won[0].token)
     assert [s.id for s in await manager.credentials.get_auth_sessions(ctx, limit=10)] == [
         ctx.security.credential_id
     ]
 
 
-async def test_a_device_or_a_local_sign_in_signs_out_of_acme_alone(
-    manager: TenancyManagerInterface, twin: IdentityProviderTwinImpl
+# A sign-in reads a person's places in one read, however many they hold.
+
+
+class CountedReads(TenancyStorageMemoryImpl):
+    """Counts the reads a sign-in makes of a person's places: the calls the
+    manager makes, not the ones this memory impl makes inside its own."""
+
+    def __init__(self, outbox: OutboxStorageMemoryImpl) -> None:
+        super().__init__(outbox)
+        self.reads: Counter[str] = Counter()
+        self._inside = False
+
+    async def read_org(self, org_id: UUID) -> Org | None:
+        self.reads["read_org"] += 0 if self._inside else 1
+        return await super().read_org(org_id)
+
+    async def read_membership_for_user(self, org_id: UUID, user_id: UUID) -> Membership | None:
+        self.reads["read_membership_for_user"] += 0 if self._inside else 1
+        return await super().read_membership_for_user(org_id, user_id)
+
+    async def read_memberships_by_identity(
+        self, identity_id: UUID, limit: int, after_user_id: UUID | None = None
+    ) -> list[OrgMembership]:
+        self.reads["read_memberships_by_identity"] += 1
+        self._inside = True
+        try:
+            return await super().read_memberships_by_identity(identity_id, limit, after_user_id)
+        finally:
+            self._inside = False
+
+
+async def test_a_sign_in_reads_the_places_once_and_lists_the_living_ones(
+    infra: InfraLocalImpl, outbox: OutboxStorageMemoryImpl
 ) -> None:
-    started = await manager.sign_in.start_device_sign_in(request())
-    twin.confirm_device(started.user_code, "dee@example.test")
-    device = await manager.sign_in.finish_device_sign_in(request(), started.device_code)
-    _, ictx = await signed_in_at(manager, device, device.memberships[0].org.id)
-    assert (await manager.sign_in.logout(ictx, SIGNED_OUT)).provider_logout_url is None
-    local = await manager.sign_in.dev_sign_in(request(), "eve@example.test")
-    _, ictx = await signed_in_at(manager, local, local.memberships[0].org.id)
-    assert (await manager.sign_in.logout(ictx, SIGNED_OUT)).provider_logout_url is None
+    """The places a sign-in lists: every org the person is a live member of,
+    by user id, and not an org deleted or a membership ended. They are read
+    in one read, so a person in five orgs costs what a person in one does."""
+    storage = CountedReads(outbox)
+    manager = make_manager(storage, infra, TenancyOptions(dev_sign_in=True), outbox=outbox)
+    orgs = [
+        (await manager.bootstrap(request(), f"Org {i}", f"org-{i}", "ann@example.test", "Ann"))[1]
+        for i in range(5)
+    ]
+    await manager.bootstrap(request(), "Solo", "solo", "bob@example.test", "Bob")
 
+    storage.reads.clear()
+    one = await manager.sign_in.dev_sign_in(request(), "bob@example.test")
+    reads_for_one = storage.reads.copy()
+    storage.reads.clear()
+    five = await manager.sign_in.dev_sign_in(request(), "ann@example.test")
+    assert storage.reads == reads_for_one, "the reads do not grow with the orgs"
+    assert storage.reads["read_memberships_by_identity"] == 1
+    assert len(team(one.memberships)) == 1
+    assert {m.org.id for m in team(five.memberships)} == {org.id for org in orgs}
+    assert [m.user.id for m in five.memberships] == sorted(m.user.id for m in five.memberships)
 
-async def test_a_provider_this_process_cannot_reach_leaves_acme_signed_out(
-    manager: TenancyManagerInterface,
-    twin: IdentityProviderTwinImpl,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    from acme.integrations.exceptions import ProviderUnavailable
-
-    login = await manager.sign_in.sign_in_with_code(request(), twin.issue_code("dee@example.test"))
-    _, ictx = await signed_in_at(manager, login, login.memberships[0].org.id)
-
-    def unreachable(*, session_id: str, return_to: str | None) -> str:
-        raise ProviderUnavailable("no identity provider is configured")
-
-    monkeypatch.setattr(twin, "logout_url", unreachable)
-    signed_out = await manager.sign_in.logout(ictx, SIGNED_OUT)
-    assert signed_out.auth_session.revoked_at is not None and signed_out.provider_logout_url is None
+    # One org deleted, one membership ended: neither is a place any more.
+    gone = orgs[1].model_copy(update={"deleted_at": utcnow()})
+    await storage.write_org(gone.id, gone)
+    left = next(m for m in five.memberships if m.org.id == orgs[3].id)
+    ended = await storage.read_membership_for_user(orgs[3].id, left.user.id)
+    assert ended is not None
+    await storage.write_membership(orgs[3].id, ended.model_copy(update={"deleted_at": utcnow()}))
+    again = await manager.sign_in.dev_sign_in(request(), "ann@example.test")
+    assert {m.org.id for m in team(again.memberships)} == {orgs[0].id, orgs[2].id, orgs[4].id}
+    kept = {m.org.id: m for m in five.memberships}
+    for place in again.memberships:
+        assert place.user == kept[place.org.id].user and place.role == kept[place.org.id].role
