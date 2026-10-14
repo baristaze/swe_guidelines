@@ -892,7 +892,7 @@ def test_a_fold_on_a_base_takes_only_the_revisions_the_tree_owns() -> None:
     assert "Each rendered file stays as the render gave it" in fold
     assert "The fold's parent is the base's head as the chain holds it" in fold
     assert "no rendered revision follows an owned one on any line" in fold
-    assert "no path `git status --porcelain -- om/migrations` lists is one the render holds" in fold
+    assert "no path `git diff --name-only --relative HEAD -- om/migrations` lists" in fold
     assert "Every other owned file of the role's chain goes: `git rm`." in fold
     assert "A rendered file stays as it is." in fold
 

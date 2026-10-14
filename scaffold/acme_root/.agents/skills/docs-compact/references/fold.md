@@ -209,8 +209,9 @@ revision on the fold.
    ```
 
    `diff` prints nothing, for every role. With a `scaffold` branch, no
-   rendered file changed either: no path `git status --porcelain --
-   om/migrations` lists is one the render holds. When either fails,
+   rendered file changed either: no path `git diff --name-only
+   --relative HEAD -- om/migrations` lists, run at the tree's root, is
+   one the render holds. When either fails,
    correct the fold, drop `audit_fold_folded_<day>`, and prove it
    anew: the first run plus at most 3 reruns. Then stop, undo the fold,
    and report the difference. The undo returns the tree to its last
