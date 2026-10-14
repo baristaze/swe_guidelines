@@ -140,8 +140,12 @@ revisions with `--`.
    rule that now holds one of the checkout's deviations (its own table
    below the Deviations section's marker in
    `<root>/specs/architecture.md`), and each step an entry asks
-   of a project. Step 7 carries them. A layer's first take has no base
-   and no deviation, and skips this step.
+   of a project. A checkout whose Deviations section has no marker yet,
+   on its first move to a release that gives one, holds its deviations
+   as the rows of that table the scaffold's table lacks: those are its
+   own, and the merge moves them below the marker. Step 7 carries them.
+   A layer's first take has no base and no deviation, and skips this
+   step.
 6. **Merge.** `git merge --no-ff --no-commit scaffold`, and on a
    layer's first take
    `git merge --no-ff --no-commit --allow-unrelated-histories scaffold`,
@@ -163,7 +167,7 @@ revisions with `--`.
    | Where | Resolution |
    |-------|------------|
    | A line both sides changed | The scaffold's change to the core, and the copy's product around it. When both changed it to the same effect in other words, keep the copy's line: its own tests may hold its wording. When the scaffold's change undoes a deviation the copy records (its Deviations table names the ADR), keep the copy's line. |
-   | A list that holds the marker line (`A copy adds its entries below this line.`) | The scaffold's entries above the marker, as the scaffold has them, and every entry of the copy's below it, in the copy's order. A copy's entry that sits above the marker, from before the list had one, moves below it, so the next move meets no conflict there. |
+   | A list that holds the marker line (`A copy adds its entries below this line.`) | The scaffold's entries above the marker, as the scaffold has them, and every entry of the copy's below it, in the copy's order. A copy's entry that sits above the marker, from before the list had one, moves below it, so the next move meets no conflict there. In a Markdown table, such as the spec's Deviations, the copy's rows are the ones the scaffold's table lacks, and they move into a table of the copy's own below the marker, under the same header (`../_shared/scaffold-conventions.md`, Changing existing files). |
    | A file the copy deleted and the scaffold changed | It stays deleted (`git rm`). When the copy keeps its own file for the same thing, such as a screen its product replaced, carry into that file what the scaffold's change alters in behaviour. |
    | A file the scaffold deleted and the copy changed | Deleted, unless the copy's own code still imports or runs it. |
    | `docs/adr/` | An ADR the scaffold gave is the scaffold's, and the copy never edits it (Records of Decisions): it takes the scaffold's change, and its removal, as any file does. The copy's edits to them are `git diff --diff-filter=M $(git merge-base HEAD scaffold) HEAD -- <root>/docs/adr`, read before the merge commits. An ADR the copy edited takes the scaffold's text, on a conflict and on a clean merge alike (`git checkout scaffold -- <file>`), and what the copy's edit added moves into an ADR of the copy's own, numbered from 1001, which cites the scaffold's by number and title (`ADR 0002, Technology choices as adopted`); a citation in the copy of the scaffold's number for that part names the copy's ADR. An ADR the scaffold removed, which the copy edited, goes (`git rm`) once the copy's own ADR states what of its decision the copy still holds, citing no removed number. A copy numbers its own ADRs from 1001 and meets no clash; a copy numbered before may. A new scaffold ADR whose number the copy already uses takes one above the copy's highest number at 1001 or above (1001 when it has none; a number is never reused), when its decision holds in the copy, and is removed when it does not. Each line the merge brings that cites its old number (a link, an `ADR-NNNN`, an `adr =` path; `git diff HEAD` shows them) names its new number, or drops the citation when the ADR was removed: `arch-check` cannot tell, since the old number still names a file, the copy's own. The copy's own citations of that number stay. On a later move, a scaffold change to that ADR goes into the file under its new number, and the citations of the old number that move brings are rewritten the same way. After the merge, no two ADRs share a number. |
