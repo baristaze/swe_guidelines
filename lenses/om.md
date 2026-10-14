@@ -498,9 +498,12 @@ instead of calling the function.
 and the bare everyday noun is the product's, since a copy shares one
 codebase, one database, one API, and one portal with its product:
 `AuthSession`, `ChangeEvent`, `LeasableResource`, `WaitLine`,
-`OrchestrationStep`, with `OmBase` at the root. The qualifier names the
-mechanism, never the product that adopts it, and no name says
-"domain". It holds on every surface the noun reaches.
+`OrchestrationStep`, with `OmBase` at the root. A noun stays bare when
+no product gives it a meaning of its own, since it names a mechanism or
+means the same in every product: `Org`, `User`, `Membership`,
+`Identity`, `Invitation`, `Lease`, `File`, and `Orchestration`. The
+qualifier names the mechanism, never the product that adopts it, and no
+name says "domain". It holds on every surface the noun reaches.
 
 **Source.** Naming Entities.
 
@@ -511,7 +514,8 @@ names its mechanism or takes a bare everyday noun a product would need.
 **Violation.** A scaffold class, table, route, or kind named by a bare
 everyday noun, such as a session, an event, a resource, a step, or a
 line; a name that says "domain" or names the adopting product; a
-rename that left the old name on one surface.
+rename that left the old name on one surface. A noun the Principle
+keeps bare is none.
 
 **Severity.** medium
 
