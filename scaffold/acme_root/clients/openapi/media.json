@@ -1284,7 +1284,7 @@
   },
   "tags": [
     {
-      "description": "File routes: the start of an upload, the org's files, the form an upload\nposts to the store, the bytes through the API when the store cannot presign,\nthe confirm, the file, the link a download follows, the delete, and the\norg's storage usage. Each function is one call into the media service; the\nstart runs under the idempotency record. A file started here is of purpose\n`upload`: a file the org keeps, about no subject.",
+      "description": "Media: the org's files, as references to objects in the store.\n\nStarting an upload, under an Idempotency-Key; the org's stored files a page\nat a time; a file, and deleting it; the form that posts its bytes straight to\nthe store, or the bytes through the API where the store cannot take a form;\nthe confirm once the upload is done; the link a download follows, or the\nbytes through the API; and the org's storage used (`/v1/media/files`,\n`/v1/media/files/{file_id}`, `.../upload`, `.../content`, `.../confirm`,\n`.../download`, `/v1/media/usage`). Each function is one call into the media\nservice; the start runs under the idempotency record. A file started here is\nof purpose `upload`: a file the org keeps, about no subject.",
       "name": "media"
     }
   ]

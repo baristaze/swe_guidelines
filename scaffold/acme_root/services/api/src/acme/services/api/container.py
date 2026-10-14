@@ -118,7 +118,7 @@ def postgres_storage(settings: ApiSettings) -> StorageInterface:
 
 def memory_storage() -> StorageInterface:
     """The storage root in memory, for a command that reads the app's shape
-    and no data: the OpenAPI document is emitted over it."""
+    and no data: each namespace's OpenAPI document is emitted over it."""
     return StorageMemoryImpl()
 
 

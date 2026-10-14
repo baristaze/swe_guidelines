@@ -11,8 +11,9 @@ context." The section places it in `apps/admin`, on its own origin
 its routes under `/v1/admin/*`, and no realtime socket.
 
 The tree has the server side and not the client side. The operator
-routes live under `/v1/admin/*` in `services/api` (`routers/admin.py`).
-They take `OperatorContext`, which only `admit_operator` produces, so no
+routes live under `/v1/admin/*` in `services/api`, each in the router of
+the namespace it acts on, as its `operator` router (`routers/tenancy.py`
+holds the plane's own: its sign-in, its tokens, and the orgs). They take `OperatorContext`, which only `admit_operator` produces, so no
 tenant manager is reachable from them. No `apps/admin` exists, and the
 Terraform serves no `admin.` name.
 

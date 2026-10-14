@@ -4,12 +4,15 @@ The one TypeScript client of the Acme API, `@acme/client`. Every browser
 app imports it, and nothing else in TypeScript calls `fetch` or reads the
 generated schema.
 
-- `openapi.json` is the API's committed document. `make openapi` writes
-  it, and the Python client generates from it too.
-- `src/schema.d.ts` is generated from it by `make openapi`. Never edit it
-  by hand.
-- `src/types.ts` is the facade an app imports: the views and requests by
-  name.
+- `../openapi/<namespace>.json` are the API's committed documents, one
+  per namespace and one for what they share, `common.json`. `make
+  openapi` writes them, and the Python client generates from them too.
+- `src/schema/<namespace>.d.ts` is generated from each document by `make
+  openapi`. Never edit it by hand.
+- `src/types/<namespace>.ts` is the facade of one namespace: the views
+  and requests an app reads, by name. `src/index.ts` re-exports each
+  under its namespace's name, so an app names a type by its owner:
+  `tenancy.MeView`.
 - `src/client.ts` is the one transport. Every call carries the bearer, the
   app headers, and a deadline. A refusal is an `ApiError` with its code and
   request id, and a 401 to the bearer the tab holds hands it back to the
@@ -23,13 +26,13 @@ What only one app needs stays in that app: its auth session store, its query
 client, its realtime channel, and the one client instance it builds.
 
 ```ts
-import { createClient, type MeView } from "@acme/client";
+import { createClient, type tenancy } from "@acme/client";
 
 const api = createClient({ baseUrl, app: "portal", appVersion, timeoutMs, getToken, onUnauthorized });
-const me = await api.get<MeView>("/v1/me");
+const me = await api.get<tenancy.MeView>("/v1/me");
 ```
 
 ```bash
 pnpm --filter @acme/client test
-make openapi                      # regenerates openapi.json and src/schema.d.ts
+make openapi                      # regenerates the documents and src/schema/
 ```

@@ -14,9 +14,11 @@ A request passes four layers, each in its own folder under
   meets: the request id and access log, the trusted proxy hops, admission
   and the request's deadline, the credential, rate limits, idempotency,
   the error envelope, and the webhook's signed body.
-- **Routers** (`routers/`). One module per namespace: tenancy with the
-  operator plane, change events, media, and webhooks. Each route makes one call
-  into a service.
+- **Routers** (`routers/`). One module per namespace, named by it:
+  tenancy with the operator plane, change events, media, leases, and
+  work, and webhooks for the providers' deliveries. A module tags its
+  routes with its namespace and keeps its operator routes beside them.
+  Each route makes one call into a service.
 - **Services** (`services/`). One interface per namespace, and its impl in
   `services/impl/`. An impl translates the request, calls a manager or a
   provider, and returns a view from `types/`.
@@ -27,119 +29,25 @@ A request passes four layers, each in its own folder under
 app, and `main.py` is the `acme-api` command: `serve`, `migrate`,
 `bootstrap`, `add-member`, `grant-operator`, and `openapi`.
 
-## Routes, by area
+## Routes, by namespace
 
-- **Sign-in.** Start a sign-in at the identity provider, WorkOS
-  AuthKit, for this environment's portal callback, and finish it with
-  the code the browser brought back, which the API exchanges
-  server-side; a person nobody knew is signed up by it, with their
-  personal org (`/v1/auth/sign-in`, `/v1/auth/callback`). Start and
-  finish a device sign-in for the command line (`/v1/auth/device`,
-  `/v1/auth/device/token`). Confirm an operator's second factor on a
-  sign-in (`/v1/auth/second-factor`). List my places; exchange the
-  login, once, or switch an auth session, for an auth session in one org; sign out
-  (`/v1/auth/memberships`, `/v1/auth/sessions`, `/v1/auth/logout`).
-  The sign-out ends the credential presented, whichever a person holds:
-  an auth session, a login (with or without its second factor), or an
-  operator token; an API key has none and is `401`. It takes an optional
-  `return_to`, one of this environment's `ACME_SIGN_OUT_RETURN_URIS`,
-  and answers the row it ended with `provider_logout_url`: WorkOS's
-  logout for the AuthKit session the sign-in left in the browser, or
-  null when there is none (the device sign-in, the local sign-in, an
-  operator token).
-  Locally and in the tests only, sign in by address alone
-  (`/v1/auth/dev-sign-in`, ADR 0029); a deployed process refuses to
-  start with it on.
-- **Me.** The current org, my user, my identity, and my display name;
-  a new team org I own. (`/v1/orgs/current`, `/v1/me`,
-  `/v1/me/identity`, `/v1/orgs`)
-- **Delete my account.** From an auth session, with the account's email typed
-  to confirm: the account goes at once, in every org, and the answer
-  names the identity provider's logout, as a sign-out does. `409
-  last_owner` names each team org the person is the last owner of, in
-  the envelope's `last_owner.orgs`; `403 operator_role_held` refuses an
-  operator. (`POST /v1/me/deletion`, ADR 0041)
-- **Delete this organization.** From an owner's auth session, with the
-  org's name typed to confirm: everyone in the team org loses it at
-  once, and the answer carries the owner's new auth session in their
-  personal org. `403 not_authorized` refuses an admin, a member, and an
-  api key; `409 personal_org_fixed` refuses a personal org.
-  (`POST /v1/orgs/current/deletion`, ADR 0042)
-- **Members.** The org's members and their roles a page at a time,
-  a member's role, removing a member. (`/v1/users`, `/v1/memberships`,
-  `/v1/memberships/{user_id}`)
-- **Invitations and single sign-on.** Invite a person by email with a
-  role, under an Idempotency-Key; the identity provider sends the
-  email. The org's pending invitations a page at a time, sending one
-  again, revoking one. A short-lived link to the provider's admin
-  portal, where an owner or an admin of a team org sets up single
-  sign-on or proves a domain. (`/v1/invitations`,
-  `/v1/invitations/{invitation_id}/resend`,
-  `/v1/invitations/{invitation_id}`, `/v1/orgs/current/sso-link`)
-- **Credentials.** My live auth sessions and revoking one; the org's API
-  keys, creating one, revoking one; a ticket for the live channel.
-  (`/v1/auth/sessions`, `/v1/api-keys`, `/v1/realtime/tickets`)
-- **Files.** Starting an upload, under an Idempotency-Key; the org's
-  stored files a page at a time; a file, and deleting it; the form that
-  posts its bytes straight to the store, or the bytes through the API
-  where the store cannot take a form; the confirm once the upload is
-  done; the link a download follows, or the bytes through the API; and
-  the org's storage used. (`/v1/media/files`,
-  `/v1/media/files/{file_id}`, `.../upload`, `.../content`,
-  `.../confirm`, `.../download`, `/v1/media/usage`)
-- **Change events.** The org's diary after a sequence number. (`/v1/change-events`)
-- **Leases.** Ask for a leasable resource, by its id or by a selector,
-  under an idempotency key; read where the request stands, its place and
-  its estimate, or its lease; cancel it; read a leasable resource's
-  line, with each place and estimate, and the history of leases, newest
-  first, a page at a time; renew a lease, for a length it names or its
-  term again, and release it, as its holder. The worker that runs a
-  lease's job acts through the manager, not a route. A manager reorders
-  a request and revokes a lease. (`/v1/leases/requests`,
-  `/v1/leases/requests/{request_id}`, `.../cancel`, `.../reorder`,
-  `/v1/leases/leasable-resources/{leasable_resource_id}/wait-line`,
-  `/v1/leases`,
-  `/v1/leases/{lease_id}`, `.../renew`, `.../release`, `.../revoke`,
-  ADRs 0086, 0094, and 0098)
-- **The identity provider's deliveries.** Outside `/v1`, since their
-  shape is the provider's. No credential: the route checks the provider's
-  signature over the body and its timestamp, and queues the delivery for
-  the worker; one that fails the check is refused and nothing is queued.
-  (`/webhooks/identity`)
+Each namespace's routes are in its OpenAPI document,
+[`clients/openapi/<namespace>.json`](../../clients/openapi/), under the
+namespace's tag. The tag's description is the router module's
+docstring, which tells the namespace's routes by area: tenancy (the
+sign-in, the org and its members, invitations, credentials, flags, the
+identity provider's deliveries, and the operator plane), change events
+and the live channel's ticket, media, leases, and work. `make openapi`
+writes the documents from the code, so they hold what runs. Two kinds of
+route are in no document:
+
 - **Realtime.** The live channel, a websocket opened with a
-  single-use ticket. (`/v1/realtime`)
-- **The operator plane.** For an identity on the operator allowlist,
-  across every org: create an org with its owner, add a member, read
-  an org, its members, and its change events, list every org a page at a
-  time, delete a team org as its owner does (closed for everyone in it
-  at once; the worker ends its providers and then deletes it; a
-  personal org is refused), send one of an org's failed work items back
-  to the queue, set, read, or clear an org's own cap on a lane (the
-  most items it holds claimed there at once, in place of the lane's
-  cap; `404` where it has none), and read the system's size: the
-  tenant count, the user count, and the change events of twenty-four hours,
-  as the maintenance worker last counted them, with the moment it did
-  (`404` before its first count; the route counts nothing).
-  (`/v1/admin/orgs`, `/v1/admin/orgs/{org_id}`,
-  `/v1/admin/orgs/{org_id}/members`, `/v1/admin/orgs/{org_id}/change-events`,
-  `/v1/admin/orgs/{org_id}/work/{item_id}/requeue`,
-  `/v1/admin/orgs/{org_id}/work/lanes/{lane}/cap`, `/v1/admin/size`). A read route
-  needs an operator who may read; a write route one who may write.
-  Every read and write takes an operator token. An operator enrols the
-  second factor once, at the first sign-in to the plane, and until then
-  only the two enrolment routes answer (`/v1/admin/me/totp`,
-  `/v1/admin/me/totp/confirm`). A sign-in that verified a TOTP code
-  mints one operator token, one permission and an hour at most, and
-  ends in that mint; every other route refuses it `403
-  operator_token_required` (`POST /v1/admin/me/tokens`). An operator
-  lists their own live tokens and revokes one by its id, refused from its
-  next request; another operator's is `404` (`GET /v1/admin/me/tokens`,
-  `DELETE /v1/admin/me/tokens/{token_id}`, ADR 0068).
+  single-use ticket (`/v1/realtime`).
 - **Operational.** Liveness (`/healthz`, the process alone),
   readiness (`/readyz`, asks the database under a deadline shorter
-  than the probe's interval), metrics (`/metrics`), and the OpenAPI
-  document with its UI (`/docs`). The first three are never refused
-  by admission.
+  than the probe's interval), and metrics (`/metrics`), never refused
+  by admission; and, for a developer, the interactive document with
+  its UI (`/docs`).
 
 ## What the gateway guarantees
 

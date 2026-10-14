@@ -1,9 +1,14 @@
-"""File routes: the start of an upload, the org's files, the form an upload
-posts to the store, the bytes through the API when the store cannot presign,
-the confirm, the file, the link a download follows, the delete, and the
-org's storage usage. Each function is one call into the media service; the
-start runs under the idempotency record. A file started here is of purpose
-`upload`: a file the org keeps, about no subject."""
+"""Media: the org's files, as references to objects in the store.
+
+Starting an upload, under an Idempotency-Key; the org's stored files a page
+at a time; a file, and deleting it; the form that posts its bytes straight to
+the store, or the bytes through the API where the store cannot take a form;
+the confirm once the upload is done; the link a download follows, or the
+bytes through the API; and the org's storage used (`/v1/media/files`,
+`/v1/media/files/{file_id}`, `.../upload`, `.../content`, `.../confirm`,
+`.../download`, `/v1/media/usage`). Each function is one call into the media
+service; the start runs under the idempotency record. A file started here is
+of purpose `upload`: a file the org keeps, about no subject."""
 
 from uuid import UUID
 

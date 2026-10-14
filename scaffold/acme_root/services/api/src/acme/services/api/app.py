@@ -47,7 +47,8 @@ def create_app(container: AppContainer | None = None) -> FastAPI:
         redoc_url="/redoc" if docs else None,
         openapi_url="/openapi.json" if docs else None,
         # A route's tag is its namespace, and its operation id is its
-        # function's name, unique in the router module of that namespace.
+        # function's name; `openapi.py` refuses one that a namespace's
+        # document would hold twice.
         openapi_tags=tags(),
         generate_unique_id_function=operation_id,
     )

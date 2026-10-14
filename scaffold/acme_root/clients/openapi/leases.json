@@ -1708,7 +1708,7 @@
   },
   "tags": [
     {
-      "description": "Lease routes: an ask, where a request stands, its cancel, a manager's reorder,\na leasable resource's wait line, the history of leases, a lease, and its\nrenewal, its release, and a manager's revocation. Each function is one call\ninto the leases service; the ask runs under the idempotency record, whose id\nis the request's key.",
+      "description": "Leases: a leasable resource one holder uses at a time.\n\nAsk for a leasable resource, by its id or by a selector, under an idempotency\nkey; read where the request stands, its place and its estimate, or its lease;\ncancel it; read a leasable resource's line, with each place and estimate, and\nthe history of leases, newest first, a page at a time; renew a lease, for a\nlength it names or its term again, and release it, as its holder. A manager\nreorders a request and revokes a lease. The worker that runs a lease's job\nacts through the manager, not a route (`/v1/leases/requests`,\n`/v1/leases/requests/{request_id}`, `.../cancel`, `.../reorder`,\n`/v1/leases/leasable-resources/{leasable_resource_id}/wait-line`,\n`/v1/leases`, `/v1/leases/{lease_id}`, `.../renew`, `.../release`,\n`.../revoke`; ADRs 0086, 0094, and 0098). Each function is one call into the\nleases service; the ask runs under the idempotency record, whose id is the\nrequest's key.",
       "name": "leases"
     }
   ]
