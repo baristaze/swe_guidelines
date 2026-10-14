@@ -72,7 +72,9 @@ option is refused; and kinds are registered strings.
   call, a reversal: it takes its SQL file, never strings.
 - `docs-compact --migrations` in a copy or a layer folds only the
   revisions its `scaffold` render does not hold, onto the last rendered
-  one.
+  one. Before a fold, it renames each not-null constraint a rename left
+  under an old name, in a migration of its own, and it re-points a
+  citation of a folded file anywhere in the repository.
 - CTX-12 reads the declarations, and arch-check refuses
   `[tool.arch-check.options.CTX-12] tenantless`, a reversal.
 - A kind is a snake-case string on every row and on the wire, held to a
