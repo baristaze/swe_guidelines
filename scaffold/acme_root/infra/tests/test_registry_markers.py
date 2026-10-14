@@ -1,11 +1,12 @@
-"""Every composition root and registry a copy adds to holds the scaffold's
-entries, one marker line, then the copy's own. A copy's change and the
-scaffold's next release then edit lines apart, and git merges the two.
+"""Every composition root, registry, and other list a copy adds to holds the
+scaffold's entries, one marker line, then the copy's own. A copy's change and
+the scaffold's next release then edit lines apart, and git merges the two.
 
-The marker is the same words in every file, so a skill can say "below the
-marker". This holds that each root carries it, spelled exactly, and that it
-separates: on two branches of a scratch repository, one edits the entry
-above every marker and adds one there, the other adds one below, and
+The marker is the same words in every file, in the file's own comment form,
+so a skill can say "below the marker". This holds that each root carries it,
+spelled exactly, and that it separates: on two branches of a scratch
+repository, one edits the line above every marker and adds an entry there,
+the other adds one below, each in the file's comment form, and
 `git merge-tree` merges them with no conflict."""
 
 import subprocess
@@ -22,6 +23,8 @@ ROOTS = (
     "om/src/*/om/storage/impl/postgres.py",
     "om/src/*/om/storage/roles.py",
     "om/src/*/om/storage/scopes.py",
+    "om/tests/unit/test_stage_construction.py",
+    "om/tests/unit/test_session_scope.py",
     "services/api/src/*/services/api/services/__init__.py",
     "services/api/src/*/services/api/services/impl/root.py",
     "services/api/src/*/services/api/gateway/resolve.py",
@@ -30,12 +33,34 @@ ROOTS = (
     "apps/portal/src/queries/keys.ts",
     "apps/portal/src/app/routes.tsx",
     "apps/portal/src/realtime/router.ts",
+    "pyproject.toml",
+    "Makefile",
+    "llms.txt",
+    "specs/architecture.md",
 )
-"""The roots and registries of the scaffold's own, by a path that holds in a
-copy under any name."""
+"""The roots, the registries, and the other lists of the scaffold's own that a
+copy adds to, by a path that holds in a copy under any name."""
 
 SOURCES = ("om/src", "services", "workers", "apps", "integrations", "infra/src", "ops/src")
-SUFFIXES = {".py": "#", ".ts": "//", ".tsx": "//"}
+CODE = (".py", ".ts", ".tsx")
+"""Where a marker outside the roots is looked for: the source code, never a
+document, which may quote the marker's words in a sentence."""
+
+FORMS = {
+    ".py": "# {}",
+    ".toml": "# {}",
+    "Makefile": "# {}",
+    ".ts": "// {}",
+    ".tsx": "// {}",
+    ".md": "<!-- {} -->",
+    "llms.txt": "<!-- {} -->",
+}
+"""Each file's comment form, by its suffix, or by its name where the suffix
+does not tell."""
+
+
+def form(path: Path) -> str:
+    return FORMS.get(path.name) or FORMS[path.suffix]
 
 
 def roots() -> list[Path]:
@@ -48,15 +73,16 @@ def roots() -> list[Path]:
 
 
 def marked() -> list[Path]:
-    """Every source file that carries a marker line, the roots among them."""
-    found: list[Path] = []
+    """Every file that carries a marker line: the roots, and any source file
+    besides them."""
+    found = set(roots())
     for top in SOURCES:
-        for path in sorted((ROOT / top).rglob("*")):
-            if path.suffix not in SUFFIXES or "node_modules" in path.parts:
+        for path in (ROOT / top).rglob("*"):
+            if path.suffix not in CODE or "node_modules" in path.parts:
                 continue
             if MARKER in path.read_text():
-                found.append(path)
-    return found
+                found.add(path)
+    return sorted(found)
 
 
 def git(repo: Path, *args: str) -> subprocess.CompletedProcess[str]:
@@ -70,21 +96,20 @@ def git(repo: Path, *args: str) -> subprocess.CompletedProcess[str]:
 
 
 def marker_lines(lines: list[str]) -> list[int]:
-    return [i for i, line in enumerate(lines) if line.strip().endswith(MARKER)]
+    return [i for i, line in enumerate(lines) if MARKER in line]
 
 
 def test_every_root_carries_the_marker() -> None:
-    files = marked()
     for path in roots():
-        assert path in files, f"{path.relative_to(ROOT)} carries no marker line"
+        assert MARKER in path.read_text(), f"{path.relative_to(ROOT)} carries no marker line"
 
 
 def test_every_marker_is_the_same_words_on_a_line_of_its_own() -> None:
     for path in marked():
-        prefix = SUFFIXES[path.suffix]
+        marker = form(path).format(MARKER)
         for number, line in enumerate(path.read_text().splitlines(), start=1):
             if MARKER in line:
-                assert line.strip() == f"{prefix} {MARKER}", (
+                assert line.strip() == marker, (
                     f"{path.relative_to(ROOT)}:{number} is not the marker alone: {line.strip()}"
                 )
 
@@ -106,15 +131,15 @@ def test_an_entry_above_every_marker_and_one_below_it_merge(tmp_path: Path) -> N
         for path in files:
             target = repo / path.relative_to(ROOT)
             lines = target.read_text().splitlines()
+            entry = form(path)
             for i in reversed(marker_lines(lines)):
                 indent = lines[i][: len(lines[i]) - len(lines[i].lstrip())]
-                prefix = SUFFIXES[path.suffix]
                 if edit == "scaffold":
-                    # The release edits its last entry and adds one after it.
-                    lines[i - 1] += f"  {prefix} edited"
-                    lines.insert(i, f"{indent}{prefix} an entry of the scaffold's")
+                    # The release edits the line above the marker and adds an entry after it.
+                    lines[i - 1] += "  " + entry.format("edited")
+                    lines.insert(i, indent + entry.format("an entry of the scaffold's"))
                 else:
-                    lines.insert(i + 1, f"{indent}{prefix} an entry of the copy's")
+                    lines.insert(i + 1, indent + entry.format("an entry of the copy's"))
             target.write_text("\n".join(lines) + "\n")
         git(repo, "add", ".")
         assert git(repo, "commit", "-q", "-m", name).returncode == 0

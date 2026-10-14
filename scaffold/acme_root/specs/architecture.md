@@ -18,6 +18,8 @@ adopts every other technology the guideline names.
 |-----|------|---------|
 | [0002](../docs/adr/0002-technology-choices.md) | DEL-12, Client App Architecture, Stack | The company site is HTML and CSS on Vite, with no script and no React. |
 
+<!-- A copy adds its entries below this line. -->
+
 ## Deviations
 
 | ADR | Rule | Summary |
@@ -30,3 +32,5 @@ adopts every other technology the guideline names.
 | [0053](../docs/adr/0053-the-scope-rides-in-the-message-that-begins.md) | STO-28, The Second Fence | The scope goes out in the message that begins the transaction, as checked literals, not as a bound statement of its own. |
 | [0080](../docs/adr/0080-the-optional-audits-count-as-well-as-read.md) | OPS-11, Operational Skills | The two optional audits also count, through the twin, on a database of their own. |
 | [0081](../docs/adr/0081-the-desired-count-is-the-roots.md) | OPS-17, Scale-Out as a Lever | `desired_count` is not in `ignore_changes`: an apply returns a scaled service to its floor. |
+
+<!-- A copy adds its entries below this line. -->

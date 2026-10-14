@@ -37,6 +37,7 @@ served to it. Exposure is by listing, never by folder.
 - [The command line](apps/cli/README.md): the terminal client and its exit codes
 - [The TypeScript client](clients/typescript/README.md): the one client every browser app imports
 - [The Python client](clients/python/README.md): the one client every Python caller goes through
+<!-- A copy adds its entries below this line. -->
 
 ## System operators
 
@@ -54,6 +55,7 @@ served to it. Exposure is by listing, never by folder.
 - [WorkOS runbook](docs/runbooks/providers/workos.md): the identity provider for a newcomer: its environments, the application and its key, the redirects, the webhook, the bootstrap, and rotation
 - [LaunchDarkly runbook](docs/runbooks/providers/launchdarkly.md): the flag provider: how a rule reaches an org or a person, the SDK key, the switch from none, and what breaks
 - [Deployment](deployment/README.md): what runs where, locally and in the cloud, and the branch convention
+<!-- A copy adds its entries below this line. -->
 
 ## Tenant users and admins
 
@@ -62,3 +64,4 @@ served to it. Exposure is by listing, never by folder.
 - [Files](om/src/acme/om/media/README.md): the files an org keeps, their bounds, and the storage used
 - [Change events](om/src/acme/om/change_events/README.md): the org's diary
 - [The command line](apps/cli/README.md): the terminal client and its exit codes
+<!-- A copy adds its entries below this line. -->

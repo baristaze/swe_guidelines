@@ -47,10 +47,11 @@ SYSTEM_SCOPE_HELPERS: frozenset[tuple[str, str]] = frozenset(
         # The global-table primitive. A `system`-scoped table carries no
         # policy and no tenant; every caller of it is declared tenantless.
         ("PgStorageBase", "_upsert_global"),
+        # A copy adds its entries below this line.
     }
 )
-"""The function that passes the system scope and is no interface method,
-with its reason above. Nothing else may, and a new entry is a decision."""
+"""The functions that pass the system scope and are no interface method,
+each with its reason above. Nothing else may, and a new entry is a decision."""
 
 SYSTEM_SCOPE_WRITES: frozenset[tuple[str, str]] = frozenset(
     {
@@ -60,6 +61,7 @@ SYSTEM_SCOPE_WRITES: frozenset[tuple[str, str]] = frozenset(
         # transaction opens there and sets the tenant before its insert
         # (ADR 0037).
         ("TenancyStorageInterface", "exchange_sign_in"),
+        # A copy adds its entries below this line.
     }
 )
 """Tenant methods that also open the system scope, each with its reason above.

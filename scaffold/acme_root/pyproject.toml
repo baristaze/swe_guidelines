@@ -118,5 +118,6 @@ sites = [
     "om/src/acme/om/tenancy/impl/manager.py::TenancyManagerImpl.member_context",
     "om/src/acme/om/tenancy/impl/manager.py::TenancyManagerImpl.service_contexts",
     "om/src/acme/om/tenancy/impl/manager.py::TenancyManagerImpl.sweep_context",
+    # A copy adds its entries below this line.
 ]
 builders = ["build_context"]

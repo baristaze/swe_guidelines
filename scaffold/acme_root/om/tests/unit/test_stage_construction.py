@@ -43,6 +43,7 @@ ALLOWED: Counter[tuple[str, str, str]] = Counter(
         # The one service_contexts mints, for a tenant a purge across tenants
         # found a row of.
         (TRANSITIONS, "TenancyManagerImpl.sweep_context", "build_context"): 1,
+        # A copy adds its entries below this line.
     }
 )
 """(module, enclosing definition, what is constructed) -> how many times."""

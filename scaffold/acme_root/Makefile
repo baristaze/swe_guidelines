@@ -136,6 +136,7 @@ urls: ## Print the local URLs and the seeded sign-ins
 	@echo "  Jaeger         http://localhost:$(ACME_JAEGER_PORT)"
 	@echo "  GlitchTip      http://localhost:$(ACME_GLITCHTIP_PORT)   admin@example.test / acme-local"
 	@echo "  MinIO console  http://localhost:$(ACME_MINIO_CONSOLE_PORT)   acme / acme-minio-local"
+# A copy adds its entries below this line.
 	@echo ""
 
 .env:
@@ -151,9 +152,13 @@ infra-up: .env ## Start Postgres (one instance per database role), the cache, th
 
 # One bucket per member of acme.infra.buckets.Buckets, named <prefix>-<bucket>
 # as the S3 impl names them; the cloud's are Terraform's. MinIO ships `mc`.
+BUCKETS = user-file-uploads
+BUCKETS += exports
+# A copy adds its entries below this line.
+
 .PHONY: buckets
 buckets: ## Create the object store's buckets in MinIO, if they are missing
-	$(COMPOSE) exec -T minio sh -c 'mc alias set local http://127.0.0.1:9000 acme acme-minio-local >/dev/null && mc mb --ignore-existing local/acme-local-user-file-uploads local/acme-local-exports'
+	$(COMPOSE) exec -T minio sh -c 'mc alias set local http://127.0.0.1:9000 acme acme-minio-local >/dev/null && mc mb --ignore-existing $(addprefix local/acme-local-,$(BUCKETS))'
 
 .PHONY: devx-up
 devx-up: .env ## The local stack plus developer dashboards (pgweb, Valkey Admin, ElasticMQ UI, Prometheus and its collector, Grafana, Jaeger, GlitchTip)
