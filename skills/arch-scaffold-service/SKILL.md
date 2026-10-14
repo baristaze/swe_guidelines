@@ -51,7 +51,7 @@ The shape is the API, `services/api/`. Under `services/<service-name>/`:
 | `gateway/`, `pyproject.toml` (root), `services/api/` | the API's `gateway/` package moved into a root distribution, `<name>-gateway`, which both services import; moved, never copied |
 | `pyproject.toml` (root) | the member in `[tool.uv.workspace] members` |
 | `Makefile` | `openapi` emits this service's documents, one per namespace it hosts, to `services/<service-name>/openapi/`; `clients/openapi/` stays the API's |
-| `scripts/dev.sh`, `README.md` (root) | the service started on its port, and its docs in the local URLs |
+| `scripts/dev.sh`, `Makefile` (`urls`) | the service started on its port, and its docs in the local URLs |
 | `deployment/local/docker-compose.full.yml` (with `--container`) | the service as a container |
 | `.env.example` | every field of its settings under the prefix |
 | `deployment/terraform/modules/environment/main.tf`, `deployment/terraform/environments/*/` | one instance of the service module beside `module "api"`, with its load balancer route |

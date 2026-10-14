@@ -54,7 +54,6 @@ the maintenance worker should not carry.
 | `deployment/local/docker-compose.full.yml` (a new worker, with `--container`) | the worker as a container |
 | `deployment/terraform/modules/environment/main.tf`, `modules/account/variables.tf`, both deploy workflows (a new worker) | an instance of the service module beside `module "maintenance"`, with no load balancer route; its image in `images`; its image built once by staging and promoted by digest |
 | `scripts/dev.sh`, `deployment/local/docker-compose.full.yml`, `deployment/terraform/modules/environment/main.tf` (`--lane` on a worker the tree has) | a second process of the worker on the lane: in `dev.sh`, `serve --lane <lane>` with a metrics port of its own (`<NAME>_METRICS_PORT`); a second service of its image, and a second instance of its service module beside its own, each with `<NAME>_WORKER_LANE` set to the lane |
-| `infra/tests/test_env_files.py` (a process added to `scripts/dev.sh`) | the count of processes the script starts, in `test_dev_script_takes_the_exported_value_over_dotenv` |
 
 ## Procedure
 

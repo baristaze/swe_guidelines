@@ -1,6 +1,6 @@
 # Acme
 
-> The domain-agnostic core of a multi-tenant system, in the shape of the Software Design and Architecture Guidelines: one object model at the center, one infrastructure toolkit, an API process and a maintenance worker around them, and a portal, a command line, and a TypeScript and a Python client at the edge. A product renames it and builds its domain on top.
+> The domain-agnostic core of a multi-tenant system, in the shape of the Software Design and Architecture Guidelines: one object model at the center, one infrastructure toolkit beside it, the processes around them, and the apps and clients at the edge. A product renames it and builds its domain on top.
 
 This file is the knowledge map. Each section lists the documents one
 audience is served; a document not listed under an audience is not
@@ -8,7 +8,7 @@ served to it. Exposure is by listing, never by folder.
 
 ## System developers
 
-- [README](README.md): what Acme is, the quick start with the local URLs and sign-ins, set up and check, deploy and operate, and the layout
+- [README](README.md): what Acme is, the quick start, set up and check, deploy and operate, and the layout
 - [Architecture](specs/architecture.md): the guideline's pin, the substitutions, and the deviations, each linking its decision record under docs/adr/
 - [Decisions](docs/adr/README.md): how a decision is recorded and numbered, and how a copy extends one the scaffold gave
 - [What Acme is made of](om/README.md): the nouns and how they relate, for a reader with no code
@@ -20,8 +20,8 @@ served to it. Exposure is by listing, never by folder.
 - [Orchestrations](om/src/acme/om/orchestrations/README.md): long-running records, a step at a time, that park or fail
 - [Leases](om/src/acme/om/leases/README.md): a leasable resource one holder uses at a time, its lease under a fencing token, and the wait line in front of it
 - [Files](om/src/acme/om/media/README.md): files as references, the bounded upload straight to the store, and the sweep
-- [Infrastructure](infra/README.md): cache, buckets, topics, queues, secrets, flags, outages, observability; what each promises and which twin runs where
-- [Integrations](integrations/README.md): the identity provider, its twin, the absent provider, and the webhook check
+- [Infrastructure](infra/README.md): the capabilities the system asks for, what each promises, and which twin runs where
+- [Integrations](integrations/README.md): the outside providers, their twins, the absent provider, and the webhook check
 - [The API process](services/api/README.md): where each namespace's routes are, the gateway's guarantees, the subcommands
 - [The maintenance worker](workers/maintenance/README.md): the work queue's loop, the provider deliveries, and the sweep
 - [Deployment](deployment/README.md): what runs where, locally and in the cloud, and the branch convention

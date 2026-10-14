@@ -56,7 +56,7 @@ the heading the folder's `README.md` names.
 | `om/src/<name>/om/storage/impl/postgres.py`, `memory.py` | each root builds its impl and returns it from the getter |
 | `om/src/<name>/om/root.py` | `<Ns>ManagerImpl` built in `build_managers`, and the field `<ns>` on `Managers` |
 | `om/tests/unit/test_roots.py` | the new getter and the new field held |
-| `om/README.md` | a link to the namespace's README, and its nouns in the relations the page names |
+| `om/README.md` | the namespace's nouns, each defined for a reader with no code, the first linked to the namespace's README, and in the relations the page names |
 
 ## Procedure
 

@@ -5,22 +5,21 @@ side, started in `main.py`.
 
 - **The work loop** (`loop.py`) claims items from the work queue on its
   lane and runs each under the context the claim built. It renews each
-  lease, and completes, fails, parks, or refuses the item. The handlers are
-  in `handler.py`, `orchestrations.py`, and `accounts.py`. The lane's cap,
-  `ACME_WORKER_TENANT_CAP`, keeps one org from holding every worker, and
-  an org's own cap, which an operator sets, holds for that org in its
-  place.
+  lease, and completes, fails, parks, or refuses the item.
+  [Adding a work kind](#adding-a-work-kind) says where a handler goes.
+  The lane's cap, `ACME_WORKER_TENANT_CAP`, keeps one org from holding
+  every worker, and an org's own cap, which an operator sets, holds for
+  that org in its place.
 - **The delivery consumer** (`deliveries.py`) long-polls `Queues.WEBHOOKS`,
   where the API queues each provider's verified delivery, and applies it
   once in the org it names. A message that can never apply is dropped; any
   other failure comes back.
 - **The sweep** (`loop.py`) runs on a timer, within a budget. It
   requeues expired leases, relays the outbox, runs the standing chores
-  of the tenants one read names as due, ends each leasable resource's
-  lease past its expiry and the skew margin and offers the leasable
-  resource to its line, purges every row past its retention
-  (`settings.py`), counts the system's size, and logs the queue's
-  gauges.
+  of the tenants one read names as due, runs each step across tenants
+  that `build_loop` names (every namespace's purge of its rows past
+  their retention, `settings.py`, among them), counts the system's
+  size, and logs the queue's gauges.
 
 `serve` runs the three; `health` asks the running process's `/healthz`.
 

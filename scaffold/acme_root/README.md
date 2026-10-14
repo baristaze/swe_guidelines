@@ -3,9 +3,8 @@
 Acme is the domain-agnostic core of a multi-tenant system, in the shape
 the Software Design and Architecture Guidelines prescribe
 ([the pin](specs/architecture.md)). It holds what every product needs
-before its first domain screen: tenancy with an operator plane, change events
-and audit, the outbox, idempotency, the work queue, orchestrations,
-leases on a scarce leasable resource, and files. A product renames it and builds its domain on top.
+before its first domain screen, and [what Acme is made of](om/README.md)
+names each part. A product renames it and builds its domain on top.
 
 ## Quick start
 
@@ -21,20 +20,11 @@ make reset    # wipe the data and the containers, then `make up`
 make urls     # print the URLs and the sign-ins again
 ```
 
-| What | URL | Sign-in |
-|------|-----|---------|
-| Portal | <http://localhost:55173> | `/login/dev` as `owner@example.test` or `bob@example.test` (Ajax), or `admin@admin.test` (Fabrikam, and admin of Ajax). `/login` needs `ACME_WORKOS_API_KEY`. |
-| API | <http://127.0.0.1:8000/docs> | none |
-| pgweb | <http://localhost:58081> | none |
-| Valkey Admin | <http://localhost:58080> | none; host `valkey`, port `6379` |
-| ElasticMQ UI | <http://localhost:53000> | none |
-| Grafana | <http://localhost:53001> | none |
-| Prometheus | <http://localhost:59090> | none |
-| Jaeger | <http://localhost:56686> | none |
-| GlitchTip | <http://localhost:58000> | `admin@example.test` / `acme-local` |
-| MinIO console | <http://localhost:59001> | `acme` / `acme-minio-local` |
-
-Every host port is a knob in `.env.example`; set it in `.env` when a
+`make up` ends by printing every local URL and the seeded sign-ins,
+and `make urls` prints them again. The portal's `/login/dev` signs in
+a seeded person by address alone; `/login` goes through WorkOS once
+`ACME_WORKOS_API_KEY` is set. [The local stack](deployment/local/README.md#ports)
+has every port, each a knob in `.env.example`: set it in `.env` when a
 port is taken.
 
 ## Set up and check
@@ -49,12 +39,15 @@ make migrate-check     # every role's ORM metadata against the migrated schema
 make test-integration  # the storage contracts over Postgres
 ```
 
-`scripts/dev.sh` runs the API, the worker, and the portal on the host
-with hot reload. A variable exported in the shell wins over `.env`, so
-a second checkout points all eight database URLs at a database of
-its own: the four shared `ACME_DATABASE_*` URLs and the four
-`ACME_DATABASE_URL_<ROLE>`, since a role's own URL wins. [deployment/local/README.md](deployment/local/README.md)
-works on one service at a time.
+`make help` lists every target and what it does.
+
+`scripts/dev.sh` runs the processes on the host with hot reload. A
+variable exported in the shell wins over `.env`, so a second checkout
+points all eight database URLs at a database of its own: the four
+shared `ACME_DATABASE_*` URLs and the four `ACME_DATABASE_URL_<ROLE>`,
+since a role's own URL wins.
+[deployment/local/README.md](deployment/local/README.md) works on one
+service at a time.
 
 ## Deploy and operate
 
@@ -73,18 +66,24 @@ follows by hand.
 ## Layout
 
 - [om/](om/README.md): the object model: namespaces, storage, migrations.
-- [infra/](infra/README.md): cache, buckets, topics, queues, secrets, flags, outages, observability.
-- [integrations/](integrations/README.md): the identity provider, its twin, and the webhook check.
-- [services/api/](services/api/README.md): the API, its gateway, and the realtime socket.
-- [workers/maintenance/](workers/maintenance/README.md): the work queue's worker and the sweep.
-- `apps/`: the [portal](apps/portal/README.md), the [CLI](apps/cli/README.md), and the
-  [company site](apps/site/README.md).
+- [infra/](infra/README.md): the capabilities the system asks for and
+  never implements itself, each with its twin.
+- [integrations/](integrations/README.md): the outside providers, their
+  twins, and the webhook check.
+- `services/`, `workers/`, and `apps/`: one folder per service, worker,
+  and client app, each with its README. The API is
+  [services/api/](services/api/README.md), the work queue's worker
+  [workers/maintenance/](workers/maintenance/README.md), and the shell
+  every screen sits in [apps/portal/](apps/portal/README.md).
 - `clients/`: [openapi/](clients/openapi/), each namespace's committed API
   document; [typescript/](clients/typescript/README.md), the one client every
   browser app imports; and [python/](clients/python/README.md), the one Python
   client.
 - [deployment/](deployment/README.md): compose, images, and Terraform.
 - [ops/](ops/README.md): the operators' package, skills, and stress scenarios.
-- `docs/adr/`: the decisions; [specs/architecture.md](specs/architecture.md) pins the
-  guideline and lists the deviations.
-- [llms.txt](llms.txt): the knowledge map.
+- `docs/`: [adr/](docs/adr/README.md), the decisions, and
+  [runbooks/](docs/runbooks/README.md);
+  [specs/architecture.md](specs/architecture.md) pins the guideline and
+  lists the deviations.
+- [llms.txt](llms.txt): the knowledge map, each document by the reader
+  it serves.

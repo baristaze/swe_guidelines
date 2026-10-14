@@ -14,10 +14,11 @@ A request passes four layers, each in its own folder under
   meets: the request id and access log, the trusted proxy hops, admission
   and the request's deadline, the credential, rate limits, idempotency,
   the error envelope, and the webhook's signed body.
-- **Routers** (`routers/`). One module per namespace, named by it:
-  tenancy with the operator plane, change events, media, leases, and
-  work, and webhooks for the providers' deliveries. A module tags its
-  routes with its namespace and keeps its operator routes beside them.
+- **Routers** (`routers/`). One module per namespace, named by it, and
+  `webhooks` for the providers' deliveries; `HOSTED` in
+  `routers/__init__.py` lists the namespaces the image serves. A module
+  tags its routes with its namespace and keeps its operator routes
+  beside them.
   Each route makes one call into a service.
 - **Services** (`services/`). One interface per namespace, and its impl in
   `services/impl/`. An impl translates the request, calls a manager or a
@@ -26,18 +27,15 @@ A request passes four layers, each in its own folder under
   lanes, and the recheck that closes it when its credential ends.
 
 `container.py` builds everything once per process, `app.py` assembles the
-app, and `main.py` is the `acme-api` command: `serve`, `migrate`,
-`bootstrap`, `add-member`, `grant-operator`, and `openapi`.
+app, and `main.py` is the `acme-api` command, whose subcommands are
+[below](#the-subcommands); `acme-api --help` lists them.
 
 ## Routes, by namespace
 
 Each namespace's routes are in its OpenAPI document,
 [`clients/openapi/<namespace>.json`](../../clients/openapi/), under the
 namespace's tag. The tag's description is the router module's
-docstring, which tells the namespace's routes by area: tenancy (the
-sign-in, the org and its members, invitations, credentials, flags, the
-identity provider's deliveries, and the operator plane), change events
-and the live channel's ticket, media, leases, and work. `make openapi`
+docstring, which tells the namespace's routes by area. `make openapi`
 writes the documents from the code, so they hold what runs. Two kinds of
 route are in no document:
 

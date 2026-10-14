@@ -2,15 +2,17 @@
 
 This page names the things Acme is made of and says how they relate.
 It is written for anyone; you need no code to read it. Each kind of
-thing has a page of its own one level down, which says what can happen
-to it and which rules always hold. A product built on Acme adds its own
-kinds beside these.
+thing has a page of its own one level down, linked where the kind is
+first named, which says what can happen to it and which rules always
+hold. A product built on Acme adds its own kinds beside these, each
+with its page.
 
 ## The org and the people in it
 
-An **organization**, org for short, is one tenant: a company, a team, a
-household. Everything in Acme belongs to exactly one org, and nothing
-in one org can see anything in another. That is a rule, not a choice.
+An [**organization**](src/acme/om/tenancy/README.md), org for short, is
+one tenant: a company, a team, a household. Everything in Acme belongs
+to exactly one org, and nothing in one org can see anything in another.
+That is a rule, not a choice.
 
 Every person has one **personal org**, made with them the first time
 they sign in. It is theirs for as long as they exist, and it goes only
@@ -30,8 +32,9 @@ The sign-in provider sends the email.
 
 ## How a person proves who they are
 
-An **auth session** is a signed-in visit to one org. It ends when the person
-signs out, when it sits idle too long, or when it reaches its lifetime.
+An [**auth session**](src/acme/om/tenancy/README.md) is a signed-in
+visit to one org. It ends when the person signs out, when it sits idle
+too long, or when it reaches its lifetime.
 
 An **API key** is a named, expiring credential for a program, with a
 role no higher than its maker's. Acme keeps only its fingerprint, so
@@ -46,37 +49,42 @@ an hour at most.
 
 ## Files
 
-A **file** is a record of something an org keeps in the object store:
-its name, type, size, who uploaded it, and why. The bytes live in the
-store, never in the record.
+A [**file**](src/acme/om/media/README.md) is a record of something an
+org keeps in the object store: its name, type, size, who uploaded it,
+and why. The bytes live in the store, never in the record.
 
 ## What the system writes for itself
 
 No person creates these and no screen shows them, but each belongs to
 an org like everything else.
 
-A **change event** is a line in the org's diary: what changed, how, by whom,
-and when. The lines are numbered with no gaps. An **audit entry** is a
-change event the system records about itself, such as a job that failed for
-good.
+A [**change event**](src/acme/om/change_events/README.md) is a line in
+the org's diary: what changed, how, by whom, and when. The lines are
+numbered with no gaps. An **audit entry** is a change event the system
+records about itself, such as a job that failed for good.
 
-An **outbox row** is a note written in the same stroke as a change,
-saying "tell everyone about this". The change event and the live push come
-from it, so no change goes unannounced.
+An [**outbox row**](src/acme/om/outbox/README.md) is a note written in
+the same stroke as a change, saying "tell everyone about this". The
+change event and the live push come from it, so no change goes
+unannounced.
 
-A **work item** is a job for later. It waits in a queue until a worker
-claims it, holds it for a short lease, and does it.
+A [**work item**](src/acme/om/work/README.md) is a job for later. It
+waits in a queue until a worker claims it, holds it for a short lease,
+and does it.
 
-An **orchestration** is a long job kept as a record, done one step at a
-time. It succeeds, fails, or parks until what it waits for is back,
-and a person may cancel it on the way.
+An [**orchestration**](src/acme/om/orchestrations/README.md) is a long
+job kept as a record, done one step at a time. It succeeds, fails, or
+parks until what it waits for is back, and a person may cancel it on the
+way.
 
-A **lease** lends one holder a thing only one may use at a time, such
-as a loading dock, for a term it renews. Each grant carries a token
-higher than the last, and the others wait in line.
+A [**lease**](src/acme/om/leases/README.md) lends one holder a thing
+only one may use at a time, such as a loading dock, for a term it
+renews. Each grant carries a token higher than the last, and the others
+wait in line.
 
-An **idempotency record** remembers the outcome of a request that may
-arrive twice, so the second copy gets the first one's answer.
+An [**idempotency record**](src/acme/om/idempotency/README.md) remembers
+the outcome of a request that may arrive twice, so the second copy gets
+the first one's answer.
 
 ## How they fit together
 
@@ -89,14 +97,3 @@ arrive twice, so the second copy gets the first one's answer.
 - A work item, an orchestration, an idempotency record, a change event, and
   an outbox row each name their org, so the fence between orgs holds
   for them too.
-
-## One page per kind
-
-- [Orgs, identities, users, memberships, and credentials](src/acme/om/tenancy/README.md)
-- [Files](src/acme/om/media/README.md)
-- [Change events](src/acme/om/change_events/README.md)
-- [Outbox rows](src/acme/om/outbox/README.md)
-- [Work items](src/acme/om/work/README.md)
-- [Orchestrations](src/acme/om/orchestrations/README.md)
-- [Leasable resources, leases, and the wait line](src/acme/om/leases/README.md)
-- [Idempotency records](src/acme/om/idempotency/README.md)

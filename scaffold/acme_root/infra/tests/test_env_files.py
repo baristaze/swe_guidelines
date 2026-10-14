@@ -94,4 +94,7 @@ def test_dev_script_takes_the_exported_value_over_dotenv(tmp_path: Path) -> None
         fake.chmod(fake.stat().st_mode | stat.S_IEXEC)
     shell = _shell(**{URL: EXPORTED, "PATH": f"{bin_dir}{os.pathsep}{os.environ['PATH']}"})
     subprocess.run(["bash", "scripts/dev.sh"], cwd=tmp_path, env=shell, check=True, timeout=30)
-    assert seen.read_text().splitlines() == [f"{EXPORTED}|dotenv@example.test"] * 3
+    # However many processes the script starts, each saw the same two values.
+    lines = seen.read_text().splitlines()
+    assert lines
+    assert set(lines) == {f"{EXPORTED}|dotenv@example.test"}
