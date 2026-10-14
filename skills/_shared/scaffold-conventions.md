@@ -170,6 +170,13 @@ a copy of the shape still goes wrong.
   at its latest stable release that a patch release already follows,
   as Technology Choices and How to Override Them (Versions) states. A
   version the scaffold cannot confirm is named in the output.
+- **A namespace says what an investigation meets of it.** In a tree
+  whose ops skills read `.agents/skills/_shared/signals/`, a namespace's
+  kinds, outcomes, gauges, alarms, queues, the log lines an ops skill
+  must find, and its failure events sit in its own file there,
+  `<ns>.md`, under the headings the folder's `README.md` names. A skill
+  that gives a namespace one of those writes it in that file, never in
+  an ops skill's own text or another namespace's file.
 - **No placeholder.** No empty module, no `TODO`, no dead import. A
   namespace's `README.md`, and `om/README.md` above it, speak the
   product's language to a reader with no code.

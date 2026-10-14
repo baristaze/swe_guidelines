@@ -85,12 +85,12 @@ def test_a_signals_file_is_named_by_a_namespace_or_a_process() -> None:
 @pytest.mark.parametrize("path", FILES, ids=lambda path: path.stem)
 def test_a_signals_file_holds_the_readmes_headings_in_their_order(path: Path) -> None:
     """Each skill's step names the headings it reads, so a file under another
-    heading says what no step reads."""
+    heading says what no step reads. A namespace that emits nothing an
+    investigation meets yet holds its title and its sentence alone."""
     assert HEADINGS, "the signals README lists no heading, or this test no longer reads it"
     lines = path.read_text().splitlines()
     assert lines[0] == f"# Signals: {path.stem}"
     held = [line.removeprefix("## ") for line in lines if line.startswith("## ")]
-    assert held, f"{path.name} holds no heading"
     assert set(held) <= set(HEADINGS), sorted(set(held) - set(HEADINGS))
     assert held == sorted(set(held), key=HEADINGS.index), held
 

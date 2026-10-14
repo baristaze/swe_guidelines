@@ -41,6 +41,13 @@ The shape is the `media` namespace, `om/src/<name>/om/media/`. Under
 | `storage/impl/memory.py` | `<Ns>StorageMemoryImpl(MemoryStorageBase, <Ns>StorageInterface)` |
 | `types/__init__.py`, `impl/__init__.py`, `storage/impl/__init__.py`, `storage/tables/__init__.py` | empty; the entity skill fills `types/` and `storage/tables/` |
 
+In a tree whose ops skills read `.agents/skills/_shared/signals/`, the
+namespace's signals file is created there too, `<ns>.md`: `# Signals:
+<ns>` and one sentence on what the namespace does, in the shape of the
+scaffold's own files beside it. A skill that later gives the namespace
+a kind, an outcome, a log line, or a failure event adds it there, under
+the heading the folder's `README.md` names.
+
 ## Changed
 
 | File | Change |

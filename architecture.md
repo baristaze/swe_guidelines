@@ -2582,6 +2582,12 @@ flag folds each migration chain. It works on a branch it never pushes.
 it feeds, and that queue's dead letters, so a tree with no inbound
 webhook leaves it out.
 
+An ops skill that reads signals names no namespace. What it meets of
+one, its kinds, its events, its log lines, and its alarms, sits in
+that namespace's signals file, and the skill reads one file per
+namespace. A copy adds the file for each namespace of its own and
+edits no skill.
+
 <!-- agents-only
 - An audit's report puts the answer first, then a table with a verdict
   per row, the findings by impact with a fix and an effort each, and
@@ -2599,6 +2605,11 @@ webhook leaves it out.
   its output, and every invariant inline. Long reference material sits
   in a file under the skill's folder, named by the step that reads it
   when that step runs.
+- The signals files are `.agents/skills/_shared/signals/<ns>.md`, one
+  per namespace or process, under the headings the folder's
+  `README.md` names. `ops-investigate`, `ops-watch`, and
+  `ops-root-cause` read every file there; their steps, their bounds,
+  and their commands stay in their own text.
 -->
 
 ### Dashboards and Alarms as Code

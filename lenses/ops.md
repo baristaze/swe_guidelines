@@ -290,15 +290,20 @@ the guideline lists: `ops-investigate`, `ops-watch`, `ops-root-cause`,
 `stress-test-create-or-update`, `stress-test-run`, and the four audits,
 `audit-retention`, `audit-query-indexes`, `audit-database-calls`,
 `audit-deploy-time`; the five statements at the top of each; where each
-reads what is specific to the product; for an audit, the database it
-builds and drops, the report it writes, and the order of its fixes.
+reads what is specific to the product, and for the investigation, the
+watch, and the root cause, the one signals file per namespace each
+reads whole, `.agents/skills/_shared/signals/<ns>.md`; for an audit,
+the database it builds and drops, the report it writes, and the order
+of its fixes.
 
 **Violation.** A repeating task with no skill, or a listed skill
 missing from the tree; a skill that names no role, a role other than
 the one the guideline's table gives it, or no credential check; a skill
 that says what it does and not what it never does; a skill with the
 product's specifics written into the template instead of read from the
-product's documents; an audit that writes to a shared database or an
+product's documents; a namespace's kinds, events, log lines, or alarms
+written into an ops skill's own text instead of that namespace's
+signals file; an audit that writes to a shared database or an
 environment, or one that fixes what it finds; an audit of calls that
 proposes parallel calls before removing, folding, deferring, or caching
 them.
