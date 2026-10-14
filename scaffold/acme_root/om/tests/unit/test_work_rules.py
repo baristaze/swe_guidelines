@@ -2,8 +2,6 @@
 
 from datetime import timedelta
 
-from contracts.work_storage import make_item
-
 from acme.om.work.rules import (
     attempts_after_claim,
     attempts_after_hand_back,
@@ -13,6 +11,8 @@ from acme.om.work.rules import (
     retry_delay,
     stagger_delay,
 )
+
+from contracts.work_storage import make_item
 
 BASE = timedelta(seconds=30)
 CAP = timedelta(minutes=15)

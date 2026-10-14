@@ -13,18 +13,6 @@ from pathlib import Path
 from uuid import UUID
 
 import pytest
-from contracts.leasable_resource import (
-    an_owners_update_grants_the_requests_its_labels_now_match,
-    an_update_that_takes_a_resource_out_of_service_lands_in_the_owners_commit,
-    the_history_lists_each_lease_with_its_request_and_no_tenant_reads_another,
-)
-from contracts.lease_job import (
-    StartsAJob,
-    a_job_that_misses_its_window_lets_the_lease_lapse,
-    a_job_that_waited_past_its_window_starts_inside_the_margin,
-    a_resource_with_as_many_labels_as_a_real_one_is_matched,
-    the_jobs_worker_keeps_the_lease_and_no_one_else_does,
-)
 
 from acme.infra.impl.local import InfraLocalImpl
 from acme.om.base import new_id, utcnow
@@ -63,6 +51,19 @@ from acme.om.storage.impl.postgres import StoragePostgresImpl
 from acme.om.storage.settings import MigrationSettings
 from acme.om.tenancy.rules import ROLE_PERMISSIONS
 from acme.om.work.types.work_item import WakeParkedPayload, WorkKind
+
+from contracts.leasable_resource import (
+    an_owners_update_grants_the_requests_its_labels_now_match,
+    an_update_that_takes_a_resource_out_of_service_lands_in_the_owners_commit,
+    the_history_lists_each_lease_with_its_request_and_no_tenant_reads_another,
+)
+from contracts.lease_job import (
+    StartsAJob,
+    a_job_that_misses_its_window_lets_the_lease_lapse,
+    a_job_that_waited_past_its_window_starts_inside_the_margin,
+    a_resource_with_as_many_labels_as_a_real_one_is_matched,
+    the_jobs_worker_keeps_the_lease_and_no_one_else_does,
+)
 
 pytestmark = pytest.mark.integration
 

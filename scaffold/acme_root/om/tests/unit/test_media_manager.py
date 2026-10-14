@@ -7,8 +7,6 @@ from pathlib import Path
 from uuid import UUID
 
 import pytest
-from contracts.doubles import Members, context, media_of
-from contracts.factories import make_org
 
 from acme.infra.buckets import Buckets
 from acme.infra.exceptions import UploadRefused
@@ -25,6 +23,9 @@ from acme.om.media.storage.impl.memory import MediaStorageMemoryImpl
 from acme.om.media.types.file import File, FilePurpose, FileStatus
 from acme.om.outbox.impl.relay import OutboxRelayImpl
 from acme.om.outbox.storage.impl.memory import OutboxStorageMemoryImpl
+
+from contracts.doubles import Members, context, media_of
+from contracts.factories import make_org
 
 PDF = b"%PDF-1.7 a small file"
 

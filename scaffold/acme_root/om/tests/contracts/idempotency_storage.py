@@ -13,7 +13,11 @@ from acme.om.exceptions import DuplicateIdempotencyKey, TenantMismatch
 from acme.om.idempotency.storage import IdempotencyStorageInterface
 from acme.om.idempotency.types.attempt import lease_bound
 from acme.om.idempotency.types.record import IdempotencyRecord
+
 from contracts.racing import race
+
+INTERFACE = IdempotencyStorageInterface
+"""The storage interface whose cross-tenant cases this suite holds."""
 
 CROSS_TENANT_CASES: frozenset[str] = frozenset(
     {

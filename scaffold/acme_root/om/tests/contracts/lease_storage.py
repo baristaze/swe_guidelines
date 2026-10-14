@@ -34,7 +34,11 @@ from acme.om.orchestrations.types.orchestration import (
     OrchestrationStep,
     ParkReason,
 )
+
 from contracts.racing import race
+
+INTERFACE = LeasesStorageInterface
+"""The storage interface whose cross-tenant cases this suite holds."""
 
 CROSS_TENANT_CASES: frozenset[str] = frozenset(
     {

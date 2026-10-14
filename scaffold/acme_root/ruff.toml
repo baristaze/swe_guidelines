@@ -15,6 +15,10 @@ max-line-length = 120
 
 [lint.isort]
 known-first-party = ["acme"]
+# The storage contract cases, imported by name from om/tests: a block of
+# their own after the product's, so a copy under another name sorts them
+# the same way.
+known-local-folder = ["contracts"]
 
 [format]
 quote-style = "double"

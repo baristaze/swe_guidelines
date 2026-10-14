@@ -13,10 +13,6 @@ from typing import Any, cast
 from uuid import UUID
 
 import pytest
-from contracts.change_event_storage import make_change_event
-from contracts.factories import make_identity, make_user
-from contracts.idempotency_storage import make_record
-from contracts.work_storage import make_cap, make_item
 from sqlalchemy import CursorResult, text
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, create_async_engine
@@ -40,6 +36,11 @@ from acme.om.tenancy.storage.impl.postgres import TenancyStoragePostgresImpl
 from acme.om.tenancy.storage.tables.users import Users
 from acme.om.work.storage.impl.postgres import WorkStoragePostgresImpl
 from acme.om.work.types.work_item import WorkKind
+
+from contracts.change_event_storage import make_change_event
+from contracts.factories import make_identity, make_user
+from contracts.idempotency_storage import make_record
+from contracts.work_storage import make_cap, make_item
 
 pytestmark = pytest.mark.integration
 

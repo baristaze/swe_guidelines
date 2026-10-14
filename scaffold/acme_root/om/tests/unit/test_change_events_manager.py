@@ -1,7 +1,6 @@
 from datetime import timedelta
 
 import pytest
-from contracts.change_event_storage import IDENTITY, make_change_event
 
 from acme.om.base import new_id, utcnow
 from acme.om.change_events.impl.manager import ChangeEventsManagerImpl, ChangeEventsOptions
@@ -18,6 +17,8 @@ from acme.om.context import (
 from acme.om.exceptions import NotAuthorized, StreamTruncated
 from acme.om.tenancy import TenancyManagerInterface
 from acme.om.tenancy.rules import permissions_of
+
+from contracts.change_event_storage import IDENTITY, make_change_event
 
 APP = AppContext(type=AppType.PORTAL, version="portal@test")
 

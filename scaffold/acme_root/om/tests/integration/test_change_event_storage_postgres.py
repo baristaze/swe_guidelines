@@ -1,7 +1,6 @@
 import asyncio
 
 import pytest
-from contracts.change_event_storage import ChangeEventStorageContract, make_change_event
 from sqlalchemy import insert, update
 
 from acme.om.base import new_id
@@ -12,6 +11,8 @@ from acme.om.change_events.storage.tables.change_events import ChangeEvents
 from acme.om.storage.impl.pg_base import SessionFactory, set_scope
 from acme.om.storage.roles import DatabaseRole
 from acme.om.storage.utils.translation import to_values
+
+from contracts.change_event_storage import ChangeEventStorageContract, make_change_event
 
 pytestmark = pytest.mark.integration
 

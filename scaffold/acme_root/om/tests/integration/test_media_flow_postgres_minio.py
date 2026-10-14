@@ -11,8 +11,6 @@ from typing import Any
 import aioboto3
 import httpx
 import pytest
-from contracts.doubles import Members, context
-from contracts.factories import make_org
 
 from acme.infra.buckets import Buckets
 from acme.infra.buckets.s3 import BucketsS3Impl
@@ -29,6 +27,9 @@ from acme.om.media.types.file import File, FilePurpose, FileStatus
 from acme.om.outbox.impl.relay import OutboxRelayImpl
 from acme.om.outbox.storage.impl.postgres import OutboxStoragePostgresImpl
 from acme.om.storage.impl.pg_base import LoginSessions
+
+from contracts.doubles import Members, context
+from contracts.factories import make_org
 
 pytestmark = pytest.mark.integration
 

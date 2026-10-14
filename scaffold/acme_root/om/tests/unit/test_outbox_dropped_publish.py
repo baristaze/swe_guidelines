@@ -8,8 +8,6 @@ from collections.abc import Sequence
 from datetime import timedelta
 from uuid import UUID
 
-from contracts.outbox_storage import a_user, claim_all, make_row
-
 from acme.infra.breaker import Breaker
 from acme.infra.observability import OUTCOMES
 from acme.infra.topics import EntityChangedPayload, TopicPayload, Topics
@@ -26,6 +24,8 @@ from acme.om.outbox.impl.relay import (
 from acme.om.outbox.storage.impl.memory import OutboxStorageMemoryImpl
 from acme.om.outbox.types.row import OutboxRow
 from acme.om.tenancy.storage.impl.memory import TenancyStorageMemoryImpl
+
+from contracts.outbox_storage import a_user, claim_all, make_row
 
 NO_GRACE = OutboxOptions(grace=timedelta(0), backoff_base=timedelta(0), max_attempts=3)
 

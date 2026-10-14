@@ -19,6 +19,7 @@ from acme.om.outbox.storage.impl.memory import OutboxStorageMemoryImpl
 from acme.om.tenancy import TenancyManagerInterface
 from acme.om.tenancy.rules import permissions_of
 from acme.om.tenancy.types.org import Org
+
 from contracts.factories import make_org, make_user
 
 APP = AppContext(type=AppType.PORTAL, version="portal@test")

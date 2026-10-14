@@ -1,10 +1,11 @@
 import pytest
-from contracts.idempotency_storage import IdempotencyStorageContract
 
 from acme.om.idempotency.storage import IdempotencyStorageInterface
 from acme.om.idempotency.storage.impl.postgres import IdempotencyStoragePostgresImpl
 from acme.om.storage.impl.pg_base import SessionFactory
 from acme.om.storage.roles import DatabaseRole
+
+from contracts.idempotency_storage import IdempotencyStorageContract
 
 pytestmark = pytest.mark.integration
 

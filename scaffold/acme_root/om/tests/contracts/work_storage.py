@@ -13,9 +13,13 @@ from acme.om.exceptions import TenantMismatch
 from acme.om.work.storage import InsertOutcome, WorkStorageInterface
 from acme.om.work.types.tenant_cap import TenantCap
 from acme.om.work.types.work_item import WorkItem, WorkKind, WorkStatus
+
 from contracts.racing import race
 
 LEASE = timedelta(seconds=30)
+
+INTERFACE = WorkStorageInterface
+"""The storage interface whose cross-tenant cases this suite holds."""
 
 CROSS_TENANT_CASES: frozenset[str] = frozenset(
     {

@@ -9,7 +9,6 @@ from pathlib import Path
 from uuid import UUID
 
 import pytest
-from contracts.second_factor import TOTP_KEY
 
 from acme.infra.cache import CacheScope
 from acme.infra.impl.local import InfraLocalImpl
@@ -35,6 +34,8 @@ from acme.om.tenancy.storage.impl.memory import TenancyStorageMemoryImpl
 from acme.om.tenancy.types.invitation import InvitationState
 from acme.om.tenancy.types.org import Org
 from acme.om.work.types.work_item import WorkKind, work_row_kind
+
+from contracts.second_factor import TOTP_KEY
 
 APP = AppContext(type=AppType.PORTAL, version="portal@test")
 

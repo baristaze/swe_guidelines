@@ -10,8 +10,6 @@ from pathlib import Path
 from uuid import UUID
 
 import pytest
-from contracts.outbox_storage import a_user, claim_all, make_row
-from contracts.work_storage import make_item
 from opentelemetry.sdk.trace import TracerProvider
 
 from acme.infra.impl.local import InfraLocalImpl
@@ -30,6 +28,9 @@ from acme.om.tenancy.impl.creates import user_payload
 from acme.om.tenancy.impl.manager import TenancyOptions
 from acme.om.tenancy.storage.impl.memory import TenancyStorageMemoryImpl
 from acme.om.work.types.work_item import WORK_LANES, WorkKind, relayed_lane, work_row_kind
+
+from contracts.outbox_storage import a_user, claim_all, make_row
+from contracts.work_storage import make_item
 
 NO_GRACE = OutboxOptions(grace=timedelta(0), backoff_base=timedelta(0), max_attempts=2)
 

@@ -10,7 +10,6 @@ from datetime import timedelta
 from uuid import UUID
 
 import pytest
-from contracts.outbox_storage import a_user, claim_all, make_row
 
 from acme.infra.impl.settings import InfraSettings
 from acme.infra.impl.valkey import ValkeyConnection
@@ -30,6 +29,8 @@ from acme.om.outbox.storage.impl.postgres import OutboxStoragePostgresImpl
 from acme.om.outbox.types.row import OutboxRow
 from acme.om.storage.impl.pg_base import LoginSessions
 from acme.om.tenancy.storage.impl.postgres import TenancyStoragePostgresImpl
+
+from contracts.outbox_storage import a_user, claim_all, make_row
 
 pytestmark = pytest.mark.integration
 

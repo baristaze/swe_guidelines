@@ -1,8 +1,9 @@
 import pytest
-from contracts.work_storage import WorkStorageContract
 
 from acme.om.work.storage import WorkStorageInterface
 from acme.om.work.storage.impl.memory import WorkStorageMemoryImpl
+
+from contracts.work_storage import WorkStorageContract
 
 
 class TestWorkStorageMemory(WorkStorageContract):

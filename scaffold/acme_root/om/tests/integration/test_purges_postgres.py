@@ -27,17 +27,6 @@ from typing import Any
 from uuid import UUID, uuid4
 
 import pytest
-from contracts.change_event_storage import append_one, make_change_event
-from contracts.change_event_storage import drained as drained_events
-from contracts.factories import make_auth_session, make_socket_ticket
-from contracts.idempotency_storage import drained as drained_records
-from contracts.idempotency_storage import make_record
-from contracts.orchestration_storage import drained as drained_orchestrations
-from contracts.orchestration_storage import make_record as make_orchestration
-from contracts.orchestration_storage import seed as seed_orchestration
-from contracts.tenancy_storage import before
-from contracts.tenancy_storage import drained as drained_tenancy
-from contracts.work_storage import make_item
 from sqlalchemy import event, text
 from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 
@@ -56,6 +45,18 @@ from acme.om.storage.settings import MigrationSettings
 from acme.om.tenancy.storage.impl.postgres import TenancyStoragePostgresImpl
 from acme.om.work.storage.impl.postgres import WorkStoragePostgresImpl
 from acme.om.work.types.work_item import WorkKind, WorkStatus
+
+from contracts.change_event_storage import append_one, make_change_event
+from contracts.change_event_storage import drained as drained_events
+from contracts.factories import make_auth_session, make_socket_ticket
+from contracts.idempotency_storage import drained as drained_records
+from contracts.idempotency_storage import make_record
+from contracts.orchestration_storage import drained as drained_orchestrations
+from contracts.orchestration_storage import make_record as make_orchestration
+from contracts.orchestration_storage import seed as seed_orchestration
+from contracts.tenancy_storage import before
+from contracts.tenancy_storage import drained as drained_tenancy
+from contracts.work_storage import make_item
 
 pytestmark = pytest.mark.integration
 

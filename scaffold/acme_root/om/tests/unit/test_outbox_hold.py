@@ -10,7 +10,6 @@ from pathlib import Path
 from uuid import UUID
 
 import pytest
-from contracts.outbox_storage import a_user, claim_all, make_row
 
 from acme.infra.impl.local import InfraLocalImpl
 from acme.om.base import new_id
@@ -19,6 +18,8 @@ from acme.om.outbox.impl.relay import OutboxOptions, OutboxRelayImpl
 from acme.om.outbox.storage.impl.memory import OutboxStorageMemoryImpl
 from acme.om.outbox.types.row import OutboxRow
 from acme.om.tenancy.storage.impl.memory import TenancyStorageMemoryImpl
+
+from contracts.outbox_storage import a_user, claim_all, make_row
 
 
 class CountedMarks(OutboxStorageMemoryImpl):

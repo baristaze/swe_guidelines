@@ -22,8 +22,6 @@ from typing import Any
 from uuid import UUID
 
 import pytest
-from contracts.factories import make_api_key
-from contracts.idempotency_storage import attempt_minted_at, make_record
 from sqlalchemy import event, text
 from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 
@@ -36,6 +34,9 @@ from acme.om.storage.roles import DatabaseRole
 from acme.om.storage.settings import MigrationSettings
 from acme.om.tenancy.storage.impl.postgres import TenancyStoragePostgresImpl
 from acme.om.work.storage.impl.postgres import WorkStoragePostgresImpl
+
+from contracts.factories import make_api_key
+from contracts.idempotency_storage import attempt_minted_at, make_record
 
 pytestmark = pytest.mark.integration
 

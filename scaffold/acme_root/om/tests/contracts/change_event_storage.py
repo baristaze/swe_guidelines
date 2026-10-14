@@ -12,10 +12,14 @@ from acme.om.base import new_id, utcnow
 from acme.om.change_events.storage import ChangeEventStorageInterface
 from acme.om.change_events.types.change_event import ChangeEvent
 from acme.om.exceptions import TenantMismatch
+
 from contracts.racing import race
 
 IDENTITY = "0195f1a2-7b3c-7d4e-8f00-00000000d1d1"
 """The identity a user row names: a payload carries ids, never a person's field."""
+
+INTERFACE = ChangeEventStorageInterface
+"""The storage interface whose cross-tenant cases this suite holds."""
 
 CROSS_TENANT_CASES: frozenset[str] = frozenset(
     {"append_change_events", "purge_tenant", "read_after", "read_floor", "read_head", "read_page"}

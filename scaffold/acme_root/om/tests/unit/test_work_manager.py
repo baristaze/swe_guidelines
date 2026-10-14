@@ -4,14 +4,6 @@ from pathlib import Path
 from uuid import UUID
 
 import pytest
-from contracts.work_cap import (
-    a_burst_drains_as_fast_as_the_worker_runs_at_a_cap_of_two,
-    a_second_item_is_passed_over_at_a_cap_of_one,
-    a_tenants_own_cap_holds_in_place_of_the_lanes,
-    a_tenants_own_cap_holds_on_a_lane_with_no_cap,
-    an_operator,
-)
-from contracts.work_storage import make_item
 
 from acme.infra.impl.local import InfraLocalImpl
 from acme.infra.observability import OUTCOMES
@@ -47,6 +39,15 @@ from acme.om.work.types.work_item import (
     WorkKind,
     WorkStatus,
 )
+
+from contracts.work_cap import (
+    a_burst_drains_as_fast_as_the_worker_runs_at_a_cap_of_two,
+    a_second_item_is_passed_over_at_a_cap_of_one,
+    a_tenants_own_cap_holds_in_place_of_the_lanes,
+    a_tenants_own_cap_holds_on_a_lane_with_no_cap,
+    an_operator,
+)
+from contracts.work_storage import make_item
 
 LEASE = timedelta(seconds=30)
 APP = AppContext(type=AppType.PORTAL, version="portal@test")

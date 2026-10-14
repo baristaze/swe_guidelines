@@ -10,7 +10,6 @@ import time
 from pathlib import Path
 
 import pytest
-from contracts.change_event_storage import make_change_event
 from sqlalchemy import Connection, text
 from sqlalchemy.ext.asyncio import create_async_engine
 
@@ -32,6 +31,8 @@ from acme.om.storage.migrate import (
 )
 from acme.om.storage.roles import DatabaseRole
 from acme.om.storage.settings import MigrationSettings
+
+from contracts.change_event_storage import make_change_event
 
 pytestmark = pytest.mark.integration
 

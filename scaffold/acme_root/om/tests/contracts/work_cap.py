@@ -20,6 +20,7 @@ from acme.om.root import Managers
 from acme.om.tenancy.rules import operator_permissions_of
 from acme.om.work.storage import WorkStorageInterface
 from acme.om.work.types.work_item import WorkItem, WorkKind
+
 from contracts.work_storage import make_item
 
 LEASE = timedelta(seconds=30)

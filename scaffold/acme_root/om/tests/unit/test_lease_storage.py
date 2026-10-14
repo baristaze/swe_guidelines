@@ -1,11 +1,12 @@
 import pytest
-from contracts.lease_storage import LeaseStorageContract
 
 from acme.om.leases.storage import LeasesStorageInterface
 from acme.om.leases.storage.impl.memory import LeasesStorageMemoryImpl
 from acme.om.orchestrations.storage import OrchestrationsStorageInterface
 from acme.om.orchestrations.storage.impl.memory import OrchestrationsStorageMemoryImpl
 from acme.om.outbox.storage.impl.memory import OutboxStorageMemoryImpl
+
+from contracts.lease_storage import LeaseStorageContract
 
 
 class TestLeaseStorageMemory(LeaseStorageContract):

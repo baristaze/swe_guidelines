@@ -1,10 +1,11 @@
 import pytest
-from contracts.media_storage import MediaStorageContract
 
 from acme.om.media.storage import MediaStorageInterface
 from acme.om.media.storage.impl.postgres import MediaStoragePostgresImpl
 from acme.om.storage.impl.pg_base import SessionFactory
 from acme.om.storage.roles import DatabaseRole
+
+from contracts.media_storage import MediaStorageContract
 
 pytestmark = pytest.mark.integration
 

@@ -3,7 +3,6 @@ from datetime import timedelta
 from uuid import UUID
 
 import pytest
-from contracts.idempotency_storage import attempt_minted_at, attempt_of, make_record
 
 from acme.om.base import EMPTY_UUID, new_id, utcnow
 from acme.om.context import (
@@ -28,6 +27,8 @@ from acme.om.idempotency.impl.manager import IdempotencyManagerImpl, Idempotency
 from acme.om.idempotency.storage.impl.memory import IdempotencyStorageMemoryImpl
 from acme.om.idempotency.types.record import IdempotencyRecord
 from acme.om.tenancy.rules import operator_permissions_of, permissions_of
+
+from contracts.idempotency_storage import attempt_minted_at, attempt_of, make_record
 
 APP = AppContext(type=AppType.API, version="api@test")
 

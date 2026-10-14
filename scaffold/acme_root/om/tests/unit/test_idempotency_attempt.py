@@ -1,9 +1,9 @@
 from datetime import timedelta
 
-from contracts.idempotency_storage import attempt_minted_at
-
 from acme.om.base import new_id, utcnow
 from acme.om.idempotency.types.attempt import lease_bound
+
+from contracts.idempotency_storage import attempt_minted_at
 
 
 def test_the_bound_sorts_between_the_attempts_that_began_before_it_and_after() -> None:

@@ -8,7 +8,6 @@ from pathlib import Path
 from uuid import UUID
 
 import pytest
-from contracts.second_factor import TOTP_KEY
 
 from acme.infra.cache import CacheScope
 from acme.infra.impl.local import InfraLocalImpl
@@ -38,6 +37,8 @@ from acme.om.tenancy.impl.org import DELETED_PERSONAL_ORG_NAME
 from acme.om.tenancy.rules import email_digest
 from acme.om.tenancy.storage.impl.memory import TenancyStorageMemoryImpl
 from acme.om.work.types.work_item import WorkKind, asks_for_work, work_row_kind
+
+from contracts.second_factor import TOTP_KEY
 
 APP = AppContext(type=AppType.PORTAL, version="portal@test")
 SIGNED_OUT = "http://localhost:5173/signed-out"
