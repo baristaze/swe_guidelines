@@ -801,10 +801,11 @@ def test_the_compaction_tells_a_contract_in_flight_by_the_tree() -> None:
     assert "git tag" not in _skill("docs-compact")
 
 
-def test_the_compaction_regenerates_the_api_document_before_its_gate() -> None:
-    """A docstring of an API type is in the generated document, and CI fails
-    a tree whose document is not the one its code writes. So the gates write
-    it again after the sweep and before `make check`, and commit what changed."""
+def test_the_compaction_regenerates_the_api_documents_before_its_gate() -> None:
+    """A docstring of an API type is in a generated document, and CI fails a
+    tree whose documents are not the ones its code writes. So the gates write
+    them again after the sweep and before `make check`, and commit what
+    changed."""
     gates = _prose("docs-compact").split("**Run the gates.**", 1)[1]
     assert gates.index("`make setup`") < gates.index("`make openapi`") < gates.index("`make check`")
     assert "commit what it changes, apart. Then `make check`." in gates
@@ -812,7 +813,8 @@ def test_the_compaction_regenerates_the_api_document_before_its_gate() -> None:
         tool.strip() for tool in _allowed_tools("docs-compact").split(",")
     ]
     ci = (ROOT / ".github" / "workflows" / "ci.yml").read_text()
-    assert "make openapi && git diff --exit-code" in ci
+    drift = "make openapi\n          git status --porcelain -- clients\n"
+    assert drift + '          test -z "$(git status --porcelain -- clients)"' in ci
 
 
 def _database_gates() -> list[str]:

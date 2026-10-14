@@ -289,7 +289,7 @@ def test_python_code_and_the_tests_are_not_scanned_for_product_terms(repo, leaks
         "scaffold/acme_root/om/src/acme/om/README.md",
         "scaffold/acme_root/.agents/skills/ops-watch/SKILL.md",
         "scaffold/acme_root/deployment/local/docker-compose.yml",
-        "scaffold/acme_root/clients/typescript/openapi.json",
+        "scaffold/acme_root/clients/openapi/tenancy.json",
     ],
 )
 def test_the_scaffold_is_scanned_for_product_terms(repo, leaks, capsys, rel):
