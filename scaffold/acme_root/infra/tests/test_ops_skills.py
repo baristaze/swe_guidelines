@@ -898,6 +898,12 @@ def test_a_fold_on_a_base_takes_only_the_revisions_the_tree_owns() -> None:
     assert "no path `git diff --name-only --relative HEAD -- om/migrations` lists" in fold
     assert "Every other owned file of the role's chain goes: `git rm`." in fold
     assert "A rendered file stays as it is." in fold
+    # Each path the fold reads is the tree's, so the skill says where the
+    # tree's root is in a copy, in a layer, and in the guideline itself.
+    where = _prose("docs-compact")
+    assert "In a copy, that folder is the root of the checkout." in where
+    assert "In a layer, it is the folder of the layer's repository that holds its tree." in where
+    assert "it is the folder that holds this scaffold, never the repository's root" in where
     # A fold with a parent leaves the rendered revisions below it, so a step
     # down from its head lands on that parent, not on an empty role.
     assert "With a parent, it returns the role to the parent, the last rendered revision" in fold

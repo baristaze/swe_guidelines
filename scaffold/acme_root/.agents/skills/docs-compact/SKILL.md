@@ -30,8 +30,15 @@ Without the flag the skill rewrites text only, and never opens
 file there is read whole or changed. With it, it also folds the
 revisions each role's chain owns into one revision, as step 7 says:
 every revision, or in a copy or a layer, those the render of its base
-does not hold. It runs at the root of the checkout, or in a layer at
-the root of its tree, the folder that holds the tree's Makefile.
+does not hold.
+
+It runs at the root of the tree, the folder that holds the tree's
+Makefile, and every command it gives runs there. In a copy, that folder
+is the root of the checkout. In a layer, it is the folder of the
+layer's repository that holds its tree. In the guideline's repository,
+it is the folder that holds this scaffold, never the repository's root;
+that repository has no `scaffold` branch, so the fold there holds the
+whole chain.
 
 ## Role and credential
 
