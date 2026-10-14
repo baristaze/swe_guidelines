@@ -197,14 +197,22 @@ def test_the_compaction_regenerates_the_api_documents_before_its_gate() -> None:
     """A docstring of an API type is in a generated document, and CI fails a
     tree whose documents are not the ones its code writes. So the gates write
     them again after the sweep and before `make check`, and commit what
-    changed."""
+    changed. CI's drift step lists, then refuses, a change under one pathspec
+    that starts with `clients`; a tree with a service of its own adds the
+    service's documents after it."""
     gates = prose_of(NAME).split("**Run the gates.**", 1)[1]
     assert gates.index("`make setup`") < gates.index("`make openapi`") < gates.index("`make check`")
     assert "commit what it changes, apart. Then `make check`." in gates
     assert "Bash(make openapi)" in [tool.strip() for tool in allowed_tools(NAME).split(",")]
     ci = (ROOT / ".github" / "workflows" / "ci.yml").read_text()
-    drift = "make openapi\n          git status --porcelain -- clients\n"
-    assert drift + '          test -z "$(git status --porcelain -- clients)"' in ci
+    drift = re.search(
+        r"make openapi\n +git status --porcelain -- (?P<listed>[^\n]+)\n"
+        r' +test -z "\$\(git status --porcelain -- (?P<refused>[^)\n]+)\)"',
+        ci,
+    )
+    assert drift is not None, "CI has no drift step after `make openapi`"
+    assert drift["listed"] == drift["refused"]
+    assert drift["listed"].split()[0] == "clients"
 
 
 def _database_gates() -> list[str]:
