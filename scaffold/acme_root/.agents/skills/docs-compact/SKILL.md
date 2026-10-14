@@ -259,7 +259,8 @@ left as it is, and the report names it under Kept.
    the scaffold it checks, so `make check` runs the checkout's instead,
    through the Makefile's override: `make check ARCH_CHECK="uv run
    --no-project --python $(cat .python-version) python
-   ../../checkers/arch_check.py"`. When `docker info` exits 0, also `make
+   $(git rev-parse --show-toplevel)/checkers/arch_check.py"`. When
+   `docker info` exits 0, also `make
    infra-up`, and then `make migrate`, `make migrate-check`, and `make
    test-integration` on a database the run makes and drops, never the
    stack's own: the integration tests empty every table of the
