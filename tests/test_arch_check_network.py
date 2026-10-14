@@ -313,25 +313,34 @@ def test_net_13_an_om_entity_on_the_wire_or_an_offset_fails(tmp_path):
 WORKFLOW = ".github/workflows/ci.yml"
 
 
-def test_net_14_a_target_and_a_diff_in_ci_pass(tmp_path):
+DRIFT = 'test -z "$(git status --porcelain -- clients)"'
+
+
+def test_net_14_a_target_and_a_drift_check_in_ci_pass(tmp_path):
     code, _, _ = found(
         tmp_path,
         "NET-14",
         {
             ROUTER: "",
-            "Makefile": "openapi: ## Emit the document\n\tuv run acme-api openapi\n",
-            WORKFLOW: "jobs:\n  check:\n    steps:\n      - run: make openapi && git diff --exit-code\n",
+            "Makefile": "openapi: ## Emit the documents\n\tuv run acme-api openapi --out clients/openapi\n",
+            WORKFLOW: f"jobs:\n  check:\n    steps:\n      - run: make openapi && {DRIFT}\n",
         },
     )
     assert code == 0
 
 
-def test_net_14_no_diff_in_ci_fails(tmp_path):
+def test_net_14_no_drift_check_in_ci_fails(tmp_path):
     code, where, msgs = found(
         tmp_path, "NET-14", {ROUTER: "", "Makefile": "openapi:\n\techo\n", WORKFLOW: "steps:\n  - run: make check\n"}
     )
     assert (code, where) == (1, [("NET-14", "Makefile", 1)])
-    assert "failing `git diff`" in msgs[0]
+    assert "fails on `git status --porcelain`" in msgs[0]
+
+
+def test_net_14_a_diff_alone_misses_a_new_document_and_fails(tmp_path):
+    workflow = "steps:\n  - run: make openapi && git diff --exit-code\n"
+    code, where, _ = found(tmp_path, "NET-14", {ROUTER: "", "Makefile": "openapi:\n\techo\n", WORKFLOW: workflow})
+    assert (code, where) == (1, [("NET-14", "Makefile", 1)])
 
 
 def test_net_14_a_commented_out_step_runs_nothing(tmp_path):
@@ -342,7 +351,7 @@ def test_net_14_a_commented_out_step_runs_nothing(tmp_path):
             ROUTER: "",
             "Makefile": "openapi:\n\techo\n",
             WORKFLOW: (
-                "jobs:\n  check:\n    steps:\n      # - run: make openapi && git diff --exit-code\n      - run: make check\n"
+                f"jobs:\n  check:\n    steps:\n      # - run: make openapi && {DRIFT}\n      - run: make check\n"
             ),
         },
     )
@@ -354,16 +363,17 @@ def test_net_14_a_tree_with_no_router_is_not_judged(tmp_path):
     assert code == 0
 
 
-def test_net_14_a_make_target_that_reaches_the_diff_passes(tmp_path):
+def test_net_14_a_make_target_that_reaches_the_drift_check_passes(tmp_path):
     makefile = (
-        "check: openapi\n\t$(MAKE) lint\n\tgit diff --quiet -- apps/portal/openapi.json\n\nopenapi:\n\techo\n\nlint:\n\ttrue\n"
+        'check: openapi\n\t$(MAKE) lint\n\ttest -z "$$(git status --porcelain -- clients)"\n\nopenapi:\n\techo\n\n'
+        "lint:\n\ttrue\n"
     )
     code, _, _ = found(tmp_path, "NET-14", {ROUTER: "", "Makefile": makefile, WORKFLOW: "steps:\n  - run: make check\n"})
     assert code == 0
 
 
-def test_net_14_a_diff_that_does_not_fail_fails(tmp_path):
-    workflow = "steps:\n  - run: make openapi && git diff --stat\n"
+def test_net_14_a_drift_listed_but_not_failed_fails(tmp_path):
+    workflow = "steps:\n  - run: make openapi && git status --porcelain -- clients\n"
     code, where, _ = found(tmp_path, "NET-14", {ROUTER: "", "Makefile": "openapi:\n\techo\n", WORKFLOW: workflow})
     assert (code, where) == (1, [("NET-14", "Makefile", 1)])
 

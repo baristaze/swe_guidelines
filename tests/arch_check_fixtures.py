@@ -135,8 +135,10 @@ BASE: dict[str, str] = {
     "workers/maintenance/src/acme/workers/maintenance/container.py": CONTAINER,
     "workers/maintenance/src/acme/workers/maintenance/main.py": "def main() -> None:\n    pass\n",
     # the records, the gates, and the operational surface
-    "Makefile": "check:\n\tuv run pytest\n\nopenapi:\n\tuv run acme-api openapi\n",
-    ".github/workflows/ci.yml": "jobs:\n  check:\n    steps:\n      - run: make openapi && git diff --exit-code\n",
+    "Makefile": "check:\n\tuv run pytest\n\nopenapi:\n\tuv run acme-api openapi --out clients/openapi\n",
+    ".github/workflows/ci.yml": (
+        'jobs:\n  check:\n    steps:\n      - run: make openapi && test -z "$(git status --porcelain -- clients)"\n'
+    ),
     ADR: (
         "# 1. One root package\n\nDate: 2026-01-01\n\n## Context\n\nOne product.\n\n"
         "## Decision\n\nOne root package.\n\n## Consequences\n\nShort imports.\n"

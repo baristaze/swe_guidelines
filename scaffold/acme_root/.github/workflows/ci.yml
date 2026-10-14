@@ -46,8 +46,14 @@ jobs:
       - run: make check
       - name: the apps build
         run: pnpm run build
-      - name: the committed OpenAPI document is current
-        run: make openapi && git diff --exit-code
+      # A change, a removal, or a new file under clients/ fails it: `git
+      # diff` alone passes a namespace's first document, which git does not
+      # track yet.
+      - name: the committed OpenAPI documents and their types are current
+        run: |
+          make openapi
+          git status --porcelain -- clients
+          test -z "$(git status --porcelain -- clients)"
 
   integration:
     name: integration over the compose stack
