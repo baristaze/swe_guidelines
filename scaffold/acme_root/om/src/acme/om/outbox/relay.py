@@ -14,11 +14,13 @@ from collections.abc import Sequence
 from datetime import timedelta
 from uuid import UUID
 
+from acme.om.context import stageless
 from acme.om.outbox.types.row import OutboxRow
 
 
 class OutboxRelayInterface(ABC):
     @abstractmethod
+    @stageless
     async def relay(self, org_id: UUID, row: OutboxRow) -> bool:
         """The row's kind is its destination. An entity change appends the `ChangeEvent`
         the row describes (idempotent on the row's id) and publishes
@@ -33,6 +35,7 @@ class OutboxRelayInterface(ABC):
         ...
 
     @abstractmethod
+    @stageless
     async def relay_all(self, org_id: UUID, rows: Sequence[OutboxRow]) -> bool:
         """`relay` for the rows one write landed together, such as a
         member's removal and the revocations it makes: the entity changes among them are appended in
@@ -65,6 +68,7 @@ class OutboxRelayInterface(ABC):
         ...
 
     @abstractmethod
+    @stageless
     async def release(self, request_id: UUID) -> int:
         """System-internal, for the API's edge: ends a hold and relays the
         rows it kept, each org's rows in one `relay_all`, in the order they
@@ -84,6 +88,7 @@ class OutboxRelayInterface(ABC):
         ...
 
     @abstractmethod
+    @stageless
     async def relay_pending(self, limit: int) -> int:
         """System-internal, for the sweep: claims up to `limit` rows whose next
         attempt is due and that are older than the grace (a younger row is the
@@ -97,6 +102,7 @@ class OutboxRelayInterface(ABC):
         ...
 
     @abstractmethod
+    @stageless
     async def oldest_pending_age(self) -> timedelta:
         """System-internal, for the sweep's relay gauge: how long ago the
         oldest row that is neither done nor failed landed, across tenants;
@@ -105,6 +111,7 @@ class OutboxRelayInterface(ABC):
         ...
 
     @abstractmethod
+    @stageless
     async def failed_within(self, window: timedelta) -> int:
         """System-internal, for the sweep's dead-letter gauge: how many rows
         failed for good in the last `window`, across tenants. A dead letter is
@@ -112,6 +119,7 @@ class OutboxRelayInterface(ABC):
         ...
 
     @abstractmethod
+    @stageless
     async def purge_done(self, retention: timedelta, limit: int) -> int:
         """System-internal, for the sweep: deletes rows done or failed longer
         ago than `retention`, at most `limit` of each; returns how many. The

@@ -80,9 +80,9 @@ Two choices go beyond the guideline's shape.
   reads across tenants for the operator plane, steps from an identity to
   its tenants, keeps the system's size, or erases a person
   ([ADR 0041](0041-an-account-is-deleted-at-once-and-its-providers-by-the-queue.md)).
-  Each says why in its docstring. `[tool.arch-check.options.CTX-12]` in
-  `pyproject.toml` and `om/tests/unit/test_storage_exceptions.py` hold
-  the same list.
+  Each says why in its docstring and is declared `@tenantless` beside
+  it, which arch-check and `om/tests/unit/test_storage_exceptions.py`
+  read.
 - **Auth sessions, API keys, and socket tickets are `both` tables**, where
   the guideline's scaffold makes them `identity` tables. Each belongs to
   one person inside one org: an auth session is in one org at a time, and a

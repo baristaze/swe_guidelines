@@ -14,6 +14,8 @@ from acme.om.context import (
     RequestContext,
     Role,
     TenantContext,
+    stageless,
+    transition,
 )
 from acme.om.tenancy.credentials import TenancyCredentialsManagerInterface
 from acme.om.tenancy.members import TenancyMembersManagerInterface
@@ -53,6 +55,7 @@ class TenancyManagerInterface(ABC):
     """The caller's sessions and the org's API keys."""
 
     @abstractmethod
+    @transition
     async def bootstrap(
         self,
         rctx: RequestContext,
@@ -77,6 +80,7 @@ class TenancyManagerInterface(ABC):
         ...
 
     @abstractmethod
+    @transition
     async def add_member(
         self,
         rctx: RequestContext,
@@ -98,6 +102,7 @@ class TenancyManagerInterface(ABC):
         ...
 
     @abstractmethod
+    @transition
     async def authenticate_login(self, rctx: RequestContext, credential: str) -> IdentityContext:
         """System-internal: the transition to the identity stage. Verifies the
         person's own sign-in and produces the identity behind it: the login
@@ -113,12 +118,14 @@ class TenancyManagerInterface(ABC):
         ...
 
     @abstractmethod
+    @transition
     async def authenticate(self, rctx: RequestContext, credential: str) -> TenantContext:
         """System-internal: the transition to the tenant stage. The gateway asks
         for the principal behind a session token or an api key."""
         ...
 
     @abstractmethod
+    @transition
     async def admit_operator(self, ictx: IdentityContext) -> OperatorContext:
         """System-internal: the transition to the operator stage. Admits the
         verified identity when it is on the operator allowlist, NotAnOperator
@@ -137,6 +144,7 @@ class TenancyManagerInterface(ABC):
         ...
 
     @abstractmethod
+    @transition
     async def grant_operator(
         self, rctx: RequestContext, email: str, operator_role: OperatorRole
     ) -> Identity:
@@ -152,6 +160,7 @@ class TenancyManagerInterface(ABC):
         ...
 
     @abstractmethod
+    @transition
     async def disable_operator(self, rctx: RequestContext, email: str) -> Identity:
         """System-internal: the grant job's. Takes the identity off the
         allowlist, audited, and ends every operator token and every sign-in
@@ -160,6 +169,7 @@ class TenancyManagerInterface(ABC):
         ...
 
     @abstractmethod
+    @transition
     async def grant_operator_token(
         self,
         rctx: RequestContext,
@@ -177,6 +187,7 @@ class TenancyManagerInterface(ABC):
         ...
 
     @abstractmethod
+    @transition
     async def resume(
         self,
         rctx: RequestContext,
@@ -196,6 +207,7 @@ class TenancyManagerInterface(ABC):
         ...
 
     @abstractmethod
+    @transition
     async def redeem_ticket(self, rctx: RequestContext, ticket: str) -> SocketPrincipal:
         """System-internal: consumes a socket ticket exactly once and re-checks the
         credential behind it. The gateway holds a ticket, not a principal; what
@@ -203,6 +215,7 @@ class TenancyManagerInterface(ABC):
         ...
 
     @abstractmethod
+    @transition
     async def service_context(
         self, rctx: RequestContext, org_id: UUID, user_id: UUID
     ) -> TenantContext:
@@ -215,6 +228,7 @@ class TenancyManagerInterface(ABC):
         ...
 
     @abstractmethod
+    @transition
     async def member_context(
         self, rctx: RequestContext, org_id: UUID, email: str
     ) -> TenantContext | None:
@@ -237,6 +251,7 @@ class TenancyManagerInterface(ABC):
         ...
 
     @abstractmethod
+    @transition
     async def service_contexts(self, rctx: RequestContext) -> list[TenantContext]:
         """System-internal: one service context per tenant, deleted ones
         included, for sweeps, with one for the system scope (`EMPTY_UUID` as the
@@ -253,6 +268,7 @@ class TenancyManagerInterface(ABC):
         ...
 
     @abstractmethod
+    @transition
     async def sweep_context(self, rctx: RequestContext, org_id: UUID) -> TenantContext | None:
         """System-internal: the service context a purge across tenants acts
         in one tenant under, once it found a row of that tenant and must do
@@ -267,6 +283,7 @@ class TenancyManagerInterface(ABC):
         ...
 
     @abstractmethod
+    @stageless
     async def purge_across_tenants(self) -> int:
         """System-internal: the sweep, across tenants, once a pass, in one
         transaction: hard-deletes removed members (and their memberships),

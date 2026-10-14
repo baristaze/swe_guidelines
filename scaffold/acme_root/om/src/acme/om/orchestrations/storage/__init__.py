@@ -7,6 +7,7 @@ from abc import ABC, abstractmethod
 from datetime import datetime
 from uuid import UUID
 
+from acme.om.context import tenantless
 from acme.om.orchestrations.types.orchestration import (
     Orchestration,
     OrchestrationKind,
@@ -79,6 +80,7 @@ class OrchestrationsStorageInterface(ABC):
         ...
 
     @abstractmethod
+    @tenantless
     async def purge_settled(self, before: datetime, limit: int) -> int:
         """Cross-tenant, for the sweep, in the system scope, once a pass for
         every tenant: removes at most `limit` records that settled before

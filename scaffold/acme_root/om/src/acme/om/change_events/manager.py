@@ -13,7 +13,7 @@ from uuid import UUID
 
 from acme.om.base import utcnow
 from acme.om.change_events.types.change_event import ChangeEvent
-from acme.om.context import ProvenanceScope, TenantContext
+from acme.om.context import ProvenanceScope, TenantContext, stageless
 
 
 class ChangeEventsManagerInterface(ABC):
@@ -38,6 +38,7 @@ class ChangeEventsManagerInterface(ABC):
         ...
 
     @abstractmethod
+    @stageless
     async def purge_across_tenants(self) -> int:
         """System-internal: the sweep's trim, across tenants, once a pass. With
         an event retention set, one bounded batch of the oldest events past it

@@ -17,6 +17,7 @@ from typing import TYPE_CHECKING
 from uuid import UUID
 
 from acme.om.change_events.types.change_event import ChangeEvent
+from acme.om.context import stageless
 from acme.om.idempotency.types.attempt import Attempt
 from acme.om.tenancy.types.auth_session import AuthSession
 from acme.om.tenancy.types.identity import Identity
@@ -107,6 +108,7 @@ class TenancyOperatorManagerInterface(ABC):
         ...
 
     @abstractmethod
+    @stageless
     async def tally_size(self) -> SystemSize:
         """System-internal: the sweep's count of the system's size across
         every tenant, the live orgs and users and the events of the day before

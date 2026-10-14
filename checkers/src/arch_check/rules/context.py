@@ -467,36 +467,42 @@ def tenant_first(project: Project) -> Iterator[Violation]:
 # --- CTX-12
 
 
+TENANTLESS = "tenantless"
+"""The declaration a storage method that takes no tenant carries beside it,
+on its interface: a decorator of that name, however it is imported."""
+
+
+def declared_tenantless(fn: Function) -> bool:
+    return any(last(dotted(d)) == TENANTLESS for d in fn.decorator_list)
+
+
 @rule(
     "CTX-12",
-    options=("tenantless",),
     coverage="partial",
-    summary="Every tenant-less storage method is documented and on the tenantless list the checker holds.",
+    summary="Every tenant-less storage method is documented and declared tenantless beside it.",
 )
-def tenantless_is_enumerated(project: Project) -> Iterator[Violation]:
+def tenantless_is_declared(project: Project) -> Iterator[Violation]:
     """A `*StorageInterface` method whose first parameter is not `org_id`
     has a docstring to say why. A global interface, one whose every
     method takes no tenant, may say it once in the class docstring
     instead; on an interface that also has tenant methods, the class
-    docstring excuses none of them. Option
-    `[tool.arch-check.options.CTX-12]`: `tenantless`, the `Class.method`
-    names of those methods. It is the enumeration, so a method not on
-    it and an entry that names no such method are findings, and with no
-    list at all every tenant-less method is one. Whether a sweep
-    returns its tenant is judged."""
-    listed: list[str] = project.option("CTX-12", "tenantless", [], {"tenantless"})
-    # the key set is the switch, not its truthiness: `tenantless = []` says no method is tenant-less
-    enumerated = "tenantless" in project.config.options.get("CTX-12", {})
-    seen: set[str] = set()
+    docstring excuses none of them. Each such method carries the
+    `@tenantless` declaration beside it, which is the enumeration: a
+    method that takes no tenant without it is a finding, and so is one
+    that takes `org_id` first and carries it. Whether a sweep returns its
+    tenant is judged."""
     for file, cls in classes_named(project, "StorageInterface"):
         if cls.name == "StorageInterface":
             continue
         methods_ = interface_methods(cls)
         tenantless = [fn for fn in methods_ if [a.arg for a in arguments(fn)][:1] != ["org_id"]]
         documented_once = len(tenantless) == len(methods_) and ast.get_docstring(cls) is not None
-        for fn in tenantless:
+        for fn in methods_:
             key = f"{cls.name}.{fn.name}"
-            seen.add(key)
+            if fn not in tenantless:
+                if declared_tenantless(fn):
+                    yield Violation.at(file.rel, fn, f"{key} takes org_id first and is declared @tenantless")
+                continue
             if not has_docstring(fn) and not documented_once:
                 yield Violation.at(
                     file.rel,
@@ -504,16 +510,8 @@ def tenantless_is_enumerated(project: Project) -> Iterator[Violation]:
                     f"{key} takes no tenant and has no docstring saying why"
                     + ("" if len(tenantless) == len(methods_) else "; its interface also has tenant methods"),
                 )
-            if not enumerated:
-                yield Violation.at(
-                    file.rel, fn, f"{key} takes no tenant and no tenantless list under [tool.arch-check.options.CTX-12] names it"
-                )
-            elif key not in listed:
-                yield Violation.at(file.rel, fn, f"{key} takes no tenant and is not on the tenantless list")
-    for key in sorted(set(listed) - seen):
-        yield Violation.at(
-            "pyproject.toml", None, f"[tool.arch-check.options.CTX-12] lists {key}, which is no tenant-less method"
-        )
+            if not declared_tenantless(fn):
+                yield Violation.at(file.rel, fn, f"{key} takes no tenant and is not declared @tenantless")
 
 
 # --- CTX-14

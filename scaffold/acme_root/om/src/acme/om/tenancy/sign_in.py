@@ -5,7 +5,7 @@ from abc import ABC, abstractmethod
 from uuid import UUID
 
 from acme.integrations.identity import DeviceAuthorization
-from acme.om.context import IdentityContext, RequestContext
+from acme.om.context import IdentityContext, RequestContext, transition
 from acme.om.tenancy.types.issued import IssuedAuthSession, IssuedLogin, SignedOut, SignInStart
 from acme.om.tenancy.types.page import OrgMembershipPage
 
@@ -17,6 +17,7 @@ class TenancySignInManagerInterface(ABC):
     `authenticate_login` produces. None constructs a stage."""
 
     @abstractmethod
+    @transition
     async def sign_in_url(
         self,
         rctx: RequestContext,
@@ -37,6 +38,7 @@ class TenancySignInManagerInterface(ABC):
         ...
 
     @abstractmethod
+    @transition
     async def sign_in_with_code(
         self,
         rctx: RequestContext,
@@ -65,6 +67,7 @@ class TenancySignInManagerInterface(ABC):
         ...
 
     @abstractmethod
+    @transition
     async def start_device_sign_in(self, rctx: RequestContext) -> DeviceAuthorization:
         """System-internal: a sign-in for a device with no browser of its own,
         the command line. The person confirms the code the answer names at the
@@ -73,6 +76,7 @@ class TenancySignInManagerInterface(ABC):
         ...
 
     @abstractmethod
+    @transition
     async def finish_device_sign_in(self, rctx: RequestContext, device_code: str) -> IssuedLogin:
         """System-internal: asks whether the person confirmed the device
         sign-in. When they did, it is finished as `sign_in_with_code` finishes
@@ -81,6 +85,7 @@ class TenancySignInManagerInterface(ABC):
         ...
 
     @abstractmethod
+    @transition
     async def dev_sign_in(
         self, rctx: RequestContext, email: str, display_name: str = ""
     ) -> IssuedLogin:
@@ -93,6 +98,7 @@ class TenancySignInManagerInterface(ABC):
         ...
 
     @abstractmethod
+    @transition
     async def verify_second_factor(self, ictx: IdentityContext, totp_code: str) -> IssuedLogin:
         """System-internal: a sign-in's second factor. The login presented is
         answered with a new one that records the verified code, which the
@@ -105,6 +111,7 @@ class TenancySignInManagerInterface(ABC):
         ...
 
     @abstractmethod
+    @transition
     async def exchange_login(self, ictx: IdentityContext, org_id: UUID) -> IssuedAuthSession:
         """System-internal: exchanges the verified identity for a tenant-scoped
         session token; NotAuthorized when the identity is not a member of
@@ -122,6 +129,7 @@ class TenancySignInManagerInterface(ABC):
         ...
 
     @abstractmethod
+    @transition
     async def get_identity_memberships(
         self, ictx: IdentityContext, after: UUID | None, limit: int
     ) -> OrgMembershipPage:
@@ -133,6 +141,7 @@ class TenancySignInManagerInterface(ABC):
         ...
 
     @abstractmethod
+    @transition
     async def logout(self, ictx: IdentityContext, return_to: str | None = None) -> SignedOut:
         """System-internal: ending its own sign-in is an operation of the
         identity stage. Ends the credential the stage came from, whichever

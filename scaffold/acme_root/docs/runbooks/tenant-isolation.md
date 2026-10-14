@@ -11,7 +11,8 @@ prove the cases would see a breach.
 Each storage contract suite under `om/tests/contracts/` has cross-tenant
 cases: each presents another tenant's id and asserts that nothing is
 found and nothing changes. Each suite names the methods it covers in a
-`CROSS_TENANT_CASES` set.
+`CROSS_TENANT_CASES` set, and the interface they belong to in
+`INTERFACE`.
 `test_every_tenant_method_is_named_in_a_cross_tenant_case`, in
 `om/tests/unit/test_storage_exceptions.py`, holds those sets to the
 interfaces, so a storage method added with no case fails the gate. That

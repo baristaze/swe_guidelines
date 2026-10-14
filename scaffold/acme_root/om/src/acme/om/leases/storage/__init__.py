@@ -7,6 +7,7 @@ from abc import ABC, abstractmethod
 from datetime import datetime
 from uuid import UUID
 
+from acme.om.context import tenantless
 from acme.om.leases.types.leasable_resource import (
     LeasableResource,
     LeasableResourceKind,
@@ -304,6 +305,7 @@ class LeasesStorageInterface(ABC):
     # The sweep.
 
     @abstractmethod
+    @tenantless
     async def read_due_orgs(
         self, now: datetime, lapsed_before: datetime, limit: int, after: UUID | None = None
     ) -> list[UUID]:
@@ -316,6 +318,7 @@ class LeasesStorageInterface(ABC):
         ...
 
     @abstractmethod
+    @tenantless
     async def purge_settled(self, before: datetime, limit: int) -> int:
         """Cross-tenant, for the sweep, in the system scope: at most `limit`
         each of the leases that ended, the requests that settled, and the

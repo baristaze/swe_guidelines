@@ -11,7 +11,7 @@ not repeated."""
 from abc import ABC, abstractmethod
 from uuid import UUID
 
-from acme.om.context import OperatorContext, TenantContext
+from acme.om.context import OperatorContext, TenantContext, stageless
 from acme.om.idempotency.types.record import IdempotencyRecord
 
 
@@ -74,6 +74,7 @@ class IdempotencyManagerInterface(ABC):
         ...
 
     @abstractmethod
+    @stageless
     async def purge_across_tenants(self) -> int:
         """System-internal: the sweep, across tenants, once a pass: deletes
         finished and released records past the retention and held pending

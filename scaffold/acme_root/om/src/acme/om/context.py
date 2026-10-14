@@ -21,15 +21,19 @@ Roles, permissions, credential kinds, and app types are declared here, so
 this module imports nothing above `base.py` and the tenancy namespace reads
 them rather than the other way round."""
 
+from collections.abc import Callable
 from datetime import datetime
 from enum import StrEnum
-from typing import Protocol
+from typing import Any, Protocol
 from uuid import UUID
 
 from acme.om.base import EMPTY_UUID, OmBase
 from acme.om.exceptions import NotAuthorized
 
 __all__ = [
+    "STAGELESS",
+    "TENANTLESS",
+    "TRANSITION",
     "ActorScope",
     "AppContext",
     "AppType",
@@ -48,6 +52,10 @@ __all__ = [
     "TenantContext",
     "TenantScope",
     "build_context",
+    "declared",
+    "stageless",
+    "tenantless",
+    "transition",
 ]
 
 
@@ -300,3 +308,46 @@ def build_context(
             credential_id=credential_id,
         ),
     )
+
+
+# Declarations beside a method. A storage method that takes no tenant, a
+# manager method that takes no stage, and a transition each say so where
+# they are declared, on the interface, so the tests of the tenant fence and
+# arch-check read the method itself and no list kept elsewhere names it.
+# Each is a mark and nothing more: the method runs as written, and its
+# docstring still says why it is the exception.
+
+TENANTLESS = "__acme_tenantless__"
+STAGELESS = "__acme_stageless__"
+TRANSITION = "__acme_transition__"
+
+
+def _mark[F: Callable[..., Any]](method: F, mark: str) -> F:
+    setattr(method, mark, True)
+    return method
+
+
+def tenantless[F: Callable[..., Any]](method: F) -> F:
+    """A storage method that takes no `org_id` first: a global row, a read
+    before any identity is known, or a sweep across every tenant, in the
+    system scope. Its docstring opens with "Global" or "Cross-tenant"."""
+    return _mark(method, TENANTLESS)
+
+
+def stageless[F: Callable[..., Any]](method: F) -> F:
+    """A manager method that takes no stage first: a step of the relay or the
+    sweep, run for no tenant and no principal. Its docstring says
+    "System-internal"."""
+    return _mark(method, STAGELESS)
+
+
+def transition[F: Callable[..., Any]](method: F) -> F:
+    """A manager method that takes a stage below the tenant stage,
+    `RequestContext` or `IdentityContext`, and produces a stronger one. Its
+    docstring opens with "System-internal"."""
+    return _mark(method, TRANSITION)
+
+
+def declared(method: object, mark: str) -> bool:
+    """Whether a method carries one of the declarations above."""
+    return getattr(method, mark, False) is True

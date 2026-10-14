@@ -9,6 +9,7 @@ from collections.abc import Sequence
 from datetime import datetime, timedelta
 from uuid import UUID
 
+from acme.om.context import tenantless
 from acme.om.outbox.types.row import OutboxRow
 
 
@@ -23,6 +24,7 @@ class OutboxLandingInterface(ABC):
 
 class OutboxStorageInterface(ABC):
     @abstractmethod
+    @tenantless
     async def claim_pending(
         self,
         limit: int,
@@ -59,6 +61,7 @@ class OutboxStorageInterface(ABC):
         ...
 
     @abstractmethod
+    @tenantless
     async def oldest_pending_at(self) -> datetime | None:
         """Cross-tenant, for the sweep's relay gauge: when the oldest row that
         is neither done nor failed landed; None when every row is settled. A
@@ -66,6 +69,7 @@ class OutboxStorageInterface(ABC):
         ...
 
     @abstractmethod
+    @tenantless
     async def count_failed_since(self, since: datetime) -> int:
         """Cross-tenant, for the sweep's dead-letter gauge: how many rows
         failed for good after `since`, in any tenant. A row that failed an
@@ -73,6 +77,7 @@ class OutboxStorageInterface(ABC):
         ...
 
     @abstractmethod
+    @tenantless
     async def purge_done(self, before: datetime, limit: int) -> int:
         """Cross-tenant, for the sweep: deletes rows done before `before`, then
         rows failed before it, at most `limit` of each, skipping rows another

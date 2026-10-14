@@ -13,7 +13,7 @@ holder."""
 from abc import ABC, abstractmethod
 from uuid import UUID
 
-from acme.om.context import RequestContext, TenantContext
+from acme.om.context import RequestContext, TenantContext, stageless, transition
 from acme.om.leases.types.leasable_resource import LeasableResource, LeasableResourceUpdate
 from acme.om.leases.types.lease import JobClaim, Lease
 from acme.om.leases.types.request import (
@@ -197,6 +197,7 @@ class LeasesManagerInterface(ABC):
     # The sweep.
 
     @abstractmethod
+    @transition
     async def sweep(self, rctx: RequestContext) -> int:
         """System-internal, once a pass, for the orgs with something due:
         ends each lease past its expiry and the skew margin, expires each
@@ -205,6 +206,7 @@ class LeasesManagerInterface(ABC):
         ...
 
     @abstractmethod
+    @stageless
     async def purge_across_tenants(self) -> int:
         """System-internal: the leases ended, the requests settled, and the
         retired resources past the retention, a batch at most of each,

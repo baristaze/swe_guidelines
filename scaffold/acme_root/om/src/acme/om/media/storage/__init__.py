@@ -6,6 +6,7 @@ from collections.abc import Sequence
 from datetime import datetime
 from uuid import UUID
 
+from acme.om.context import tenantless
 from acme.om.media.types.file import File, FilePurpose, FileStatus
 from acme.om.media.types.usage import StorageUsage
 from acme.om.outbox.types.row import OutboxRow
@@ -38,6 +39,7 @@ class MediaStorageInterface(ABC):
         ...
 
     @abstractmethod
+    @tenantless
     async def read_purgeable(
         self, deleted_before: datetime, pending_before: datetime, limit: int
     ) -> list[tuple[UUID, File]]:
@@ -77,6 +79,7 @@ class MediaStorageInterface(ABC):
         ...
 
     @abstractmethod
+    @tenantless
     async def purge_files_across_tenants(self, file_ids: Sequence[UUID]) -> int:
         """Cross-tenant, for the sweep, in the system scope: `purge_files` for
         the rows `read_purgeable` gave, whatever their tenant, in one

@@ -7,7 +7,7 @@ from collections.abc import Callable
 from datetime import datetime
 from uuid import UUID
 
-from acme.om.context import Role
+from acme.om.context import Role, tenantless
 from acme.om.outbox.types.row import OutboxRow
 from acme.om.tenancy.types.api_key import ApiKey
 from acme.om.tenancy.types.auth_session import AuthSession
@@ -25,11 +25,13 @@ from acme.om.tenancy.types.user import User
 class TenancyStorageInterface(ABC):
     # Identities are global: a person exists before and across tenants.
     @abstractmethod
+    @tenantless
     async def read_identity(self, identity_id: UUID) -> Identity | None:
         """Global table: identities have no tenant."""
         ...
 
     @abstractmethod
+    @tenantless
     async def read_identity_by_email_digest(self, email_digest: str) -> Identity | None:
         """Global table: identities have no tenant. The sign-in lookup: it runs
         before any identity is known, so it takes the system scope, on the
@@ -37,6 +39,7 @@ class TenancyStorageInterface(ABC):
         ...
 
     @abstractmethod
+    @tenantless
     async def read_identity_by_issuer_subject(self, issuer: str, subject: str) -> Identity | None:
         """Global table: identities have no tenant. The identity provider's
         sign-in lookup, by the issuer and the subject the provider vouched
@@ -45,6 +48,7 @@ class TenancyStorageInterface(ABC):
         ...
 
     @abstractmethod
+    @tenantless
     async def write_identity(
         self, identity: Identity, outbox_rows: tuple[OutboxRow, ...] = ()
     ) -> None:
@@ -56,6 +60,7 @@ class TenancyStorageInterface(ABC):
         ...
 
     @abstractmethod
+    @tenantless
     async def disable_operator(
         self, identity: Identity, outbox_rows: tuple[OutboxRow, ...], at: datetime
     ) -> int:
@@ -69,6 +74,7 @@ class TenancyStorageInterface(ABC):
         ...
 
     @abstractmethod
+    @tenantless
     async def write_totp_secret(self, identity_id: UUID, sealed: str, at: datetime) -> bool:
         """Global table: identities have no tenant. Puts a new sealed TOTP
         secret on the identity, replacing one that was never confirmed, in one
@@ -77,6 +83,7 @@ class TenancyStorageInterface(ABC):
         ...
 
     @abstractmethod
+    @tenantless
     async def write_time_zone(self, identity_id: UUID, time_zone: str, at: datetime) -> bool:
         """Global table: identities have no tenant. Sets the person's time
         zone in one statement, and only that column; False when there is no
@@ -84,6 +91,7 @@ class TenancyStorageInterface(ABC):
         ...
 
     @abstractmethod
+    @tenantless
     async def confirm_totp(self, identity_id: UUID, step: int, at: datetime) -> bool:
         """Global table: identities have no tenant. Confirms the secret the
         identity holds and records `step` as the last one used, in one
@@ -92,6 +100,7 @@ class TenancyStorageInterface(ABC):
         ...
 
     @abstractmethod
+    @tenantless
     async def use_totp_step(self, identity_id: UUID, step: int) -> bool:
         """Global table: identities have no tenant. Records `step` as the last
         one a code was accepted for, only when it is later than the last one,
@@ -101,11 +110,13 @@ class TenancyStorageInterface(ABC):
 
     # The sign-in delay, keyed on the email's digest, is a system row.
     @abstractmethod
+    @tenantless
     async def read_sign_in_delay(self, email_digest: str) -> SignInDelay | None:
         """Global table: a delay belongs to an email, known or not."""
         ...
 
     @abstractmethod
+    @tenantless
     async def record_failed_sign_in(self, email_digest: str, at: datetime) -> None:
         """Global table: a delay belongs to an email, known or not. One more
         failed sign-in in the email's run, counted in the statement itself, so
@@ -113,12 +124,14 @@ class TenancyStorageInterface(ABC):
         ...
 
     @abstractmethod
+    @tenantless
     async def clear_failed_sign_ins(self, email_digest: str) -> None:
         """Global table: a delay belongs to an email, known or not. Ends the
         run on a sign-in that succeeded."""
         ...
 
     @abstractmethod
+    @tenantless
     async def purge_sign_in_delays(self, before: datetime, limit: int) -> int:
         """Global table: a delay belongs to an email, known or not. The sweep
         deletes at most `limit` runs whose last failure is older than
@@ -130,18 +143,21 @@ class TenancyStorageInterface(ABC):
     async def read_org(self, org_id: UUID) -> Org | None: ...
 
     @abstractmethod
+    @tenantless
     async def read_org_by_slug(self, slug: str) -> Org | None:
         """Cross-tenant lookup: the slug is resolved before a tenant is known.
         The living org with that slug; a deleted org has given it up."""
         ...
 
     @abstractmethod
+    @tenantless
     async def count_orgs(self) -> int:
         """Global: how many orgs are live (not soft-deleted), the tenant count
         of the sweep's tally of the system's size."""
         ...
 
     @abstractmethod
+    @tenantless
     async def count_orgs_and_users(self) -> tuple[int, int]:
         """Global, one statement: the live orgs, as `count_orgs` counts them,
         and the live users across every tenant, the two counts of the sweep's
@@ -149,6 +165,7 @@ class TenancyStorageInterface(ABC):
         ...
 
     @abstractmethod
+    @tenantless
     async def write_system_size(self, size: SystemSize) -> None:
         """Global: the sweep's count of the system's size becomes the one
         tally row, in the `admin` role. A count older than the row's never
@@ -156,12 +173,14 @@ class TenancyStorageInterface(ABC):
         ...
 
     @abstractmethod
+    @tenantless
     async def read_system_size(self) -> SystemSize | None:
         """Global: the system's size as the sweep last counted it, the one
         row read by its key; None until the first count."""
         ...
 
     @abstractmethod
+    @tenantless
     async def read_orgs(self, limit: int, after_id: UUID | None = None) -> list[Org]:
         """Cross-tenant sweep: every tenant, for the operator plane and for sweeps,
         in id order; `after_id` pages, so a sweep reaches every tenant and not
@@ -270,6 +289,7 @@ class TenancyStorageInterface(ABC):
         ...
 
     @abstractmethod
+    @tenantless
     async def delete_person(
         self,
         identity_id: UUID,
@@ -312,6 +332,7 @@ class TenancyStorageInterface(ABC):
     async def read_user(self, org_id: UUID, user_id: UUID) -> User | None: ...
 
     @abstractmethod
+    @tenantless
     async def read_users_by_identity(
         self, identity_id: UUID, limit: int
     ) -> list[tuple[UUID, User]]:
@@ -322,6 +343,7 @@ class TenancyStorageInterface(ABC):
         ...
 
     @abstractmethod
+    @tenantless
     async def read_memberships_by_identity(
         self, identity_id: UUID, limit: int, after_user_id: UUID | None = None
     ) -> list[OrgMembership]:
@@ -398,6 +420,7 @@ class TenancyStorageInterface(ABC):
     ) -> AuthSession | None: ...
 
     @abstractmethod
+    @tenantless
     async def read_auth_session_by_digest(self, token_hash: str) -> tuple[UUID, AuthSession] | None:
         """Cross-tenant lookup: the gateway holds a token, not a tenant; the
         tenant travels back. A login credential and an operator token are
@@ -405,6 +428,7 @@ class TenancyStorageInterface(ABC):
         ...
 
     @abstractmethod
+    @tenantless
     async def read_auth_session_with_identity_by_digest(
         self, token_hash: str
     ) -> tuple[UUID, AuthSession, Identity | None] | None:
@@ -415,6 +439,7 @@ class TenancyStorageInterface(ABC):
         ...
 
     @abstractmethod
+    @tenantless
     async def read_operator_tokens(
         self, identity_id: UUID, live_at: datetime, after: UUID | None, limit: int
     ) -> list[AuthSession]:
@@ -428,6 +453,7 @@ class TenancyStorageInterface(ABC):
         ...
 
     @abstractmethod
+    @tenantless
     async def read_auth_session_by_id(
         self, auth_session_id: UUID
     ) -> tuple[UUID, AuthSession] | None:
@@ -503,6 +529,7 @@ class TenancyStorageInterface(ABC):
     async def read_api_key(self, org_id: UUID, api_key_id: UUID) -> ApiKey | None: ...
 
     @abstractmethod
+    @tenantless
     async def read_api_key_by_digest(self, key_hash: str) -> tuple[UUID, ApiKey] | None:
         """Cross-tenant lookup: the gateway holds a key, not a tenant; the tenant travels back."""
         ...
@@ -585,6 +612,7 @@ class TenancyStorageInterface(ABC):
         ...
 
     @abstractmethod
+    @tenantless
     async def purge_deleted(self, before: datetime, tickets_before: datetime, limit: int) -> int:
         """Cross-tenant, for the sweep, in the system scope: the one hard
         delete, one transaction a pass for every tenant and the system scope
@@ -617,6 +645,7 @@ class TenancyStorageInterface(ABC):
         ...
 
     @abstractmethod
+    @tenantless
     async def redeem_socket_ticket(
         self, ticket_hash: str, redeemed_at: datetime
     ) -> tuple[UUID, SocketTicket] | None:

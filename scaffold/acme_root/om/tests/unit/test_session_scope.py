@@ -1,5 +1,5 @@
 """Every transaction names its scope at the funnel, and the system scope is
-passed only where the enumerated exceptions say.
+passed only where the declared exceptions say.
 
 `PgStorageBase._session_for` is the one place a Postgres impl opens a session,
 and it takes the tenant. `EMPTY_UUID` as the tenant is the system scope: the
@@ -11,33 +11,41 @@ argument is spelled at every call site and nowhere computed.
 """
 
 import ast
+import importlib
+import inspect
 from pathlib import Path
 
 import pytest
-from unit.test_storage_exceptions import STORAGE_EXCEPTIONS
+from unit.test_storage_exceptions import tenantless_methods
 
 import acme.om
 from acme.om.storage.impl import pg_base
 
 OM_ROOT = Path(acme.om.__path__[0])
 
-IMPL_INTERFACES: dict[str, str] = {
-    "TenancyStoragePostgresImpl": "TenancyStorageInterface",
-    "WorkStoragePostgresImpl": "WorkStorageInterface",
-    "ChangeEventStoragePostgresImpl": "ChangeEventStorageInterface",
-    "OutboxStoragePostgresImpl": "OutboxStorageInterface",
-    "IdempotencyStoragePostgresImpl": "IdempotencyStorageInterface",
-    "MediaStoragePostgresImpl": "MediaStorageInterface",
-    "OrchestrationsStoragePostgresImpl": "OrchestrationsStorageInterface",
-    "LeasesStoragePostgresImpl": "LeasesStorageInterface",
-}
-"""Which interface each Postgres impl answers, so a method found in the source
-can be held against the exceptions list, which names interfaces."""
+
+def impl_interfaces() -> dict[str, str]:
+    """Which interface each Postgres impl answers, read off its bases, so a
+    method found in the source can be held against the declarations, which
+    sit on interfaces."""
+    found: dict[str, str] = {}
+    for path in sorted(OM_ROOT.glob("*/storage/impl/postgres.py")):
+        module = importlib.import_module(f"acme.om.{path.parts[-4]}.storage.impl.postgres")
+        for name, cls in vars(module).items():
+            if inspect.isclass(cls) and name.endswith("PostgresImpl"):
+                bases = [base.__name__ for base in cls.__mro__[1:]]
+                found[name] = next(base for base in bases if base.endswith("StorageInterface"))
+    assert found, "no Postgres impls were found"
+    return found
+
+
+IMPL_INTERFACES = impl_interfaces()
+DECLARED_TENANTLESS = tenantless_methods()
 
 SYSTEM_SCOPE_HELPERS: frozenset[tuple[str, str]] = frozenset(
     {
         # The global-table primitive. A `system`-scoped table carries no
-        # policy and no tenant; every caller of it is in the exceptions list.
+        # policy and no tenant; every caller of it is declared tenantless.
         ("PgStorageBase", "_upsert_global"),
     }
 )
@@ -127,16 +135,16 @@ def test_the_system_scope_reaches_the_funnel_only_where_it_is_named() -> None:
     for class_name, method in sorted(found - SYSTEM_SCOPE_HELPERS):
         interface = IMPL_INTERFACES.get(class_name)
         assert interface is not None, f"{class_name}.{method} is in no interface"
-        assert (interface, method) in STORAGE_EXCEPTIONS | SYSTEM_SCOPE_WRITES, (
-            f"({interface}, {method}) reads across tenants and is not an enumerated exception"
+        assert (interface, method) in DECLARED_TENANTLESS | SYSTEM_SCOPE_WRITES, (
+            f"({interface}, {method}) reads across tenants and is not declared tenantless"
         )
 
 
 @pytest.mark.parametrize(
     ("interface", "method"),
-    sorted(pair for pair in STORAGE_EXCEPTIONS if pair[0] != "TenancyStorageInterface"),
+    sorted(pair for pair in DECLARED_TENANTLESS if pair[0] != "TenancyStorageInterface"),
 )
-def test_every_enumerated_exception_takes_the_system_scope(interface: str, method: str) -> None:
+def test_every_declared_exception_takes_the_system_scope(interface: str, method: str) -> None:
     """The other half: a method that takes no tenant reads across tenants, so
     it passes `EMPTY_UUID` and does not quietly borrow one. The tenancy
     exceptions are left out because two of them write through the global

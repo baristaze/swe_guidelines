@@ -12,7 +12,7 @@ itself is `noop`, which changes nothing else."""
 from abc import ABC, abstractmethod
 from uuid import UUID
 
-from acme.om.context import TenantContext
+from acme.om.context import TenantContext, stageless
 from acme.om.orchestrations.types.orchestration import (
     FailReason,
     Orchestration,
@@ -96,6 +96,7 @@ class OrchestrationsManagerInterface(ABC):
         ...
 
     @abstractmethod
+    @stageless
     async def purge_across_tenants(self) -> int:
         """System-internal: the sweep, across tenants, once a pass: the
         records settled past the retention, a batch at most, whatever their

@@ -12,6 +12,7 @@ from uuid import UUID
 
 from acme.om.change_events.types.change_event import ChangeEvent
 from acme.om.change_events.types.page import StreamPage
+from acme.om.context import tenantless
 
 
 class ChangeEventStorageInterface(ABC):
@@ -46,6 +47,7 @@ class ChangeEventStorageInterface(ABC):
         ...
 
     @abstractmethod
+    @tenantless
     async def count_since(self, since: datetime) -> int:
         """Global: how many events were produced at or after `since`, across
         every tenant; the traffic the operator plane's size reads."""
@@ -61,6 +63,7 @@ class ChangeEventStorageInterface(ABC):
         ...
 
     @abstractmethod
+    @tenantless
     async def trim(self, before: datetime, limit: int) -> int:
         """Cross-tenant, for the sweep, in the system scope: one statement, one
         transaction, for every tenant at once. The `limit` events produced

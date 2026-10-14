@@ -13,6 +13,7 @@ from abc import ABC, abstractmethod
 from datetime import datetime
 from uuid import UUID
 
+from acme.om.context import tenantless
 from acme.om.idempotency.types.record import IdempotencyRecord
 
 
@@ -65,6 +66,7 @@ class IdempotencyStorageInterface(ABC):
         ...
 
     @abstractmethod
+    @tenantless
     async def purge_records(
         self, finished_before: datetime, attempts_before: UUID, limit: int
     ) -> int:

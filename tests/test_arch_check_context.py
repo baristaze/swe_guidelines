@@ -367,57 +367,51 @@ def test_a_late_tenant_and_a_tenant_beside_tenant_context_are_ctx_10(tmp_path):
 # --- CTX-12
 
 
-LISTED = PYPROJECT + '\n[tool.arch-check.options.CTX-12]\ntenantless = ["TasksStorageInterface.count_since"]\n'
+DECLARED = STORAGE.replace("    async def count_since", "    @tenantless\n    async def count_since")
 
 
-def test_a_documented_tenantless_method_passes_ctx_12(tmp_path):
-    code, _, _ = run(tmp_path, "CTX-12", {f"{OM}/tasks/storage/__init__.py": STORAGE}, pyproject=LISTED)
+def test_a_documented_declared_tenantless_method_passes_ctx_12(tmp_path):
+    code, _, _ = run(tmp_path, "CTX-12", {f"{OM}/tasks/storage/__init__.py": DECLARED})
     assert code == 0
 
 
 def test_an_undocumented_tenantless_method_is_ctx_12(tmp_path):
-    storage = STORAGE.replace('        """Cross-tenant: the system size."""\n', "")
-    code, found, _ = run(tmp_path, "CTX-12", {f"{OM}/tasks/storage/__init__.py": storage}, pyproject=LISTED)
-    assert (code, found) == (1, [("CTX-12", f"{OM}/tasks/storage/__init__.py", 12)])
+    storage = DECLARED.replace('        """Cross-tenant: the system size."""\n', "")
+    code, found, _ = run(tmp_path, "CTX-12", {f"{OM}/tasks/storage/__init__.py": storage})
+    assert (code, found) == (1, [("CTX-12", f"{OM}/tasks/storage/__init__.py", 13)])
 
 
 def test_a_class_docstring_does_not_excuse_a_tenantless_method_beside_tenant_ones_for_ctx_12(tmp_path):
-    storage = STORAGE.replace('        """Cross-tenant: the system size."""\n', "").replace(
+    storage = DECLARED.replace('        """Cross-tenant: the system size."""\n', "").replace(
         "class TasksStorageInterface(ABC):\n", 'class TasksStorageInterface(ABC):\n    """The tasks of a tenant."""\n\n'
     )
-    code, found, messages = run(tmp_path, "CTX-12", {f"{OM}/tasks/storage/__init__.py": storage}, pyproject=LISTED)
-    assert (code, [line for _, _, line in found]) == (1, [14])
+    code, found, messages = run(tmp_path, "CTX-12", {f"{OM}/tasks/storage/__init__.py": storage})
+    assert (code, [line for _, _, line in found]) == (1, [15])
     assert "its interface also has tenant methods" in messages[0]
 
 
-def test_no_tenantless_list_at_all_is_ctx_12(tmp_path):
+def test_an_undeclared_tenantless_method_is_ctx_12(tmp_path):
     code, found, messages = run(tmp_path, "CTX-12", {f"{OM}/tasks/storage/__init__.py": STORAGE})
     assert (code, found) == (1, [("CTX-12", f"{OM}/tasks/storage/__init__.py", 12)])
-    assert "no tenantless list under [tool.arch-check.options.CTX-12] names it" in messages[0]
+    assert "takes no tenant and is not declared @tenantless" in messages[0]
 
 
 def test_a_global_interface_documented_on_the_class_passes_ctx_12(tmp_path):
     storage = (
         "from abc import ABC, abstractmethod\n\n\nclass CatalogStorageInterface(ABC):\n"
         '    """Global: the catalog is system-owned reference data, shared by every tenant."""\n\n'
-        "    @abstractmethod\n    async def read_product(self, sku: str) -> Product | None: ...\n\n"
-        "    @abstractmethod\n    async def list_products(self) -> list[Product]: ...\n"
+        "    @abstractmethod\n    @tenantless\n    async def read_product(self, sku: str) -> Product | None: ...\n\n"
+        "    @abstractmethod\n    @context.tenantless\n    async def list_products(self) -> list[Product]: ...\n"
     )
-    pyproject = (
-        PYPROJECT + "\n[tool.arch-check.options.CTX-12]\n"
-        'tenantless = ["CatalogStorageInterface.read_product", "CatalogStorageInterface.list_products"]\n'
-    )
-    code, _, _ = run(tmp_path, "CTX-12", {f"{OM}/catalog/storage/__init__.py": storage}, pyproject=pyproject)
+    code, _, _ = run(tmp_path, "CTX-12", {f"{OM}/catalog/storage/__init__.py": storage})
     assert code == 0
 
 
-def test_the_tenantless_list_is_held_both_ways_by_ctx_12(tmp_path):
-    pyproject = PYPROJECT + '\n[tool.arch-check.options.CTX-12]\ntenantless = ["TasksStorageInterface.count_gone"]\n'
-    code, found, messages = run(tmp_path, "CTX-12", {f"{OM}/tasks/storage/__init__.py": STORAGE}, pyproject=pyproject)
-    assert code == 1
-    assert [p for _, p, _ in found] == [f"{OM}/tasks/storage/__init__.py", "pyproject.toml"]
-    assert "not on the tenantless list" in messages[0]
-    assert "count_gone, which is no tenant-less method" in messages[1]
+def test_a_tenant_method_declared_tenantless_is_ctx_12(tmp_path):
+    storage = DECLARED.replace("    async def read_task", "    @tenantless\n    async def read_task")
+    code, found, messages = run(tmp_path, "CTX-12", {f"{OM}/tasks/storage/__init__.py": storage})
+    assert (code, [line for _, _, line in found]) == (1, [7])
+    assert "takes org_id first and is declared @tenantless" in messages[0]
 
 
 # --- CTX-14
@@ -673,13 +667,6 @@ def test_a_nested_function_sees_only_what_it_does_not_rebind_for_ctx_06(tmp_path
     closure = "def outer(ctx: TenantContext):\n    def inner():\n        return ctx.model_copy()\n\n    return inner\n"
     code, found, _ = run(tmp_path, "CTX-06", {f"{OM}/tasks/impl/manager.py": closure})
     assert (code, [line for _, _, line in found]) == (1, [3])
-
-
-def test_an_empty_tenantless_list_still_enumerates_for_ctx_12(tmp_path):
-    pyproject = PYPROJECT + "\n[tool.arch-check.options.CTX-12]\ntenantless = []\n"
-    code, found, messages = run(tmp_path, "CTX-12", {f"{OM}/tasks/storage/__init__.py": STORAGE}, pyproject=pyproject)
-    assert (code, [p for _, p, _ in found]) == (1, [f"{OM}/tasks/storage/__init__.py"])
-    assert "not on the tenantless list" in messages[0]
 
 
 def test_a_closure_inside_a_listed_method_is_part_of_the_site_for_ctx_26(tmp_path):

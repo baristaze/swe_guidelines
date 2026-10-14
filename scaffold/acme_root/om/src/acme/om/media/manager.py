@@ -5,7 +5,7 @@ the purpose and the subject, and it knows nothing of what the subject is."""
 from abc import ABC, abstractmethod
 from uuid import UUID
 
-from acme.om.context import TenantContext
+from acme.om.context import TenantContext, stageless
 from acme.om.media.types.file import File, FilePurpose
 from acme.om.media.types.page import FilePage
 from acme.om.media.types.transfer import DownloadLink, UploadForm
@@ -98,6 +98,7 @@ class MediaManagerInterface(ABC):
         ...
 
     @abstractmethod
+    @stageless
     async def purge_across_tenants(self) -> int:
         """System-internal: the sweep, across tenants, once a pass, one batch
         at a time: removes the objects of files deleted past the retention
