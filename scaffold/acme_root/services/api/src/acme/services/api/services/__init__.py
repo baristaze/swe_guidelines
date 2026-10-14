@@ -23,6 +23,8 @@ __all__ = [
     "ServicesInterface",
     "TenancyServiceInterface",
     "WebhooksServiceInterface",
+]
+__all__ += [
     # A copy adds its entries below this line.
 ]
 

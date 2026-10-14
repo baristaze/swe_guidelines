@@ -341,9 +341,11 @@ runs once, before the passes. It is not a pass.
    no log store of its own: without `--log-file` its log leg reports
    zero lines, which says nothing. `--log-file` takes one file, so the
    processes' logs go in one: step 5's `docker compose ... logs` call
-   for `api maintenance`, without its `grep`, written to a file with
-   `>`. A process that logs to a file of its own on the host is read by
-   step 5's `grep` instead.
+   for `api maintenance`, with `--no-log-prefix` and without its
+   `grep`, written to a file with `>`. Compose otherwise puts the
+   service's name before each line, and the reader parses a line as a
+   record only when it starts with `{`. A process that logs to a file
+   of its own on the host is read by step 5's `grep` instead.
 
 8. Correlate. One request id ties the change event row (what the tenant
    asked), the log lines (what the process decided), the trace (where

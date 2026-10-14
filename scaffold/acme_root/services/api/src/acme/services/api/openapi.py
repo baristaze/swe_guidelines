@@ -180,11 +180,22 @@ def _types(app: FastAPI) -> dict[str, tuple[type, set[str]]]:
             continue
         seen.add((id(node), mode))
         if isinstance(node, dict):
-            if isinstance(node.get("ref"), str) and isinstance(node.get("cls"), type):
-                found.setdefault(node["ref"], (node["cls"], set()))[1].add(mode)
+            if isinstance(node.get("ref"), str) and (cls := _class_of(node)) is not None:
+                found.setdefault(node["ref"], (cls, set()))[1].add(mode)
             node = [v for k, v in node.items() if mode == "serialization" or k not in WRITTEN]
         stack.extend((value, mode) for value in node if isinstance(value, dict | list | tuple))
     return found
+
+
+def _class_of(node: Any) -> type | None:
+    """The class a core schema with a ref defines: its own `cls`, or, where a
+    model validator wraps the model, the class of the schema the validator's
+    node wraps, since pydantic puts the ref on that outer node."""
+    while isinstance(node, dict):
+        if isinstance(node.get("cls"), type):
+            return node["cls"]
+        node = node.get("schema")
+    return None
 
 
 def _framework_names(ref: str) -> tuple[str, str]:

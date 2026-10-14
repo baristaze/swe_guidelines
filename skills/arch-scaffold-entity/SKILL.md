@@ -70,18 +70,18 @@ table's sibling by scope, with its policy in its role's first migration:
 
 | File | Change |
 |------|--------|
-| `om/src/<name>/om/<ns>/storage/__init__.py`, `impl/postgres.py`, `impl/memory.py` | the storage operations of the conventions' Names, each with its tenant first by the scope, and `purge_tenant(org_id, limit)` when the namespace gains its first table, as the orchestrations storage has it |
+| `om/src/<name>/om/<ns>/storage/__init__.py`, `impl/postgres.py`, `impl/memory.py` | the storage operations of the conventions' Names, each with its tenant first by the scope, and `purge_tenant(org_id, limit)` when the namespace gains its first table, which deletes at most `limit` of the tenant's rows from each table the namespace holds, the new one included, as the leases storage's does over its three |
 | `om/src/<name>/om/<ns>/manager.py`, `impl/manager.py` | the manager operations, or, when the manager delegates the entity's duty, those operations in the delegate's `<duty>.py` and `impl/<duty>.py`; and `purge_tenant(ctx)` over the storage's, always on the manager itself, which the maintenance worker calls, its batch from the namespace's options, as `OrchestrationsOptions` carries it |
 | `om/src/<name>/om/root.py`, `workers/maintenance/src/<name>/workers/maintenance/container.py` (first table) | the namespace's options taken by `build_managers`, and the worker's purge batch passed in them, as `orchestrations_options` is |
 | `om/src/<name>/om/storage/roles.py`, `scopes.py` | the table in `TABLE_ROLES` and in `TABLE_SCOPES` |
-| `om/src/<name>/om/<ns>/README.md` | the noun, what can happen to it, the rules that hold |
+| `om/src/<name>/om/<ns>/README.md`, `om/README.md` | the noun, what can happen to it, the rules that hold; in `om/README.md`, the noun in a paragraph of its own, linked to the namespace's README where it is first named, as the file is |
 | `om/src/<name>/om/exceptions.py` (when a leaf is needed) | `<Ns>Exception(OmException)` once, then leaves that multiply-inherit a shape (`NotFound`, `Conflict`) |
 | `workers/maintenance/src/<name>/workers/maintenance/main.py` | the namespace in `purges`, and, for a `SoftDeletable` entity, its purge past retention in `across`, as `media` is |
-| `services/api/src/<name>/services/api/types/<ns>.py`, `services/<ns>.py`, `services/impl/<ns>.py`, `routers/<ns>.py` (unless `--no-api`) | the views and requests, the service interface, its impl, and the routes, shape `media`: every route tagged `<ns>`, an operator route in the module's `operator` router under `/admin`, as `routers/work.py` holds, and the module's docstring the routes by area |
-| `services/api/src/<name>/services/api/services/__init__.py`, `services/impl/root.py`, `gateway/resolve.py` (when `<ns>` is new to the API) | the service getter, its impl built over the managers, and its `<Ns>Service` alias |
+| `services/api/src/<name>/services/api/types/<ns>.py`, `services/<ns>.py`, `services/impl/<ns>.py`, `routers/<ns>.py` (unless `--no-api`) | the views and requests, the service interface, its impl, and the routes, shape `media`: every route tagged `<ns>`, and the module's docstring the routes by area. An operator route goes in the module's `operator` router under `/admin`, as `routers/work.py` holds, and calls the namespace's own service, so the admin service stays as it is; the operation is the namespace's manager's, which requires `OperatorPermission.READ` or `WRITE` of the `OperatorContext` and reads the org the route names through the tenancy operator manager's `get_org`, `NotFound` for an org that is not there |
+| `services/api/src/<name>/services/api/services/__init__.py`, `services/impl/root.py`, `gateway/resolve.py` (when `<ns>` is new to the API) | the service interface's name in the `__all__ +=` list and its getter on the root, each below its marker, its impl built over the managers, and its `<Ns>Service` alias |
 | `services/api/src/<name>/services/api/routers/__init__.py` (when `<ns>` is new to the API, or its `operator` router is) | the namespace's entry in `HOSTED`, naming each router `routers/<ns>.py` holds: its `router`, and its `operator` beside it |
 | `clients/typescript/src/types/<ns>.ts`, `src/index.ts` (with the portal screen) | the facade type, which the screen names as `<ns>.<Name>`; a new module's `export type * as <ns>` line, in order |
-| `apps/portal/src/queries/keys.ts`, `queries/<ns>.ts`, `app/routes.tsx`, `realtime/router.ts`, `realtime/router.test.ts` (with the portal screen) | a key whose first element is `<entity>`, the query hooks, the route, `<entity>` in `PUSHED_ENTITIES`, and its kinds in `SERVER_KINDS` |
+| `apps/portal/src/queries/keys.ts`, `queries/<ns>.ts`, `app/routes.tsx`, `realtime/router.ts`, `realtime/router.test.ts` (with the portal screen) | a key whose first element is `<entity>`, the query hooks, the route, and, only when the entity pushes (its writes carry an outbox row, as a `core`-role entity's do and an `activity`-role entity's never do), `<entity>` in `PUSHED_ENTITIES` and its kinds in `SERVER_KINDS` |
 | `apps/portal/src/app/AppNav.tsx` or `features/home/HomePage.tsx` (with the portal screen) | a link to the new screen, where the portal links its screens |
 
 ## Procedure
@@ -98,13 +98,21 @@ table's sibling by scope, with its policy in its role's first migration:
    only among the living rows.
 3. A create returns `bool`, `False` when the id is already written. With
    a second unique key it returns `InsertOutcome` instead, as
-   `create_item` in `om/src/<name>/om/work/storage/` does, and the
-   manager reads the row back by the key that collided.
+   `create_item` in `om/src/<name>/om/work/storage/` does. The manager
+   reads the row back by the key that collided, and returns it only when
+   its id is the id the create carried: a retry. A row under another id
+   holds a business key another request took, and the create raises the
+   namespace's leaf of `Conflict` (409), `<Entity><Key>Taken`. The work
+   manager returns the row on either, since its second key is an
+   idempotency key, which only a retry repeats.
 4. Manager operations follow authorize, verify, copy, write, and return
    the copy it wrote. Reads take `Permission.READ`, writes
    `Permission.WRITE`. A `core`-role write carries
    `outbox_row(ctx, "<ns>.<entity>.<created|updated|deleted>", <entity>.id, {})`,
-   and a second row when work follows. An `activity`-role entity is
+   and a second row when work follows. A versioned entity's row is
+   `versioned_row(ctx, <kind>, <entity>.id, <entity>.version)` instead,
+   with the version the write left, so the push carries it, as
+   `om/src/<name>/om/orchestrations/steps.py` writes it. An `activity`-role entity is
    appended by `append_<entity>` and carries no outbox row. A list is a
    page, `after` and a clamped `limit`, like `get_files`. A get or a
    list leaves out a soft-deleted row, in both impls.
@@ -113,7 +121,11 @@ table's sibling by scope, with its policy in its role's first migration:
    against `expected_version`. The copy sets `version` to the expected
    version plus one, and a mismatch raises `PreconditionFailed` (412).
    At the edge, the get answers the version as a strong `ETag`,
-   `"<version>"`. The `PATCH` takes the expected version from `If-Match`
+   `"<version>"`, set by a response type of `types/<ns>.py` that the
+   service impl returns, as `FileContentResponse` in `types/media.py`
+   sets its headers; the route declares the view as its
+   `response_model` and returns the response as it is, never setting a
+   header itself. The `PATCH` takes the expected version from `If-Match`
    or the body's `expected_version`, and refuses a request with neither,
    or with both and different, as `ValidationFailed`. The service impl
    passes the caller's version through and never fills it from the row
