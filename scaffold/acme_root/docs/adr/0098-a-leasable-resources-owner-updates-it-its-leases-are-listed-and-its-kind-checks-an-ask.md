@@ -61,12 +61,10 @@ them.
   from another list is refused with 422. Each entry is the lease's view
   and its request's, without the payload, as the request's view leaves
   it out. The Python client's `lease_history` reads a page.
-- **Two indexes on the `core` chain.**
-  `202610091856_leases_listed_newest_first` adds
+- **Two indexes serve the history.** The two reads walk
   `ix_leases_org_id_created_at_id` and
-  `ix_leases_org_id_leasable_resource_id_created_at_id`, which the two
-  reads walk
-  backwards to the page's bound.
+  `ix_leases_org_id_leasable_resource_id_created_at_id` backwards to the
+  page's bound.
 - **A wait line answers each place and estimate.** `line` reads the
   leasable resource, its kind's leasable resources, and the waiting
   requests, and replays them once (`rules.replay_all`,

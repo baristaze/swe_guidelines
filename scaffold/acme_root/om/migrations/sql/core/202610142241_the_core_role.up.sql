@@ -1,6 +1,7 @@
 -- The core role, whole: tenancy (orgs, identities, users, memberships,
--- invitations, sessions, api keys, socket tickets, sign-in delays), the
--- outbox, the idempotency markers, media's files, and the orchestrations.
+-- invitations, auth sessions, api keys, socket tickets, sign-in delays), the
+-- outbox, the idempotency markers, media's files, the orchestrations, and the
+-- leases on a leasable resource.
 --
 -- Every tenant table carries `org_id` and one row-level security policy,
 -- `tenant_fence`, forced on the table's owner too: a row is read or written
@@ -126,8 +127,8 @@ CREATE INDEX ix_invitations_expires_at ON core.invitations (expires_at);
 CREATE INDEX ix_invitations_updated_at ON core.invitations (updated_at);
 
 -- A login credential, an operator token (no tenant: under the system
--- scope), or a tenant session. Only the token's hash is kept.
-CREATE TABLE core.sessions (
+-- scope), or a tenant's auth session. Only the token's hash is kept.
+CREATE TABLE core.auth_sessions (
     id uuid NOT NULL,
     org_id uuid NOT NULL,
     created_at timestamptz NOT NULL,
@@ -144,11 +145,11 @@ CREATE TABLE core.sessions (
     second_factor_at timestamptz NULL,
     operator_role text NULL,
     provider_session_id text NULL,
-    CONSTRAINT pk_sessions PRIMARY KEY (id)
+    CONSTRAINT pk_auth_sessions PRIMARY KEY (id)
 );
-CREATE UNIQUE INDEX uq_sessions_token_hash ON core.sessions (token_hash);
-CREATE INDEX ix_sessions_org_id_expires_at ON core.sessions (org_id, expires_at);
-CREATE INDEX ix_sessions_expires_at ON core.sessions (expires_at);
+CREATE UNIQUE INDEX uq_auth_sessions_token_hash ON core.auth_sessions (token_hash);
+CREATE INDEX ix_auth_sessions_org_id_expires_at ON core.auth_sessions (org_id, expires_at);
+CREATE INDEX ix_auth_sessions_expires_at ON core.auth_sessions (expires_at);
 
 -- A key hash digests a fresh random secret, and the lookup reads revoked
 -- keys too, so it can answer "revoked": the unique index is full (ADR 0019).
@@ -301,6 +302,114 @@ CREATE INDEX ix_orchestrations_org_id_status_updated_at
     ON core.orchestrations (org_id, status, updated_at);
 CREATE INDEX ix_orchestrations_status_updated_at ON core.orchestrations (status, updated_at);
 
+-- One row per leasable resource, unique by its org, its kind, and the row
+-- it stands for. The anchor is the row a grant locks.
+CREATE TABLE core.leasable_resources (
+    id uuid NOT NULL,
+    org_id uuid NOT NULL,
+    created_at timestamptz NOT NULL,
+    updated_at timestamptz NOT NULL,
+    created_by uuid NOT NULL,
+    updated_by uuid NOT NULL,
+    kind text NOT NULL,
+    ref_id uuid NOT NULL,
+    labels jsonb NOT NULL,
+    max_term_seconds integer NOT NULL,
+    available boolean NOT NULL,
+    retired_at timestamptz NULL,
+    token bigint NOT NULL,
+    lease_id uuid NULL,
+    held_until timestamptz NULL,
+    mean_hold_seconds double precision NULL,
+    CONSTRAINT pk_leasable_resources PRIMARY KEY (id)
+);
+CREATE UNIQUE INDEX uq_leasable_resources_org_id_kind_ref_id ON core.leasable_resources (org_id, kind, ref_id);
+CREATE INDEX ix_leasable_resources_org_id_kind_id ON core.leasable_resources (org_id, kind, id);
+CREATE INDEX ix_leasable_resources_org_id_kind_free ON core.leasable_resources (org_id, kind)
+    WHERE lease_id IS NULL AND available AND retired_at IS NULL;
+CREATE INDEX ix_leasable_resources_retired_at ON core.leasable_resources (retired_at) WHERE retired_at IS NOT NULL;
+
+-- One grant of one leasable resource. The partial unique index is the second
+-- fence: one active lease per leasable resource, whatever passed the anchor's
+-- lock; and one lease per request. A lease whose grant started a job keeps
+-- the job's key and when the job started it; one its holder keeps itself
+-- leaves both empty.
+CREATE TABLE core.leases (
+    id uuid NOT NULL,
+    org_id uuid NOT NULL,
+    created_at timestamptz NOT NULL,
+    updated_at timestamptz NOT NULL,
+    created_by uuid NOT NULL,
+    updated_by uuid NOT NULL,
+    leasable_resource_id uuid NOT NULL,
+    request_id uuid NOT NULL,
+    holder_id uuid NOT NULL,
+    token bigint NOT NULL,
+    term_seconds integer NOT NULL,
+    expires_at timestamptz NOT NULL,
+    status text NOT NULL,
+    ended_at timestamptz NULL,
+    job_key uuid NULL,
+    started_at timestamptz NULL,
+    CONSTRAINT pk_leases PRIMARY KEY (id)
+);
+CREATE UNIQUE INDEX uq_leases_org_id_leasable_resource_id_active ON core.leases (org_id, leasable_resource_id)
+    WHERE status = 'active';
+CREATE UNIQUE INDEX uq_leases_org_id_request_id ON core.leases (org_id, request_id);
+CREATE INDEX ix_leases_org_id_expires_at_active ON core.leases (org_id, expires_at)
+    WHERE status = 'active';
+CREATE INDEX ix_leases_expires_at_active ON core.leases (expires_at) WHERE status = 'active';
+CREATE INDEX ix_leases_ended_at ON core.leases (ended_at) WHERE ended_at IS NOT NULL;
+-- The history of the leases, newest first: the org's, and one leasable
+-- resource's, each read by an index whose order it walks backwards and stops
+-- at the page's bound.
+CREATE INDEX ix_leases_org_id_created_at_id ON core.leases (org_id, created_at, id);
+CREATE INDEX ix_leases_org_id_leasable_resource_id_created_at_id
+    ON core.leases (org_id, leasable_resource_id, created_at, id);
+
+-- The wait line: a request names one leasable resource or a selector, and
+-- holds one place in its org's rank order. An ask asked again by its key meets
+-- the key. A request whose grant starts a job may name the window the job has
+-- to start in.
+CREATE TABLE core.lease_requests (
+    id uuid NOT NULL,
+    org_id uuid NOT NULL,
+    created_at timestamptz NOT NULL,
+    updated_at timestamptz NOT NULL,
+    created_by uuid NOT NULL,
+    updated_by uuid NOT NULL,
+    idempotency_key uuid NOT NULL,
+    kind text NOT NULL,
+    leasable_resource_id uuid NULL,
+    labels jsonb NULL,
+    payload jsonb NOT NULL,
+    waiter_kind text NULL,
+    waiter_id uuid NULL,
+    term_seconds integer NOT NULL,
+    wait_seconds integer NOT NULL,
+    wait_until timestamptz NOT NULL,
+    rank double precision NOT NULL,
+    status text NOT NULL,
+    end_reason text NULL,
+    lease_id uuid NULL,
+    start_seconds integer NULL,
+    CONSTRAINT pk_lease_requests PRIMARY KEY (id)
+);
+CREATE UNIQUE INDEX uq_lease_requests_org_id_idempotency_key
+    ON core.lease_requests (org_id, idempotency_key);
+CREATE INDEX ix_lease_requests_org_id_kind_rank_id_waiting
+    ON core.lease_requests (org_id, kind, rank, id) WHERE status = 'waiting';
+CREATE INDEX ix_lease_requests_org_id_wait_until_waiting
+    ON core.lease_requests (org_id, wait_until) WHERE status = 'waiting';
+CREATE INDEX ix_lease_requests_wait_until_waiting
+    ON core.lease_requests (wait_until) WHERE status = 'waiting';
+CREATE INDEX ix_lease_requests_org_id_waiter_kind_waiter_id_waiting
+    ON core.lease_requests (org_id, waiter_kind, waiter_id) WHERE status = 'waiting';
+CREATE INDEX ix_lease_requests_org_id_leasable_resource_id_waiting
+    ON core.lease_requests (org_id, leasable_resource_id) WHERE status = 'waiting';
+CREATE INDEX ix_lease_requests_updated_at_settled
+    ON core.lease_requests (updated_at) WHERE status <> 'waiting';
+
 -- The second fence. A tenant table admits a row of the transaction's own
 -- tenant, or any row under the system scope to the system login alone.
 -- Tables a person's own credentials live in narrow the tenant further to the
@@ -407,9 +516,9 @@ CREATE POLICY tenant_fence ON core.invitations
         )
     );
 
-ALTER TABLE core.sessions ENABLE ROW LEVEL SECURITY;
-ALTER TABLE core.sessions FORCE ROW LEVEL SECURITY;
-CREATE POLICY tenant_fence ON core.sessions
+ALTER TABLE core.auth_sessions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE core.auth_sessions FORCE ROW LEVEL SECURITY;
+CREATE POLICY tenant_fence ON core.auth_sessions
     USING (
         (
             org_id = NULLIF(current_setting('app.org_id', true), '')::uuid
@@ -574,6 +683,60 @@ CREATE POLICY tenant_fence ON core.files
 ALTER TABLE core.orchestrations ENABLE ROW LEVEL SECURITY;
 ALTER TABLE core.orchestrations FORCE ROW LEVEL SECURITY;
 CREATE POLICY tenant_fence ON core.orchestrations
+    USING (
+        org_id = NULLIF(current_setting('app.org_id', true), '')::uuid
+        OR (
+            current_setting('app.org_id', true) = '00000000-0000-0000-0000-000000000000'
+            AND current_user = 'acme_system'
+        )
+    )
+    WITH CHECK (
+        org_id = NULLIF(current_setting('app.org_id', true), '')::uuid
+        OR (
+            current_setting('app.org_id', true) = '00000000-0000-0000-0000-000000000000'
+            AND current_user = 'acme_system'
+        )
+    );
+
+ALTER TABLE core.leasable_resources ENABLE ROW LEVEL SECURITY;
+ALTER TABLE core.leasable_resources FORCE ROW LEVEL SECURITY;
+CREATE POLICY tenant_fence ON core.leasable_resources
+    USING (
+        org_id = NULLIF(current_setting('app.org_id', true), '')::uuid
+        OR (
+            current_setting('app.org_id', true) = '00000000-0000-0000-0000-000000000000'
+            AND current_user = 'acme_system'
+        )
+    )
+    WITH CHECK (
+        org_id = NULLIF(current_setting('app.org_id', true), '')::uuid
+        OR (
+            current_setting('app.org_id', true) = '00000000-0000-0000-0000-000000000000'
+            AND current_user = 'acme_system'
+        )
+    );
+
+ALTER TABLE core.leases ENABLE ROW LEVEL SECURITY;
+ALTER TABLE core.leases FORCE ROW LEVEL SECURITY;
+CREATE POLICY tenant_fence ON core.leases
+    USING (
+        org_id = NULLIF(current_setting('app.org_id', true), '')::uuid
+        OR (
+            current_setting('app.org_id', true) = '00000000-0000-0000-0000-000000000000'
+            AND current_user = 'acme_system'
+        )
+    )
+    WITH CHECK (
+        org_id = NULLIF(current_setting('app.org_id', true), '')::uuid
+        OR (
+            current_setting('app.org_id', true) = '00000000-0000-0000-0000-000000000000'
+            AND current_user = 'acme_system'
+        )
+    );
+
+ALTER TABLE core.lease_requests ENABLE ROW LEVEL SECURITY;
+ALTER TABLE core.lease_requests FORCE ROW LEVEL SECURITY;
+CREATE POLICY tenant_fence ON core.lease_requests
     USING (
         org_id = NULLIF(current_setting('app.org_id', true), '')::uuid
         OR (

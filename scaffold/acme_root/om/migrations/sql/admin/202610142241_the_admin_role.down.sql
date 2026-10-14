@@ -8,4 +8,4 @@ REVOKE ALL ON ALL SEQUENCES IN SCHEMA admin FROM acme_runtime, acme_system;
 REVOKE ALL ON ALL TABLES IN SCHEMA admin FROM acme_runtime, acme_system;
 REVOKE USAGE ON SCHEMA admin FROM acme_runtime, acme_system;
 
-DROP TABLE admin.platform_sizes;
+DROP TABLE admin.system_sizes;

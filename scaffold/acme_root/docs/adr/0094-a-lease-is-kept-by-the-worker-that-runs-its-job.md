@@ -61,10 +61,9 @@ holder, and this records how Acme holds it.
   leasable resource's bound on one lease, a request's term, its window,
   and a renewal run up to `MAX_TERM_SECONDS`, seven days. No column
   checks them: the types hold them.
-- **One migration on the `core` chain.**
-  `202609280002_a_lease_kept_by_its_jobs_worker` adds `job_key` and
-  `started_at` to `leases`, and `start_seconds` to `lease_requests`, all
-  nullable, so a lease its holder keeps leaves them empty.
+- **The job's columns are nullable.** `job_key` and `started_at` on
+  `leases`, and `start_seconds` on `lease_requests`, are nullable, so a
+  lease its holder keeps leaves them empty.
 - **The client takes the lengths.**
   `ask_lease` takes `start_seconds`, and `renew_lease` takes `seconds`.
   `LeaseClock` counts the seconds the answer gives from the send, so a

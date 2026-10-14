@@ -19,8 +19,8 @@ and this records how Acme holds it.
   `om/src/acme/om/leases` holds three tables, `leasable_resources`,
   `leases`, and `lease_requests`, with storage in Postgres and in memory
   under the tenant fence, and its manager (Namespaces as Swimlanes;
-  Database Roles). The migration is `202609280001_leases_on_a_resource`
-  on the `core` chain.
+  Database Roles). The `core` role's migration,
+  `202610142241_the_core_role`, holds the three tables.
 - **A leasable resource is a reference by a registered kind and an id.**
   It is unique by org, `kind`, and `ref_id`. The namespace that owns the
   row lands the leasable resource in the same commit as its row, through

@@ -1,5 +1,6 @@
 -- The queue role, whole: durable background work, one row per item, with
--- its own claim (a lease and a token) on the row.
+-- its own claim (a lease and a token) on the row, and each tenant's own cap
+-- on a lane.
 --
 -- The key is unique per tenant: a producer that asks twice meets the item
 -- it asked for. The claim walks the ready items of a lane in order; the
@@ -60,8 +61,49 @@ CREATE POLICY system_fence ON queue.work_items FOR ALL TO acme_system
     USING (current_setting('app.org_id', true) = '00000000-0000-0000-0000-000000000000')
     WITH CHECK (current_setting('app.org_id', true) = '00000000-0000-0000-0000-000000000000');
 
--- The serving logins hold DML and nothing else, now and on every table to
--- come; the migration bookkeeping is the migration login's alone.
+-- A tenant's own cap on a lane: one row per tenant and lane, which the
+-- claim joins to its count of the lane's claimed items, in place of the
+-- lane's cap for that tenant.
+
+CREATE TABLE queue.tenant_caps (
+    id uuid NOT NULL,
+    org_id uuid NOT NULL,
+    created_at timestamptz NOT NULL,
+    updated_at timestamptz NOT NULL,
+    created_by uuid NOT NULL,
+    updated_by uuid NOT NULL,
+    lane text NOT NULL,
+    cap integer NOT NULL,
+    CONSTRAINT pk_tenant_caps PRIMARY KEY (id)
+);
+CREATE UNIQUE INDEX uq_tenant_caps_org_id_lane ON queue.tenant_caps (org_id, lane);
+
+-- The second fence, as on every tenant table (ADR 0016): the transaction's
+-- own tenant, or the system scope to the system login alone. An operator's
+-- write reaches the one tenant it names; the claim reads the caps of the
+-- lane it claims from under the system scope.
+
+ALTER TABLE queue.tenant_caps ENABLE ROW LEVEL SECURITY;
+ALTER TABLE queue.tenant_caps FORCE ROW LEVEL SECURITY;
+CREATE POLICY tenant_fence ON queue.tenant_caps
+    USING (
+        org_id = NULLIF(current_setting('app.org_id', true), '')::uuid
+        OR (
+            current_setting('app.org_id', true) = '00000000-0000-0000-0000-000000000000'
+            AND current_user = 'acme_system'
+        )
+    )
+    WITH CHECK (
+        org_id = NULLIF(current_setting('app.org_id', true), '')::uuid
+        OR (
+            current_setting('app.org_id', true) = '00000000-0000-0000-0000-000000000000'
+            AND current_user = 'acme_system'
+        )
+    );
+
+-- The serving logins hold DML and nothing else, on every table there is and
+-- every table to come; the migration bookkeeping is the migration login's
+-- alone.
 
 GRANT USAGE ON SCHEMA queue TO acme_runtime, acme_system;
 GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA queue TO acme_runtime, acme_system;

@@ -1126,7 +1126,7 @@ The funnel sets the call's scope as transaction-local settings, so a
 pooled connection hands nothing on
 ([`pg_base.py`](scaffold/acme_root/om/src/acme/om/storage/impl/pg_base.py)),
 and each table carries the policy on them, forced on its owner too
-([`the_core_role.up.sql`](scaffold/acme_root/om/migrations/sql/core/202609280000_the_core_role.up.sql)):
+([`the_core_role.up.sql`](scaffold/acme_root/om/migrations/sql/core/202610142241_the_core_role.up.sql)):
 
 ``` sql
 SELECT set_config('app.org_id', :org_id, true);
