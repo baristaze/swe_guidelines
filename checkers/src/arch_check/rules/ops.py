@@ -171,6 +171,8 @@ def om_readme_for_a_reader_with_no_code(project: Project) -> Iterator[Violation]
 
 
 LINK = re.compile(r"^[-*] \[[^\]]+\]\(([^)\s]+)\): \S")
+COMMENT = re.compile(r"^<!--(?:(?!-->).)*-->\s*$")
+"""A one-line HTML comment, such as the marker a copy adds its own lines below."""
 
 
 @rule(
@@ -184,9 +186,10 @@ def the_knowledge_map(project: Project) -> Iterator[Violation]:
     `llms.txt` exists at the root. Its first line is a `# ` title, a
     `> ` summary follows, and it has exactly three `## ` sections. Every
     non-blank line inside a section is `- [text](target): line` (or
-    `* [text](target): line`), and a
-    relative target exists in the tree. Which documents each audience
-    gets, and one subject per document, are judged.
+    `* [text](target): line`), or a one-line HTML comment such as the
+    marker a copy adds its own lines below, and a relative target
+    exists in the tree. Which documents each audience gets, and one
+    subject per document, are judged.
     """
     rel = "llms.txt"
     if not is_file(project, rel):
@@ -206,9 +209,11 @@ def the_knowledge_map(project: Project) -> Iterator[Violation]:
     for number, text in content:
         if number <= first_section or text.startswith("## "):
             continue
+        if COMMENT.match(text):
+            continue
         m = LINK.match(text)
         if not m:
-            yield Violation(rel, number, 1, "a line in a section that is not `- [text](target): line`")
+            yield Violation(rel, number, 1, "a line in a section that is not `- [text](target): line` or a one-line comment")
             continue
         target = m.group(1).split("#")[0]
         local = target and "://" not in target and not target.startswith("mailto:")

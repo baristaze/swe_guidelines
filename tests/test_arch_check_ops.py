@@ -179,6 +179,21 @@ def test_ops_26_a_fourth_section_a_bare_link_and_a_dangling_target_fail(tmp_path
     assert sorted(line for _, _, line in where) == [18, 20, 22]
 
 
+def test_ops_26_the_marker_a_copy_adds_below_passes(tmp_path):
+    marker = "<!-- A copy adds its entries below this line. -->\n"
+    text = MAP.replace("the public guide\n", "the public guide\n" + marker) + marker
+    files = {"llms.txt": text, "README.md": "", "ops/README.md": "", "om/README.md": ""}
+    assert found(tmp_path, "OPS-26", files) == (0, [])
+
+
+def test_ops_26_a_comment_with_prose_after_it_or_over_two_lines_fails(tmp_path):
+    text = MAP.replace("the public guide\n", "the public guide\n<!-- a note --> and prose\n<!-- a note\nover two lines -->\n")
+    files = {"llms.txt": text, "README.md": "", "ops/README.md": "", "om/README.md": ""}
+    code, where = found(tmp_path, "OPS-26", files)
+    assert code == 1
+    assert sorted(line for _, _, line in where) == [11, 12, 13]
+
+
 def test_ops_26_a_map_saved_with_a_bom_is_read(tmp_path):
     files = {"llms.txt": "﻿" + MAP, "README.md": "", "ops/README.md": "", "om/README.md": ""}
     assert found(tmp_path, "OPS-26", files) == (0, [])
