@@ -8,6 +8,11 @@ root with a getter per namespace and two impls, and one migration of the
 case bends one file.
 """
 
+import ast
+import itertools
+import textwrap
+from pathlib import Path
+
 import pytest
 
 pytest.importorskip("tomllib")
@@ -707,7 +712,7 @@ def test_sto_18_a_lone_file_a_bad_name_a_fat_wrapper_and_a_foreign_table(tmp_pat
             "activity.events is in role activity; this file is core's",
             "downgrade() runs role activity; the wrapper is in core/",
             "202601020000_more has no .down.sql",
-            "upgrade() is not one run_sql() call; the SQL file holds the migration",
+            "upgrade() is not one run_sql() or run_backfill() call; the SQL file holds the migration",
         ],
     )
 
@@ -733,6 +738,46 @@ def test_sto_18_a_gitkeep_keyword_arguments_and_a_path(tmp_path):
     code, report = run(tmp_path, "STO-18", files)
     assert code == 1
     assert messages(report) == ["downgrade() runs '202601010000_other.down.sql'; it runs 202601010000_initial.down.sql"]
+
+
+MIGRATE = Path(__file__).resolve().parents[1] / "scaffold/acme_root/om/src/acme/om/storage/migrate.py"
+"""The scaffold's migration runner, whose `run_backfill` says how a data migration's wrapper is written."""
+
+
+def documented_data_migration() -> str:
+    """The wrapper body `run_backfill`'s docstring shows: its indented block from `def upgrade`."""
+    tree = ast.parse(MIGRATE.read_text())
+    doc = next(ast.get_docstring(n) or "" for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == "run_backfill")
+    lines = doc.splitlines()
+    start = next(i for i, line in enumerate(lines) if line.strip().startswith("def upgrade"))
+    block = list(itertools.takewhile(lambda line: not line or line.startswith("    "), lines[start:]))
+    return textwrap.dedent("\n".join(block)).strip() + "\n"
+
+
+def test_sto_18_a_data_migration_written_as_the_helper_says(tmp_path):
+    stem = "202601020000_fill_widgets"
+    wrapper = f"om/migrations/versions/core/{stem}.py"
+    body = documented_data_migration().replace("<stem>", stem).replace("<table>", "widgets")
+    assert "run_backfill(" in body
+    files = {
+        wrapper: (
+            "from acme.om.storage.migrate import run_backfill, run_sql\n"
+            "from acme.om.storage.roles import DatabaseRole\n\n"
+            f'revision = "202601020000"\ndown_revision = "202601010000"\n\n\n{body}'
+        ),
+        f"om/migrations/sql/core/{stem}.up.sql": (
+            "SELECT count(*) FROM core.widgets WHERE name = '';\nUPDATE core.widgets SET name = 'unnamed' WHERE name = '';\n"
+        ),
+        f"om/migrations/sql/core/{stem}.down.sql": "-- Nothing to undo: a filled name stays filled.\n",
+    }
+    for rule in ("STO-18", "STO-23"):
+        code, report = run(tmp_path, rule, files)
+        assert report["findings"] == []
+        assert code == 0
+    files[wrapper] = files[wrapper].replace(f'"{stem}.up.sql"', '"202601010000_initial.up.sql"')
+    code, report = run(tmp_path, "STO-18", files)
+    assert code == 1
+    assert messages(report) == [f"upgrade() runs '202601010000_initial.up.sql'; it runs {stem}.up.sql"]
 
 
 def test_sto_20_the_outbox_storage_takes_one_row(tmp_path):

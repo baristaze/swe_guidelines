@@ -473,9 +473,11 @@ that names no role migrates every role.
 
 **Look for.** `om/migrations/sql/<role>/YYYYMMDDHHMM_<slug>.up.sql`
 and `.down.sql` pairs, with a wrapper under `versions/<role>/` that
-only calls the SQL runner. Wrappers containing hand-written schema
-operations instead of `run_sql`, and SQL in one role's chain naming a
-table of another role. What a run that names no role migrates.
+only calls the SQL runner, or for a data migration the backfill runner
+(`run_backfill`), with the role and its own SQL file. Wrappers
+containing hand-written schema operations instead of `run_sql`, and SQL
+in one role's chain naming a table of another role. What a run that
+names no role migrates.
 
 **Violation.** A migration lives in a service instead of with the OM,
 or a wrapper carries schema operations of its own. A migration names a

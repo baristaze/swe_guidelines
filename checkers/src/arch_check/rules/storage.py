@@ -867,23 +867,25 @@ def unqualified(f: SqlFile, code: str) -> Iterator[Violation]:
 
 @rule(
     "STO-18",
-    options=("sql_dir", "versions_dir", "runner", "map"),
+    options=("sql_dir", "versions_dir", "runner", "backfill", "map"),
     coverage="partial",
-    summary="Migrations are named up and down SQL pairs per role, each wrapper one run_sql call, each file naming only its role.",
+    summary="Migrations are named up and down SQL pairs per role, each wrapper one runner call, each file naming only its role.",
 )
 def migration_layout(project: Project) -> Iterator[Violation]:
     """Reads `[tool.arch-check.options.STO-18]`: `sql_dir` and `versions_dir`, the two migration folders
     (`om/migrations/sql` and `om/migrations/versions`); `runner`, the function a wrapper calls (`run_sql`);
-    and `map`, the table-to-role map (`TABLE_ROLES`).
+    `backfill`, the one a data migration's wrapper calls in its place (`run_backfill`), which also takes the
+    table it fills; and `map`, the table-to-role map (`TABLE_ROLES`).
 
     Every table a migration names is schema-qualified (`core.widgets`), and no migration sets `search_path`.
     A wrapper passes the role and the SQL file, by position or by keyword. A file named by a string is its own
     `<stem>.<up|down>.sql`, alone or at the end of a path; a file built by an expression is left to the review.
     """
-    keys = {"sql_dir", "versions_dir", "runner", "map"}
+    keys = {"sql_dir", "versions_dir", "runner", "backfill", "map"}
     sql_dir = project.option("STO-18", "sql_dir", SQL_DIR, keys)
     versions_dir = project.option("STO-18", "versions_dir", VERSIONS_DIR, keys)
     runner = project.option("STO-18", "runner", "run_sql", keys)
+    backfill = project.option("STO-18", "backfill", "run_backfill", keys)
     name = project.option("STO-18", "map", ROLE_MAP, keys)
     for rel in project.files("services/**/migrations/**/*", "workers/**/migrations/**/*"):
         yield Violation(rel, 1, 1, "a migration outside the OM; migrations live with the OM")
@@ -942,15 +944,19 @@ def migration_layout(project: Project) -> Iterator[Violation]:
                 yield Violation(rel, 1, 1, f"the wrapper has no {fn_name}()")
                 continue
             call = wrapper_call(fn)
-            if call is None or call_name(call) != runner:
-                yield Violation.at(rel, fn, f"{fn_name}() is not one {runner}() call; the SQL file holds the migration")
+            if call is None or call_name(call) not in (runner, backfill):
+                yield Violation.at(
+                    rel, fn, f"{fn_name}() is not one {runner}() or {backfill}() call; the SQL file holds the migration"
+                )
                 continue
             want = f"{stem}.{direction}.sql"
             positional = list(call.args)
             role_arg = kwarg(call, "role") or (positional.pop(0) if positional else None)
-            file_arg = positional[0] if positional else next((k.value for k in call.keywords if k.arg != "role"), None)
+            file_arg = (
+                positional[0] if positional else next((k.value for k in call.keywords if k.arg not in ("role", "table")), None)
+            )
             if role_arg is None or file_arg is None:
-                yield Violation.at(rel, call, f"{runner}() takes the role and {want}")
+                yield Violation.at(rel, call, f"{call_name(call)}() takes the role and {want}")
                 continue
             named = role_value(role_arg, enums)
             if named is not None and named != role:

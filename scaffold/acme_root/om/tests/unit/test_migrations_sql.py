@@ -8,6 +8,7 @@ import pytest
 from acme.om.media.types.file import FileStatus
 from acme.om.storage.migrate import (
     MIGRATIONS_DIR,
+    backfill_statements,
     chain,
     check_role_of_sql,
     head,
@@ -64,6 +65,21 @@ def test_a_function_is_checked_by_its_schema_alone() -> None:
     check_role_of_sql(DatabaseRole.CORE, "DROP FUNCTION core.touch_updated_at()")
     with pytest.raises(RuntimeError):
         check_role_of_sql(DatabaseRole.CORE, "CREATE FUNCTION queue.f() RETURNS trigger")
+
+
+def test_a_data_migrations_file_is_a_count_then_an_update(tmp_path: Path) -> None:
+    """What `run_backfill` reads from the file its wrapper names: the count
+    it compares the update's rows with, and the update. An update with no
+    count could not tell a backfill that touched nothing from one that had
+    nothing to do, so it is refused."""
+    (tmp_path / "sql" / "core").mkdir(parents=True)
+    count = "SELECT count(*) FROM core.users WHERE locale IS NULL"
+    update = "UPDATE core.users SET locale = 'en' WHERE locale IS NULL"
+    (tmp_path / "sql" / "core" / "a.up.sql").write_text(f"-- the backfill\n{count};\n{update};\n")
+    (tmp_path / "sql" / "core" / "b.up.sql").write_text(f"{update};\n")
+    assert backfill_statements(DatabaseRole.CORE, "a.up.sql", tmp_path) == (count, update)
+    with pytest.raises(RuntimeError, match="holds 1 statements"):
+        backfill_statements(DatabaseRole.CORE, "b.up.sql", tmp_path)
 
 
 def assert_one_chain_of_stamped_wrappers(

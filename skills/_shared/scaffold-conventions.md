@@ -143,10 +143,13 @@ a copy of the shape still goes wrong.
   method on the tenantless list.
 - **A backfill lifts the force.** A data migration runs as the
   migration login, which `FORCE ROW LEVEL SECURITY` binds, so its
-  `UPDATE` would touch nothing. Its SQL lifts the force for the one
-  table and puts it back in the same transaction, and raises when the
-  rows it touched are not the rows it meant to touch. Its integration
-  test seeds two tenants and sees both touched.
+  `UPDATE` would touch nothing. Its wrapper calls `run_backfill` in
+  place of `run_sql`, with the role, its own up file, and the table, as
+  the helper's docstring shows; the file holds the count of the rows it
+  means to touch, then the update. The helper lifts the force for the
+  one table and puts it back in the same transaction, and raises when
+  the rows it touched are not the rows it meant to touch. Its
+  integration test seeds two tenants and sees both touched.
 - **A cross-tenant case per storage method.** The contract module under
   `om/tests/contracts/` has, for every storage method, a case that
   passes another tenant's id and finds nothing and changes nothing. The

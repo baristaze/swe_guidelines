@@ -183,9 +183,37 @@ def backfill(
     return touched
 
 
-def run_backfill(role: DatabaseRole, table: str, count_sql: str, update_sql: str) -> int:
-    """Called by a wrapper under versions/<role>/ for a data migration; see `backfill`."""
-    return backfill(op.get_bind(), role, table, count_sql, update_sql)
+def backfill_statements(
+    role: DatabaseRole, filename: str, migrations_dir: Path = MIGRATIONS_DIR
+) -> tuple[str, str]:
+    """The two statements of a data migration's file, sql/<role>/<filename>:
+    the count of the rows it means to touch, then the update that touches
+    them. Any other number of statements is refused."""
+    statements = split_statements((migrations_dir / "sql" / role.value / filename).read_text())
+    if len(statements) != 2:
+        raise RuntimeError(
+            f"{filename} holds {len(statements)} statements; a backfill is a count, then an update"
+        )
+    return statements[0], statements[1]
+
+
+def run_backfill(role: DatabaseRole, filename: str, table: str) -> int:
+    """A data migration. Its wrapper calls this as the one call of
+    `upgrade()`, in place of `run_sql`, with the role, its own SQL file, and
+    the table the update fills:
+
+        def upgrade() -> None:
+            run_backfill(DatabaseRole.CORE, "<stem>.up.sql", "<table>")
+
+
+        def downgrade() -> None:
+            run_sql(DatabaseRole.CORE, "<stem>.down.sql")
+
+    The up file holds a count and an update (`backfill_statements`), so a
+    column it fills comes in the migration before it. The down file undoes
+    the update through `run_backfill` as well, or holds only a comment when
+    the migration before drops what it filled. See `backfill`."""
+    return backfill(op.get_bind(), role, table, *backfill_statements(role, filename))
 
 
 def load_tables() -> None:
