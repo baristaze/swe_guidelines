@@ -1,5 +1,4 @@
 import pytest
-from contracts.tenancy_storage import TenancyStorageContract
 
 from acme.om.idempotency.storage import IdempotencyStorageInterface
 from acme.om.idempotency.storage.impl.postgres import IdempotencyStoragePostgresImpl
@@ -10,10 +9,22 @@ from acme.om.storage.roles import DatabaseRole
 from acme.om.tenancy.storage import TenancyStorageInterface
 from acme.om.tenancy.storage.impl.postgres import TenancyStoragePostgresImpl
 
+from contracts.tenancy_credentials_storage import TenancyCredentialsStorageContract
+from contracts.tenancy_members_storage import TenancyMembersStorageContract
+from contracts.tenancy_org_storage import TenancyOrgStorageContract
+from contracts.tenancy_sign_in_storage import TenancySignInStorageContract
+from contracts.tenancy_storage import TenancyStorageContract
+
 pytestmark = pytest.mark.integration
 
 
-class TestTenancyStoragePostgres(TenancyStorageContract):
+class TestTenancyStoragePostgres(
+    TenancyCredentialsStorageContract,
+    TenancyMembersStorageContract,
+    TenancyOrgStorageContract,
+    TenancySignInStorageContract,
+    TenancyStorageContract,
+):
     @pytest.fixture
     def outbox(self, pg_sessions: dict[DatabaseRole, SessionFactory]) -> OutboxStorageInterface:
         return OutboxStoragePostgresImpl(pg_sessions)
