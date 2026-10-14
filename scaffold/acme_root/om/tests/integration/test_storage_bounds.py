@@ -29,7 +29,7 @@ from acme.om.storage.impl.pg_base import LoginSessions, PgStorageBase
 from acme.om.storage.impl.postgres import login_sessions
 from acme.om.storage.roles import DatabaseRole
 from acme.om.storage.settings import MigrationSettings, RolePool
-from acme.om.tenancy.storage.tables.platform_sizes import PlatformSizes
+from acme.om.tenancy.storage.tables.system_sizes import SystemSizes
 from acme.om.work.storage.tables.work_items import WorkItems
 
 pytestmark = pytest.mark.integration
@@ -101,7 +101,7 @@ A_TABLE_OF: dict[DatabaseRole, type[Any]] = {
     DatabaseRole.CORE: Files,
     DatabaseRole.ACTIVITY: Events,
     DatabaseRole.QUEUE: WorkItems,
-    DatabaseRole.ADMIN: PlatformSizes,
+    DatabaseRole.ADMIN: SystemSizes,
 }
 """A table of each role, which is what routes a session to that role's pool.
 The worker's claim is the queue role under the system login, and the outbox

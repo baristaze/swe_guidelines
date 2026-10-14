@@ -346,9 +346,9 @@ disjoint namespaces.
 **Source.** Naming Entities, Identifiers; Infrastructure, Infrastructure
 Principles.
 
-**Look for.** Cache and bucket calls for platform-owned data.
+**Look for.** Cache and bucket calls for system-owned data.
 
-**Violation.** Platform-owned data cached or stored under a real
+**Violation.** System-owned data cached or stored under a real
 tenant's id; a made-up sentinel other than `EMPTY_UUID`; an impl that
 treats the system scope like any tenant and lets a tenant caller reach
 it.
@@ -905,7 +905,7 @@ handler's calls; a handler that asks again without a recorded decision.
 **Principle.** A secret belongs to a tenant: every call takes the
 `org_id` first, and the impl keeps each tenant's secrets under a
 prefix of its own, so a name one tenant presents never resolves to
-another tenant's secret or the platform's. The manager sets
+another tenant's secret or the system's. The manager sets
 `credential_ref` when it puts the secret. The entity lists it in
 `MANAGER_OWNED_FIELDS`, so every create and update a caller shapes
 excludes it.
@@ -921,7 +921,7 @@ shape a caller fills carries it.
 
 **Violation.** A secrets method with no tenant, or an impl that stores
 names unprefixed, so a name can reach another tenant's secret or the
-platform's own; a `credential_ref` a caller can write, so a caller
+system's own; a `credential_ref` a caller can write, so a caller
 points an integration at a secret it does not own.
 
 **Severity.** high

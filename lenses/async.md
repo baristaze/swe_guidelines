@@ -278,7 +278,7 @@ could have re-read; a consumer that breaks when `truncated` is set.
 
 ## ASY-12 Queues absorb outside producers; the consumer owns exactly-once
 
-**Principle.** Work whose producer is outside the platform and cannot
+**Principle.** Work whose producer is outside the system and cannot
 wait goes on a queue with the shape of a hosted queue service. The
 queue delivers at least once and does not deduplicate; the consumer
 dedupes. Dead letters are visible: an audit entry names them and a

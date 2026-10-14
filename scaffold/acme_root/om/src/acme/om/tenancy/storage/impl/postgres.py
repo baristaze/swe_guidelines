@@ -30,10 +30,10 @@ from acme.om.tenancy.storage.tables.identities import Identities
 from acme.om.tenancy.storage.tables.invitations import Invitations
 from acme.om.tenancy.storage.tables.memberships import Memberships
 from acme.om.tenancy.storage.tables.orgs import Orgs
-from acme.om.tenancy.storage.tables.platform_sizes import PlatformSizes
 from acme.om.tenancy.storage.tables.sessions import Sessions
 from acme.om.tenancy.storage.tables.sign_in_delays import SignInDelays
 from acme.om.tenancy.storage.tables.socket_tickets import SocketTickets
+from acme.om.tenancy.storage.tables.system_sizes import SystemSizes
 from acme.om.tenancy.storage.tables.users import Users
 from acme.om.tenancy.types.api_key import ApiKey
 from acme.om.tenancy.types.identity import Identity
@@ -43,7 +43,7 @@ from acme.om.tenancy.types.membership import Membership
 from acme.om.tenancy.types.org import Org
 from acme.om.tenancy.types.session import Session
 from acme.om.tenancy.types.sign_in_delay import SignInDelay
-from acme.om.tenancy.types.size import PlatformSize
+from acme.om.tenancy.types.size import SystemSize
 from acme.om.tenancy.types.socket_ticket import SocketTicket
 from acme.om.tenancy.types.user import User
 
@@ -237,27 +237,27 @@ class TenancyStoragePostgresImpl(PgStorageBase, TenancyStorageInterface):
             found = (await session.execute(stmt)).one()
             return found[0], found[1]
 
-    async def write_platform_size(self, size: PlatformSize) -> None:
+    async def write_system_size(self, size: SystemSize) -> None:
         # One statement: the row is written, or rewritten by a newer count.
-        values = to_values(size, PlatformSizes)
+        values = to_values(size, SystemSizes)
         stmt = (
-            insert(PlatformSizes)
+            insert(SystemSizes)
             .values(id=EMPTY_UUID, **values)
             .on_conflict_do_update(
-                index_elements=[PlatformSizes.id],
+                index_elements=[SystemSizes.id],
                 set_=values,
-                where=PlatformSizes.counted_at < size.counted_at,
+                where=SystemSizes.counted_at < size.counted_at,
             )
         )
         async with self._session_for(stmt, org_id=EMPTY_UUID) as session:
             await session.execute(stmt)
             await session.commit()
 
-    async def read_platform_size(self) -> PlatformSize | None:
-        stmt = select(PlatformSizes).where(PlatformSizes.id == EMPTY_UUID)
+    async def read_system_size(self) -> SystemSize | None:
+        stmt = select(SystemSizes).where(SystemSizes.id == EMPTY_UUID)
         async with self._session_for(stmt, org_id=EMPTY_UUID) as session:
             row = (await session.execute(stmt)).scalar_one_or_none()
-            return None if row is None else to_model(row, PlatformSize)
+            return None if row is None else to_model(row, SystemSize)
 
     async def read_orgs(self, limit: int, after_id: UUID | None = None) -> list[Org]:
         stmt = select(Orgs).order_by(Orgs.id).limit(limit)

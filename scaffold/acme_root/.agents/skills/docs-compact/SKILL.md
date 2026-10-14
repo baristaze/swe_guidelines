@@ -33,7 +33,7 @@ of the checkout.
 
 ## Role and credential
 
-None of the platform's: it reads no environment. On the local stack it
+None of the system's: it reads no environment. On the local stack it
 logs in to the databases it makes and drops, one for the gates and two
 for the fold, and to the stack's own for one thing: the fold's
 precondition brings it to its head (`make migrate`). It reads the

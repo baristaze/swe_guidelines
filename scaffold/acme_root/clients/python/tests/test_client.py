@@ -666,7 +666,7 @@ async def test_the_bytes_go_through_the_api_when_the_store_cannot_sign() -> None
 # bearer the client holds (an operator's own sign-in), and types the answer.
 
 
-async def test_admin_size_reads_the_platforms_size() -> None:
+async def test_admin_size_reads_the_systems_size() -> None:
     size = {
         "tenants": 2,
         "users": 3,

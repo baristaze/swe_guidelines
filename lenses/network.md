@@ -155,7 +155,7 @@ below the gateway; the rest is judged.
 
 ## NET-07 One error handler, one envelope
 
-**Principle.** One handler translates `PlatformException` and
+**Principle.** One handler translates `OmException` and
 `InfraException` into `{"error": {"code", "message", "request_id"}}`
 with the status the exception carries, one catch-all turns anything
 else into a 500 in the same shape, and routers never set error status
@@ -310,7 +310,7 @@ written; a gate's rows written in a commit of their own.
 **Principle.** Service-to-service calls need no TLS on the private
 network, and that rests on the network being private: services and
 workers in private subnets, security groups that admit only the
-platform's own processes, only the gateway with a public address, all
+system's own processes, only the gateway with a public address, all
 in Terraform. Managed backends that require TLS get a connection
 string; outbound TLS verification uses the operating system's trust
 store.
@@ -326,7 +326,7 @@ system's.
 
 **Violation.** A service, a worker, or a database with a public
 address, which is an exposure and not a convention slip, or a security
-group open past the platform's own processes; an HTTP client pinned
+group open past the system's own processes; an HTTP client pinned
 to a bundled CA set so a corporate proxy or private CA fails; TLS
 configured per component instead of once at boot.
 
@@ -890,7 +890,7 @@ configured.
 declaration behind it; a declaration the issuer supplies in its own
 token, so it widens its own reach; a declaration checked after the
 context is rebuilt. (One key shared by processes that are all the
-platform's own is a decision the guideline makes, not a breach.)
+system's own is a decision the guideline makes, not a breach.)
 
 **Severity.** high
 

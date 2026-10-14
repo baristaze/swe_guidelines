@@ -1,5 +1,5 @@
 """The operator plane over the live app: which permission each route asks
-for, the reads of one tenant and the trail they leave, the platform's size,
+for, the reads of one tenant and the trail they leave, the system's size,
 the two creates under the operator's idempotency record, the requeue
 of a failed work item, and an org's own cap on a lane."""
 

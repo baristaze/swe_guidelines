@@ -174,7 +174,7 @@ class TenancySignInManagerImpl(TenancySignInManagerInterface):
         if not self._options.dev_sign_in:
             raise NotFound("Not Found")
         if is_platform_email(email):
-            raise ValidationFailed("that address belongs to the platform")
+            raise ValidationFailed("that address belongs to the system")
         try:
             check_email(email)
         except ValueError as error:
@@ -243,7 +243,7 @@ class TenancySignInManagerImpl(TenancySignInManagerInterface):
         if not person.email_verified:
             raise EmailNotVerified("verify your email address with the sign-in provider first")
         if is_platform_email(person.email):
-            raise InvalidCredential("that address belongs to the platform")
+            raise InvalidCredential("that address belongs to the system")
         identity = await self._identity_of(signed_in)
         memberships = await memberships_of(
             self._storage, identity.id, self._options.max_orgs_per_identity

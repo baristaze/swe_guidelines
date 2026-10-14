@@ -196,7 +196,7 @@ class LeasesManagerInterface(ABC):
 
     @abstractmethod
     async def sweep(self, rctx: RequestContext) -> int:
-        """Platform-internal, once a pass, for the orgs with something due:
+        """System-internal, once a pass, for the orgs with something due:
         ends each lease past its expiry and the skew margin, expires each
         request past its wait, and offers each free resource to its line;
         returns how many leases and requests it ended."""
@@ -204,7 +204,7 @@ class LeasesManagerInterface(ABC):
 
     @abstractmethod
     async def purge_across_tenants(self) -> int:
-        """Platform-internal: the leases ended, the requests settled, and the
+        """System-internal: the leases ended, the requests settled, and the
         retired resources past the retention, a batch at most of each,
         whatever their tenant; returns how many. It takes no context, because
         it runs for no tenant and no principal."""

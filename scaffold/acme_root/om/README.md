@@ -40,7 +40,7 @@ the key is shown once.
 A **socket ticket** is a one-use pass that opens the live channel, the
 connection through which changes reach a screen as they happen.
 
-An **operator** is a person on the platform's own allowlist. An
+An **operator** is a person on the system's own allowlist. An
 operator works across orgs with an **operator token**: one permission,
 an hour at most.
 
@@ -50,14 +50,14 @@ A **file** is a record of something an org keeps in the object store:
 its name, type, size, who uploaded it, and why. The bytes live in the
 store, never in the record.
 
-## What the platform writes for itself
+## What the system writes for itself
 
 No person creates these and no screen shows them, but each belongs to
 an org like everything else.
 
 An **event** is a line in the org's diary: what changed, how, by whom,
 and when. The lines are numbered with no gaps. An **audit entry** is an
-event the platform records about itself, such as a job that failed for
+event the system records about itself, such as a job that failed for
 good.
 
 An **outbox row** is a note written in the same stroke as a change,

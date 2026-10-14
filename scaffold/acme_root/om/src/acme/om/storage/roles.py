@@ -32,13 +32,15 @@ TABLE_ROLES: dict[str, DatabaseRole] = {
     "resources": DatabaseRole.CORE,
     "leases": DatabaseRole.CORE,
     "lease_requests": DatabaseRole.CORE,
-    "platform_sizes": DatabaseRole.ADMIN,
+    "system_sizes": DatabaseRole.ADMIN,
 }
 
-DROPPED_TABLE_ROLES: dict[str, DatabaseRole] = {}
-"""Tables the migration chain made and later dropped. No process reaches
-them, so `role_for` does not know them; only the chain names them, and its
-role check reads this map beside the live one."""
+DROPPED_TABLE_ROLES: dict[str, DatabaseRole] = {
+    "platform_sizes": DatabaseRole.ADMIN,
+}
+"""Tables the migration chain made and later dropped or renamed, by the name
+they had. No process reaches them, so `role_for` does not know them; only the
+chain names them, and its role check reads this map beside the live one."""
 
 
 def role_for(table_name: str) -> DatabaseRole:

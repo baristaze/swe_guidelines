@@ -1,5 +1,5 @@
 """The scenario parser and the verdict: a target stated before the run, a
-pass only when the generator and the platform's own count both meet it."""
+pass only when the generator and the system's own count both meet it."""
 
 from datetime import UTC, datetime
 from pathlib import Path
@@ -194,7 +194,7 @@ def test_the_verdict_passes_only_within_the_target_on_both_sides() -> None:
     failing = verdict(scenario, report_with(10.0, 5), Readback(100, 5))
     assert not failing.passed and len(failing.reasons) == 2
     unread = verdict(scenario, report_with(10.0, 0), Readback(None, None))
-    assert unread.reasons == ("the platform counted no requests for the window",)
+    assert unread.reasons == ("the system counted no requests for the window",)
     empty = verdict(scenario, report_with(10.0, 0, total=0), Readback(None, None))
     assert "no requests were made" in empty.reasons
     text = failing.text(scenario, report_with(10.0, 5), Readback(100, 5))

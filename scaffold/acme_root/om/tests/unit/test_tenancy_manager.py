@@ -1500,7 +1500,7 @@ async def test_the_grant_job_puts_an_identity_on_the_allowlist_and_audits_it(
         (EMPTY_UUID, "tenancy.operator.granted", granted.id, EMPTY_UUID),
         (EMPTY_UUID, "tenancy.operator.disabled", granted.id, EMPTY_UUID),
     ]
-    # The platform's own identities are made by the first grant, with no org
+    # The system's own identities are made by the first grant, with no org
     # and no way to sign in; nobody signs in as one.
     provisioner = await manager.grant_operator(
         request(), "provisioner@platform.acme.invalid", OperatorRole.WRITE
@@ -1523,7 +1523,7 @@ async def test_the_operator_allowlist_takes_an_address_in_any_case(
 ) -> None:
     """The grant, the grant job's token, and the disable each find the
     person the seeding made as `Root@Example.test` by another spelling, and
-    the platform's own identity is kept folded and found the same way."""
+    the system's own identity is kept folded and found the same way."""
     await manager.bootstrap(request(), "Root", "root", "Root@Example.test", "Root")
     granted = await manager.grant_operator(request(), "root@EXAMPLE.test", OperatorRole.READ)
     assert granted.email == "root@example.test" and granted.operator_role is OperatorRole.READ

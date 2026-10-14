@@ -1,7 +1,7 @@
 """The object model: the base chain, the mixins, immutability, ids, namespaces, pure rules.
 
 Most rules here read the OM base chain: the root class of
-`<pkg>.om.base` (a direct `BaseModel` subclass, `Platform` in the
+`<pkg>.om.base` (a direct `BaseModel` subclass, `OmBase` in the
 guideline) and every class whose bases reach it, resolved through
 imports (see `_om_util`). The mixins are the classes of the base module
 on the chain: `Identifiable`, `Named`, `Created`, `Trackable`,

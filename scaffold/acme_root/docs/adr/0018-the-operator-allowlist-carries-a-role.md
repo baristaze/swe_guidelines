@@ -53,7 +53,7 @@ file, so none of them holds a write token.
 every creating route. Their markers have no tenant, so they live under
 the system scope, keyed by the operator's identity id, through
 `begin_for_operator`, `finish_for_operator`, and `release_for_operator`.
-The system-scope sweep purges them with the platform's own markers. The
+The system-scope sweep purges them with the system's own markers. The
 seeding commands and the operator's creates share one private path,
 `tenancy/impl/creates.py`, so the seed and the API make the same rows.
 

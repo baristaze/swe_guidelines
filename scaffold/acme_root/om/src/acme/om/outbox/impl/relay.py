@@ -7,7 +7,7 @@ from uuid import UUID
 
 from acme.infra.observability import OUTCOMES, described, failure_level
 from acme.infra.topics import EntityChangedPayload, Topics, TopicsInterface
-from acme.om.base import Platform, new_id, utcnow
+from acme.om.base import OmBase, new_id, utcnow
 from acme.om.events.storage import EventStorageInterface
 from acme.om.events.types.event import Event
 from acme.om.outbox.relay import OutboxRelayInterface
@@ -25,7 +25,7 @@ UNPUBLISHED = "the bus dropped the publish"
 """The error a row keeps when its event is in the stream and its message was dropped."""
 
 
-class OutboxOptions(Platform):
+class OutboxOptions(OmBase):
     grace: timedelta = timedelta(seconds=10)
     """A row younger than this is the request path's to relay; the sweep leaves it."""
     backoff_base: timedelta = timedelta(seconds=30)

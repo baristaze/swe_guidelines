@@ -101,7 +101,9 @@ def repository(tmp_path: Path) -> tuple[Path, dict[str, str], str]:
     return repo, env, main
 
 
-def run(repo: Path, env: dict[str, str]) -> tuple[subprocess.CompletedProcess[str], list[list[str]]]:
+def run(
+    repo: Path, env: dict[str, str]
+) -> tuple[subprocess.CompletedProcess[str], list[list[str]]]:
     result = subprocess.run(
         ["bash", str(repo / "scripts" / "release_before.sh"), "main"],
         capture_output=True,

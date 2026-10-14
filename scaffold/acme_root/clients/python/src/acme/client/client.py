@@ -39,13 +39,13 @@ from acme.client.types import (
     OperatorView,
     OperatorWorkItemView,
     OrgView,
-    PlatformSizeView,
     Role,
     SignedOutView,
     SignInStartView,
     SsoLinkView,
     StandingView,
     StorageUsageView,
+    SystemSizeView,
     UserPageView,
     UserView,
 )
@@ -773,8 +773,8 @@ class ApiClient:
         body = await self.request("DELETE", f"/v1/admin/me/tokens/{token_id}")
         return OperatorTokenView.model_validate(body)
 
-    async def admin_size(self) -> PlatformSizeView:
-        return PlatformSizeView.model_validate(await self.request("GET", "/v1/admin/size"))
+    async def admin_size(self) -> SystemSizeView:
+        return SystemSizeView.model_validate(await self.request("GET", "/v1/admin/size"))
 
     async def admin_create_org(
         self,

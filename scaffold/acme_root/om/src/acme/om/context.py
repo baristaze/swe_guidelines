@@ -26,7 +26,7 @@ from enum import StrEnum
 from typing import Protocol
 from uuid import UUID
 
-from acme.om.base import EMPTY_UUID, Platform
+from acme.om.base import EMPTY_UUID, OmBase
 from acme.om.exceptions import NotAuthorized
 
 __all__ = [
@@ -104,7 +104,7 @@ class AppType(StrEnum):
     WORKER = "worker"
 
 
-class SecurityContext(Platform):
+class SecurityContext(OmBase):
     """Ids and facts, never entities: a manager that needs the user or the org
     loads it, so a role change is seen on the next request."""
 
@@ -117,7 +117,7 @@ class SecurityContext(Platform):
     credential_id: UUID = EMPTY_UUID  # the session or key; EMPTY_UUID for internal contexts
 
 
-class AppContext(Platform):
+class AppContext(OmBase):
     type: AppType
     version: str  # e.g. "portal@0.1.0"
 
@@ -125,7 +125,7 @@ class AppContext(Platform):
 # Stages: refinement by evidence.
 
 
-class RequestContext(Platform):
+class RequestContext(OmBase):
     """The weakest stage: a request exists, nobody is known yet. Minted once
     at the edge (the gateway, the worker loop, an ops command)."""
 

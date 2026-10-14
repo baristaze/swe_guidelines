@@ -1,4 +1,4 @@
-# ADR 0074: The platform's size is a tally the sweep keeps
+# ADR 0074: The system's size is a tally the sweep keeps
 
 **Status**: accepted (2026-09-28)
 
@@ -8,12 +8,12 @@ STO-21 keeps analytics across tenants out of the request path of every
 role: a report reads a mirror or a periodic copy, never a role the
 application writes to.
 
-`GET /v1/admin/size` answers the platform's size: the live orgs, the
+`GET /v1/admin/size` answers the system's size: the live orgs, the
 live users, and the events produced in the last day. The first
 responder reads it before escalating an alarm (`acme-ops size`), so it
 is read when something is already wrong. Counted in the handler, it is
 two statements across every tenant, one on `core` and one on
-`activity`, and each grows with the platform.
+`activity`, and each grows with the system.
 
 ## Decision
 
@@ -28,8 +28,8 @@ the result and counts nothing.
 **The tally lives in the `admin` role.** The guideline gives `admin`
 "the operator plane's own state, global rows", and STO-21 keeps a report
 off the roles the application writes to. The size is the operator
-plane's own, and it is one global row, `admin.platform_sizes`, keyed by
-`EMPTY_UUID`, the platform's reference (OM-13). It is `system`-scoped:
+plane's own, and it is one global row, `admin.system_sizes`, keyed by
+`EMPTY_UUID`, the system's reference (OM-13). It is `system`-scoped:
 no tenant, no policy. The runtime and the system logins reach it through
 the grants the admin role's migration sets. The row is a persisted read
 model, derived and rebuilt by the next count. It is a row, never a cache
@@ -57,7 +57,7 @@ backlog that spends every budget is exactly when the first responder
 reads the size.
 
 **The answer says how old it is.** The read model and
-`PlatformSizeView` carry `counted_at`, and the window is the day before
+`SystemSizeView` carry `counted_at`, and the window is the day before
 it (`since`). `acme-ops size` prints how long ago the worker counted.
 Before the first count the route is `404`: the size does not exist yet.
 It is never `503`, which the gateway logs as a failure with a stack and
@@ -73,7 +73,7 @@ The size is up to five minutes and one pass old. A worker that stops
 counting shows as a `counted_at` that keeps aging, which the ops skills
 read as a finding.
 
-The count still grows with the platform. It runs off every request
+The count still grows with the system. It runs off every request
 path, once an interval, on the system login's pool. The worker logs
-`sweep: counted the platform's size in <s>`, which is where a count
+`sweep: counted the system's size in <s>`, which is where a count
 that grows too slow shows first.

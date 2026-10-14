@@ -5,7 +5,7 @@ from uuid import UUID
 from pydantic import Field
 
 from acme.infra.cache import CacheInterface
-from acme.om.base import EMPTY_UUID, Platform, new_id, utcnow
+from acme.om.base import EMPTY_UUID, OmBase, new_id, utcnow
 from acme.om.context import (
     CredentialKind,
     IdentityContext,
@@ -89,7 +89,7 @@ session exchanged from it, and an operator token, which reaches the operator
 plane and nothing else. An api key is an agent's and proves none."""
 
 
-class TenancyOptions(Platform):
+class TenancyOptions(OmBase):
     """Tunables, built once at boot; the manager never reads the environment."""
 
     login_ttl: timedelta = timedelta(minutes=10)
@@ -397,7 +397,7 @@ class TenancyManagerImpl(TenancyManagerInterface):
     async def _platform_identity(self, email: str) -> Identity:
         """The provisioner or the smoke identity, made the first time the grant
         job names it: no org, and no way to sign in, since the provider never
-        vouches for an address in the platform's domain."""
+        vouches for an address in the system's domain."""
         identity = new_identity(email, utcnow())
         await self._storage.write_identity(identity)
         return identity
@@ -406,7 +406,7 @@ class TenancyManagerImpl(TenancyManagerInterface):
         self, rctx: RequestContext, identity: Identity, operator_role: OperatorRole | None
     ) -> Identity:
         """The allowlist entry changes with its audit row, in one commit under
-        the system scope: the grant job acts for the platform, so the actor
+        the system scope: the grant job acts for the system, so the actor
         is the system user."""
         now = utcnow()
         updated = identity.model_copy(

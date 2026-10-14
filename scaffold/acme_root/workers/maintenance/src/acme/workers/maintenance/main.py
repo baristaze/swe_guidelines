@@ -49,7 +49,7 @@ IDENTITY = "identity"
 """The identity provider, by the name its deliveries are queued under."""
 
 IDENTITY_CREDENTIAL = "ACME_WORKOS_API_KEY"
-"""The secret the worker's calls to it are made with: the platform's own, by
+"""The secret the worker's calls to it are made with: the system's own, by
 its name."""
 
 
@@ -126,7 +126,7 @@ def build_loop(container: WorkerContainer, lane: str | None = None) -> WorkerLoo
         # and the read of the tenants where it is due (ADR 0089).
         chores={},
         chore_tenants=None,
-        # The platform's size, counted across tenants once an interval and
+        # The system's size, counted across tenants once an interval and
         # kept as the tally the operator plane reads instead of counting.
         tally=managers.tenancy_operator.tally_size,
         handlers={

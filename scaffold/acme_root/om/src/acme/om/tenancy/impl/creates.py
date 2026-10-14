@@ -15,7 +15,7 @@ and writes.
 A person never exists without a place to work: every path that makes an
 identity lands its personal org, its user there, and the owner membership in
 the same commit as the identity (`personal_rows`). The one exception is the
-platform's own identities, which the grant job makes and no person signs in
+system's own identities, which the grant job makes and no person signs in
 as."""
 
 import secrets
@@ -122,7 +122,7 @@ async def identity_for(
     if is_platform_email(email):
         # The provisioner and the smoke identity are the grant job's to make;
         # no create names one.
-        raise ValidationFailed("that address belongs to the platform")
+        raise ValidationFailed("that address belongs to the system")
     identity = await storage.read_identity_by_email_digest(email_digest(email))
     if identity is None:
         try:

@@ -5,7 +5,7 @@ does it receive what a caller wrote as a request's path, query, or headers.
 Nor does it, or a log line, receive an exception's text, which quotes what
 the exception was handed: the input a model refused, the row a constraint
 refused. What an operator reads of an error is its type, its frames in the
-tree's own code, the request id, and the message of a failure the platform
+tree's own code, the request id, and the message of a failure the system
 raised, which names a backend, an operation, and a code."""
 
 import io
@@ -237,10 +237,10 @@ def test_an_exception_leaves_its_type_and_frames_and_none_of_its_text(
     assert f", in {raising.__name__}\n" in line["exception"]
 
 
-def test_a_failure_the_platform_raised_keeps_its_message(
+def test_a_failure_the_system_raised_keeps_its_message(
     tracker: Captured, lines: io.StringIO
 ) -> None:
-    """A failure's message is the platform's: a backend, an operation, and
+    """A failure's message is the system's: a backend, an operation, and
     what went wrong. The library error it was raised from keeps its type."""
 
     def select() -> None:

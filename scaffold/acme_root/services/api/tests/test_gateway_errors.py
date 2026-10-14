@@ -10,10 +10,10 @@ from fastapi import FastAPI
 
 from acme.infra.exceptions import BackendFailed, BackendUnreachable
 from acme.infra.observability import RequestIdFilter
-from acme.om.exceptions import PlatformException, Unavailable
+from acme.om.exceptions import OmException, Unavailable
 
 
-class Overloaded(PlatformException):
+class Overloaded(OmException):
     http_status = 503
     code = "overloaded"
 

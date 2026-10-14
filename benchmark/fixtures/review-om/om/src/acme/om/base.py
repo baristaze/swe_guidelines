@@ -4,21 +4,21 @@ from uuid import UUID, uuid7
 from pydantic import BaseModel, ConfigDict
 
 
-class Platform(BaseModel):
+class OmBase(BaseModel):
     """Root of the object model. Holds no fields."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
 
-class Identifiable(Platform):
+class Identifiable(OmBase):
     id: UUID
 
 
-class Named(Platform):
+class Named(OmBase):
     name: str
 
 
-class Created(Platform):
+class Created(OmBase):
     created_at: datetime
 
 
@@ -28,7 +28,7 @@ class Trackable(Created):
     updated_by: UUID
 
 
-class SoftDeletable(Platform):
+class SoftDeletable(OmBase):
     deleted_at: datetime | None = None
     deleted_by: UUID | None = None
 

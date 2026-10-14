@@ -6,7 +6,7 @@ allowed-tools: Read, Grep, Glob, Write, Bash(uv run:*), Bash(git:*), Bash(mkdir:
 
 # audit-query-indexes
 
-Every query the platform sends, the index that serves it, and what it
+Every query the system sends, the index that serves it, and what it
 costs when the data is large. The costs are measured, not guessed: on a
 database the run makes and seeds, under the same login, row-level
 security policy, and scope the storage funnel uses.

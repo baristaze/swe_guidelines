@@ -1,6 +1,6 @@
 """The operator plane over the memory impls: what the allowlist entry lets
 an operator do, the reads of one named tenant and the trail they leave, the
-platform's size and the sweep's tally of it, and the creates that share
+system's size and the sweep's tally of it, and the creates that share
 their implementation with the seeding commands."""
 
 import logging

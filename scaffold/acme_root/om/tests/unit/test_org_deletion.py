@@ -263,7 +263,7 @@ async def test_the_org_goes_last_and_keeps_the_retention(manager: TenancyManager
     assert await manager.org.delete_closed_org(work) is None
 
 
-async def test_only_the_platform_ends_a_closed_org_and_never_a_personal_one(
+async def test_only_the_system_ends_a_closed_org_and_never_a_personal_one(
     manager: TenancyManagerInterface,
 ) -> None:
     org = await ajax(manager)

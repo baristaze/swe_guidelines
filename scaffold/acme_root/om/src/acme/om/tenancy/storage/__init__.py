@@ -17,7 +17,7 @@ from acme.om.tenancy.types.membership import Membership
 from acme.om.tenancy.types.org import Org
 from acme.om.tenancy.types.session import Session
 from acme.om.tenancy.types.sign_in_delay import SignInDelay
-from acme.om.tenancy.types.size import PlatformSize
+from acme.om.tenancy.types.size import SystemSize
 from acme.om.tenancy.types.socket_ticket import SocketTicket
 from acme.om.tenancy.types.user import User
 
@@ -138,26 +138,26 @@ class TenancyStorageInterface(ABC):
     @abstractmethod
     async def count_orgs(self) -> int:
         """Global: how many orgs are live (not soft-deleted), the tenant count
-        of the sweep's tally of the platform's size."""
+        of the sweep's tally of the system's size."""
         ...
 
     @abstractmethod
     async def count_orgs_and_users(self) -> tuple[int, int]:
         """Global, one statement: the live orgs, as `count_orgs` counts them,
         and the live users across every tenant, the two counts of the sweep's
-        tally of the platform's size; a person in two orgs counts twice."""
+        tally of the system's size; a person in two orgs counts twice."""
         ...
 
     @abstractmethod
-    async def write_platform_size(self, size: PlatformSize) -> None:
-        """Global: the sweep's count of the platform's size becomes the one
+    async def write_system_size(self, size: SystemSize) -> None:
+        """Global: the sweep's count of the system's size becomes the one
         tally row, in the `admin` role. A count older than the row's never
         replaces it, so two workers counting at once leave the newer."""
         ...
 
     @abstractmethod
-    async def read_platform_size(self) -> PlatformSize | None:
-        """Global: the platform's size as the sweep last counted it, the one
+    async def read_system_size(self) -> SystemSize | None:
+        """Global: the system's size as the sweep last counted it, the one
         row read by its key; None until the first count."""
         ...
 

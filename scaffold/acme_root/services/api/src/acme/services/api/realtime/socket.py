@@ -24,7 +24,7 @@ from acme.infra.observability import failure_level
 from acme.infra.topics import Topics
 from acme.om.base import utcnow
 from acme.om.context import TenantContext
-from acme.om.exceptions import PlatformException
+from acme.om.exceptions import OmException
 from acme.om.tenancy.types.socket_ticket import SocketPrincipal
 from acme.services.api.gateway.auth import CLOSE_UNAUTHENTICATED, Ctx, Principal
 from acme.services.api.gateway.resolve import RealtimeService, container_of
@@ -141,7 +141,7 @@ async def serve_commands(
                 if topic not in subscriptions:
                     try:
                         subscriptions[topic] = realtime.subscribe(ctx, topic, buffer.offer)
-                    except PlatformException as error:
+                    except OmException as error:
                         buffer.offer(ErrorEnvelope(code=error.code, message=error.message))
                         continue
                 buffer.offer(SubscribedEnvelope(topic=topic.value))

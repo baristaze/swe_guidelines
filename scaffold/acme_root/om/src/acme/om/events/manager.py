@@ -37,7 +37,7 @@ class EventsManagerInterface(ABC):
 
     @abstractmethod
     async def purge_across_tenants(self) -> int:
-        """Platform-internal: the sweep's trim, across tenants, once a pass. With
+        """System-internal: the sweep's trim, across tenants, once a pass. With
         an event retention set, one bounded batch of the oldest events past it
         goes, whatever their tenant, and each tenant's floor moves up to its
         own in the same transaction (ADR 0040). Returns how many events went;

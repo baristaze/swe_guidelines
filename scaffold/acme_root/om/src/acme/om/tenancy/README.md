@@ -24,7 +24,7 @@ plane. This is one of the kinds of thing
 - **API key**, **socket ticket**, **second factor** (an operator's
   TOTP), and **operator token**: each stored as a digest or sealed,
   never in the clear.
-- **Platform size**: the count of orgs, users, and the day's events the
+- **System size**: the count of orgs, users, and the day's events the
   sweep keeps for the operator plane.
 
 ## What can happen

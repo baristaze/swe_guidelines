@@ -10,7 +10,7 @@ from uuid import UUID
 
 from pydantic import Field, model_validator
 
-from acme.om.base import FrozenMapping, Identifiable, Platform, Trackable
+from acme.om.base import FrozenMapping, Identifiable, OmBase, Trackable
 from acme.om.leases.types.lease import Lease
 from acme.om.leases.types.resource import (
     MAX_LABELS,
@@ -95,17 +95,17 @@ class LeaseRequest(Identifiable, Trackable):
         return self
 
 
-class NoopAsk(Platform):
+class NoopAsk(OmBase):
     """The `noop` kind's ask carries nothing."""
 
 
-ASK_PAYLOADS: dict[ResourceKind, type[Platform]] = {
+ASK_PAYLOADS: dict[ResourceKind, type[OmBase]] = {
     ResourceKind.NOOP: NoopAsk,
 }
 """The shape of what each kind's ask carries; the ask validates it."""
 
 
-class Standing(Platform):
+class Standing(OmBase):
     """Where a request stands: its lease once granted, or, while it waits, its
     place (1 is next in some line it stands in) and an estimate of its wait,
     replayed from the measured holds of the resources in front of it."""
@@ -116,7 +116,7 @@ class Standing(Platform):
     estimate_seconds: float | None = None
 
 
-class Place(Platform):
+class Place(OmBase):
     """A waiting request's place and estimate, as its `Standing` answers
     them."""
 
@@ -125,7 +125,7 @@ class Place(Platform):
     estimate_seconds: float | None = None
 
 
-class Line(Platform):
+class Line(OmBase):
     """A resource and the requests in its line, first first, with each one's
     place and estimate in the same order, replayed from the one read the
     line makes."""
@@ -135,7 +135,7 @@ class Line(Platform):
     places: tuple[Place, ...] = ()
 
 
-class LeaseEntry(Platform):
+class LeaseEntry(OmBase):
     """One lease of a history, with the request it answered: who asked, for
     what, and with which payload. None when the purge took the request
     first, which only a lease renewed past the retention outlives."""
@@ -144,7 +144,7 @@ class LeaseEntry(Platform):
     request: LeaseRequest | None = None
 
 
-class HistoryMark(Platform):
+class HistoryMark(OmBase):
     """Where a page of a history ended: its last lease's grant and id. The
     next page holds the leases that sort before it, newest first, so a page
     stays where it is however many leases are granted after it."""
@@ -157,7 +157,7 @@ class HistoryMark(Platform):
         return cls(created_at=lease.created_at, lease_id=lease.id)
 
 
-class LeasePage(Platform):
+class LeasePage(OmBase):
     """One page of a history, and whether another follows. The manager asks
     storage for one entry more than the page and keeps it out, so `has_more`
     is a fact about the rows."""

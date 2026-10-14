@@ -10,7 +10,7 @@
 #
 # The target below is sized for staging as it is deployed: one API task
 # on half a vCPU (deployment/terraform/environments/staging/main.tf). So
-# 3000 ms is a number about that size, not about the platform: a bigger
+# 3000 ms is a number about that size, not about the system: a bigger
 # task moves it.
 #
 # A team adopting this sets its own target, from its own traffic and its

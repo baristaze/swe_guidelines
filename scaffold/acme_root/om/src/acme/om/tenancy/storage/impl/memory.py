@@ -20,7 +20,7 @@ from acme.om.tenancy.types.membership import Membership
 from acme.om.tenancy.types.org import Org
 from acme.om.tenancy.types.session import Session
 from acme.om.tenancy.types.sign_in_delay import SignInDelay
-from acme.om.tenancy.types.size import PlatformSize
+from acme.om.tenancy.types.size import SystemSize
 from acme.om.tenancy.types.socket_ticket import SocketTicket
 from acme.om.tenancy.types.user import User
 
@@ -42,7 +42,7 @@ class TenancyStorageMemoryImpl(MemoryStorageBase, TenancyStorageInterface):
         self._api_keys: MemoryTable[ApiKey] = {}
         self._socket_tickets: MemoryTable[SocketTicket] = {}
         self._invitations: MemoryTable[Invitation] = {}
-        self._platform_size: PlatformSize | None = None
+        self._system_size: SystemSize | None = None
 
     @staticmethod
     def _require_free[E: HasId](
@@ -206,12 +206,12 @@ class TenancyStorageMemoryImpl(MemoryStorageBase, TenancyStorageInterface):
         users = sum(1 for user in self._every(self._users) if user.deleted_at is None)
         return await self.count_orgs(), users
 
-    async def write_platform_size(self, size: PlatformSize) -> None:
-        if self._platform_size is None or self._platform_size.counted_at < size.counted_at:
-            self._platform_size = size
+    async def write_system_size(self, size: SystemSize) -> None:
+        if self._system_size is None or self._system_size.counted_at < size.counted_at:
+            self._system_size = size
 
-    async def read_platform_size(self) -> PlatformSize | None:
-        return self._platform_size
+    async def read_system_size(self) -> SystemSize | None:
+        return self._system_size
 
     async def read_orgs(self, limit: int, after_id: UUID | None = None) -> list[Org]:
         orgs = [org for _, org in self._rows_across_tenants(self._orgs)]

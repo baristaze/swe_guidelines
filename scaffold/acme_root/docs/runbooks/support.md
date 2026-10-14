@@ -21,7 +21,7 @@ The supporter holds a `read` operator token and changes nothing.
    ```
 
    It reads, in this order:
-   - **The platform's size** (`acme-ops size`): one org's problem, or
+   - **The system's size** (`acme-ops size`): one org's problem, or
      everyone's.
    - **The alarms and the dashboard** for the window.
    - **The request id through every signal** (`acme-ops signals check`):
@@ -33,7 +33,7 @@ The supporter holds a `read` operator token and changes nothing.
    - **The errors** for the window, filtered on the environment
      (`environment:<env>`), since one tracker project holds them all.
 4. **Write the finding**: the cause in one line, its evidence, and whose
-   fix it is: the platform's (a pull request) or the tenant's (a refusal
+   fix it is: the system's (a pull request) or the tenant's (a refusal
    that was right).
 
 ## What is logged

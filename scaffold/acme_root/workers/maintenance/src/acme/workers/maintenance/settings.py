@@ -45,7 +45,7 @@ class MaintenanceSettings(StorageSettings, InfraSettings, IntegrationsSettings):
     # at its budget and the next pass resumes at the tenant it stopped at.
     worker_purge_batch: int = Field(default=1000, gt=0)
     worker_sweep_budget_seconds: int = Field(default=20, gt=0)
-    # How often the sweep counts the platform's size, the tally the operator
+    # How often the sweep counts the system's size, the tally the operator
     # plane reads: a count across every tenant, so once an interval and not
     # every pass (ADR 0074).
     worker_tally_seconds: int = Field(default=300, gt=0)

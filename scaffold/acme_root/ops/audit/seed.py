@@ -6,7 +6,7 @@ Scale 1 is the shape the query audit measures against: 5,000 people, each
 with a personal org, and one heavy team org of 200 members and 150 who left,
 holding a million events and 20,000 files; beside them work items, outbox
 rows, sessions, idempotency records, invitations, API keys, and settled
-orchestrations, each in the proportions a busy platform has. Every count
+orchestrations, each in the proportions a busy system has. Every count
 scales linearly with `--scale`, with a floor of one, so `--scale 0.01` is a
 quick run with the same shape. The heavy org's id is fixed, so a statement
 file can name it (see `FIXED`). A member who left the heavy org holds no

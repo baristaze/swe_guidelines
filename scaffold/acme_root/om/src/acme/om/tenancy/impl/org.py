@@ -12,9 +12,9 @@ from acme.om.exceptions import (
     LastOwner,
     NotAuthorized,
     NotFound,
+    OmException,
     OperatorRoleHeld,
     PersonalOrgFixed,
-    PlatformException,
     ValidationFailed,
 )
 from acme.om.idempotency.types.attempt import Attempt
@@ -380,7 +380,7 @@ class TenancyOrgManagerImpl(TenancyOrgManagerInterface):
         )
         try:
             await create_session(self._storage, home.org.id, session)
-        except (InfraException, PlatformException) as error:
+        except (InfraException, OmException) as error:
             # The org is gone either way; only the landing failed.
             log.warning("no session in the personal org of %s: %s", user.identity_id, error)
             return None
@@ -391,7 +391,7 @@ class TenancyOrgManagerImpl(TenancyOrgManagerInterface):
     async def delete_closed_org(self, ctx: TenantContext) -> Org | None:
         ctx.require(Permission.MANAGE_MEMBERS)
         if ctx.security.role is not Role.SERVICE:
-            raise NotAuthorized("a closed org is ended by the platform")
+            raise NotAuthorized("a closed org is ended by the system")
         org = await self._storage.read_org(ctx.org_id)
         if org is None:
             raise NotFound(f"org {ctx.org_id} not found")

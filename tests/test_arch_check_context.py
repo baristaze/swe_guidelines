@@ -15,16 +15,16 @@ STAGES = f"{OM}/context.py"
 CONTEXT = """from typing import Protocol
 from uuid import UUID
 
-from acme.om.base import Platform
+from acme.om.base import OmBase
 
 
-class SecurityContext(Platform):
+class SecurityContext(OmBase):
     user_id: UUID
     org_id: UUID
     credential_id: UUID
 
 
-class RequestContext(Platform):
+class RequestContext(OmBase):
     request_id: UUID
     app: str
     caused_by_request_id: UUID | None = None
@@ -121,7 +121,7 @@ def test_a_stage_module_of_ids_passes_ctx_02(tmp_path):
 
 def test_an_entity_in_the_context_or_an_import_above_the_base_is_ctx_02(tmp_path):
     stages = CONTEXT.replace(
-        "from acme.om.base import Platform\n", "from acme.om.base import Platform\nfrom acme.om.tenancy.types.user import User\n"
+        "from acme.om.base import OmBase\n", "from acme.om.base import OmBase\nfrom acme.om.tenancy.types.user import User\n"
     ).replace("    identity_id: UUID\n", "    identity_id: UUID\n    user: User\n")
     files = {STAGES: stages, f"{OM}/tenancy/types/user.py": "class User:\n    pass\n"}
     code, found, messages = run(tmp_path, "CTX-02", files)
@@ -150,16 +150,14 @@ def test_a_stage_package_is_read_whole_by_ctx_02(tmp_path):
 
 def test_the_base_imported_as_a_module_passes_ctx_02(tmp_path):
     stages = CONTEXT.replace(
-        "from acme.om.base import Platform\n", "from acme.om import base, exceptions\n\nPlatform = base.Platform\n"
+        "from acme.om.base import OmBase\n", "from acme.om import base, exceptions\n\nPlatform = base.OmBase\n"
     )
     code, _, _ = run(tmp_path, "CTX-02", {STAGES: stages})
     assert code == 0
 
 
 def test_a_namespace_imported_beside_the_base_is_ctx_02(tmp_path):
-    stages = CONTEXT.replace(
-        "from acme.om.base import Platform\n", "from acme.om import base, orders\n\nPlatform = base.Platform\n"
-    )
+    stages = CONTEXT.replace("from acme.om.base import OmBase\n", "from acme.om import base, orders\n\nPlatform = base.OmBase\n")
     code, found, messages = run(tmp_path, "CTX-02", {STAGES: stages})
     assert code == 1
     assert found == [("CTX-02", STAGES, 4)]
@@ -336,7 +334,7 @@ class TasksStorageInterface(ABC):
 
     @abstractmethod
     async def count_since(self, since: datetime) -> int:
-        \"\"\"Cross-tenant: the platform size.\"\"\"
+        \"\"\"Cross-tenant: the system size.\"\"\"
         ...
 """
 
@@ -378,13 +376,13 @@ def test_a_documented_tenantless_method_passes_ctx_12(tmp_path):
 
 
 def test_an_undocumented_tenantless_method_is_ctx_12(tmp_path):
-    storage = STORAGE.replace('        """Cross-tenant: the platform size."""\n', "")
+    storage = STORAGE.replace('        """Cross-tenant: the system size."""\n', "")
     code, found, _ = run(tmp_path, "CTX-12", {f"{OM}/tasks/storage/__init__.py": storage}, pyproject=LISTED)
     assert (code, found) == (1, [("CTX-12", f"{OM}/tasks/storage/__init__.py", 12)])
 
 
 def test_a_class_docstring_does_not_excuse_a_tenantless_method_beside_tenant_ones_for_ctx_12(tmp_path):
-    storage = STORAGE.replace('        """Cross-tenant: the platform size."""\n', "").replace(
+    storage = STORAGE.replace('        """Cross-tenant: the system size."""\n', "").replace(
         "class TasksStorageInterface(ABC):\n", 'class TasksStorageInterface(ABC):\n    """The tasks of a tenant."""\n\n'
     )
     code, found, messages = run(tmp_path, "CTX-12", {f"{OM}/tasks/storage/__init__.py": storage}, pyproject=LISTED)
@@ -401,7 +399,7 @@ def test_no_tenantless_list_at_all_is_ctx_12(tmp_path):
 def test_a_global_interface_documented_on_the_class_passes_ctx_12(tmp_path):
     storage = (
         "from abc import ABC, abstractmethod\n\n\nclass CatalogStorageInterface(ABC):\n"
-        '    """Global: the catalog is platform-owned reference data, shared by every tenant."""\n\n'
+        '    """Global: the catalog is system-owned reference data, shared by every tenant."""\n\n'
         "    @abstractmethod\n    async def read_product(self, sku: str) -> Product | None: ...\n\n"
         "    @abstractmethod\n    async def list_products(self) -> list[Product]: ...\n"
     )
@@ -656,7 +654,7 @@ def test_a_worker_reusing_the_items_request_id_or_a_stage_without_the_cause_is_c
 
 def test_a_stage_module_class_named_like_an_entity_passes_ctx_02(tmp_path):
     stages = CONTEXT.replace(
-        "class SecurityContext(Platform):\n", "class Role(str):\n    pass\n\n\nclass SecurityContext(Platform):\n"
+        "class SecurityContext(OmBase):\n", "class Role(str):\n    pass\n\n\nclass SecurityContext(OmBase):\n"
     ).replace("    credential_id: UUID\n", "    credential_id: UUID\n    role: Role\n")
     files = {STAGES: stages, f"{OM}/tenancy/types/role.py": "class Role:\n    pass\n"}
     code, found, _ = run(tmp_path, "CTX-02", files)

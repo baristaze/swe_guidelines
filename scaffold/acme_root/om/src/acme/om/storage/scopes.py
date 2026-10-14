@@ -90,9 +90,9 @@ TABLE_SCOPES: dict[str, TableScope] = {
     # sign-in delay is keyed on an email before any identity is known.
     "identities": TableScope(ScopeKind.SYSTEM),
     "sign_in_delays": TableScope(ScopeKind.SYSTEM),
-    # The operator plane's own: the platform's size as the sweep last counted
+    # The operator plane's own: the system's size as the sweep last counted
     # it, one row that is no tenant's.
-    "platform_sizes": TableScope(ScopeKind.SYSTEM),
+    "system_sizes": TableScope(ScopeKind.SYSTEM),
     # A tenant's own rows. An org's `org_id` is its own id.
     "orgs": TableScope(ScopeKind.ORG),
     "invitations": TableScope(ScopeKind.ORG),

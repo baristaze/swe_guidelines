@@ -7,7 +7,7 @@ from typing import Any
 import pytest
 from pydantic import Field
 
-from acme.om.base import FrozenMapping, Platform
+from acme.om.base import FrozenMapping, OmBase
 from acme.om.events.types.event import Event
 from acme.om.outbox.types.row import OutboxRow
 from acme.om.work.types.work_item import WorkItem
@@ -20,7 +20,7 @@ NESTED: dict[str, Any] = {
 }
 
 
-class Carrier(Platform):
+class Carrier(OmBase):
     payload: FrozenMapping = Field(default_factory=dict, validate_default=True)
 
 
@@ -93,7 +93,7 @@ def test_the_json_dump_round_trips_through_validation() -> None:
 
 
 @pytest.mark.parametrize("entity_type", [Event, OutboxRow, WorkItem])
-def test_every_payload_field_validates_its_default(entity_type: type[Platform]) -> None:
+def test_every_payload_field_validates_its_default(entity_type: type[OmBase]) -> None:
     # Pydantic does not validate a default, so the empty case is
     # Field(default_factory=dict, validate_default=True), or the default is
     # the one dict that escapes the freeze.

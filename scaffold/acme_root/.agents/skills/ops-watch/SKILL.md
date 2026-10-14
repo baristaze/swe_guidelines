@@ -1,6 +1,6 @@
 ---
 name: ops-watch
-description: "Watch one environment of the platform live from a sub-agent: a log tail, the alarms as they fire, and the error and latency signals, batched per interval and capped, with a read-only credential. Run it in a sub-agent the invoking session spawns, because it polls for the whole window, at most 30 batches, and reports when the window ends, the 30th batch closes, or an alarm fires. It applies the first responder rule: outside production an alarm raised by the team's own traffic may be suppressed with the reason recorded; in production an alarm is never suppressed. Never writes."
+description: "Watch one environment of the system live from a sub-agent: a log tail, the alarms as they fire, and the error and latency signals, batched per interval and capped, with a read-only credential. Run it in a sub-agent the invoking session spawns, because it polls for the whole window, at most 30 batches, and reports when the window ends, the 30th batch closes, or an alarm fires. It applies the first responder rule: outside production an alarm raised by the team's own traffic may be suppressed with the reason recorded; in production an alarm is never suppressed. Never writes."
 allowed-tools: Read, Grep, Bash(aws:*), Bash(curl:*), Bash(docker compose:*), Bash(uv run acme-ops size:*), Bash(sleep:*)
 ---
 
@@ -105,7 +105,7 @@ in it; the first batch still makes its own check after its wait.
    `[start + k * interval, start + (k + 1) * interval)`, with `k` from
    0 to at most 29, read once that interval has closed, and no batch
    is read twice.
-2. Read the platform's size once:
+2. Read the system's size once:
 
    ```bash
    uv run acme-ops size --env <env>

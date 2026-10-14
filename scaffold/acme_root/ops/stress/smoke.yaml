@@ -1,7 +1,7 @@
 # The smallest scenario: thirty seconds at the light profile against the
 # local stack (CI's sanity run is `make traffic`, the same load with no
 # target). It proves the generator, the edge, and the signals agree, and
-# holds the platform to nothing more than a working day.
+# holds the system to nothing more than a working day.
 name: smoke
 profile: light
 duration_seconds: 30

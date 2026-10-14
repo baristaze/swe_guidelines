@@ -21,7 +21,7 @@ to derive one from. The topic envelope carries `produced_at` too. Two
 readers filter on the column through
 `ix_events_produced_at`: the trim of the stream
 ([ADR 0040](0040-the-event-stream-has-a-floor.md)) and the count of the
-day's events behind the platform's size
+day's events behind the system's size
 ([ADR 0074](0074-the-platforms-size-is-a-tally-the-sweep-keeps.md)).
 
 ## Decision

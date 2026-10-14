@@ -130,7 +130,7 @@ def load_scenario(path: Path) -> Scenario:
 @dataclass(frozen=True)
 class Readback:
     """What the signals said about the window: how many requests the
-    platform counted and how many of them it answered with a 5xx. None when
+    system counted and how many of them it answered with a 5xx. None when
     the store had nothing for the window."""
 
     requests: float | None
@@ -186,7 +186,7 @@ class Verdict:
 
 def verdict(scenario: Scenario, report: Report, readback: Readback) -> Verdict:
     """Pass when the generator's p95 and error ratio meet the target, the
-    platform counted the window, and its own 5xx ratio meets the target too.
+    system counted the window, and its own 5xx ratio meets the target too.
     A run that made no requests fails: it proved nothing. The error tracker
     is not one of the signals the verdict holds to, so an environment that
     names none still passes or fails on the counter it did read.
@@ -208,10 +208,10 @@ def verdict(scenario: Scenario, report: Report, readback: Readback) -> Verdict:
             f"error ratio {report.error_ratio:.4f} over {scenario.target.error_ratio:.4f}"
         )
     if not readback.requests:
-        reasons.append("the platform counted no requests for the window")
+        reasons.append("the system counted no requests for the window")
     elif (readback.error_ratio or 0.0) > scenario.target.error_ratio:
         reasons.append(
-            f"the platform's 5xx ratio {readback.error_ratio:.4f} over "
+            f"the system's 5xx ratio {readback.error_ratio:.4f} over "
             f"{scenario.target.error_ratio:.4f}"
         )
     return Verdict(passed=not reasons, reasons=tuple(reasons))

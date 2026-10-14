@@ -20,7 +20,7 @@ from typing import ClassVar
 
 from pydantic import Field
 
-from acme.om.base import FrozenMapping, Identifiable, Platform, Trackable
+from acme.om.base import FrozenMapping, Identifiable, OmBase, Trackable
 
 
 class OrchestrationKind(StrEnum):
@@ -61,7 +61,7 @@ class FailReason(StrEnum):
     DEFECT = "defect"  # a step still failed on its work item's last attempt
 
 
-class RowError(Platform):
+class RowError(OmBase):
     """One input row a step skipped: its number, counting the first data row
     as 1, and why."""
 
@@ -111,24 +111,24 @@ class Orchestration(Identifiable, Trackable):
     version: int = 1
 
 
-class OrchestrationPage(Platform):
+class OrchestrationPage(OmBase):
     items: tuple[Orchestration, ...]
     has_more: bool
 
 
-class NoopInput(Platform):
+class NoopInput(OmBase):
     """How many steps the record takes before it succeeds."""
 
     steps: int = Field(default=1, ge=1, le=100)
 
 
-ORCHESTRATION_INPUTS: dict[OrchestrationKind, type[Platform]] = {
+ORCHESTRATION_INPUTS: dict[OrchestrationKind, type[OmBase]] = {
     OrchestrationKind.NOOP: NoopInput,
 }
 """The input shape of every kind; the start validates a record's input against it."""
 
 
-class Step(Platform):
+class Step(OmBase):
     """A step's companion write: the record as the step leaves it, landed in
     the same commit as the step's effect (the rows of the namespace it
     changes) and conditioned on the version the step read. The record's `applied` grows,

@@ -10,7 +10,7 @@ reads a clock off a record and the two cannot drift apart."""
 from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
-from acme.om.base import Platform
+from acme.om.base import OmBase
 
 EPOCH = datetime(1970, 1, 1, tzinfo=UTC)
 MILLISECOND = timedelta(milliseconds=1)
@@ -25,7 +25,7 @@ def lease_bound(moment: datetime) -> UUID:
     return UUID(int=((moment - EPOCH) // MILLISECOND + 1) << TOKEN_TAIL_BITS)
 
 
-class Attempt(Platform):
+class Attempt(OmBase):
     """One attempt at a creating request: the id its create uses and the token
     of the marker holding it. The gateway mints both before the marker and
     hands them down together, so a write of a rerun that changes what is

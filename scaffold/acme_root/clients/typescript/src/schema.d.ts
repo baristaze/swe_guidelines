@@ -254,12 +254,12 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Platform Size
-         * @description The platform's size as the maintenance worker last counted it, with
+         * System Size
+         * @description The system's size as the maintenance worker last counted it, with
          *     the moment it did; the route counts nothing. `404` until the first
          *     count.
          */
-        get: operations["platform_size_v1_admin_size_get"];
+        get: operations["system_size_v1_admin_size_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -2142,32 +2142,6 @@ export interface components {
              */
             request_id: string;
         };
-        /**
-         * PlatformSizeView
-         * @description How big the platform is, what the first responder to an alarm reads
-         *     before it escalates: live tenants and users, and the events produced in
-         *     the twenty-four hours from `since` to `counted_at`. The maintenance
-         *     worker counts it every few minutes, and this is its latest count:
-         *     `counted_at` says how old the answer is.
-         */
-        PlatformSizeView: {
-            /**
-             * Counted At
-             * Format: date-time
-             */
-            counted_at: string;
-            /** Events Last 24H */
-            events_last_24h: number;
-            /**
-             * Since
-             * Format: date-time
-             */
-            since: string;
-            /** Tenants */
-            tenants: number;
-            /** Users */
-            users: number;
-        };
         /** PurposeUsageView */
         PurposeUsageView: {
             /** Count */
@@ -2456,6 +2430,32 @@ export interface components {
             floor: number;
             /** Head */
             head: number;
+        };
+        /**
+         * SystemSizeView
+         * @description How big the system is, what the first responder to an alarm reads
+         *     before it escalates: live tenants and users, and the events produced in
+         *     the twenty-four hours from `since` to `counted_at`. The maintenance
+         *     worker counts it every few minutes, and this is its latest count:
+         *     `counted_at` says how old the answer is.
+         */
+        SystemSizeView: {
+            /**
+             * Counted At
+             * Format: date-time
+             */
+            counted_at: string;
+            /** Events Last 24H */
+            events_last_24h: number;
+            /**
+             * Since
+             * Format: date-time
+             */
+            since: string;
+            /** Tenants */
+            tenants: number;
+            /** Users */
+            users: number;
         };
         /**
          * TenantCapView
@@ -3209,7 +3209,7 @@ export interface operations {
             };
         };
     };
-    platform_size_v1_admin_size_get: {
+    system_size_v1_admin_size_get: {
         parameters: {
             query?: never;
             header?: {
@@ -3228,7 +3228,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["PlatformSizeView"];
+                    "application/json": components["schemas"]["SystemSizeView"];
                 };
             };
             /** @description Validation Error */

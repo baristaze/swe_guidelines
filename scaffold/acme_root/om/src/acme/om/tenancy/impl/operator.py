@@ -6,7 +6,7 @@ from uuid import UUID
 
 from pydantic import Field
 
-from acme.om.base import EMPTY_UUID, Platform, new_id, utcnow
+from acme.om.base import EMPTY_UUID, OmBase, new_id, utcnow
 from acme.om.context import (
     CredentialKind,
     OperatorContext,
@@ -49,21 +49,21 @@ from acme.om.tenancy.types.issued import IssuedOperatorToken, IssuedTotpSecret
 from acme.om.tenancy.types.org import Org
 from acme.om.tenancy.types.page import OperatorTokenPage, OrgPage, UserPage
 from acme.om.tenancy.types.session import Session
-from acme.om.tenancy.types.size import PlatformSize
+from acme.om.tenancy.types.size import SystemSize
 from acme.om.tenancy.types.user import User
 from acme.om.work.types.work_item import WorkKind, work_row_kind
 
 log = logging.getLogger(__name__)
 
 SIZE_WINDOW = timedelta(hours=24)
-"""How far back from its count the traffic figures of the platform's size look."""
+"""How far back from its count the traffic figures of the system's size look."""
 
 
 TOTP_ISSUER = "Acme"
 """The name an authenticator app shows beside the operator's account."""
 
 
-class TenancyOperatorOptions(Platform):
+class TenancyOperatorOptions(OmBase):
     max_limit: int = 200
     max_orgs_per_identity: int = MAX_ORGS_PER_IDENTITY
     """The tenant manager's bound, held the same on this plane."""
@@ -207,30 +207,30 @@ class TenancyOperatorManagerImpl(TenancyOperatorManagerInterface):
         rows = await self._storage.read_orgs(limit + 1, after)
         return OrgPage(items=tuple(rows[:limit]), has_more=len(rows) > limit)
 
-    async def size(self, admin: OperatorContext) -> PlatformSize:
+    async def size(self, admin: OperatorContext) -> SystemSize:
         admin.require(OperatorPermission.READ)
         # The tally the sweep keeps: a count across tenants never runs in a
         # request (ADR 0074).
-        size = await self._storage.read_platform_size()
+        size = await self._storage.read_system_size()
         if size is None:
             raise NotFound(
-                "the platform's size is not counted yet; the maintenance worker counts it"
+                "the system's size is not counted yet; the maintenance worker counts it"
                 " on its first sweep"
             )
         return size
 
-    async def tally_size(self) -> PlatformSize:
+    async def tally_size(self) -> SystemSize:
         counted_at = utcnow()
         since = counted_at - SIZE_WINDOW
         tenants, users = await self._storage.count_orgs_and_users()
-        size = PlatformSize(
+        size = SystemSize(
             tenants=tenants,
             users=users,
             events_last_24h=await self._events.count_since(since),
             since=since,
             counted_at=counted_at,
         )
-        await self._storage.write_platform_size(size)
+        await self._storage.write_system_size(size)
         return size
 
     async def create_org(

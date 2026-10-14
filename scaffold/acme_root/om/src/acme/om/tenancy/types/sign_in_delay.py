@@ -1,9 +1,9 @@
 from datetime import datetime
 
-from acme.om.base import Platform
+from acme.om.base import OmBase
 
 
-class SignInDelay(Platform):
+class SignInDelay(OmBase):
     """The run of failed sign-ins for one email, keyed on the email's digest,
     so an address that holds no identity is delayed like one that does and
     the delay says nothing about which exist. A system row: it belongs to no

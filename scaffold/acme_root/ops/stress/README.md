@@ -17,7 +17,7 @@ person thinks between steps.
 A p95 and an error ratio, stated in the file or on the run with
 `--p95-ms` and `--error-ratio`. The p95 judges the working requests; the
 sign-ins and sign-outs are reported beside it. After the run the
-platform's own request and 5xx counts are read back, and the run fails
+system's own request and 5xx counts are read back, and the run fails
 when they miss the target.
 
 ## The file

@@ -40,7 +40,7 @@ The effect carries its own key, with no marker table and no column. The
 id still sorts by time and reads as a v7.
 
 The id's random bits are not random: anyone who knew a delivery's key
-and its time could compute the id. Neither leaves the platform, and an
+and its time could compute the id. Neither leaves the system, and an
 id is never a credential.
 
 A new provider whose deliveries create records uses the same function

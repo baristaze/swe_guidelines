@@ -2070,42 +2070,6 @@
         "title": "PlaceView",
         "type": "object"
       },
-      "PlatformSizeView": {
-        "description": "How big the platform is, what the first responder to an alarm reads\nbefore it escalates: live tenants and users, and the events produced in\nthe twenty-four hours from `since` to `counted_at`. The maintenance\nworker counts it every few minutes, and this is its latest count:\n`counted_at` says how old the answer is.",
-        "properties": {
-          "counted_at": {
-            "format": "date-time",
-            "title": "Counted At",
-            "type": "string"
-          },
-          "events_last_24h": {
-            "title": "Events Last 24H",
-            "type": "integer"
-          },
-          "since": {
-            "format": "date-time",
-            "title": "Since",
-            "type": "string"
-          },
-          "tenants": {
-            "title": "Tenants",
-            "type": "integer"
-          },
-          "users": {
-            "title": "Users",
-            "type": "integer"
-          }
-        },
-        "required": [
-          "tenants",
-          "users",
-          "events_last_24h",
-          "since",
-          "counted_at"
-        ],
-        "title": "PlatformSizeView",
-        "type": "object"
-      },
       "PurposeUsageView": {
         "properties": {
           "count": {
@@ -2697,6 +2661,42 @@
           "head"
         ],
         "title": "StreamTruncatedDetail",
+        "type": "object"
+      },
+      "SystemSizeView": {
+        "description": "How big the system is, what the first responder to an alarm reads\nbefore it escalates: live tenants and users, and the events produced in\nthe twenty-four hours from `since` to `counted_at`. The maintenance\nworker counts it every few minutes, and this is its latest count:\n`counted_at` says how old the answer is.",
+        "properties": {
+          "counted_at": {
+            "format": "date-time",
+            "title": "Counted At",
+            "type": "string"
+          },
+          "events_last_24h": {
+            "title": "Events Last 24H",
+            "type": "integer"
+          },
+          "since": {
+            "format": "date-time",
+            "title": "Since",
+            "type": "string"
+          },
+          "tenants": {
+            "title": "Tenants",
+            "type": "integer"
+          },
+          "users": {
+            "title": "Users",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "tenants",
+          "users",
+          "events_last_24h",
+          "since",
+          "counted_at"
+        ],
+        "title": "SystemSizeView",
         "type": "object"
       },
       "TenantCapView": {
@@ -4654,8 +4654,8 @@
     },
     "/v1/admin/size": {
       "get": {
-        "description": "The platform's size as the maintenance worker last counted it, with\nthe moment it did; the route counts nothing. `404` until the first\ncount.",
-        "operationId": "platform_size_v1_admin_size_get",
+        "description": "The system's size as the maintenance worker last counted it, with\nthe moment it did; the route counts nothing. `404` until the first\ncount.",
+        "operationId": "system_size_v1_admin_size_get",
         "parameters": [
           {
             "in": "header",
@@ -4711,7 +4711,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/PlatformSizeView"
+                  "$ref": "#/components/schemas/SystemSizeView"
                 }
               }
             },
@@ -4728,7 +4728,7 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Platform Size",
+        "summary": "System Size",
         "tags": [
           "admin"
         ]

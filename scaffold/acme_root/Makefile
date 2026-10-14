@@ -183,7 +183,7 @@ migrate: ## Make the database logins, then apply every role's migration chain to
 # there or on the command line, e.g. `make seed SEED_EMAIL=me@example.test`.
 # The admin owns the second org and joins the first as an admin: one person
 # with two memberships, each under a different role.
-# Then the two local operators, the platform's own identities of
+# Then the two local operators, the system's own identities of
 # acme.ops.environments.LOCAL_OPERATORS: a read operator and the
 # provisioner, which writes. The read operator's token goes into the
 # owner-only ~/.config/acme/ops/local.env beside the local stack's addresses,

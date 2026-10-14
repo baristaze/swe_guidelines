@@ -75,7 +75,7 @@ class IdempotencyManagerInterface(ABC):
 
     @abstractmethod
     async def purge_across_tenants(self) -> int:
-        """Platform-internal: the sweep, across tenants, once a pass: deletes
+        """System-internal: the sweep, across tenants, once a pass: deletes
         finished and released records past the retention and held pending
         ones past ten times the pending lease, a marker no retry came back
         for, a batch at most; returns how many. A key purged is a key free

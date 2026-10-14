@@ -45,8 +45,8 @@ class OperatorView(View):
     operator_role: OperatorRole
 
 
-class PlatformSizeView(View):
-    """How big the platform is, what the first responder to an alarm reads
+class SystemSizeView(View):
+    """How big the system is, what the first responder to an alarm reads
     before it escalates: live tenants and users, and the events produced in
     the twenty-four hours from `since` to `counted_at`. The maintenance
     worker counts it every few minutes, and this is its latest count:

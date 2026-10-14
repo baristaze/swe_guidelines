@@ -1,4 +1,4 @@
-"""Every enum the platform formats into a key, a name, a log line, or a
+"""Every enum the system formats into a key, a name, a log line, or a
 message formats as its value. A `(str, Enum)` member formats as `Class.MEMBER`
 on Python 3.12 and later, so an f-string built from one names the class
 instead of the value; every one of them is a `StrEnum`."""

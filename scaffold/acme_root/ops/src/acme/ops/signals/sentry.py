@@ -5,7 +5,7 @@ names the project and filters on the environment: `environment:<name>` in the
 issue search, and the event's own `environment` tag as the proof. An issue in
 a shared project can hold events from more than one environment, which is why
 the environment is checked on the event and not only on the issue. The event
-that answers is the one whose `request_id` tag is the id the platform put on
+that answers is the one whose `request_id` tag is the id the system put on
 every event of that request."""
 
 from typing import Any

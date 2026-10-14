@@ -71,7 +71,7 @@ LOCAL_OPERATORS = {
 """The two operator identities `make seed` puts on the local allowlist: the
 read operator, whose `read` token is the file's `ACME_OPERATOR_TOKEN`, and
 the provisioner, whose `write` token is `ACME_PROVISIONER_TOKEN` in the
-provisioner's file. They are the platform's own, made by their first grant,
+provisioner's file. They are the system's own, made by their first grant,
 so no person signs in as either and nothing but the grant command mints
 their tokens."""
 

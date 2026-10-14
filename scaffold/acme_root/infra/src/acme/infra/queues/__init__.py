@@ -1,4 +1,4 @@
-"""Queues: work whose producer is outside the platform and cannot be told to
+"""Queues: work whose producer is outside the system and cannot be told to
 wait. At-least-once, no deduplication; the consumer is idempotent."""
 
 from abc import ABC, abstractmethod

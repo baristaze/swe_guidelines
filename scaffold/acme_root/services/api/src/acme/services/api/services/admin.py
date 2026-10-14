@@ -17,8 +17,8 @@ from acme.services.api.types.admin import (
     OperatorTokenView,
     OperatorView,
     OperatorWorkItemView,
-    PlatformSizeView,
     SetTenantCapRequest,
+    SystemSizeView,
     TenantCapView,
     TotpConfirmedView,
 )
@@ -60,7 +60,7 @@ class AdminServiceInterface(ABC):
     async def revoke_token(self, admin: OperatorContext, token_id: UUID) -> OperatorTokenView: ...
 
     @abstractmethod
-    async def size(self, admin: OperatorContext) -> PlatformSizeView: ...
+    async def size(self, admin: OperatorContext) -> SystemSizeView: ...
 
     @abstractmethod
     async def create_org(

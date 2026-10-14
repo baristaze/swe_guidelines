@@ -9,7 +9,7 @@ is one of the kinds of thing [Acme is made of](../../../../README.md).
   kind, the record it is about, a payload fixed per kind, when it was
   produced, and who produced it (the actor, the request, and the app).
 - **Kind**: `<namespace>.<entity>.<action>` for a change, or an audit
-  kind for what the platform records about itself: `work.item.failed`,
+  kind for what the system records about itself: `work.item.failed`,
   `work.item.requeued`, `outbox.row.failed`, and
   `identity.event.received`.
 - **Cursor**: per org, the **head** (the last number given) and the
@@ -50,7 +50,7 @@ is one of the kinds of thing [Acme is made of](../../../../README.md).
 
 A change is announced by an outbox row of the write itself; the relay
 turns it into an event, so a namespace never calls `append_event` for
-its own changes. A namespace that records something about the platform
+its own changes. A namespace that records something about the system
 builds an audit entry with `audit_event(ctx, id, kind, target_id,
 facts)` and appends it through `EventsManagerInterface.append_event`
 ([ADR 0011](../../../../../docs/adr/0011-audit-entries-are-events.md)).

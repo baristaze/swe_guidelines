@@ -410,12 +410,10 @@ def test_del_13_a_recorded_state_substitution_is_an_option(tmp_path):
 # --- DEL-18
 
 OM_EXC = "om/src/acme/om/exceptions.py"
-PLATFORM = (
-    "class PlatformException(Exception):\n    http_status = 500\n    code = 'x'\n\nclass NotFound(PlatformException):\n    pass\n"
-)
+PLATFORM = "class OmException(Exception):\n    http_status = 500\n    code = 'x'\n\nclass NotFound(OmException):\n    pass\n"
 
 
-def test_del_18_exceptions_rooted_at_the_platform_pass(tmp_path):
+def test_del_18_exceptions_rooted_at_om_or_infra_pass(tmp_path):
     files = {
         OM_EXC: PLATFORM,
         "om/src/acme/om/orders/impl.py": (

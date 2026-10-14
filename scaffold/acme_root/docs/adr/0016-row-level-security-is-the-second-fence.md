@@ -41,7 +41,7 @@ never a default, spelled at the call site.
 it and is not an enumerated exception.
 
 **Three logins, none above the fence.** A superuser walks past every
-policy, and so does a role with `BYPASSRLS`. No login of the platform
+policy, and so does a role with `BYPASSRLS`. No login of the system
 is either, and `FORCE ROW LEVEL SECURITY` is on every fenced table, so
 the owner is held too.
 
@@ -78,7 +78,7 @@ Two choices go beyond the guideline's shape.
   identity is known. The tree also takes no tenant where a method reads
   or writes the two `system` tables (`identities`, `sign_in_delays`),
   reads across tenants for the operator plane, steps from an identity to
-  its tenants, keeps the platform's size, or erases a person
+  its tenants, keeps the system's size, or erases a person
   ([ADR 0041](0041-an-account-is-deleted-at-once-and-its-providers-by-the-queue.md)).
   Each says why in its docstring. `[tool.arch-check.options.CTX-12]` in
   `pyproject.toml` and `om/tests/unit/test_storage_exceptions.py` hold

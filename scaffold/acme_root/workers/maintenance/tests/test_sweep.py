@@ -7,7 +7,7 @@ retention once a pass across tenants,
 every row past its retention gone after one pass of the worker's own loop, a
 living tenant that costs the purges nothing, a deleted tenant's every row
 gone, the tenant marked purged once nothing of it is left and left out
-after, the tenant's expiry read once per pass, the count of the platform's
+after, the tenant's expiry read once per pass, the count of the system's
 size once an interval, and the pass's duration and the four gauges of the
 queue and the outbox on its own line."""
 
@@ -670,7 +670,7 @@ async def test_a_gauge_that_cannot_be_read_is_left_off_the_line_and_as_it_was(
 
 
 class Tally:
-    """The count of the platform's size: how many times it ran, and the
+    """The count of the system's size: how many times it ran, and the
     failures it raises first, one a call."""
 
     def __init__(self, failures: int = 0) -> None:
@@ -685,7 +685,7 @@ class Tally:
         return None
 
 
-async def test_the_platforms_size_is_counted_on_the_first_pass_then_once_an_interval(
+async def test_the_systems_size_is_counted_on_the_first_pass_then_once_an_interval(
     tmp_path: Path,
 ) -> None:
     """The first pass counts, whatever its budget, and the passes within the
@@ -726,20 +726,20 @@ async def test_a_failed_count_is_tried_again_on_the_next_pass_and_stops_no_other
 
 
 async def test_the_worker_keeps_the_tally_the_operator_plane_reads(tmp_path: Path) -> None:
-    """The loop the worker runs counts the platform's size into the tally
+    """The loop the worker runs counts the system's size into the tally
     row, and the next pass within the interval leaves it as it was."""
     container = build_container(tmp_path)
     await sign_in(container)
     storage = container.storage.get_tenancy_storage()
-    assert await storage.read_platform_size() is None
+    assert await storage.read_system_size() is None
     loop = build_loop(container)
     await loop._sweep_once()  # pyright: ignore[reportPrivateUsage]
-    tally = await storage.read_platform_size()
+    tally = await storage.read_system_size()
     assert tally is not None
     # The org and its owner's personal org, and the owner in each.
     assert (tally.tenants, tally.users) == (2, 2)
     await loop._sweep_once()  # pyright: ignore[reportPrivateUsage]
-    assert await storage.read_platform_size() == tally
+    assert await storage.read_system_size() == tally
 
 
 async def test_the_requeue_runs_once_a_pass_across_tenants_before_any_tenant(

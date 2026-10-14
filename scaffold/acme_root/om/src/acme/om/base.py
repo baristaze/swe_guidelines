@@ -20,7 +20,7 @@ def derived_id(key: UUID, at: datetime, part: str = "") -> UUID:
     """The one id not minted fresh: a v7 whose time is `at` and whose random
     bits are taken from `key`, and from `part` when one key makes many (an
     import's rows). An entity an outside delivery creates takes it, with the
-    delivery's key and the time the platform received it, so the same
+    delivery's key and the time the system received it, so the same
     delivery handled twice presents the same id and the create meets the row
     already there; so does a row of an import stepped twice. It sorts by time
     like every other id."""
@@ -37,7 +37,7 @@ def utcnow() -> datetime:
     return datetime.now(UTC)
 
 
-class Platform(BaseModel):
+class OmBase(BaseModel):
     """Root of the object model. Holds no fields."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -85,18 +85,18 @@ case is `Field(default_factory=dict, validate_default=True)`, or the default
 is the one dict that escapes the freeze."""
 
 
-class Identifiable(Platform):
+class Identifiable(OmBase):
     id: UUID  # uuid_v7, from new_id()
 
 
-class Named(Platform):
+class Named(OmBase):
     name: str
 
 
-class Created(Platform):
-    """When a row came to be, for a row the platform writes for itself, such
+class Created(OmBase):
+    """When a row came to be, for a row the system writes for itself, such
     as an outbox row, an idempotency record, or a socket ticket. No person
-    stands behind it, so it carries no `created_by`, and what the platform
+    stands behind it, so it carries no `created_by`, and what the system
     stamps on it later is a field named for what happened (`done_at`,
     `redeemed_at`). An entity a person makes and changes composes
     `Trackable` instead."""
@@ -110,7 +110,7 @@ class Trackable(Created):
     updated_by: UUID  # id of the user who last changed it
 
 
-class SoftDeletable(Platform):
+class SoftDeletable(OmBase):
     deleted_at: datetime | None = None
     deleted_by: UUID | None = None
 
@@ -127,7 +127,7 @@ on update excludes both sets."""
 
 
 EMPTY_UUID = UUID(int=0)
-"""The platform, not a tenant or a person: the reserved system scope, and the
+"""The system, not a tenant or a person: the reserved system scope, and the
 value of a required reference that no tenant and no person owns. It equals
 infra's `SYSTEM_SCOPE` by value, so infra never imports it. A reference that
 is genuinely optional is `None`, never `EMPTY_UUID`."""

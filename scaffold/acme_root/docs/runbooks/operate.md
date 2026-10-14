@@ -44,7 +44,7 @@ aws cloudwatch get-dashboard --dashboard-name acme-staging \
 
 All go to the topic `acme-<environment>-alarms`, from
 `deployment/terraform/modules/alarms`. The thresholds are the module's
-defaults, and a busier platform moves them.
+defaults, and a busier system moves them.
 
 | Alarm | Fires when |
 |-------|------------|
@@ -69,7 +69,7 @@ aws cloudwatch describe-alarms --alarm-name-prefix acme-staging- \
   --query 'MetricAlarms[].{name:AlarmName,state:StateValue,since:StateUpdatedTimestamp}' --output table
 ```
 
-Before escalating, read the platform's size: an alarm on a platform of
+Before escalating, read the system's size: an alarm on a system of
 one tenant is a developer at work.
 
 ```bash

@@ -310,7 +310,7 @@ def main(argv: list[str] | None = None) -> int:
     p_grant.add_argument(
         "--email",
         required=True,
-        help="the identity: a person who signed up first, or one of the platform's own "
+        help="the identity: a person who signed up first, or one of the system's own "
         "(@platform.acme.invalid), which the first grant makes",
     )
     p_grant.add_argument(

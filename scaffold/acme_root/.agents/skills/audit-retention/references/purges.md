@@ -98,4 +98,4 @@ org row stays, marked purged, as the record.
 
 No purge reaches `core.orgs`, `core.identities` (erased with the
 person's account), `activity.event_cursors` beyond a purged tenant's,
-or `admin.platform_sizes` (one row the sweep's tally rewrites).
+or `admin.system_sizes` (one row the sweep's tally rewrites).

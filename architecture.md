@@ -276,20 +276,20 @@ def new_id() -> UUID:
 def utcnow() -> datetime:
     return datetime.now(UTC)
 
-class Platform(BaseModel):  # the root; holds no fields
+class OmBase(BaseModel):  # the root; holds no fields
     model_config = ConfigDict(frozen=True, extra="forbid")
 
-class Identifiable(Platform):
+class Identifiable(OmBase):
     id: UUID  # uuid_v7, from new_id()
-class Named(Platform):
+class Named(OmBase):
     name: str
-class Created(Platform):
+class Created(OmBase):
     created_at: datetime
 class Trackable(Created):
     updated_at: datetime
     created_by: UUID
     updated_by: UUID
-class SoftDeletable(Platform):
+class SoftDeletable(OmBase):
     deleted_at: datetime | None = None
     deleted_by: UUID | None = None
 ```
@@ -315,12 +315,12 @@ so it has no `updated_at`, and never hidden, so no `deleted_at`. The one
 write it takes after its birth is erasure, which redacts a person's
 fields in place.
 
-A row the platform writes for its own bookkeeping composes `Created`,
+A row the system writes for its own bookkeeping composes `Created`,
 since no person made it. Two are touched by every namespace, and each is
 declared once, in its own namespace: the `OutboxRow` that announces a
 write and the `IdempotencyRecord` that owns a retry. A work item looks
 like bookkeeping and is `Trackable`: the person who enqueued it is its
-attribution, and the platform signs its later writes with `EMPTY_UUID`.
+attribution, and the system signs its later writes with `EMPTY_UUID`.
 
 The base module also names `PROVENANCE_FIELDS`, which no caller
 rewrites, and each entity declares `MANAGER_OWNED_FIELDS`, which its
@@ -402,10 +402,10 @@ as `part` ([`base.py`](scaffold/acme_root/om/src/acme/om/base.py)). A
 second run presents the same id, so its create meets the row already
 there and creates nothing.
 
-`EMPTY_UUID`, the zero UUID, means the platform: not a tenant and not a
+`EMPTY_UUID`, the zero UUID, means the system: not a tenant and not a
 person. It is the `org_id` of cross-tenant reference data, and the value
 of a required reference nobody owns, such as `updated_by` on a work
-item the platform claimed. A reference that is genuinely optional is
+item the system claimed. A reference that is genuinely optional is
 `None`.
 
 > **Principle:** Every id is `uuid_v7`, minted above storage with
@@ -604,7 +604,7 @@ is a tenant operation's context, the one most operations take
 ([`context.py`](scaffold/acme_root/om/src/acme/om/context.py)):
 
 ``` python
-class SecurityContext(Platform):
+class SecurityContext(OmBase):
     user_id: UUID
     org_id: UUID
     role: Role
@@ -613,7 +613,7 @@ class SecurityContext(Platform):
     credential_kind: CredentialKind
     credential_id: UUID = EMPTY_UUID  # the session or key; EMPTY_UUID for internal contexts
 
-class RequestContext(Platform):
+class RequestContext(OmBase):
     request_id: UUID
     app: AppContext
     trace_id: str | None = None
@@ -712,7 +712,7 @@ never arrives in a constructor.
 
 `core`
 
-The people who run the platform ask what no tenant context answers:
+The people who run the system ask what no tenant context answers:
 usage across organizations, health, global configuration. That is a
 second plane with its own context, `OperatorContext`: the identity stage
 refined by `admit_operator` when the identity is on the operator
@@ -920,7 +920,7 @@ class OutboxRow(Identifiable, Created):
     kind: str       # "<namespace>.<entity>.<action>", or "work.<kind>"
     target_id: UUID
     payload: FrozenMapping = Field(default_factory=dict, validate_default=True)
-    actor_id: UUID  # the write's principal; EMPTY_UUID for the platform
+    actor_id: UUID  # the write's principal; EMPTY_UUID for the system
     request_id: UUID
     traceparent: str | None = None
     app: str
@@ -1458,7 +1458,7 @@ membership-scoped, expiring API key. A socket opens with a single-use
 ticket, never a long-lived credential in a URL. A request id is
 accepted only as a UUID, or minted.
 
-**Error envelope.** One handler turns `PlatformException` and
+**Error envelope.** One handler turns `OmException` and
 `InfraException` into `{"error": {"code", "message", "request_id"}}`,
 and a catch-all makes anything else a 500 of that shape.
 
@@ -1554,7 +1554,7 @@ its audience. The callee rebuilds `TenantContext` from it and trusts no bare
 header.
 
 One key is one trust domain: any process holding it can speak for
-anyone. That is a decision, made for a platform whose processes are all
+anyone. That is a decision, made for a system whose processes are all
 its own and ship together. A process trusted less gets a key of its
 own, which attributes, and a declaration of what it may assert, which
 contains. Outbound TLS trusts the operating system's store.
@@ -1857,11 +1857,11 @@ caller sets. A long-held item on a lane of its own counts against no
 cap of the lane of short items. A kind's own lane is a line in the
 registry, never an edit of the relay.
 
-Every write after the enqueue is the platform's, signed `EMPTY_UUID`.
+Every write after the enqueue is the system's, signed `EMPTY_UUID`.
 `created_by` is the person who asked, so the claim rebuilds their
 principal under the role reserved for services, and the run names the
 item's request as its `caused_by_request_id`. When the enqueuer holds no
-live membership, or is the platform, the claim builds the tenant's
+live membership, or is the system, the claim builds the tenant's
 service context instead. The person authorized the work once, at
 enqueue, so the permission that enqueues a kind covers every call its
 handler makes. The tenant arrives beside each item, and an item whose
@@ -2078,7 +2078,7 @@ the public surface. A worker that needs more compute gets a bigger box.
 
 Apps are products that consume the system: the portal, the CLI, the
 operator console. Each sits at the outermost layer and reaches the
-platform through the gateway and its own backing service.
+system through the gateway and its own backing service.
 
 ### Apps Are Dumb
 
@@ -2319,7 +2319,7 @@ at start by a `config.json`.
   `index.html`, caches hashed assets as immutable, and never caches
   `index.html` or `config.json`. Every response carries the security
   policy, `Strict-Transport-Security`, `frame-ancestors`, and
-  `X-Content-Type-Options: nosniff`. The platform sets no cookie on a
+  `X-Content-Type-Options: nosniff`. The system sets no cookie on a
   parent domain. The deployed edge serves no interactive API docs.
 - Each registry keeps a bounded number of images and never expires one
   production runs: the production deploy adds a tag under a prefix the
@@ -2402,7 +2402,7 @@ every local URL, and the steps it wraps run one at a time for a gate.
 
 ### Twins for External Services
 
-A hosted service the platform depends on has an interface, a real
+A hosted service the system depends on has an interface, a real
 client, and a deterministic twin that speaks its wire shapes, signs its
 own synthetic deliveries, and runs in-process or on disk
 ([`twin.py`](scaffold/acme_root/integrations/src/acme/integrations/identity/twin.py)).
@@ -2456,7 +2456,7 @@ lock under the deployer.
 
 ### Operator Roles
 
-Four roles operate a platform. The **administrator** creates and
+Four roles operate a system. The **administrator** creates and
 destroys an environment and nothing else, granted per run. The
 **deployer** is the pipeline, trusted only for one environment's jobs on
 that environment's branch. The **investigator** reads every signal and
@@ -2686,7 +2686,7 @@ instruction.
 ### The Knowledge Map
 
 One map at the root, `llms.txt`, names what each audience is served:
-the platform's developers, its operators, and the tenant's own users. A
+the system's developers, its operators, and the tenant's own users. A
 document is served by being listed, never by its folder. Every document
 speaks product, technology, or service, and nothing that would matter if
 it leaked.
@@ -2705,7 +2705,7 @@ the cloud. A filter stamps every line with the service, the environment,
 the request id, and the causing request, so no call site has to
 remember.
 
-> **Principle:** Python's `logging` is the platform logger. Every
+> **Principle:** Python's `logging` is the system logger. Every
 > module uses it. No module replaces it.
 
 ### Traces and Metrics
@@ -2744,18 +2744,18 @@ run starts a trace of its own.
 
 ### Exceptions
 
-Every exception inside the platform is rooted at `PlatformException`,
+Every exception inside the system is rooted at `OmException`,
 which carries an `http_status` and a stable `code`. Infra imports
 nothing from the OM, so it has its own root, `InfraException`, with the
 same two fields
 ([`exceptions.py`](scaffold/acme_root/om/src/acme/om/exceptions.py)):
 
 ``` python
-class PlatformException(Exception):
+class OmException(Exception):
     http_status: int = 500
-    code: str = "platform_error"
+    code: str = "om_error"
 
-class NotFound(PlatformException):
+class NotFound(OmException):
     http_status = 404
     code = "not_found"
 ```

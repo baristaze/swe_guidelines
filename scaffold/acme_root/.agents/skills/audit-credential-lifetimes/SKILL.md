@@ -43,7 +43,7 @@ file.
    overwrites another's; the database takes the same suffix. Make the folder (`mkdir -p`). Say which commit
    the run read (`git rev-parse HEAD`).
 2. List the credential kinds. `CredentialKind` in
-   `om/src/acme/om/context.py` names the ones the platform mints; the
+   `om/src/acme/om/context.py` names the ones the system mints; the
    tenancy manager and its delegates (`om/src/acme/om/tenancy/impl/`)
    mint and check them, with each lifetime in the manager's options
    (`TenancyOptions` in `impl/manager.py`).

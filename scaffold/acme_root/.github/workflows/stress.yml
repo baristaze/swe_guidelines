@@ -10,12 +10,12 @@
 # There is no environment input. Staging is the only environment this
 # workflow knows, so production cannot be picked from a dropdown by mistake
 # and a fat finger cannot point a load generator at the environment people
-# use. A production run is a person's own, with the platform developer's word
+# use. A production run is a person's own, with the system developer's word
 # and the runbook's steps.
 #
 # What this is: a reference shape for a stress test on staging. One small
 # GitHub runner drives it, so what it measures is what one generator can ask
-# for, not what the platform can serve. The sign-ins it makes come from one
+# for, not what the system can serve. The sign-ins it makes come from one
 # address and the API rate limits them there, and a runner's CPU and its one
 # network path bound the rest. A real load test needs many generators, from
 # many addresses, and this workflow is not that. It is how a run is wired:

@@ -97,7 +97,7 @@ class OrchestrationsManagerInterface(ABC):
 
     @abstractmethod
     async def purge_across_tenants(self) -> int:
-        """Platform-internal: the sweep, across tenants, once a pass: the
+        """System-internal: the sweep, across tenants, once a pass: the
         records settled past the retention, a batch at most, whatever their
         tenant; returns how many. It takes no context, because it runs for
         no tenant and no principal."""

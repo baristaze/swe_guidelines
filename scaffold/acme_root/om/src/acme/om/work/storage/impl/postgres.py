@@ -149,7 +149,7 @@ class WorkStoragePostgresImpl(PgStorageBase, WorkStorageInterface):
                 lease_expires_at=now + lease,
                 attempts=WorkItems.attempts + 1,  # rules.attempts_after_claim, in SQL
                 updated_at=now,
-                updated_by=EMPTY_UUID,  # the claim is the platform's write
+                updated_by=EMPTY_UUID,  # the claim is the system's write
             )
             .returning(WorkItems)
         )

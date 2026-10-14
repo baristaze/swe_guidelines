@@ -36,8 +36,8 @@ from acme.services.api.types.admin import (
     OperatorTokenView,
     OperatorView,
     OperatorWorkItemView,
-    PlatformSizeView,
     SetTenantCapRequest,
+    SystemSizeView,
     TenantCapView,
     TotpConfirmedView,
 )
@@ -112,9 +112,9 @@ async def revoke_token(
     return await service.revoke_token(admin, token_id)
 
 
-@router.get("/size", response_model=PlatformSizeView)
-async def platform_size(admin: OperatorCtx, service: AdminService) -> PlatformSizeView:
-    """The platform's size as the maintenance worker last counted it, with
+@router.get("/size", response_model=SystemSizeView)
+async def system_size(admin: OperatorCtx, service: AdminService) -> SystemSizeView:
+    """The system's size as the maintenance worker last counted it, with
     the moment it did; the route counts nothing. `404` until the first
     count."""
     return await service.size(admin)

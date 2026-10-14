@@ -98,7 +98,7 @@ class EventStorageContract:
     async def test_the_count_since_a_moment_spans_every_tenant(
         self, storage: EventStorageInterface
     ) -> None:
-        """The traffic figure the platform's size reads: events produced at or
+        """The traffic figure the system's size reads: events produced at or
         after the cut, in whichever tenant's stream."""
         cut = utcnow()
         assert await storage.count_since(cut) == 0

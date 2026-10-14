@@ -19,8 +19,8 @@ each outage costs.
   and clears it when a call succeeds (`clear`).
 - **A mark is keyed by the provider and the credential.** The
   credential is the org that holds it, `SYSTEM_SCOPE` for the
-  platform's own, and the secret's name, never its value. One org's
-  failing key stops no other org's calls, nor the platform's.
+  system's own, and the secret's name, never its value. One org's
+  failing key stops no other org's calls, nor the system's.
 - **A mark carries a time to retry.** The entry lives until then. A
   mark that ends earlier than the one held leaves the held one, and a
   read past the retry time is no mark.
@@ -34,7 +34,7 @@ each outage costs.
   pair before its calls go out and parks the item until the mark's
   retry time, with no call made. A `503` marks the pair for the minute
   the item waits, and a call that answers clears it. The identity
-  provider's calls are made under the platform's own credential,
+  provider's calls are made under the system's own credential,
   `SYSTEM_SCOPE` and `ACME_WORKOS_API_KEY`.
 - **A step that reads a mark parks.** It does not call. It parks its
   record on `provider_unavailable`

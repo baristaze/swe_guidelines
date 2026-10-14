@@ -24,7 +24,7 @@ from acme.om.tenancy.types.api_key import ApiKey
 from acme.om.tenancy.types.identity import Identity
 from acme.om.tenancy.types.invitation import InvitationState
 from acme.om.tenancy.types.session import Session
-from acme.om.tenancy.types.size import PlatformSize
+from acme.om.tenancy.types.size import SystemSize
 from acme.om.tenancy.types.user import User
 from contracts.factories import (
     make_api_key,
@@ -209,7 +209,7 @@ class TenancyStorageContract:
     async def test_the_counts_read_the_living_across_every_tenant(
         self, storage: TenancyStorageInterface
     ) -> None:
-        """The platform's size: live orgs and live users, whichever tenant they
+        """The system's size: live orgs and live users, whichever tenant they
         are in. A deleted org and a removed member are out of the count and an
         org's rows stay counted while it is only soft-deleted."""
         assert await storage.count_orgs_and_users() == (0, 0)
@@ -236,22 +236,22 @@ class TenancyStorageContract:
         )
         assert await storage.count_orgs_and_users() == (1, 2)
 
-    async def test_the_tally_keeps_the_newest_count_of_the_platforms_size(
+    async def test_the_tally_keeps_the_newest_count_of_the_systems_size(
         self, storage: TenancyStorageInterface
     ) -> None:
         """One row, read back as written; a newer count replaces it and an
         older one, from a worker that counted first and wrote last, does not."""
-        assert await storage.read_platform_size() is None
+        assert await storage.read_system_size() is None
         at = utcnow()
-        first = PlatformSize(
+        first = SystemSize(
             tenants=3,
             users=5,
             events_last_24h=11,
             since=at - timedelta(hours=24),
             counted_at=at,
         )
-        await storage.write_platform_size(first)
-        assert await storage.read_platform_size() == first
+        await storage.write_system_size(first)
+        assert await storage.read_system_size() == first
         later = first.model_copy(
             update={
                 "tenants": 4,
@@ -259,10 +259,10 @@ class TenancyStorageContract:
                 "since": at + timedelta(minutes=5) - timedelta(hours=24),
             }
         )
-        await storage.write_platform_size(later)
-        assert await storage.read_platform_size() == later
-        await storage.write_platform_size(first)
-        assert await storage.read_platform_size() == later
+        await storage.write_system_size(later)
+        assert await storage.read_system_size() == later
+        await storage.write_system_size(first)
+        assert await storage.read_system_size() == later
 
     async def test_an_org_write_lands_its_outbox_row_beside_it(
         self, storage: TenancyStorageInterface

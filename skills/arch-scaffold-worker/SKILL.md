@@ -58,7 +58,7 @@ the maintenance worker should not carry.
 
 ## Procedure
 
-1. Add the kind, its payload shape on the `Platform` base, and the
+1. Add the kind, its payload shape on the `OmBase` base, and the
    permission a producer needs to ask for it. The handler's `REQUIRES`
    names the permissions its calls take, and the test that holds the
    two to each other fails until they agree: nobody reaches through the

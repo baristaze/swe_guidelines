@@ -1,6 +1,6 @@
-"""The operator plane of the tenancy swimlane: what a platform operator may
+"""The operator plane of the tenancy swimlane: what a system operator may
 do across every tenant. Every operation takes `OperatorContext` and nothing
-else, but the sweep's tally of the platform's size, which takes no context
+else, but the sweep's tally of the system's size, which takes no context
 at all; the tenant manager takes `TenantContext` and nothing else, so the type
 system keeps the two planes apart. A read requires `OperatorPermission.READ`
 and a write `OperatorPermission.WRITE`, which the allowlist entry grants.
@@ -23,7 +23,7 @@ from acme.om.tenancy.types.issued import IssuedOperatorToken, IssuedTotpSecret
 from acme.om.tenancy.types.org import Org
 from acme.om.tenancy.types.page import OperatorTokenPage, OrgPage, UserPage
 from acme.om.tenancy.types.session import Session
-from acme.om.tenancy.types.size import PlatformSize
+from acme.om.tenancy.types.size import SystemSize
 from acme.om.tenancy.types.user import User
 
 if TYPE_CHECKING:
@@ -99,16 +99,16 @@ class TenancyOperatorManagerInterface(ABC):
         ...
 
     @abstractmethod
-    async def size(self, admin: OperatorContext) -> PlatformSize:
-        """How big the platform is: live tenants and users, and the events of
+    async def size(self, admin: OperatorContext) -> SystemSize:
+        """How big the system is: live tenants and users, and the events of
         the twenty-four hours before `counted_at`, as the sweep last
         counted them (`tally_size`). It reads the one tally row and counts
         nothing. NotFound until the first count."""
         ...
 
     @abstractmethod
-    async def tally_size(self) -> PlatformSize:
-        """Platform-internal: the sweep's count of the platform's size across
+    async def tally_size(self) -> SystemSize:
+        """System-internal: the sweep's count of the system's size across
         every tenant, the live orgs and users and the events of the day before
         now, written as the one tally row `size` reads. A count
         older than the row's is not written. Takes no context: it counts for

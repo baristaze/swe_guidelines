@@ -842,7 +842,7 @@ async def test_purge_tenant_takes_the_caps_of_a_tenant_past_its_retention_alone(
     assert await work.read_tenant_cap(bob.org_id, "bulk") is not None, "the other tenant's stay"
 
 
-async def test_every_write_after_the_enqueue_is_the_platforms(
+async def test_every_write_after_the_enqueue_is_the_systems(
     managers: Managers, storage: StorageMemoryImpl, ctx: TenantContext
 ) -> None:
     """`created_by` is the person who asked for the work and `updated_by` is the

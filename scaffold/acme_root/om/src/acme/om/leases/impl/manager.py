@@ -6,7 +6,7 @@ from uuid import UUID
 from pydantic import ValidationError
 
 from acme.infra.observability import OUTCOMES
-from acme.om.base import EMPTY_UUID, Platform, new_id, utcnow
+from acme.om.base import EMPTY_UUID, OmBase, new_id, utcnow
 from acme.om.context import Permission, RequestContext, TenantContext
 from acme.om.exceptions import (
     InvalidCredential,
@@ -66,7 +66,7 @@ LEASE_CREATED = "leases.lease.created"
 LEASE_UPDATED = "leases.lease.updated"
 
 
-class LeasesOptions(Platform):
+class LeasesOptions(OmBase):
     # The skew margin: a lease ends this long after its expiry, so a holder
     # whose clock runs slow has stopped before the resource is granted again.
     margin: timedelta = timedelta(seconds=30)

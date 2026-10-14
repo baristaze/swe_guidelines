@@ -443,7 +443,9 @@ def main(argv: list[str] | None = None) -> int:
                         continue
                     revision = head(role, there)
                     await stamp(role, urls[role], revision, lock_timeout_seconds=bound)
-                    print(f"{role.value}: stamped {revision or 'empty'}, the head in {args.heads_of}")
+                    print(
+                        f"{role.value}: stamped {revision or 'empty'}, the head in {args.heads_of}"
+                    )
                 else:
                     diff = await check(role, urls[role], lock_timeout_seconds=bound)
                     print(f"{role.value}: {'in sync' if not diff else diff}")

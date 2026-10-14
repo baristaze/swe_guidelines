@@ -13,7 +13,7 @@ export const MAX_RETRY_DELAY_MS = 5_000;
 
 /**
  * The answers that say the server could not serve this call and may serve the
- * next one: the platform's own `unavailable`, and the two a proxy sends when
+ * next one: the system's own `unavailable`, and the two a proxy sends when
  * the origin refused the connection or did not answer in time. Every other
  * status is a decision, and a decision does not change because it is asked
  * for again.

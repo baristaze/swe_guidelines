@@ -1,10 +1,10 @@
 """How much a tenant keeps in the store, counted from the rows."""
 
-from acme.om.base import Platform
+from acme.om.base import OmBase
 from acme.om.media.types.file import FilePurpose
 
 
-class PurposeUsage(Platform):
+class PurposeUsage(OmBase):
     """The live files of one purpose: the stored ones, and the ones whose
     upload was started and not yet confirmed, which hold a place and may
     become stored."""
@@ -16,7 +16,7 @@ class PurposeUsage(Platform):
     pending_size_bytes: int = 0
 
 
-class StorageUsage(Platform):
+class StorageUsage(OmBase):
     """One entry per purpose, every purpose present, in the order the enum
     declares them. A deleted file is not counted, whether or not the sweep has
     removed its object yet."""

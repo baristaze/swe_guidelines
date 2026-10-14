@@ -29,21 +29,21 @@ def utcnow() -> datetime:
     return datetime.now(UTC)
 
 
-class Platform(BaseModel):
+class OmBase(BaseModel):
     """Root of the object model. Holds no fields."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
 
-class Identifiable(Platform):
+class Identifiable(OmBase):
     id: UUID
 
 
-class Named(Platform):
+class Named(OmBase):
     name: str
 
 
-class Created(Platform):
+class Created(OmBase):
     created_at: datetime
 
 
@@ -53,7 +53,7 @@ class Trackable(Created):
     updated_by: UUID
 
 
-class SoftDeletable(Platform):
+class SoftDeletable(OmBase):
     deleted_at: datetime | None = None
     deleted_by: UUID | None = None
 
@@ -68,10 +68,10 @@ from uuid import UUID
 
 from pydantic import Field
 
-from acme.om.base import FrozenMapping, Identifiable, Named, Platform, SoftDeletable, Trackable
+from acme.om.base import FrozenMapping, Identifiable, Named, OmBase, SoftDeletable, Trackable
 
 
-class Priority(Platform):
+class Priority(OmBase):
     level: int
 
 
@@ -84,11 +84,11 @@ class Task(Identifiable, Named, Trackable, SoftDeletable):
 """
 
 IMPL_SOURCE = """\
-from acme.om.base import Platform, new_id
+from acme.om.base import OmBase, new_id
 from acme.om.tasks.types import Task
 
 
-class TaskOptions(Platform):
+class TaskOptions(OmBase):
     page_size: int = 50
 
 
@@ -242,9 +242,7 @@ def test_org_id_on_a_tenancy_type_is_not_om_02(tmp_path):
 
 
 def test_a_field_added_to_a_mixin_is_om_03(tmp_path):
-    source = BASE_SOURCE.replace(
-        "class Named(Platform):\n    name: str\n", "class Named(Platform):\n    name: str\n    slug: str\n"
-    )
+    source = BASE_SOURCE.replace("class Named(OmBase):\n    name: str\n", "class Named(OmBase):\n    name: str\n    slug: str\n")
     code, report = run(tmp_path, "OM-03", {BASE: source})
     assert code == 1
     assert "Named declares slug beyond its fields" in messages(report)[0]
@@ -254,7 +252,7 @@ def test_a_field_on_the_root_is_om_03(tmp_path):
     source = BASE_SOURCE.replace('extra="forbid")\n', 'extra="forbid")\n\n    version: int = 1\n')
     code, report = run(tmp_path, "OM-03", {BASE: source})
     assert code == 1
-    assert "the root Platform declares version" in messages(report)[0]
+    assert "the root OmBase declares version" in messages(report)[0]
 
 
 def test_an_entity_redeclaring_a_mixin_field_is_om_03(tmp_path):
@@ -309,7 +307,7 @@ def test_mixins_reached_through_a_re_export_are_ordered_too(tmp_path):
 
 
 def test_a_new_trait_is_not_ordered_by_om_04(tmp_path):
-    base = BASE_SOURCE + "\n\nclass Pinnable(Platform):\n    pinned: bool = False\n"
+    base = BASE_SOURCE + "\n\nclass Pinnable(OmBase):\n    pinned: bool = False\n"
     task = TASK_SOURCE.replace(
         "Task(Identifiable, Named, Trackable, SoftDeletable)", "Task(Pinnable, Identifiable, Named, Trackable)"
     ).replace("import FrozenMapping,", "import FrozenMapping, Pinnable,")
@@ -342,8 +340,8 @@ def test_a_class_nested_or_under_a_block_is_on_the_chain(tmp_path):
 
 def test_a_mixin_with_a_method_is_om_05(tmp_path):
     source = BASE_SOURCE.replace(
-        "class Named(Platform):\n    name: str\n",
-        "class Named(Platform):\n    name: str\n\n    def label(self) -> str:\n        return self.name\n",
+        "class Named(OmBase):\n    name: str\n",
+        "class Named(OmBase):\n    name: str\n\n    def label(self) -> str:\n        return self.name\n",
     )
     code, report = run(tmp_path, "OM-05", {BASE: source})
     assert code == 1
@@ -352,8 +350,8 @@ def test_a_mixin_with_a_method_is_om_05(tmp_path):
 
 def test_a_validator_on_a_mixin_is_not_om_05(tmp_path):
     source = BASE_SOURCE.replace(
-        "class Named(Platform):\n    name: str\n",
-        "class Named(Platform):\n    name: str\n\n    @field_validator('name')\n    def strip(cls, v):\n        return v\n",
+        "class Named(OmBase):\n    name: str\n",
+        "class Named(OmBase):\n    name: str\n\n    @field_validator('name')\n    def strip(cls, v):\n        return v\n",
     )
     code, _ = run(tmp_path, "OM-05", {BASE: source})
     assert code == 0
@@ -382,7 +380,7 @@ def test_a_root_that_does_not_forbid_extras_is_om_07(tmp_path):
 
 def test_a_chain_class_relaxing_extras_is_om_07(tmp_path):
     source = TASK_SOURCE.replace(
-        "class Priority(Platform):\n", 'class Priority(Platform):\n    model_config = ConfigDict(extra="allow")\n'
+        "class Priority(OmBase):\n", 'class Priority(OmBase):\n    model_config = ConfigDict(extra="allow")\n'
     )
     code, report = run(tmp_path, "OM-07", {TASK: source})
     assert code == 1
@@ -391,7 +389,7 @@ def test_a_chain_class_relaxing_extras_is_om_07(tmp_path):
 
 
 def test_a_class_keyword_relaxing_extras_is_om_07(tmp_path):
-    source = TASK_SOURCE.replace("class Priority(Platform):", 'class Priority(Platform, extra="ignore"):')
+    source = TASK_SOURCE.replace("class Priority(OmBase):", 'class Priority(OmBase, extra="ignore"):')
     code, report = run(tmp_path, "OM-07", {TASK: source})
     assert code == 1
     assert found(report) == [("OM-07", TASK)]
@@ -399,20 +397,20 @@ def test_a_class_keyword_relaxing_extras_is_om_07(tmp_path):
 
 def test_a_merged_config_or_a_nested_config_relaxing_extras_is_om_07(tmp_path):
     merged = TASK_SOURCE.replace(
-        "class Priority(Platform):\n",
-        'class Priority(Platform):\n    model_config = Platform.model_config | {"extra": "allow"}\n',
+        "class Priority(OmBase):\n",
+        'class Priority(OmBase):\n    model_config = OmBase.model_config | {"extra": "allow"}\n',
     )
     code, report = run(tmp_path, "OM-07", {TASK: merged})
     assert (code, found(report)) == (1, [("OM-07", TASK)])
-    nested_config = 'class Priority(Platform):\n    class Config:\n        extra = "allow"\n\n'
-    nested = TASK_SOURCE.replace("class Priority(Platform):\n", nested_config)
+    nested_config = 'class Priority(OmBase):\n    class Config:\n        extra = "allow"\n\n'
+    nested = TASK_SOURCE.replace("class Priority(OmBase):\n", nested_config)
     code, report = run(tmp_path, "OM-07", {TASK: nested})
     assert (code, found(report)) == (1, [("OM-07", TASK)])
 
 
 def test_a_class_on_the_chain_through_a_star_import_is_still_read_by_om_07(tmp_path):
     source = TASK_SOURCE.replace(
-        "class Priority(Platform):\n", 'class Priority(Platform):\n    model_config = ConfigDict(extra="allow")\n'
+        "class Priority(OmBase):\n", 'class Priority(OmBase):\n    model_config = ConfigDict(extra="allow")\n'
     )
     lines = source.splitlines(keepends=True)
     starred = "".join("from acme.om.base import *\n" if "import" in line and "acme.om.base" in line else line for line in lines)
@@ -421,8 +419,8 @@ def test_a_class_on_the_chain_through_a_star_import_is_still_read_by_om_07(tmp_p
 
 
 def test_a_nested_config_unfreezing_is_om_11(tmp_path):
-    unfrozen = "class Priority(Platform):\n    class Config:\n        frozen = False\n\n"
-    source = TASK_SOURCE.replace("class Priority(Platform):\n", unfrozen)
+    unfrozen = "class Priority(OmBase):\n    class Config:\n        frozen = False\n\n"
+    source = TASK_SOURCE.replace("class Priority(OmBase):\n", unfrozen)
     code, report = run(tmp_path, "OM-11", {TASK: source})
     assert (code, found(report)) == (1, [("OM-11", TASK)])
 
@@ -463,7 +461,7 @@ def test_an_ordering_as_a_string_is_not_om_09(tmp_path):
 
 
 def test_an_om_with_no_root_is_om_07(tmp_path):
-    code, report = run(tmp_path, "OM-07", {BASE: "class Platform:\n    pass\n"})
+    code, report = run(tmp_path, "OM-07", {BASE: "class OmBase:\n    pass\n"})
     assert code == 1
     assert messages(report) == ["no class in acme.om.base extends BaseModel; the OM root does"]
     code, report = run(tmp_path, "OM-07", {BASE: None})
@@ -553,7 +551,7 @@ def test_assigning_to_an_entity_attribute_is_om_10(tmp_path):
 
 def test_frozen_false_is_om_10_and_om_11(tmp_path):
     source = TASK_SOURCE.replace(
-        "class Priority(Platform):\n", "class Priority(Platform):\n    model_config = ConfigDict(frozen=False)\n"
+        "class Priority(OmBase):\n", "class Priority(OmBase):\n    model_config = ConfigDict(frozen=False)\n"
     )
     project(tmp_path, {TASK: source})
     code, report = check_json(tmp_path, "--rule", "OM-10,OM-11")
@@ -868,7 +866,7 @@ def test_a_root_on_an_aliased_base_model_keeps_the_chain(tmp_path):
     source = BASE_SOURCE.replace(
         "from pydantic import BaseModel, ConfigDict", "from pydantic import BaseModel as Model, ConfigDict"
     )
-    source = source.replace("class Platform(BaseModel):", "class Platform(Model):")
+    source = source.replace("class OmBase(BaseModel):", "class OmBase(Model):")
     project(tmp_path, {BASE: source})
     assert check(tmp_path, "--group", "om")[0] == 0
     bad = source.replace('model_config = ConfigDict(frozen=True, extra="forbid")', "model_config = ConfigDict(frozen=True)")
@@ -878,7 +876,7 @@ def test_a_root_on_an_aliased_base_model_keeps_the_chain(tmp_path):
 
 
 def test_an_org_id_brought_in_by_a_mixin_is_om_02(tmp_path):
-    scoped = "from uuid import UUID\n\nfrom acme.om.base import Platform\n\n\nclass OrgScoped(Platform):\n    org_id: UUID\n"
+    scoped = "from uuid import UUID\n\nfrom acme.om.base import OmBase\n\n\nclass OrgScoped(OmBase):\n    org_id: UUID\n"
     source = TASK_SOURCE.replace(
         "from acme.om.base import", "from acme.om.tasks.scoped import OrgScoped\nfrom acme.om.base import"
     ).replace(

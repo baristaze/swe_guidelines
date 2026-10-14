@@ -11,7 +11,7 @@ from uuid import UUID
 
 from pydantic import Field, StringConstraints
 
-from acme.om.base import Identifiable, Platform, Trackable
+from acme.om.base import Identifiable, OmBase, Trackable
 
 Label = Annotated[
     str, StringConstraints(min_length=1, max_length=200, pattern=r"^[^\x00-\x1f\x7f]+$")
@@ -67,7 +67,7 @@ class Resource(Identifiable, Trackable):
     mean_hold_seconds: float | None = None
 
 
-class ResourceUpdate(Platform):
+class ResourceUpdate(OmBase):
     """An owner's update of its resource, landed with its own row: what the
     resource offers now, its bound on one lease, and whether it is in
     service. Each field it names changes, and each it leaves out (None)

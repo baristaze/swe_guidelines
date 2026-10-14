@@ -29,7 +29,7 @@ from acme.infra.exceptions import InfraUnavailable
 request_id_var: ContextVar[str | None] = ContextVar("acme_request_id", default=None)
 """Set at the entry point that builds the context, so log lines get it for free.
 
-This is the one piece of ambient state in the platform, and it is ambient only
+This is the one piece of ambient state in the system, and it is ambient only
 to the log and error sinks in this module. The authoritative request id is
 `request_id` on the context, which every stage inherits and every operation is
 handed; nothing decides anything from this variable. So the boundary is a rule:
@@ -122,14 +122,14 @@ class RequestIdFilter(logging.Filter):
         return True
 
 
-PLATFORM_PACKAGE = __name__.partition(".")[0]
+SYSTEM_PACKAGE = __name__.partition(".")[0]
 """The root package every module of this tree sits under (ADR 0001): the one
-that defines each exception the platform raises."""
+that defines each exception the system raises."""
 
 
 def failure_text(error: BaseException) -> str | None:
     """The text of `error` that a log line, the tracker, and a failure record
-    carry. Only a failure (a 5xx) the platform raised under its own roots
+    carry. Only a failure (a 5xx) the system raised under its own roots
     keeps its text, which names a backend, an operation, a code, or an id.
 
     Any other exception's text quotes what it was handed. Pydantic's
@@ -139,7 +139,7 @@ def failure_text(error: BaseException) -> str | None:
     So such an exception leaves the process as its type and its frames, and
     its words stay in it, whatever type is raised next."""
     status = getattr(error, "http_status", None)
-    ours = type(error).__module__.partition(".")[0] == PLATFORM_PACKAGE
+    ours = type(error).__module__.partition(".")[0] == SYSTEM_PACKAGE
     if ours and isinstance(status, int) and status >= 500:
         return str(error)
     return None
@@ -272,7 +272,7 @@ def configure_logging(level: str, json_logs: bool) -> None:
 SCRUBBED_KEYS = [*DEFAULT_DENYLIST, "bearer", "idempotency-key", "idempotency_key", "database_url"]
 """What the scrubber blanks wherever it appears in an event, headers and
 nested values included: the SDK's own list (passwords, tokens, cookies, the
-authorization header) and the few names this platform adds."""
+authorization header) and the few names this system adds."""
 
 ERROR_REPORTING_PRIVACY: dict[str, Any] = {
     # No personal data, no request body, and no frame locals: a local of a

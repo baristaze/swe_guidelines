@@ -60,6 +60,6 @@ and this records how Acme holds it.
   about 0.1 ms, with a lane cap or without one.
 - The operator plane does not know how many workers a lane runs, so a
   cap at or above that count holds nothing, and nothing refuses it.
-- A cap is the platform's setting for a tenant, not the tenant's own
+- A cap is the system's setting for a tenant, not the tenant's own
   act, so it writes no event to the tenant's stream; the log line is
   its trail.

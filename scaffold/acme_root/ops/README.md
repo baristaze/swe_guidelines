@@ -35,7 +35,7 @@ gets onto the plane.
 - `traffic` drives sessions at a profile: `light`, `regular`, `heavy`, or `stress`.
 - `stress` runs a scenario and judges it against its target.
 - `signals check` reads one request id's log lines, metric, trace, and error event.
-- `size` prints the platform's size, the traffic run's tenants left out.
+- `size` prints the system's size, the traffic run's tenants left out.
 - `token` writes an operator token into its file, or lists and revokes your own.
 - `work requeue` sends one failed work item back to the queue.
 - `workos-bootstrap` reconciles the WorkOS application with `deployment/workos/environments.yaml`.
@@ -57,7 +57,7 @@ row names.
 | `ops-infra-as-code` | Investigator | What a Terraform change would do: a read-only plan. |
 | `ops-cloud-deployment-create` | Administrator | Bring up an environment's account, then its first deploy. |
 | `ops-cloud-deployment-nuke` | Administrator | Tear an environment down, and report what is left. |
-| `ops-simulate-traffic` | Provisioner | How the platform looks under traffic at a profile. |
+| `ops-simulate-traffic` | Provisioner | How the system looks under traffic at a profile. |
 | `stress-test-create-or-update` | none | Write or change a scenario, with its target stated first. |
 | `stress-test-run` | Provisioner, Investigator | Run a scenario and say whether the target held. |
 

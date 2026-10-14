@@ -1,4 +1,4 @@
-"""One handler translates PlatformException, and its infra sibling, into the
+"""One handler translates OmException, and its infra sibling, into the
 error envelope with the status the exception names. Anything else is a 500
 with the same shape, rendered by the observability middleware while the
 request id is still in hand; the catch-all here is the last resort for what
@@ -14,7 +14,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from acme.infra.exceptions import InfraException
 from acme.infra.observability import failure_level
-from acme.om.exceptions import LastOwner, PlatformException, SignInDelayed, StreamTruncated
+from acme.om.exceptions import LastOwner, OmException, SignInDelayed, StreamTruncated
 from acme.services.api.gateway.envelope import INTERNAL_ERROR, error_response
 from acme.services.api.gateway.observability import (
     UNMATCHED,
@@ -47,7 +47,7 @@ def envelope(
 
 def presented(
     request: Request,
-    exc: PlatformException | InfraException,
+    exc: OmException | InfraException,
     headers: dict[str, str] | None = None,
 ) -> JSONResponse:
     """A refusal (4xx) tells the client what was wrong. A failure (5xx) is
@@ -87,8 +87,8 @@ def presented(
 
 
 def register_error_handlers(app: FastAPI) -> None:
-    @app.exception_handler(PlatformException)
-    async def platform_exception(request: Request, exc: PlatformException) -> JSONResponse:
+    @app.exception_handler(OmException)
+    async def om_exception(request: Request, exc: OmException) -> JSONResponse:
         headers = None
         if isinstance(exc, RateLimited | SignInDelayed):
             headers = {"Retry-After": str(max(1, int(exc.retry_after.total_seconds())))}

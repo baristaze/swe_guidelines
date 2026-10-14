@@ -6,7 +6,7 @@ from uuid import UUID
 from pydantic import ValidationError
 
 from acme.infra.observability import OUTCOMES
-from acme.om.base import Platform, utcnow
+from acme.om.base import OmBase, utcnow
 from acme.om.context import Permission, TenantContext
 from acme.om.exceptions import (
     NotFound,
@@ -43,7 +43,7 @@ from acme.om.tenancy import TenancyManagerInterface
 log = logging.getLogger(__name__)
 
 
-class OrchestrationsOptions(Platform):
+class OrchestrationsOptions(OmBase):
     max_limit: int = 50
     # The steps one wake resumes start this far apart.
     stagger: timedelta = timedelta(seconds=2)

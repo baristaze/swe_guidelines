@@ -129,7 +129,7 @@ the rest is judged.
 **Principle.** Each mixin is a promise, composed only where a manager
 operation exercises it: `Trackable` where an update exists,
 `SoftDeletable` where a delete does, `Created` and never `Trackable`
-on a row the platform writes for itself (the outbox row, the marker, the socket
+on a row the system writes for itself (the outbox row, the marker, the socket
 ticket), whose later stamp is a field named for what happened.
 Inheritance in the OM never shares code.
 
@@ -319,11 +319,11 @@ marker, ahead of the entity, is that protocol and not a breach (NET-24).
 **Check.** `arch-check` decides every id factory but `new_id()` and
 `derived_id()` above storage; the rest is judged.
 
-## OM-13 EMPTY_UUID means the platform, and optional means None
+## OM-13 EMPTY_UUID means the system, and optional means None
 
-**Principle.** `EMPTY_UUID` is the platform's reference: the system
+**Principle.** `EMPTY_UUID` is the system's reference: the system
 scope on infra calls and the value of a required reference no tenant and
-no person owns (`updated_by` on an item the platform claimed), which
+no person owns (`updated_by` on an item the system claimed), which
 keeps the column `NOT NULL` and the index simple. A reference that is
 optional is `None`, never `EMPTY_UUID`. Its use as the system scope is
 judged by `context`.
@@ -332,14 +332,14 @@ judged by `context`.
 Queue.
 
 **Look for.** The constant defined once in the base module; required
-reference fields on rows the platform writes; every write to a work
+reference fields on rows the system writes; every write to a work
 item after its enqueue, the claim, the completion, the requeue, the
 failure, the hand-back, and the lease renewal, and what each puts in
 `updated_by`; optional references and how they express absence;
 ad-hoc sentinel constants elsewhere in the OM.
 
 **Violation.** A second sentinel constant invented for "no warehouse";
-a required reference column made nullable for platform-written rows;
+a required reference column made nullable for system-written rows;
 a write to a work item row after its enqueue signed from the context,
 so the enqueuer appears to have run the work; an optional reference
 filled with `EMPTY_UUID` instead of `None`.

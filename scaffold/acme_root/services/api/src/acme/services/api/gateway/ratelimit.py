@@ -27,9 +27,9 @@ from starlette.requests import HTTPConnection
 
 from acme.infra.cache import CacheScope
 from acme.infra.observability import OUTCOMES
-from acme.om.base import EMPTY_UUID, Platform
+from acme.om.base import EMPTY_UUID, OmBase
 from acme.om.context import CredentialScope, IdentityContext, TenantContext
-from acme.om.exceptions import NotAuthenticated, PlatformException
+from acme.om.exceptions import NotAuthenticated, OmException
 from acme.services.api.gateway.admission import READ_METHODS
 from acme.services.api.gateway.resolve import container_of
 
@@ -37,7 +37,7 @@ FAILED_AUTHENTICATIONS = "auth-failed"
 """The key prefix of the failed-authentication count, beside the route names."""
 
 
-class RateLimited(PlatformException):
+class RateLimited(OmException):
     http_status = 429
     code = "rate_limited"
 
@@ -46,12 +46,12 @@ class RateLimited(PlatformException):
         self.retry_after = retry_after
 
 
-class RateLimit(Platform):
+class RateLimit(OmBase):
     limit: int
     window: timedelta
 
 
-class RateLimitOptions(Platform):
+class RateLimitOptions(OmBase):
     """Every budget, built from settings at boot and held on the container."""
 
     login: RateLimit

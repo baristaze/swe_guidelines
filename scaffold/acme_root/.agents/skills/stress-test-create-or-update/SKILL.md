@@ -1,6 +1,6 @@
 ---
 name: stress-test-create-or-update
-description: "Write or edit one stress test scenario of the platform, ops/stress/<name>.yaml: the profile, the duration, the ramp, the soak, the target p95 and error ratio, and the routes it weights. States what a good stress test has and refuses to write one without a target. Writes a file and nothing else; a run is stress-test-run."
+description: "Write or edit one stress test scenario of the system, ops/stress/<name>.yaml: the profile, the duration, the ramp, the soak, the target p95 and error ratio, and the routes it weights. States what a good stress test has and refuses to write one without a target. Writes a file and nothing else; a run is stress-test-run."
 allowed-tools: Read, Grep, Glob, Write, Edit
 ---
 
@@ -79,7 +79,7 @@ no profile and no env file.
    does not apply `weights` yet; its session shape is fixed, so write
    them as the intent and say so in the output.
 4. Read it back and check every field is set and the total holds.
-   Say in the output that a real run is the platform developer's
+   Say in the output that a real run is the system developer's
    choice and that the run skill is `stress-test-run`. Its Next is
    the person's to run, never the session's.
 
@@ -106,7 +106,7 @@ no profile and no env file.
 ## Next
 
 - `stress-test-run <name> --env local` proves the wiring; a run against
-  a cloud environment is the platform developer's choice.
+  a cloud environment is the system developer's choice.
 - `stress-test-run <name> --env <env> --p95-ms <stricter ms>` asks the
   same scenario a harder question without touching the file.
 ```

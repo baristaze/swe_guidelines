@@ -253,7 +253,7 @@ async def run_tenants(client: ApiClient) -> tuple[int, int]:
 async def size_command(
     args: argparse.Namespace, transport: httpx.AsyncBaseTransport | None = None
 ) -> int:
-    """The platform's size as the first responder reads it before an
+    """The system's size as the first responder reads it before an
     escalation: the tenants and users the traffic generator created for its
     runs are left out, since they are the team's own traffic. The size is the
     maintenance worker's latest count, so how long ago it counted is printed
@@ -708,7 +708,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_check.add_argument("--metric", default="acme_http_requests_total")
     p_check.add_argument("--log-file", help="the process's captured log, for the local reader")
 
-    p_size = sub.add_parser("size", help="the platform's size as the operator plane reports it")
+    p_size = sub.add_parser("size", help="the system's size as the operator plane reports it")
     p_size.add_argument("--env", required=True)
 
     p_token = sub.add_parser(

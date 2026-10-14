@@ -11,7 +11,7 @@ from starlette.requests import HTTPConnection
 
 from acme.infra.observability import current_trace_id, current_traceparent
 from acme.om.context import AppContext, AppType, IdentityContext, RequestContext, TenantContext
-from acme.om.exceptions import NotAuthenticated, NotFound, PlatformException, ValidationFailed
+from acme.om.exceptions import NotAuthenticated, NotFound, OmException, ValidationFailed
 from acme.om.tenancy.types.socket_ticket import SocketPrincipal
 from acme.services.api.gateway.admission import deadline_of
 from acme.services.api.gateway.observability import request_id_of
@@ -143,7 +143,7 @@ async def socket_principal(
     tenancy = container_of(websocket).managers.tenancy
     try:
         return await tenancy.redeem_ticket(rctx, ticket)
-    except PlatformException as error:
+    except OmException as error:
         log.info("socket refused: %s", error.message)
         raise WebSocketException(code=CLOSE_UNAUTHENTICATED, reason=error.code) from None
 

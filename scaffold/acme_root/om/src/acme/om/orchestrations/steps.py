@@ -43,7 +43,7 @@ def step_rows(
     record asks its guard again.
 
     The work row asks as the person who started the record, whoever wrote
-    this step: a step woken by the platform or an operator still runs as the
+    this step: a step woken by the system or an operator still runs as the
     person who asked for the work, so what it makes is theirs, and their
     principal is the one the claim rebuilds."""
     hint = versioned_row(ctx, CREATED if created else UPDATED, record.id, record.version)

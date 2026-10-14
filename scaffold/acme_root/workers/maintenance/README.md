@@ -18,7 +18,7 @@ side, started in `main.py`.
   expired leases, relays the outbox, runs the standing chores of the
   tenants one read names as due, ends each resource's lease past its
   expiry and the skew margin and offers the resource to its line, purges
-  every row past its retention (`settings.py`), counts the platform's
+  every row past its retention (`settings.py`), counts the system's
   size, and logs the queue's gauges.
 
 `serve` runs the three; `health` asks the running process's `/healthz`.

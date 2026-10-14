@@ -77,7 +77,7 @@ holds. It reads no env file and no token: it calls no route.
    (`delete_batch`, `LIMIT`) or everything at once, and which index serves
    its `WHERE`. A table no purge reaches is a gap, unless the product keeps
    its rows as the record (the org row), as one row per tenant (the
-   event cursor) or one for the platform (its size), or as a person's
+   event cursor) or one for the system (its size), or as a person's
    until they are erased (the identity), or it is live data (a living
    org's members and files); say which.
    `references/purges.md`, in this skill's folder, lists the purges the

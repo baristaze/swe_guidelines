@@ -2,7 +2,7 @@ from datetime import timedelta
 
 from pydantic import Field
 
-from acme.om.base import Platform, utcnow
+from acme.om.base import OmBase, utcnow
 from acme.om.context import Permission, TenantContext
 from acme.om.events.manager import EventsManagerInterface
 from acme.om.events.storage import EventStorageInterface
@@ -11,7 +11,7 @@ from acme.om.exceptions import StreamTruncated
 from acme.om.tenancy import TenancyManagerInterface
 
 
-class EventsOptions(Platform):
+class EventsOptions(OmBase):
     max_limit: int = 500
     retention: timedelta | None = None
     """How long a living tenant's events are kept. None keeps every one, and

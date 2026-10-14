@@ -68,7 +68,7 @@ async def test_a_record_steps_from_the_queue_until_it_succeeds(tmp_path: Path) -
     done = await container.managers.orchestrations.get(ctx, started.id)
     assert (done.status, done.cursor, done.total) == (OrchestrationStatus.SUCCEEDED, 3, 3)
     assert done.finished_at is not None
-    # The platform ran the steps; the record is still the person's.
+    # The system ran the steps; the record is still the person's.
     assert {item.created_by for item in ran} == {ctx.user_id}
 
 

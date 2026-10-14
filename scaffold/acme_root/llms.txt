@@ -6,7 +6,7 @@ This file is the knowledge map. Each section lists the documents one
 audience is served; a document not listed under an audience is not
 served to it. Exposure is by listing, never by folder.
 
-## Platform developers
+## System developers
 
 - [README](README.md): what Acme is, the quick start with the local URLs and sign-ins, set up and check, deploy and operate, and the layout
 - [Architecture](specs/architecture.md): the guideline's pin, the substitutions, and the deviations, each linking its decision record under docs/adr/
@@ -37,7 +37,7 @@ served to it. Exposure is by listing, never by folder.
 - [The TypeScript client](clients/typescript/README.md): the one client every browser app imports
 - [The Python client](clients/python/README.md): the one client every Python caller goes through
 
-## Platform operators
+## System operators
 
 - [Operations](ops/README.md): roles, profiles, credentials, signals, the ops binary, the skills, the audits, what an operator never does
 - [Audit tools](ops/audit/README.md): what the audit skills run

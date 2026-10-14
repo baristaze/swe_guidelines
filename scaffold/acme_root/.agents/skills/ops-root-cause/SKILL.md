@@ -316,7 +316,7 @@ runs once, before the passes. It is not a pass.
    ignores attribute filters. An empty answer means the process ran
    with no `ACME_OTEL_ENDPOINT`, which is a finding, not an error.
    The trace says where the time went and which span failed.
-7. Or in one call, the same four reads through the platform's own
+7. Or in one call, the same four reads through the system's own
    binary, which holds the twins and the cloud behind one interface:
 
    ```bash

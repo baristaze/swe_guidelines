@@ -105,7 +105,7 @@ def test_role_metadata_holds_only_that_role() -> None:
         "events",
         "event_cursors",
     }
-    assert {t.name for t in role_metadata(DatabaseRole.ADMIN).tables.values()} == {"platform_sizes"}
+    assert {t.name for t in role_metadata(DatabaseRole.ADMIN).tables.values()} == {"system_sizes"}
 
 
 SWEEP_INDEXES = {

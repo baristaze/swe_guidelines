@@ -1,6 +1,6 @@
 ---
 name: ops-simulate-traffic
-description: "Drive realistic traffic at one environment of the platform through its edge with the platform's own traffic generator, at one of four profiles (light, regular, heavy, stress) for a duration, and report the table: requests by route and status, p50, p95, p99, and the error ratio. Use to warm an environment, to reproduce a load-shaped problem, or as the thirty-second wiring check. A run against a cloud environment is the platform developer's call."
+description: "Drive realistic traffic at one environment of the system through its edge with the system's own traffic generator, at one of four profiles (light, regular, heavy, stress) for a duration, and report the table: requests by route and status, p50, p95, p99, and the error ratio. Use to warm an environment, to reproduce a load-shaped problem, or as the thirty-second wiring check. A run against a cloud environment is the system developer's call."
 allowed-tools: Read, Bash(aws:*), Bash(uv run acme-ops:*), Bash(make traffic PROFILE=light DURATION=30)
 ---
 
@@ -84,7 +84,7 @@ does either, and says which dispatch is due.
 1. Verify the credential as Role and credential states. Against
    `production`, ask before running anything above
    `light`; the generator's tenants are real rows in the real
-   database, and the choice is the platform developer's. Against
+   database, and the choice is the system developer's. Against
    `production` with `--orgs` above `0`, a generator whose
    provisioner the operator plane refuses stops before its first
    session; the skill then names the dispatch that enables it.

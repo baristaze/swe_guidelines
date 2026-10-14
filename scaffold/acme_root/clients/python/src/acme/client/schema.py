@@ -416,21 +416,6 @@ class PlaceView(BaseModel):
     request_id: Annotated[UUID, Field(title='Request Id')]
 
 
-class PlatformSizeView(BaseModel):
-    """
-    How big the platform is, what the first responder to an alarm reads
-    before it escalates: live tenants and users, and the events produced in
-    the twenty-four hours from `since` to `counted_at`. The maintenance
-    worker counts it every few minutes, and this is its latest count:
-    `counted_at` says how old the answer is.
-    """
-    counted_at: Annotated[AwareDatetime, Field(title='Counted At')]
-    events_last_24h: Annotated[int, Field(title='Events Last 24H')]
-    since: Annotated[AwareDatetime, Field(title='Since')]
-    tenants: Annotated[int, Field(title='Tenants')]
-    users: Annotated[int, Field(title='Users')]
-
-
 class PurposeUsageView(BaseModel):
     count: Annotated[int, Field(title='Count')]
     pending_count: Annotated[int, Field(title='Pending Count')]
@@ -666,6 +651,21 @@ class StreamTruncatedDetail(BaseModel):
     """
     floor: Annotated[int, Field(title='Floor')]
     head: Annotated[int, Field(title='Head')]
+
+
+class SystemSizeView(BaseModel):
+    """
+    How big the system is, what the first responder to an alarm reads
+    before it escalates: live tenants and users, and the events produced in
+    the twenty-four hours from `since` to `counted_at`. The maintenance
+    worker counts it every few minutes, and this is its latest count:
+    `counted_at` says how old the answer is.
+    """
+    counted_at: Annotated[AwareDatetime, Field(title='Counted At')]
+    events_last_24h: Annotated[int, Field(title='Events Last 24H')]
+    since: Annotated[AwareDatetime, Field(title='Since')]
+    tenants: Annotated[int, Field(title='Tenants')]
+    users: Annotated[int, Field(title='Users')]
 
 
 class TenantCapView(BaseModel):

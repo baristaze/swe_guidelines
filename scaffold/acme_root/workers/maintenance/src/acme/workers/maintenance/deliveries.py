@@ -25,7 +25,7 @@ from uuid import UUID
 from acme.infra.observability import OUTCOMES, current_traceparent, request_id_var
 from acme.infra.queues import QueueMessage, Queues, QueuesInterface
 from acme.integrations.identity import ProvidedDelivery
-from acme.om.base import EMPTY_UUID, Platform, derived_id, new_id
+from acme.om.base import EMPTY_UUID, OmBase, derived_id, new_id
 from acme.om.context import AppContext, AppType, RequestContext, TenantContext
 from acme.om.events import EventsManagerInterface
 from acme.om.events.manager import audit_event
@@ -93,7 +93,7 @@ class IdentityDeliveriesImpl(DeliveryProviderInterface[ProvidedDelivery]):
         return stored.request_id == ctx.request_id
 
 
-class DeliveryOptions(Platform):
+class DeliveryOptions(OmBase):
     worker_id: str
     batch: int = 10
     wait: timedelta = timedelta(seconds=10)

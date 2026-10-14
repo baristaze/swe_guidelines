@@ -442,8 +442,8 @@ ignores the OS's.
 
 ## DEL-18 Exceptions carry status and code; one boundary translates
 
-**Principle.** Every platform exception is rooted at
-`PlatformException`, which carries `http_status` and a stable `code`.
+**Principle.** Every system exception is rooted at
+`OmException`, which carries `http_status` and a stable `code`.
 Shape exceptions (`NotFound`, `Conflict`, `ValidationFailed`,
 `NotAuthenticated`, `NotAuthorized`, `Unavailable`) cover most cases;
 a namespace family multiply-inherits a shape, and one no shape fits
@@ -457,8 +457,8 @@ defined elsewhere;
 `raise` sites in managers; the boundary handler; status codes set in
 routers.
 
-**Violation.** An exception raised inside the platform and rooted at
-neither `PlatformException` nor, under infra, `InfraException` (DEL-29);
+**Violation.** An exception raised inside the system and rooted at
+neither `OmException` nor, under infra, `InfraException` (DEL-29);
 a manager raising a framework HTTP exception; a router mapping exception
 types to status codes (the handler and its envelope are NET-07); a
 raised leaf exception that inherits no shape and so surfaces as 500; an
@@ -504,12 +504,12 @@ detail.
 **Source.** Telemetry, Traces and Metrics; Infrastructure,
 Infrastructure Principles.
 
-**Look for.** Tracing and metrics setup; a platform module that
+**Look for.** Tracing and metrics setup; a system module that
 re-exposes spans, counters, or histograms under its own names; code
 paths that branch on whether tracing is configured; the exporter
 configuration that selects the backend.
 
-**Violation.** A `PlatformTracer` or `MetricsInterface` wrapper; a
+**Violation.** A `SystemTracer` or `MetricsInterface` wrapper; a
 second metrics system; code that skips instrumentation when no
 exporter is set instead of relying on the no-op tracer; a backend
 swap that touches code beyond the exporter config.
@@ -732,7 +732,7 @@ Postgres impl assumed.
 
 **Principle.** Infra imports nothing from the OM, so it has its own
 root, `InfraException`, with the same two fields as
-`PlatformException`, a status and a stable code; the gateway and the
+`OmException`, a status and a stable code; the gateway and the
 worker loop present both alike, and a boundary that must translate
 one into the other does it by those fields, never by catching a name
 from the other side.
@@ -745,9 +745,9 @@ cloud impls raise on a driver error; the gateway's handlers and the
 worker loop's catch; any `except` that names a class from the other
 distribution.
 
-**Violation.** An infra impl raising `PlatformException` or letting a
+**Violation.** An infra impl raising `OmException` or letting a
 driver exception escape; an `InfraException` without a status or a
-code; a gateway that presents `PlatformException` in the envelope and
+code; a gateway that presents `OmException` in the envelope and
 lets `InfraException` fall to the catch-all; a manager or a boundary
 that catches an infra subclass by name instead of translating the root
 by its status and code.

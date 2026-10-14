@@ -48,7 +48,7 @@ class OutboxRelayInterface(ABC):
 
     @abstractmethod
     def hold(self, request_id: UUID) -> None:
-        """Platform-internal, for the API's edge, which holds each request
+        """System-internal, for the API's edge, which holds each request
         before it runs: until `release`, a row that names this request is
         held and not relayed, and `relay` and `relay_all` return True for it.
         The row names its request (`OutboxRow.request_id`), so the hold is
@@ -60,13 +60,13 @@ class OutboxRelayInterface(ABC):
 
     @abstractmethod
     def held(self, request_id: UUID) -> int:
-        """Platform-internal, for the API's edge: how many rows the request's
+        """System-internal, for the API's edge: how many rows the request's
         hold keeps now; zero with no hold."""
         ...
 
     @abstractmethod
     async def release(self, request_id: UUID) -> int:
-        """Platform-internal, for the API's edge: ends a hold and relays the
+        """System-internal, for the API's edge: ends a hold and relays the
         rows it kept, each org's rows in one `relay_all`, in the order they
         were handed over. The edge calls it once the answer is sent, so the
         caller never waits for the relay.
@@ -77,7 +77,7 @@ class OutboxRelayInterface(ABC):
 
     @abstractmethod
     def abandon(self, request_id: UUID) -> int:
-        """Platform-internal, for the API's edge: ends a hold without its
+        """System-internal, for the API's edge: ends a hold without its
         relay, as a process that is stopping does. The rows are durable, and
         the sweep relays them past its grace. Logs and returns how many rows
         it leaves."""
@@ -85,7 +85,7 @@ class OutboxRelayInterface(ABC):
 
     @abstractmethod
     async def relay_pending(self, limit: int) -> int:
-        """Platform-internal, for the sweep: claims up to `limit` rows whose next
+        """System-internal, for the sweep: claims up to `limit` rows whose next
         attempt is due and that are older than the grace (a younger row is the
         request path's to relay), oldest first and never a row another sweep
         holds, and relays each tenant's rows together, as `relay_all` does.
@@ -98,7 +98,7 @@ class OutboxRelayInterface(ABC):
 
     @abstractmethod
     async def oldest_pending_age(self) -> timedelta:
-        """Platform-internal, for the sweep's relay gauge: how long ago the
+        """System-internal, for the sweep's relay gauge: how long ago the
         oldest row that is neither done nor failed landed, across tenants;
         zero when every row is settled. A row relays within the request that
         wrote it, so an old one is a relay that keeps failing."""
@@ -106,14 +106,14 @@ class OutboxRelayInterface(ABC):
 
     @abstractmethod
     async def failed_within(self, window: timedelta) -> int:
-        """Platform-internal, for the sweep's dead-letter gauge: how many rows
+        """System-internal, for the sweep's dead-letter gauge: how many rows
         failed for good in the last `window`, across tenants. A dead letter is
         no longer pending, so the relay gauge no longer sees it; this does."""
         ...
 
     @abstractmethod
     async def purge_done(self, retention: timedelta, limit: int) -> int:
-        """Platform-internal, for the sweep: deletes rows done or failed longer
+        """System-internal, for the sweep: deletes rows done or failed longer
         ago than `retention`, at most `limit` of each; returns how many. The
         one hard delete of the namespace."""
         ...
