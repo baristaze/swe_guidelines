@@ -7,6 +7,7 @@ import filecmp
 import importlib
 import pkgutil
 import subprocess
+import sys
 from decimal import Decimal
 from enum import Enum, StrEnum
 from pathlib import Path
@@ -16,14 +17,14 @@ import pytest
 from api_support import build_container
 from fastapi import APIRouter, FastAPI
 from fastapi.openapi.utils import validation_error_definition, validation_error_response_definition
-from pydantic import BaseModel, computed_field
+from pydantic import BaseModel, ModelWrapValidatorHandler, computed_field, model_validator
 
 import acme.om
 import acme.services.api.types
 from acme.services.api.app import create_app
 from acme.services.api.openapi import COMMON, documents, write
 from acme.services.api.routers import HOSTED
-from acme.services.api.types.common import View
+from acme.services.api.types.common import RequestBody, View
 
 ROOT = Path(__file__).resolve().parents[3]
 T = TypeVar("T")
@@ -234,6 +235,90 @@ def test_an_enum_only_a_computed_field_returns_is_its_modules() -> None:
     assert emitted["leases"]["components"]["schemas"]["Shade"]["enum"] == ["dark"]
     shade = emitted["media"]["components"]["schemas"]["TintView"]["properties"]["shade"]
     assert shade["$ref"] == "leases.json#/components/schemas/Shade"
+
+
+def test_a_type_a_model_validator_wraps_is_its_modules() -> None:
+    """Pydantic puts the ref of a model a model validator wraps on the
+    validator's node, and the model's class beneath it: a request so wrapped,
+    and a type it holds, are each their module's."""
+
+    class Window(RequestBody):
+        __module__ = f"{acme.services.api.types.__name__}.leases"
+        start: int
+        end: int
+
+        @model_validator(mode="wrap")
+        @classmethod
+        def ordered(cls, data: Any, handler: ModelWrapValidatorHandler[Window]) -> Window:
+            return handler(data)
+
+    class BookRequest(RequestBody):
+        __module__ = f"{acme.services.api.types.__name__}.media"
+        window: Window
+
+        @model_validator(mode="after")
+        def checked(self) -> BookRequest:
+            return self
+
+    def book(body: BookRequest) -> None:
+        return None
+
+    router = APIRouter(tags=["media"])
+    router.add_api_route("/media/book", book, methods=["POST"])
+
+    emitted = documents(app_of(router))
+
+    request = emitted["media"]["components"]["schemas"]["BookRequest"]
+    assert request["properties"]["window"] == {"$ref": "leases.json#/components/schemas/Window"}
+    assert emitted["leases"]["components"]["schemas"]["Window"]["properties"].keys() == {
+        "start",
+        "end",
+    }
+
+
+def test_an_enum_default_of_a_request_field_is_its_member_in_the_python_client(
+    tmp_path: Path,
+) -> None:
+    """The document holds an enum field's default as its value; the generated
+    client sets it to the enum's member, which its declared type takes, for an
+    enum of the request's namespace and one of another's."""
+
+    class Tone(StrEnum):
+        __module__ = f"{acme.om.__name__}.media.probe"
+        LOUD = "loud"
+        SOFT = "soft"
+
+    class Shade(StrEnum):
+        __module__ = f"{acme.om.__name__}.leases.probe"
+        DARK = "dark"
+        LIGHT = "light"
+
+    class ToneRequest(RequestBody):
+        __module__ = f"{acme.services.api.types.__name__}.media"
+        tone: Tone = Tone.SOFT
+        shade: Shade | None = Shade.LIGHT
+
+    def tone(body: ToneRequest) -> None:
+        return None
+
+    router = APIRouter(tags=["media"])
+    router.add_api_route("/media/tone", tone, methods=["POST"])
+    write(documents(app_of(router)), tmp_path / "openapi")
+    subprocess.run(
+        [ROOT / "scripts/openapi_types.sh", tmp_path / "openapi", tmp_path / "ts", tmp_path / "py"],
+        cwd=ROOT,
+        check=True,
+        capture_output=True,
+    )
+
+    typed = subprocess.run(
+        [sys.executable, "-m", "pyright", tmp_path / "py"],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert typed.returncode == 0, typed.stdout
 
 
 def test_a_route_whose_tag_is_no_hosted_namespace_is_refused() -> None:
