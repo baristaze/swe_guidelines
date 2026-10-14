@@ -11,8 +11,6 @@ from typing import Any
 from uuid import UUID
 
 import pytest
-from contracts.change_event_storage import make_change_event
-from contracts.second_factor import TOTP_KEY, SteppingClock, enrolled_operator
 
 from acme.infra.cache import CacheScope
 from acme.infra.impl.local import InfraLocalImpl
@@ -50,6 +48,9 @@ from acme.om.tenancy.types.membership import Membership
 from acme.om.tenancy.types.org import Org
 from acme.om.tenancy.types.user import User
 from acme.om.work.types.work_item import WorkKind, work_row_kind
+
+from contracts.change_event_storage import make_change_event
+from contracts.second_factor import TOTP_KEY, SteppingClock, enrolled_operator
 
 APP = AppContext(type=AppType.CLI, version="cli@test")
 OPERATOR_LOG = "acme.om.tenancy.impl.operator"
