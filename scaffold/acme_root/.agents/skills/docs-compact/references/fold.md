@@ -137,6 +137,26 @@ revision on the fold.
 2. **Write the fold**, for each such role. The revision id is the head's
    (part 1), whole, a suffix included. `<name>` is the name What the
    tree owns gives the fold's files.
+   - First, the not-null constraints. Postgres names each
+     `<table>_<column>_not_null` when it makes it, and keeps that name
+     when the table or the column is renamed, while the fold's table
+     takes the name its own table and column give. List on the chain's
+     database each one named otherwise:
+
+     ```bash
+     <compose> exec -T postgres-core psql -U postgres -d audit_fold_chain_<day> -Atc "SELECT c.conrelid::regclass, c.conname, a.attname FROM pg_constraint c JOIN pg_class t ON t.oid = c.conrelid JOIN pg_attribute a ON a.attrelid = c.conrelid AND a.attnum = c.conkey[1] WHERE c.contype = 'n' AND c.connamespace = '<role>'::regnamespace AND c.conname <> t.relname || '_' || a.attname || '_not_null'"
+     ```
+
+     When it lists one, no fold is written yet, or the dumps of step 4
+     cannot be equal. A migration of its own, written as the chain's
+     are, at the next stamp above the head and the head its parent,
+     renames each to `<table>_<column>_not_null` (`ALTER TABLE ...
+     RENAME CONSTRAINT`), and is committed alone. Drop
+     `audit_fold_chain_<day>`. When no environment has a database
+     (precondition part 3 passed whole, or every environment never
+     deployed), start again at step 1, with that migration as the head.
+     Otherwise that migration merges and deploys first: the fold stops
+     here, and the report says so.
    - `om/migrations/sql/<role>/<name>.up.sql`, with no parent: the
      schema as `chain.<role>.sql` has it, written as the chain's own
      files are: a comment that says what the role holds, every name
@@ -216,7 +236,10 @@ revision on the fold.
    diff <evidence>/chain.<role>.sql <evidence>/fold.<role>.sql
    ```
 
-   `diff` prints nothing, for every role. With a `scaffold` branch, no
+   `diff` prints nothing, for every role. A line that differs only in a
+   not-null constraint's name is not corrected in the fold: undo the
+   fold as below, drop `audit_fold_folded_<day>`, and rename the
+   constraint as step 2's first item says. With a `scaffold` branch, no
    rendered file changed either: no path `git diff --name-only
    --relative HEAD -- om/migrations` lists, run at the tree's root, is
    one the render holds. When either fails,
