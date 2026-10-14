@@ -898,6 +898,9 @@ def test_a_fold_on_a_base_takes_only_the_revisions_the_tree_owns() -> None:
     assert "no path `git diff --name-only --relative HEAD -- om/migrations` lists" in fold
     assert "Every other owned file of the role's chain goes: `git rm`." in fold
     assert "A rendered file stays as it is." in fold
+    # A fold with a parent leaves the rendered revisions below it, so a step
+    # down from its head lands on that parent, not on an empty role.
+    assert "With a parent, it returns the role to the parent, the last rendered revision" in fold
     # A layer's repository runs none of its tree's deploy workflows, so a
     # read of its deploys would fail and stop every fold of a layer.
     assert (

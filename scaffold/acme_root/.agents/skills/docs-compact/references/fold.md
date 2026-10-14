@@ -186,11 +186,14 @@ revision on the fold.
      assertions stay, in a test that migrates to the head and names no
      step; only the pin and the steps go.
    - A test that steps down from the head (`downgrade` to `-1`) now
-     empties the role: the fold is the chain's one revision, so its
-     down file drops every table. Such a test stays when it upgrades to
-     the head again before it returns, on its failure path too. One
-     that leaves the role a step down for a fixture or a later test is
-     changed to upgrade first, or the suite fails after it.
+     runs the fold's down file, which undoes every owned revision at
+     once. With no parent, it empties the role: its down file drops
+     every table. With a parent, it returns the role to the parent, the
+     last rendered revision, and what the owned revisions made is gone.
+     Such a test stays when it upgrades to the head again before it
+     returns, on its failure path too. One that leaves the role a step
+     down for a fixture or a later test is changed to upgrade first, or
+     the suite fails after it.
    - An ADR, a comment, or a document that cites a removed revision or
      file names the fold's file, or drops the citation when it named a
      step and not the schema.
