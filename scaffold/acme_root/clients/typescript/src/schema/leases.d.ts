@@ -214,7 +214,8 @@ export interface components {
          *     term.
          */
         AskRequest: {
-            kind: components["schemas"]["LeasableResourceKind"];
+            /** Kind */
+            kind: string;
             /** Labels */
             labels?: string[] | null;
             /** Leasable Resource Id */
@@ -243,13 +244,6 @@ export interface components {
          */
         EndReason: "asked" | "waiter_gone" | "refused" | "retired";
         /**
-         * LeasableResourceKind
-         * @description A product adds its kinds here, each with the shape of what its ask
-         *     carries (`ASK_PAYLOADS`) and its hooks (`LeasableResourceKindInterface`).
-         * @enum {string}
-         */
-        LeasableResourceKind: "noop";
-        /**
          * LeasableResourceView
          * @description A resource and its anchor: the highest token granted on it, and the
          *     lease that holds it until when.
@@ -271,7 +265,8 @@ export interface components {
              * Format: uuid
              */
             id: string;
-            kind: components["schemas"]["LeasableResourceKind"];
+            /** Kind */
+            kind: string;
             /** Labels */
             labels: string[];
             /** Lease Id */
@@ -324,7 +319,8 @@ export interface components {
              * Format: uuid
              */
             id: string;
-            kind: components["schemas"]["LeasableResourceKind"];
+            /** Kind */
+            kind: string;
             /** Labels */
             labels: string[] | null;
             /** Leasable Resource Id */
@@ -342,7 +338,8 @@ export interface components {
             wait_until: string | null;
             /** Waiter Id */
             waiter_id: string | null;
-            waiter_kind: components["schemas"]["WaiterKind"] | null;
+            /** Waiter Kind */
+            waiter_kind: string | null;
         };
         /**
          * LeaseStatus
@@ -464,13 +461,6 @@ export interface components {
             /** Requests */
             requests: components["schemas"]["LeaseRequestView"][];
         };
-        /**
-         * WaiterKind
-         * @description What waits on a request, so a grant wakes it. A product adds its own,
-         *     each with a `WaiterInterface`.
-         * @enum {string}
-         */
-        WaiterKind: "orchestration";
         /** ValidationError */
         ValidationError: {
             /** Context */

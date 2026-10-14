@@ -21,7 +21,6 @@ from acme.om.leases.types.request import (
     LeasePage,
     LeaseRequest,
     Standing,
-    WaiterKind,
     WaitLine,
 )
 from acme.om.orchestrations.types.orchestration import OrchestrationStep
@@ -94,7 +93,7 @@ class LeasesManagerInterface(ABC):
         free resource the request may take, so a direct ask is granted at once
         only when no one waits in front of it. An ask asked again by its key
         answers its lease or its place and joins no line twice. The payload
-        must be the shape its kind fixes (`ASK_PAYLOADS`), and the kind's
+        must be the shape its kind fixes (`LeasableResourceKindInterface.ASK`), and the kind's
         check, when it registers one, may refuse the ask before anything
         lands (`AskCheckInterface`). An orchestration
         that waits on the request parks in the same call: `park` is its
@@ -129,7 +128,7 @@ class LeasesManagerInterface(ABC):
         ...
 
     @abstractmethod
-    async def leave(self, ctx: TenantContext, waiter_kind: WaiterKind, waiter_id: UUID) -> int:
+    async def leave(self, ctx: TenantContext, waiter_kind: str, waiter_id: UUID) -> int:
         """A waiter that ends leaves every line: its waiting requests are
         cancelled as `waiter_gone`; returns how many."""
         ...

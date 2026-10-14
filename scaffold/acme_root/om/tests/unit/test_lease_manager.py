@@ -39,6 +39,7 @@ from acme.om.leases.types.request import (
     EndReason,
     HistoryMark,
     LeaseRequest,
+    NoopAsk,
     RequestStatus,
     WaiterKind,
 )
@@ -174,6 +175,8 @@ def test_the_estimate_replays_the_lines_from_the_measured_holds() -> None:
 
 class Refusing(LeasableResourceKindInterface):
     """A kind that no longer allows any request at the grant."""
+
+    ASK = NoopAsk
 
     async def may_grant(
         self, ctx: TenantContext, resource: LeasableResource, request: LeaseRequest
@@ -862,7 +865,7 @@ class Staffed(AskCheckInterface):
     ) -> None:
         self.asked.append((ctx.user_id, request, resource))
         if ctx.role not in (Role.OWNER, Role.ADMIN):
-            raise NotAuthorized(f"a {ctx.role.value} asks for no {request.kind.value} resource")
+            raise NotAuthorized(f"a {ctx.role.value} asks for no {request.kind} resource")
         offers = resource.labels if resource is not None else request.labels or ()
         if "staffed" not in offers:
             raise ValidationFailed("a resource is asked for only where it is staffed")

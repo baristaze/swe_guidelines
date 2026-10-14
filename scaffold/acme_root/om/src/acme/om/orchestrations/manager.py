@@ -16,7 +16,6 @@ from acme.om.context import TenantContext, stageless
 from acme.om.orchestrations.types.orchestration import (
     FailReason,
     Orchestration,
-    OrchestrationKind,
     OrchestrationPage,
     ParkReason,
 )
@@ -27,9 +26,11 @@ class OrchestrationsManagerInterface(ABC):
     async def start(self, ctx: TenantContext, record: Orchestration) -> Orchestration:
         """The create: the record lands running at its first cursor, with the
         hint that announces it and the work row that asks for its first step,
-        in one commit. The input must be the shape its kind fixes
-        (`ORCHESTRATION_INPUTS`). An id written already answers the record as
-        stored; so does a record kept per period whose period is open."""
+        in one commit. Its kind must be one the registry holds, and the
+        input the shape that kind fixes (`orchestrations.kinds`); either
+        miss is refused (`ValidationFailed`). An id written already answers
+        the record as stored; so does a record kept per period whose period
+        is open."""
         ...
 
     @abstractmethod
@@ -44,9 +45,7 @@ class OrchestrationsManagerInterface(ABC):
         ...
 
     @abstractmethod
-    async def get_recent(
-        self, ctx: TenantContext, kind: OrchestrationKind, limit: int
-    ) -> OrchestrationPage:
+    async def get_recent(self, ctx: TenantContext, kind: str, limit: int) -> OrchestrationPage:
         """The org's newest records of a kind, newest first; `limit` is clamped."""
         ...
 

@@ -1,13 +1,17 @@
 """The hooks a kind registers, as a work kind registers its handler. A
-resource kind says what a grant of it starts and whether a request may still
-be granted, and a kind that refuses some asks registers a check of them too;
-a waiter kind says whether a waiter still waits and what wakes it. The root
-hands the manager one impl per kind, and a kind with none is refused at the
-ask; a kind with no check accepts every ask."""
+resource kind says what its ask carries, what a grant of it starts, and
+whether a request may still be granted, and a kind that refuses some asks
+registers a check of them too; a waiter kind says whether a waiter still
+waits and what wakes it. The root hands the manager one impl per kind, keyed
+by the kind's name, which the namespace that owns the kind declares in its
+own module. A kind with none is refused at the ask; a kind with no check
+accepts every ask."""
 
 from abc import ABC, abstractmethod
+from typing import ClassVar
 from uuid import UUID
 
+from acme.om.base import OmBase
 from acme.om.context import TenantContext
 from acme.om.leases.types.leasable_resource import LeasableResource
 from acme.om.leases.types.lease import Lease
@@ -16,6 +20,11 @@ from acme.om.outbox.types.row import OutboxRow
 
 
 class LeasableResourceKindInterface(ABC):
+    ASK: ClassVar[type[OmBase]]
+    """The shape of what an ask of the kind carries, which the ask holds its
+    payload to. Every kind declares it; the manager refuses at its build a
+    kind that does not."""
+
     @abstractmethod
     async def may_grant(
         self, ctx: TenantContext, resource: LeasableResource, request: LeaseRequest

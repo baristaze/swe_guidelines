@@ -144,6 +144,7 @@ async def test_a_malformed_ask_is_refused_and_a_replay_joins_no_line_twice(
         {"leasable_resource_id": str(dock.id), "start_seconds": 0},
         {"leasable_resource_id": str(dock.id), "term_seconds": 604_801},
         {"kind": "nothing", "labels": []},
+        {"kind": "Not a kind!", "labels": []},
         {"leasable_resource_id": "not-an-id"},
     ]
     for body in refusals:

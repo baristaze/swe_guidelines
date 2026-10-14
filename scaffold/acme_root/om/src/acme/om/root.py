@@ -24,6 +24,7 @@ from acme.om.media import MediaManagerInterface
 from acme.om.media.impl.manager import MediaManagerImpl, MediaOptions
 from acme.om.orchestrations import OrchestrationsManagerInterface
 from acme.om.orchestrations.impl.manager import OrchestrationsManagerImpl, OrchestrationsOptions
+from acme.om.orchestrations.kinds import NOOP_ORCHESTRATION, OrchestrationKinds
 from acme.om.outbox import OutboxRelayInterface
 from acme.om.outbox.impl.relay import OutboxRelayImpl
 from acme.om.storage.root import StorageInterface
@@ -50,6 +51,17 @@ KINDS = WorkKinds(
 each namespace's that declares kinds in its own `kinds.py`. The work
 manager reads every kind through it, and the worker holds its handlers to
 it."""
+
+ORCHESTRATION_KINDS = OrchestrationKinds(
+    (
+        NOOP_ORCHESTRATION,
+        # A copy adds its entries below this line.
+    )
+)
+"""Every kind of long-running record this process knows: the mechanism's
+own, then each namespace's that declares kinds in its own `kinds.py`. The
+orchestrations manager holds every start to it, and the worker holds its
+steps to it."""
 
 
 @dataclass(frozen=True)
@@ -78,6 +90,7 @@ def build_managers(
     idempotency_options: IdempotencyOptions | None = None,
     leases_options: LeasesOptions | None = None,
     media_options: MediaOptions | None = None,
+    orchestration_kinds: OrchestrationKinds = ORCHESTRATION_KINDS,
     orchestrations_options: OrchestrationsOptions | None = None,
     work_kinds: WorkKinds = KINDS,
     work_options: WorkOptions | None = None,
@@ -90,8 +103,10 @@ def build_managers(
 
     The options after `integrations` are what the process that sweeps sets
     on the managers it purges through: each one's retention and batch. None
-    keeps that manager's defaults. `work_kinds` is the registry the work
-    manager reads every kind through: `KINDS`, unless a test hands another.
+    keeps that manager's defaults. `work_kinds` and `orchestration_kinds`
+    are the registries the work and the orchestrations managers read every
+    kind through: `KINDS` and `ORCHESTRATION_KINDS`, unless a test hands
+    another.
 
     Each manager is one call to its builder below, in dependency order: a
     builder takes the storage, the infrastructure, and the sibling managers
@@ -125,7 +140,11 @@ def build_managers(
     work_operator = build_work_operator(storage, infra)
     media = build_media(storage, infra, tenancy, outbox, media_options or MediaOptions())
     orchestrations = build_orchestrations(
-        storage, tenancy, outbox, orchestrations_options or OrchestrationsOptions()
+        storage,
+        tenancy,
+        outbox,
+        orchestrations_options or OrchestrationsOptions(),
+        orchestration_kinds,
     )
     leases = build_leases(
         storage, tenancy, outbox, work, orchestrations, leases_options or LeasesOptions()
@@ -168,9 +187,10 @@ def build_leases(
     orchestrations: OrchestrationsManagerInterface,
     options: LeasesOptions,
 ) -> LeasesManagerInterface:
-    """A product registers its resource kinds and its waiter kinds here, each
-    with its hooks, as a work kind's handler is registered in the worker,
-    and, for a kind that refuses some asks, its check (`asks`)."""
+    """A copy registers its resource kinds and its waiter kinds here, below
+    the marker, each by the name its namespace declares with its hooks, as a
+    work kind's handler is registered in the worker, and, for a kind that
+    refuses some asks, its check (`asks`)."""
     return LeasesManagerImpl(
         storage.get_lease_storage(),
         tenancy,
@@ -210,8 +230,11 @@ def build_orchestrations(
     tenancy: TenancyManagerInterface,
     outbox: OutboxRelayInterface,
     options: OrchestrationsOptions,
+    kinds: OrchestrationKinds,
 ) -> OrchestrationsManagerInterface:
-    return OrchestrationsManagerImpl(storage.get_orchestrations_storage(), tenancy, outbox, options)
+    return OrchestrationsManagerImpl(
+        storage.get_orchestrations_storage(), tenancy, outbox, options, kinds
+    )
 
 
 def build_outbox(

@@ -23,7 +23,7 @@ def stands_in(request: LeaseRequest, resource: LeasableResource) -> bool:
     """Whether a waiting request is in the leasable resource's wait line: it
     names the resource, or its selector's labels are all among the
     resource's."""
-    if request.status is not RequestStatus.WAITING or request.kind is not resource.kind:
+    if request.status is not RequestStatus.WAITING or request.kind != resource.kind:
         return False
     if request.leasable_resource_id is not None:
         return request.leasable_resource_id == resource.id

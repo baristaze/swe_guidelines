@@ -9,7 +9,6 @@ from acme.om.orchestrations.storage import (
 )
 from acme.om.orchestrations.types.orchestration import (
     Orchestration,
-    OrchestrationKind,
     OrchestrationStatus,
     OrchestrationStep,
     ParkReason,
@@ -40,9 +39,7 @@ class OrchestrationsStorageMemoryImpl(
     async def read_orchestration(self, org_id: UUID, record_id: UUID) -> Orchestration | None:
         return self._get(self._records, org_id, record_id)
 
-    async def read_recent(
-        self, org_id: UUID, kind: OrchestrationKind, limit: int
-    ) -> list[Orchestration]:
+    async def read_recent(self, org_id: UUID, kind: str, limit: int) -> list[Orchestration]:
         found = [r for r in self._rows(self._records, org_id) if r.kind == kind]
         return sorted(found, key=lambda r: r.id, reverse=True)[:limit]
 

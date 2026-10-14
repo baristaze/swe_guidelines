@@ -10,7 +10,6 @@ from uuid import UUID
 from acme.om.context import tenantless
 from acme.om.leases.types.leasable_resource import (
     LeasableResource,
-    LeasableResourceKind,
     LeasableResourceUpdate,
 )
 from acme.om.leases.types.lease import Grant, Lease, LeaseStatus
@@ -20,7 +19,6 @@ from acme.om.leases.types.request import (
     LeaseEntry,
     LeaseRequest,
     RequestStatus,
-    WaiterKind,
 )
 from acme.om.orchestrations.types.orchestration import OrchestrationStep
 from acme.om.outbox.types.row import OutboxRow
@@ -42,7 +40,7 @@ class LeasableResourceLandingInterface(ABC):
     def land_update(
         self,
         org_id: UUID,
-        kind: LeasableResourceKind,
+        kind: str,
         ref_id: UUID,
         change: LeasableResourceUpdate,
         at: datetime,
@@ -56,7 +54,7 @@ class LeasableResourceLandingInterface(ABC):
 
     @abstractmethod
     def land_retirement(
-        self, org_id: UUID, kind: LeasableResourceKind, ref_id: UUID, at: datetime, actor: UUID
+        self, org_id: UUID, kind: str, ref_id: UUID, at: datetime, actor: UUID
     ) -> None:
         """Retires the kind's resource for the row. The requests that name it
         wait on until the manager takes them out of line (`read_stranded`),
@@ -83,12 +81,12 @@ class LeasesStorageInterface(ABC):
 
     @abstractmethod
     async def read_leasable_resource_by_ref(
-        self, org_id: UUID, kind: LeasableResourceKind, ref_id: UUID
+        self, org_id: UUID, kind: str, ref_id: UUID
     ) -> LeasableResource | None: ...
 
     @abstractmethod
     async def read_leasable_resources(
-        self, org_id: UUID, kind: LeasableResourceKind, limit: int
+        self, org_id: UUID, kind: str, limit: int
     ) -> list[LeasableResource]:
         """The org's live resources of a kind, by id."""
         ...
@@ -158,9 +156,7 @@ class LeasesStorageInterface(ABC):
     async def read_request(self, org_id: UUID, request_id: UUID) -> LeaseRequest | None: ...
 
     @abstractmethod
-    async def read_waiting(
-        self, org_id: UUID, kind: LeasableResourceKind, limit: int
-    ) -> list[LeaseRequest]:
+    async def read_waiting(self, org_id: UUID, kind: str, limit: int) -> list[LeaseRequest]:
         """The org's waiting requests of a kind in rank order: by rank, then id."""
         ...
 
@@ -220,7 +216,7 @@ class LeasesStorageInterface(ABC):
 
     @abstractmethod
     async def cancel_waiting_of(
-        self, org_id: UUID, waiter_kind: WaiterKind, waiter_id: UUID, at: datetime, actor: UUID
+        self, org_id: UUID, waiter_kind: str, waiter_id: UUID, at: datetime, actor: UUID
     ) -> int:
         """Takes every waiting request of one waiter out of line as
         `waiter_gone`; returns how many."""

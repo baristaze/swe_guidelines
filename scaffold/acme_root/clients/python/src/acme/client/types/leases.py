@@ -3,7 +3,6 @@ leases."""
 
 from acme.client.schema.leases import (
     EndReason,
-    LeasableResourceKind,
     LeasableResourceView,
     LeaseEntryView,
     LeasePageView,
@@ -13,13 +12,11 @@ from acme.client.schema.leases import (
     PlaceView,
     RequestStatus,
     StandingView,
-    WaiterKind,
     WaitLineView,
 )
 
 __all__ = [
     "EndReason",
-    "LeasableResourceKind",
     "LeasableResourceView",
     "LeaseEntryView",
     "LeasePageView",
@@ -30,5 +27,4 @@ __all__ = [
     "RequestStatus",
     "StandingView",
     "WaitLineView",
-    "WaiterKind",
 ]

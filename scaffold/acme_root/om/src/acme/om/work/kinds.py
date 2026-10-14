@@ -6,11 +6,9 @@ holds from both (`root.KINDS`), and the work manager reads every kind
 through it, so no kind is a line in a list the scaffold also writes."""
 
 import re
-from collections.abc import Iterable, Iterator, Mapping
 from dataclasses import dataclass
-from types import MappingProxyType
 
-from acme.om.base import OmBase
+from acme.om.base import Kinds, OmBase
 from acme.om.context import Permission
 from acme.om.work.types.work_item import (
     KIND_NAME,
@@ -46,32 +44,10 @@ class WorkKindSpec:
             raise ValueError(f"a work kind is named in capitals, never {self.name!r}")
 
 
-class WorkKinds:
-    """The kinds a process knows, each once. Built at the business root from
-    the work namespace's own and a copy's; a name registered twice is
-    refused, so a copy never takes over a kind of the scaffold's."""
+class WorkKinds(Kinds[WorkKindSpec]):
+    """The kinds of work a process knows, each once (`Kinds`)."""
 
-    def __init__(self, specs: Iterable[WorkKindSpec]) -> None:
-        found: dict[str, WorkKindSpec] = {}
-        for spec in specs:
-            if spec.name in found:
-                raise ValueError(f"work kind {spec.name} is registered twice")
-            found[spec.name] = spec
-        self._specs: Mapping[str, WorkKindSpec] = MappingProxyType(found)
-
-    def __contains__(self, name: object) -> bool:
-        return name in self._specs
-
-    def __iter__(self) -> Iterator[WorkKindSpec]:
-        return iter(self._specs.values())
-
-    def get(self, name: str) -> WorkKindSpec | None:
-        """The kind of that name; None for one this process does not know."""
-        return self._specs.get(name)
-
-    def extended(self, specs: Iterable[WorkKindSpec]) -> WorkKinds:
-        """These kinds and `specs`, each once."""
-        return WorkKinds((*self, *specs))
+    NOUN = "work kind"
 
 
 WORK_KINDS: tuple[WorkKindSpec, ...] = (

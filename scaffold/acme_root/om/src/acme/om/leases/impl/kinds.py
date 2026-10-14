@@ -9,7 +9,7 @@ from acme.om.exceptions import NotFound
 from acme.om.leases.hooks import LeasableResourceKindInterface, WaiterInterface
 from acme.om.leases.types.leasable_resource import LeasableResource
 from acme.om.leases.types.lease import Lease
-from acme.om.leases.types.request import LeaseRequest
+from acme.om.leases.types.request import LeaseRequest, NoopAsk
 from acme.om.orchestrations import OrchestrationsManagerInterface
 from acme.om.orchestrations.rules import is_settled
 from acme.om.orchestrations.types.orchestration import ParkReason
@@ -19,6 +19,8 @@ from acme.om.work.types.work_item import WakeParkedPayload, WorkKind, work_row_k
 
 class NoopLeasableResourceKindImpl(LeasableResourceKindInterface):
     """A grant starts nothing, and every request may be granted."""
+
+    ASK = NoopAsk
 
     async def may_grant(
         self, ctx: TenantContext, resource: LeasableResource, request: LeaseRequest

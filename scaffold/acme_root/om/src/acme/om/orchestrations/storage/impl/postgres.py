@@ -11,7 +11,6 @@ from acme.om.orchestrations.storage.tables.orchestrations import Orchestrations
 from acme.om.orchestrations.types.orchestration import (
     SETTLED,
     Orchestration,
-    OrchestrationKind,
     OrchestrationStatus,
     OrchestrationStep,
     ParkReason,
@@ -74,7 +73,7 @@ class OrchestrationsStoragePostgresImpl(PgStorageBase, OrchestrationsStorageInte
                 # key answers, read first so the insert never meets it.
                 held = select(Orchestrations.id).where(
                     Orchestrations.org_id == org_id,
-                    Orchestrations.kind == record.kind.value,
+                    Orchestrations.kind == record.kind,
                     Orchestrations.period == record.period,
                 )
                 if (await session.execute(held)).first() is not None:
@@ -95,12 +94,10 @@ class OrchestrationsStoragePostgresImpl(PgStorageBase, OrchestrationsStorageInte
             row = (await session.execute(stmt)).scalar_one_or_none()
             return None if row is None else to_model(row, Orchestration)
 
-    async def read_recent(
-        self, org_id: UUID, kind: OrchestrationKind, limit: int
-    ) -> list[Orchestration]:
+    async def read_recent(self, org_id: UUID, kind: str, limit: int) -> list[Orchestration]:
         stmt = (
             select(Orchestrations)
-            .where(Orchestrations.org_id == org_id, Orchestrations.kind == kind.value)
+            .where(Orchestrations.org_id == org_id, Orchestrations.kind == kind)
             .order_by(Orchestrations.id.desc())
             .limit(limit)
         )

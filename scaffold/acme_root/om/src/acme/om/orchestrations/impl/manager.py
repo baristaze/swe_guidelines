@@ -14,6 +14,7 @@ from acme.om.exceptions import (
     TenantMismatch,
     ValidationFailed,
 )
+from acme.om.orchestrations.kinds import OrchestrationKinds
 from acme.om.orchestrations.manager import OrchestrationsManagerInterface
 from acme.om.orchestrations.rules import (
     advanced,
@@ -27,11 +28,9 @@ from acme.om.orchestrations.rules import (
 from acme.om.orchestrations.steps import orchestration_step_rows
 from acme.om.orchestrations.storage import OrchestrationsStorageInterface
 from acme.om.orchestrations.types.orchestration import (
-    ORCHESTRATION_INPUTS,
     FailReason,
     NoopInput,
     Orchestration,
-    OrchestrationKind,
     OrchestrationPage,
     OrchestrationStatus,
     ParkReason,
@@ -59,20 +58,26 @@ class OrchestrationsManagerImpl(OrchestrationsManagerInterface):
         tenancy: TenancyManagerInterface,
         relay: OutboxRelayInterface,
         options: OrchestrationsOptions,
+        kinds: OrchestrationKinds,
         clock: Callable[[], datetime] = utcnow,
     ) -> None:
         self._storage = storage
         self._tenancy = tenancy
         self._relay = relay
         self._options = options
+        # Every kind this process knows, each with its input shape.
+        self._kinds = kinds
         self._clock = clock
 
     async def start(self, ctx: TenantContext, record: Orchestration) -> Orchestration:
         ctx.require(Permission.WRITE)
+        kind = self._kinds.get(record.kind)
+        if kind is None:
+            raise ValidationFailed(f"no orchestration kind {record.kind} is registered")
         try:
-            ORCHESTRATION_INPUTS[record.kind].model_validate(dict(record.input))
+            kind.input.model_validate(dict(record.input))
         except ValidationError as error:
-            raise ValidationFailed(f"a {record.kind.value} input is not {error}") from None
+            raise ValidationFailed(f"a {record.kind} input is not {error}") from None
         now = self._clock()
         created = record.model_copy(
             update={
@@ -101,7 +106,7 @@ class OrchestrationsManagerImpl(OrchestrationsManagerInterface):
                 raise TenantMismatch(f"orchestration {created.id} is not in {ctx.org_id}")
             return existing
         await self._relay_all(ctx, rows)
-        log.info("started %s %s in org %s", created.kind.value, created.id, ctx.org_id)
+        log.info("started %s %s in org %s", created.kind, created.id, ctx.org_id)
         OUTCOMES.labels(subsystem="orchestrations", outcome=outcome(created)).inc()
         return created
 
@@ -122,9 +127,7 @@ class OrchestrationsManagerImpl(OrchestrationsManagerInterface):
         await self._write(ctx, stepped, record.version)
         return stepped
 
-    async def get_recent(
-        self, ctx: TenantContext, kind: OrchestrationKind, limit: int
-    ) -> OrchestrationPage:
+    async def get_recent(self, ctx: TenantContext, kind: str, limit: int) -> OrchestrationPage:
         ctx.require(Permission.READ)
         limit = max(1, min(limit, self._options.max_limit))
         rows = await self._storage.read_recent(ctx.org_id, kind, limit + 1)
@@ -181,7 +184,7 @@ class OrchestrationsManagerImpl(OrchestrationsManagerInterface):
         why = " ".join(reason.split())[:500]
         log.info(
             "%s %s in org %s cancelled by %s at %d: %s",
-            record.kind.value,
+            record.kind,
             record.id,
             ctx.org_id,
             ctx.user_id,
@@ -206,7 +209,7 @@ class OrchestrationsManagerImpl(OrchestrationsManagerInterface):
         log.log(
             level,
             "%s %s in org %s failed: %s %s",
-            record.kind.value,
+            record.kind,
             record.id,
             ctx.org_id,
             reason.value,
@@ -253,7 +256,7 @@ class OrchestrationsManagerImpl(OrchestrationsManagerInterface):
     ) -> Orchestration:
         running = resumed(record, now, ctx.user_id)
         await self._write(ctx, running, record.version, not_before)
-        OUTCOMES.labels(subsystem="orchestrations", outcome=f"{record.kind.value}_resumed").inc()
+        OUTCOMES.labels(subsystem="orchestrations", outcome=f"{record.kind}_resumed").inc()
         return running
 
     async def _write(

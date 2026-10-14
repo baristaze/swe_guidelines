@@ -11,7 +11,7 @@ from uuid import UUID
 
 from pydantic import Field, StringConstraints
 
-from acme.om.base import Identifiable, OmBase, Trackable
+from acme.om.base import Identifiable, OmBase, SnakeName, Trackable
 
 Label = Annotated[
     str, StringConstraints(min_length=1, max_length=200, pattern=r"^[^\x00-\x1f\x7f]+$")
@@ -27,10 +27,12 @@ MAX_TERM_SECONDS = 604_800
 
 
 class LeasableResourceKind(StrEnum):
-    """A product adds its kinds here, each with the shape of what its ask
-    carries (`ASK_PAYLOADS`) and its hooks (`LeasableResourceKindInterface`)."""
+    """The names of the mechanism's own kinds. A kind is registered at the
+    root by its name with its hooks, which carry the shape of its ask
+    (`LeasableResourceKindInterface`); a copy names its kinds in its own
+    namespace's module, never here."""
 
-    NOOP = "noop"  # the mechanism's own: a grant starts nothing, and every request may be granted
+    NOOP = "noop"  # a grant starts nothing, and every request may be granted
 
 
 class LeasableResource(Identifiable, Trackable):
@@ -47,7 +49,7 @@ class LeasableResource(Identifiable, Trackable):
     (`LeasableResourceUpdate`), which may name its availability too; the rest moves
     only through the manager's transitions."""
 
-    kind: LeasableResourceKind
+    kind: SnakeName  # a kind the root registers hooks for
     # The row it stands for, in the namespace that owns the kind. One
     # resource per org, kind, and row.
     ref_id: UUID

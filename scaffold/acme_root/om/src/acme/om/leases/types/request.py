@@ -10,13 +10,12 @@ from uuid import UUID
 
 from pydantic import Field, model_validator
 
-from acme.om.base import FrozenMapping, Identifiable, OmBase, Trackable
+from acme.om.base import FrozenMapping, Identifiable, OmBase, SnakeName, Trackable
 from acme.om.leases.types.leasable_resource import (
     MAX_LABELS,
     MAX_TERM_SECONDS,
     Label,
     LeasableResource,
-    LeasableResourceKind,
 )
 from acme.om.leases.types.lease import Lease
 
@@ -44,8 +43,10 @@ class EndReason(StrEnum):
 
 
 class WaiterKind(StrEnum):
-    """What waits on a request, so a grant wakes it. A product adds its own,
-    each with a `WaiterInterface`."""
+    """The names of the mechanism's own kinds of waiter: what waits on a
+    request, so a grant wakes it. A kind of waiter is registered at the root
+    by its name with its `WaiterInterface`; a copy names its own in its own
+    namespace's module, never here."""
 
     ORCHESTRATION = "orchestration"  # a long-running record parked on `resource`
 
@@ -63,15 +64,16 @@ class LeaseRequest(Identifiable, Trackable):
 
     # The ask's own key: an ask asked again by it answers this request.
     idempotency_key: UUID
-    kind: LeasableResourceKind
+    kind: SnakeName  # a kind the root registers hooks for
     # One resource, or a selector: the labels a resource of the kind offers.
     leasable_resource_id: UUID | None = None
     labels: tuple[Label, ...] | None = Field(default=None, max_length=MAX_LABELS)
-    # The dump of ASK_PAYLOADS[kind]: what the grant starts, in the kind's shape.
+    # The dump of its kind's ask (`LeasableResourceKindInterface.ASK`): what
+    # the grant starts, in the kind's shape.
     payload: FrozenMapping = Field(default_factory=dict, validate_default=True)
     # What waits on it, by a registered kind and an id; none for a caller
     # that follows its request itself.
-    waiter_kind: WaiterKind | None = None
+    waiter_kind: SnakeName | None = None
     waiter_id: UUID | None = None
     term_seconds: int = Field(default=60, ge=1, le=MAX_TERM_SECONDS)
     # For a grant that starts a job: the window the job has to start in, from
@@ -97,12 +99,6 @@ class LeaseRequest(Identifiable, Trackable):
 
 class NoopAsk(OmBase):
     """The `noop` kind's ask carries nothing."""
-
-
-ASK_PAYLOADS: dict[LeasableResourceKind, type[OmBase]] = {
-    LeasableResourceKind.NOOP: NoopAsk,
-}
-"""The shape of what each kind's ask carries; the ask validates it."""
 
 
 class Standing(OmBase):

@@ -6,7 +6,9 @@
         "description": "An ask for a lease: one resource by its id, or a selector, the labels\na resource of `kind` must offer. `payload` is in the shape the kind\nfixes; the term is bounded by the resource's, and the ask expires in line\nafter `wait_seconds`. When the grant starts a job, `start_seconds` is the\nwindow the job has to start in, bounded the same way; none gives it the\nterm.",
         "properties": {
           "kind": {
-            "$ref": "#/components/schemas/LeasableResourceKind"
+            "pattern": "^[a-z][a-z0-9_]{0,63}$",
+            "title": "Kind",
+            "type": "string"
           },
           "labels": {
             "anyOf": [
@@ -88,14 +90,6 @@
         "title": "EndReason",
         "type": "string"
       },
-      "LeasableResourceKind": {
-        "description": "A product adds its kinds here, each with the shape of what its ask\ncarries (`ASK_PAYLOADS`) and its hooks (`LeasableResourceKindInterface`).",
-        "enum": [
-          "noop"
-        ],
-        "title": "LeasableResourceKind",
-        "type": "string"
-      },
       "LeasableResourceView": {
         "description": "A resource and its anchor: the highest token granted on it, and the\nlease that holds it until when.",
         "properties": {
@@ -130,7 +124,9 @@
             "type": "string"
           },
           "kind": {
-            "$ref": "#/components/schemas/LeasableResourceKind"
+            "pattern": "^[a-z][a-z0-9_]{0,63}$",
+            "title": "Kind",
+            "type": "string"
           },
           "labels": {
             "items": {
@@ -270,7 +266,9 @@
             "type": "string"
           },
           "kind": {
-            "$ref": "#/components/schemas/LeasableResourceKind"
+            "pattern": "^[a-z][a-z0-9_]{0,63}$",
+            "title": "Kind",
+            "type": "string"
           },
           "labels": {
             "anyOf": [
@@ -359,12 +357,14 @@
           "waiter_kind": {
             "anyOf": [
               {
-                "$ref": "#/components/schemas/WaiterKind"
+                "pattern": "^[a-z][a-z0-9_]{0,63}$",
+                "type": "string"
               },
               {
                 "type": "null"
               }
-            ]
+            ],
+            "title": "Waiter Kind"
           }
         },
         "required": [
@@ -653,14 +653,6 @@
         ],
         "title": "WaitLineView",
         "type": "object"
-      },
-      "WaiterKind": {
-        "description": "What waits on a request, so a grant wakes it. A product adds its own,\neach with a `WaiterInterface`.",
-        "enum": [
-          "orchestration"
-        ],
-        "title": "WaiterKind",
-        "type": "string"
       }
     }
   },

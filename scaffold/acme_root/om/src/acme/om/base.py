@@ -1,14 +1,15 @@
-"""Root of the object model: the base class, the mixins, and the two helpers
-every entity constructor needs."""
+"""Root of the object model: the base class, the mixins, the two helpers
+every entity constructor needs, and the registry every sort of kind is
+held in."""
 
 import hashlib
-from collections.abc import Mapping
+from collections.abc import Iterable, Iterator, Mapping
 from datetime import UTC, datetime
 from types import MappingProxyType
-from typing import Annotated, Any
+from typing import Annotated, Any, ClassVar, Protocol, Self
 from uuid import UUID, uuid7
 
-from pydantic import AfterValidator, BaseModel, ConfigDict, PlainSerializer
+from pydantic import AfterValidator, BaseModel, ConfigDict, PlainSerializer, StringConstraints
 
 
 def new_id() -> UUID:
@@ -131,3 +132,52 @@ EMPTY_UUID = UUID(int=0)
 value of a required reference that no tenant and no person owns. It equals
 infra's `SYSTEM_SCOPE` by value, so infra never imports it. A reference that
 is genuinely optional is `None`, never `EMPTY_UUID`."""
+
+
+SNAKE_NAME = r"^[a-z][a-z0-9_]{0,63}$"
+"""A kind's name in snake case: an orchestration's, a leasable resource's,
+or a waiter's, as its row and the wire hold it."""
+
+SnakeName = Annotated[str, StringConstraints(pattern=SNAKE_NAME)]
+"""A kind's name held to `SNAKE_NAME`, never a closed set, since the kinds a
+process knows are registered at its root."""
+
+
+class KindSpec(Protocol):
+    """What a registry holds: a spec that carries its kind's name."""
+
+    @property
+    def name(self) -> str: ...
+
+
+class Kinds[S: KindSpec]:
+    """The kinds of one sort a process knows, each once. A namespace declares
+    its kinds in its own module, and the business root builds the registry
+    from the scaffold's and a copy's, below the marker, so no kind is a line
+    in a list the scaffold also writes. A name registered twice is refused,
+    so a copy never takes over a kind of the scaffold's."""
+
+    NOUN: ClassVar[str] = "kind"
+    """What a refusal calls one of them."""
+
+    def __init__(self, specs: Iterable[S]) -> None:
+        found: dict[str, S] = {}
+        for spec in specs:
+            if spec.name in found:
+                raise ValueError(f"{self.NOUN} {spec.name} is registered twice")
+            found[spec.name] = spec
+        self._specs: Mapping[str, S] = MappingProxyType(found)
+
+    def __contains__(self, name: object) -> bool:
+        return name in self._specs
+
+    def __iter__(self) -> Iterator[S]:
+        return iter(self._specs.values())
+
+    def get(self, name: str) -> S | None:
+        """The kind of that name; None for one this process does not know."""
+        return self._specs.get(name)
+
+    def extended(self, specs: Iterable[S]) -> Self:
+        """These kinds and `specs`, each once."""
+        return type(self)((*self, *specs))

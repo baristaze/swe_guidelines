@@ -6,7 +6,6 @@ from acme.om.leases.rules import grant_fits, stands_in
 from acme.om.leases.storage import LeasableResourceLandingInterface, LeasesStorageInterface
 from acme.om.leases.types.leasable_resource import (
     LeasableResource,
-    LeasableResourceKind,
     LeasableResourceUpdate,
 )
 from acme.om.leases.types.lease import Grant, Lease, LeaseStatus
@@ -16,7 +15,6 @@ from acme.om.leases.types.request import (
     LeaseEntry,
     LeaseRequest,
     RequestStatus,
-    WaiterKind,
 )
 from acme.om.orchestrations.storage import OrchestrationStepLandingInterface
 from acme.om.orchestrations.types.orchestration import OrchestrationStep
@@ -60,17 +58,17 @@ class LeasesStorageMemoryImpl(
         return self._get(self._resources, org_id, leasable_resource_id)
 
     async def read_leasable_resource_by_ref(
-        self, org_id: UUID, kind: LeasableResourceKind, ref_id: UUID
+        self, org_id: UUID, kind: str, ref_id: UUID
     ) -> LeasableResource | None:
         return self._by_ref(org_id, kind, ref_id)
 
     async def read_leasable_resources(
-        self, org_id: UUID, kind: LeasableResourceKind, limit: int
+        self, org_id: UUID, kind: str, limit: int
     ) -> list[LeasableResource]:
         return [
             r
             for r in self._rows(self._resources, org_id)
-            if r.kind is kind and r.retired_at is None
+            if r.kind == kind and r.retired_at is None
         ][:limit]
 
     async def read_free(self, org_id: UUID, limit: int) -> list[LeasableResource]:
@@ -158,10 +156,8 @@ class LeasesStorageMemoryImpl(
     async def read_request(self, org_id: UUID, request_id: UUID) -> LeaseRequest | None:
         return self._get(self._requests, org_id, request_id)
 
-    async def read_waiting(
-        self, org_id: UUID, kind: LeasableResourceKind, limit: int
-    ) -> list[LeaseRequest]:
-        found = [r for r in self._waiting_in(org_id) if r.kind is kind]
+    async def read_waiting(self, org_id: UUID, kind: str, limit: int) -> list[LeaseRequest]:
+        found = [r for r in self._waiting_in(org_id) if r.kind == kind]
         return sorted(found, key=lambda r: (r.rank, r.id))[:limit]
 
     async def read_overdue(self, org_id: UUID, now: datetime, limit: int) -> list[LeaseRequest]:
@@ -229,13 +225,13 @@ class LeasesStorageMemoryImpl(
             return request
 
     async def cancel_waiting_of(
-        self, org_id: UUID, waiter_kind: WaiterKind, waiter_id: UUID, at: datetime, actor: UUID
+        self, org_id: UUID, waiter_kind: str, waiter_id: UUID, at: datetime, actor: UUID
     ) -> int:
         async with self._lock:
             mine = [
                 r
                 for r in self._waiting_in(org_id)
-                if r.waiter_kind is waiter_kind and r.waiter_id == waiter_id
+                if r.waiter_kind == waiter_kind and r.waiter_id == waiter_id
             ]
             for request in mine:
                 self._requests[request.id] = (
@@ -510,7 +506,7 @@ class LeasesStorageMemoryImpl(
     def land_update(
         self,
         org_id: UUID,
-        kind: LeasableResourceKind,
+        kind: str,
         ref_id: UUID,
         change: LeasableResourceUpdate,
         at: datetime,
@@ -523,7 +519,7 @@ class LeasesStorageMemoryImpl(
         self._resources[resource.id] = (org_id, resource.model_copy(update=fields))
 
     def land_retirement(
-        self, org_id: UUID, kind: LeasableResourceKind, ref_id: UUID, at: datetime, actor: UUID
+        self, org_id: UUID, kind: str, ref_id: UUID, at: datetime, actor: UUID
     ) -> None:
         resource = self._by_ref(org_id, kind, ref_id)
         if resource is None or resource.retired_at is not None:
@@ -542,14 +538,12 @@ class LeasesStorageMemoryImpl(
 
     # The shared steps.
 
-    def _by_ref(
-        self, org_id: UUID, kind: LeasableResourceKind, ref_id: UUID
-    ) -> LeasableResource | None:
+    def _by_ref(self, org_id: UUID, kind: str, ref_id: UUID) -> LeasableResource | None:
         return next(
             (
                 r
                 for r in self._rows(self._resources, org_id)
-                if r.kind is kind and r.ref_id == ref_id
+                if r.kind == kind and r.ref_id == ref_id
             ),
             None,
         )

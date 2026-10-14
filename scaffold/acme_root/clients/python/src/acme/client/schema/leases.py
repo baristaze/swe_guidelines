@@ -22,6 +22,34 @@ class StartSeconds(RootModel[int]):
     root: Annotated[int, Field(ge=1, le=604800, title='Start Seconds')]
 
 
+class AskRequest(BaseModel):
+    """
+    An ask for a lease: one resource by its id, or a selector, the labels
+    a resource of `kind` must offer. `payload` is in the shape the kind
+    fixes; the term is bounded by the resource's, and the ask expires in line
+    after `wait_seconds`. When the grant starts a job, `start_seconds` is the
+    window the job has to start in, bounded the same way; none gives it the
+    term.
+    """
+
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    kind: Annotated[str, Field(pattern='^[a-z][a-z0-9_]{0,63}$', title='Kind')]
+    labels: Annotated[Labels | None, Field(title='Labels')] = None
+    leasable_resource_id: Annotated[UUID | None, Field(title='Leasable Resource Id')] = (
+        None
+    )
+    payload: Annotated[dict[str, Any] | None, Field(title='Payload')] = None
+    start_seconds: Annotated[StartSeconds | None, Field(title='Start Seconds')] = None
+    term_seconds: Annotated[int | None, Field(ge=1, le=604800, title='Term Seconds')] = (
+        60
+    )
+    wait_seconds: Annotated[int | None, Field(ge=1, le=604800, title='Wait Seconds')] = (
+        3600
+    )
+
+
 class EndReason(StrEnum):
     """
     Why a request left its line without a lease.
@@ -31,15 +59,6 @@ class EndReason(StrEnum):
     waiter_gone = 'waiter_gone'
     refused = 'refused'
     retired = 'retired'
-
-
-class LeasableResourceKind(StrEnum):
-    """
-    A product adds its kinds here, each with the shape of what its ask
-    carries (`ASK_PAYLOADS`) and its hooks (`LeasableResourceKindInterface`).
-    """
-
-    noop = 'noop'
 
 
 class LeasableResourceView(BaseModel):
@@ -53,12 +72,16 @@ class LeasableResourceView(BaseModel):
     fencing_token: Annotated[int, Field(title='Fencing Token')]
     held_until: Annotated[AwareDatetime | None, Field(title='Held Until')]
     id: Annotated[UUID, Field(title='Id')]
-    kind: LeasableResourceKind
+    kind: Annotated[str, Field(pattern='^[a-z][a-z0-9_]{0,63}$', title='Kind')]
     labels: Annotated[list[str], Field(title='Labels')]
     lease_id: Annotated[UUID | None, Field(title='Lease Id')]
     max_term_seconds: Annotated[int, Field(title='Max Term Seconds')]
     ref_id: Annotated[UUID, Field(title='Ref Id')]
     retired_at: Annotated[AwareDatetime | None, Field(title='Retired At')]
+
+
+class WaiterKind(RootModel[str]):
+    root: Annotated[str, Field(pattern='^[a-z][a-z0-9_]{0,63}$', title='Waiter Kind')]
 
 
 class LeaseStatus(StrEnum):
@@ -136,49 +159,12 @@ class RequestStatus(StrEnum):
     expired = 'expired'
 
 
-class WaiterKind(StrEnum):
-    """
-    What waits on a request, so a grant wakes it. A product adds its own,
-    each with a `WaiterInterface`.
-    """
-
-    orchestration = 'orchestration'
-
-
-class AskRequest(BaseModel):
-    """
-    An ask for a lease: one resource by its id, or a selector, the labels
-    a resource of `kind` must offer. `payload` is in the shape the kind
-    fixes; the term is bounded by the resource's, and the ask expires in line
-    after `wait_seconds`. When the grant starts a job, `start_seconds` is the
-    window the job has to start in, bounded the same way; none gives it the
-    term.
-    """
-
-    model_config = ConfigDict(
-        extra='forbid',
-    )
-    kind: LeasableResourceKind
-    labels: Annotated[Labels | None, Field(title='Labels')] = None
-    leasable_resource_id: Annotated[UUID | None, Field(title='Leasable Resource Id')] = (
-        None
-    )
-    payload: Annotated[dict[str, Any] | None, Field(title='Payload')] = None
-    start_seconds: Annotated[StartSeconds | None, Field(title='Start Seconds')] = None
-    term_seconds: Annotated[int | None, Field(ge=1, le=604800, title='Term Seconds')] = (
-        60
-    )
-    wait_seconds: Annotated[int | None, Field(ge=1, le=604800, title='Wait Seconds')] = (
-        3600
-    )
-
-
 class LeaseRequestView(BaseModel):
     created_at: Annotated[AwareDatetime, Field(title='Created At')]
     created_by: Annotated[UUID, Field(title='Created By')]
     end_reason: EndReason | None
     id: Annotated[UUID, Field(title='Id')]
-    kind: LeasableResourceKind
+    kind: Annotated[str, Field(pattern='^[a-z][a-z0-9_]{0,63}$', title='Kind')]
     labels: Annotated[list[str] | None, Field(title='Labels')]
     leasable_resource_id: Annotated[UUID | None, Field(title='Leasable Resource Id')]
     lease_id: Annotated[UUID | None, Field(title='Lease Id')]
@@ -188,7 +174,7 @@ class LeaseRequestView(BaseModel):
     term_seconds: Annotated[int, Field(title='Term Seconds')]
     wait_until: Annotated[AwareDatetime | None, Field(title='Wait Until')]
     waiter_id: Annotated[UUID | None, Field(title='Waiter Id')]
-    waiter_kind: WaiterKind | None
+    waiter_kind: Annotated[WaiterKind | None, Field(title='Waiter Kind')]
 
 
 class StandingView(BaseModel):

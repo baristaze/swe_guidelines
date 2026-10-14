@@ -1,4 +1,5 @@
 import logging
+import re
 from collections.abc import Callable, Mapping
 from datetime import datetime, timedelta
 from uuid import UUID
@@ -6,7 +7,7 @@ from uuid import UUID
 from pydantic import ValidationError
 
 from acme.infra.observability import OUTCOMES
-from acme.om.base import EMPTY_UUID, OmBase, new_id, utcnow
+from acme.om.base import EMPTY_UUID, SNAKE_NAME, OmBase, new_id, utcnow
 from acme.om.context import Permission, RequestContext, TenantContext
 from acme.om.exceptions import (
     InvalidCredential,
@@ -36,12 +37,10 @@ from acme.om.leases.rules import (
 from acme.om.leases.storage import LeasesStorageInterface
 from acme.om.leases.types.leasable_resource import (
     LeasableResource,
-    LeasableResourceKind,
     LeasableResourceUpdate,
 )
 from acme.om.leases.types.lease import Grant, JobClaim, Lease, LeaseStatus
 from acme.om.leases.types.request import (
-    ASK_PAYLOADS,
     EndReason,
     HistoryMark,
     LeasePage,
@@ -49,7 +48,6 @@ from acme.om.leases.types.request import (
     Place,
     RequestStatus,
     Standing,
-    WaiterKind,
     WaitLine,
 )
 from acme.om.orchestrations.steps import orchestration_step_rows
@@ -94,12 +92,27 @@ class LeasesManagerImpl(LeasesManagerInterface):
         relay: OutboxRelayInterface,
         options: LeasesOptions,
         *,
-        kinds: Mapping[LeasableResourceKind, LeasableResourceKindInterface],
-        waiters: Mapping[WaiterKind, WaiterInterface],
+        kinds: Mapping[str, LeasableResourceKindInterface],
+        waiters: Mapping[str, WaiterInterface],
         work: WorkManagerInterface,
-        asks: Mapping[LeasableResourceKind, AskCheckInterface] | None = None,
+        asks: Mapping[str, AskCheckInterface] | None = None,
         clock: Callable[[], datetime] = utcnow,
     ) -> None:
+        """`kinds` and `waiters` map a kind's name to its hooks, and `asks` a
+        resource kind's name to its check. A name out of `SNAKE_NAME`, a
+        resource kind whose hooks declare no `ASK`, and a check for a kind
+        with no hooks are refused here, at the build, never at an ask."""
+        malformed = sorted(n for n in (*kinds, *waiters) if not re.fullmatch(SNAKE_NAME, n))
+        if malformed:
+            raise ValueError(f"a lease kind is named in snake case, never {', '.join(malformed)}")
+        shapeless = sorted(n for n, hooks in kinds.items() if not _declares_ask(hooks))
+        if shapeless:
+            raise ValueError(f"resource kind {', '.join(shapeless)} declares no ASK")
+        unhooked = sorted(n for n in asks or {} if n not in kinds)
+        if unhooked:
+            raise ValueError(
+                f"an ask check names no registered resource kind: {', '.join(unhooked)}"
+            )
         self._storage = storage
         self._tenancy = tenancy
         self._relay = relay
@@ -205,20 +218,18 @@ class LeasesManagerImpl(LeasesManagerInterface):
         self, ctx: TenantContext, request: LeaseRequest, park: OrchestrationStep | None = None
     ) -> Standing:
         ctx.require(Permission.WRITE)
-        self._kind(request.kind)
+        hooks = self._kind(request.kind)
         try:
-            ASK_PAYLOADS[request.kind].model_validate(dict(request.payload))
+            hooks.ASK.model_validate(dict(request.payload))
         except ValidationError as error:
-            raise ValidationFailed(f"a {request.kind.value} ask is not {error}") from None
+            raise ValidationFailed(f"a {request.kind} ask is not {error}") from None
         if request.waiter_kind is not None and request.waiter_kind not in self._waiters:
-            raise ValidationFailed(f"no waiter of kind {request.waiter_kind.value} is registered")
+            raise ValidationFailed(f"no waiter of kind {request.waiter_kind} is registered")
         named: LeasableResource | None = None
         if request.leasable_resource_id is not None:
             named = await self._leasable_resource(ctx, request.leasable_resource_id)
-            if named.retired_at is not None or named.kind is not request.kind:
-                raise NotFound(
-                    f"no live {request.kind.value} resource {request.leasable_resource_id}"
-                )
+            if named.retired_at is not None or named.kind != request.kind:
+                raise NotFound(f"no live {request.kind} resource {request.leasable_resource_id}")
         now = self._clock()
         asked = request.model_copy(
             update={
@@ -332,15 +343,13 @@ class LeasesManagerImpl(LeasesManagerInterface):
             await self._offer(ctx, resource.id)
         return await self._storage.read_request(ctx.org_id, moved.id) or moved
 
-    async def leave(self, ctx: TenantContext, waiter_kind: WaiterKind, waiter_id: UUID) -> int:
+    async def leave(self, ctx: TenantContext, waiter_kind: str, waiter_id: UUID) -> int:
         ctx.require(Permission.WRITE)
         left = await self._storage.cancel_waiting_of(
             ctx.org_id, waiter_kind, waiter_id, self._clock(), ctx.user_id
         )
         if left:
-            log.info(
-                "%s %s left %d lines in org %s", waiter_kind.value, waiter_id, left, ctx.org_id
-            )
+            log.info("%s %s left %d lines in org %s", waiter_kind, waiter_id, left, ctx.org_id)
         return left
 
     # Leases.
@@ -526,7 +535,7 @@ class LeasesManagerImpl(LeasesManagerInterface):
         # that item acts for the holder.
         jobs = [row.id for row in started if asks_for_work(row.kind)]
         if len(jobs) > 1:
-            raise ValueError(f"a {resource.kind.value} grant starts {len(jobs)} jobs; one at most")
+            raise ValueError(f"a {resource.kind} grant starts {len(jobs)} jobs; one at most")
         if jobs:
             lease = lease.model_copy(update={"job_key": jobs[0]})
         rows: tuple[OutboxRow, ...] = (
@@ -546,7 +555,7 @@ class LeasesManagerImpl(LeasesManagerInterface):
         await self._relay.relay_all(ctx.org_id, rows)
         log.info(
             "granted %s %s to request %s under token %d in org %s",
-            resource.kind.value,
+            resource.kind,
             resource.id,
             request.id,
             lease.token,
@@ -663,7 +672,7 @@ class LeasesManagerImpl(LeasesManagerInterface):
                 ended += 1
         ended += await self._cancel_stranded(ctx)
         free = await self._storage.read_free(ctx.org_id, self._options.leasable_resource_limit)
-        lines: dict[LeasableResourceKind, list[LeaseRequest]] = {}
+        lines: dict[str, list[LeaseRequest]] = {}
         for resource in free:
             if resource.kind not in lines:
                 lines[resource.kind] = await self._storage.read_waiting(
@@ -721,10 +730,10 @@ class LeasesManagerImpl(LeasesManagerInterface):
         waiter = self._waiters.get(request.waiter_kind)
         return waiter is not None and await waiter.still_waits(ctx, request.waiter_id)
 
-    def _kind(self, kind: LeasableResourceKind) -> LeasableResourceKindInterface:
+    def _kind(self, kind: str) -> LeasableResourceKindInterface:
         hooks = self._kinds.get(kind)
         if hooks is None:
-            raise ValidationFailed(f"no resource kind {kind.value} is registered")
+            raise ValidationFailed(f"no resource kind {kind} is registered")
         return hooks
 
     async def _held(self, ctx: TenantContext, lease_id: UUID, job: JobClaim | None) -> Lease:
@@ -765,3 +774,9 @@ class LeasesManagerImpl(LeasesManagerInterface):
         if lease is None:
             raise NotFound(f"lease {lease_id} not found")
         return lease
+
+
+def _declares_ask(hooks: LeasableResourceKindInterface) -> bool:
+    """Whether a kind's hooks name the shape of its ask."""
+    shape = getattr(hooks, "ASK", None)
+    return isinstance(shape, type) and issubclass(shape, OmBase)

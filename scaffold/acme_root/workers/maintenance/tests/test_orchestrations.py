@@ -17,16 +17,19 @@ from acme.om.context import TenantContext
 from acme.om.leases.types.leasable_resource import LeasableResource, LeasableResourceKind
 from acme.om.leases.types.lease import Lease
 from acme.om.leases.types.request import LeaseRequest, WaiterKind
+from acme.om.orchestrations.kinds import OrchestrationKindSpec
 from acme.om.orchestrations.rules import advanced
 from acme.om.orchestrations.steps import orchestration_step_rows
 from acme.om.orchestrations.types.orchestration import (
     FailReason,
+    NoopInput,
     Orchestration,
     OrchestrationKind,
     OrchestrationStatus,
     OrchestrationStep,
     ParkReason,
 )
+from acme.om.root import ORCHESTRATION_KINDS
 from acme.om.work.types.handler import WorkHandlerInterface
 from acme.om.work.types.work_item import WakeParkedPayload, WorkItem, WorkKind
 from acme.workers.maintenance.container import WorkerContainer
@@ -107,7 +110,9 @@ async def test_a_guard_parks_the_record_and_the_wake_up_resumes_it(tmp_path: Pat
     handlers = {
         **handlers_of(container),
         WorkKind.ORCHESTRATION: OrchestrationHandlerImpl(
-            container.managers.orchestrations, {OrchestrationKind.NOOP: guarded}
+            container.managers.orchestrations,
+            ORCHESTRATION_KINDS,
+            {OrchestrationKind.NOOP: guarded},
         ),
     }
     assert len(await drain(container, handlers)) == 1, "a parked record asks for no step"
@@ -201,7 +206,9 @@ async def test_a_record_waits_in_line_and_the_grant_wakes_it_with_its_lease(
     handlers = {
         **handlers_of(container),
         WorkKind.ORCHESTRATION: OrchestrationHandlerImpl(
-            container.managers.orchestrations, {OrchestrationKind.NOOP: leasing}
+            container.managers.orchestrations,
+            ORCHESTRATION_KINDS,
+            {OrchestrationKind.NOOP: leasing},
         ),
     }
     assert len(await drain(container, handlers)) == 1, "a record in line asks for no step"
@@ -241,7 +248,7 @@ async def test_a_step_that_errors_is_the_queues_to_retry_and_goes_on_from_its_cu
     started = await start_noop(container, ctx, 3)
     flaky = Flaky(container)
     handler = OrchestrationHandlerImpl(
-        container.managers.orchestrations, {OrchestrationKind.NOOP: flaky}
+        container.managers.orchestrations, ORCHESTRATION_KINDS, {OrchestrationKind.NOOP: flaky}
     )
     steps = [WorkKind.ORCHESTRATION]
     claimed = await container.managers.work.claim(request(), "default", steps, "test", LEASE)
@@ -273,7 +280,9 @@ async def test_the_last_attempt_fails_the_record_as_a_defect(tmp_path: Path) -> 
     ctx = await sign_in(container)
     started = await start_noop(container, ctx, 3)
     handler = OrchestrationHandlerImpl(
-        container.managers.orchestrations, {OrchestrationKind.NOOP: Flaky(container)}
+        container.managers.orchestrations,
+        ORCHESTRATION_KINDS,
+        {OrchestrationKind.NOOP: Flaky(container)},
     )
     claimed = await container.managers.work.claim(request(), "default", KINDS, "test", LEASE)
     assert claimed is not None
@@ -297,3 +306,21 @@ async def test_a_step_for_a_record_that_no_longer_runs_does_nothing(tmp_path: Pa
     ran = await drain(container, handlers_of(container))
     assert len(ran) == 1, "the first step's item ran and found nothing to do"
     assert await container.managers.orchestrations.get(ctx, started.id) == ended
+
+
+def test_a_step_for_a_kind_nobody_registered_is_refused_at_the_build(tmp_path: Path) -> None:
+    """A copy keys its kind's step by the name its own module registers; a
+    step for a name the registry does not hold is refused before any item
+    is claimed."""
+    container = build_container(tmp_path)
+    orchestrations = container.managers.orchestrations
+    steps = {
+        OrchestrationKind.NOOP: orchestrations.step_noop,
+        "dock_import": orchestrations.step_noop,
+    }
+    with pytest.raises(ValueError, match="no orchestration kind is registered as dock_import"):
+        OrchestrationHandlerImpl(orchestrations, ORCHESTRATION_KINDS, steps)
+    copys = ORCHESTRATION_KINDS.extended((OrchestrationKindSpec("dock_import", NoopInput),))
+    assert isinstance(
+        OrchestrationHandlerImpl(orchestrations, copys, steps), OrchestrationHandlerImpl
+    )

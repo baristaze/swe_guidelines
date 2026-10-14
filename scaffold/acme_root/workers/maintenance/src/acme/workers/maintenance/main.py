@@ -21,7 +21,7 @@ from acme.infra.observability import (
 from acme.infra.trust import install_trust_store
 from acme.om.context import RequestContext
 from acme.om.orchestrations.types.orchestration import OrchestrationKind
-from acme.om.root import KINDS
+from acme.om.root import KINDS, ORCHESTRATION_KINDS
 from acme.om.work.types.work_item import WorkKind
 from acme.workers.maintenance.accounts import DeleteAccountHandlerImpl, DeleteOrgHandlerImpl
 from acme.workers.maintenance.container import (
@@ -153,6 +153,7 @@ def build_loop(container: WorkerContainer, lane: str | None = None) -> WorkerLoo
             WorkKind.NOOP: NoopHandlerImpl(),
             WorkKind.ORCHESTRATION: OrchestrationHandlerImpl(
                 managers.orchestrations,
+                ORCHESTRATION_KINDS,
                 {
                     OrchestrationKind.NOOP: managers.orchestrations.step_noop,
                     # A copy adds its entries below this line.

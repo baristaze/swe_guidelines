@@ -22,7 +22,7 @@ from acme.om.leases.types.leasable_resource import (
     LeasableResourceKind,
 )
 from acme.om.leases.types.lease import JobClaim, Lease, LeaseStatus
-from acme.om.leases.types.request import LeaseRequest
+from acme.om.leases.types.request import LeaseRequest, NoopAsk
 from acme.om.outbox.types.row import OutboxRow, outbox_row
 from acme.om.root import KINDS, Managers
 from acme.om.work.types.work_item import WorkItem, WorkKind, work_row_kind
@@ -34,6 +34,8 @@ CLAIM = timedelta(minutes=5)
 class StartsAJob(LeasableResourceKindInterface):
     """A kind whose grant starts a job: one work item, which names the lease
     it runs for."""
+
+    ASK = NoopAsk
 
     async def may_grant(
         self, ctx: TenantContext, resource: LeasableResource, request: LeaseRequest

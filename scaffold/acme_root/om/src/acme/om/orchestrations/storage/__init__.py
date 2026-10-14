@@ -10,7 +10,6 @@ from uuid import UUID
 from acme.om.context import tenantless
 from acme.om.orchestrations.types.orchestration import (
     Orchestration,
-    OrchestrationKind,
     OrchestrationStep,
     ParkReason,
 )
@@ -50,9 +49,7 @@ class OrchestrationsStorageInterface(ABC):
     async def read_orchestration(self, org_id: UUID, record_id: UUID) -> Orchestration | None: ...
 
     @abstractmethod
-    async def read_recent(
-        self, org_id: UUID, kind: OrchestrationKind, limit: int
-    ) -> list[Orchestration]:
+    async def read_recent(self, org_id: UUID, kind: str, limit: int) -> list[Orchestration]:
         """The org's records of a kind, newest first by id. `limit` is the
         caller's: the manager asks for one row more than its page."""
         ...
