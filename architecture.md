@@ -2088,15 +2088,15 @@ the request it answered. A tenant reads only its own.
   `expected_token`, and while the request still stands in the anchor's
   wait line as the row stands under the lock, with the lease's term and
   window within its bound (`grant_fits`).
-- A kind is a `LeasableResourceKind` with its ask's shape in
-  `ASK_PAYLOADS` and a `LeasableResourceKindInterface`: `may_grant`
+- A kind is registered by its name with a
+  `LeasableResourceKindInterface`: its ask's shape (`ASK`), `may_grant`
   reads the asker's standing live, and `grant_rows` returns the rows the
   grant lands. A kind that refuses some asks registers an
   `AskCheckInterface` beside them: its `check_ask` runs at the ask under
   the asker's context, with the request as it would land and the
   leasable resource it names, before anything lands, and refuses by
   raising `NotAuthorized` or `ValidationFailed`. A kind with none
-  accepts every ask. A waiter is a `WaiterKind` with a
+  accepts every ask. A waiter is registered by its name with a
   `WaiterInterface`: `still_waits`, `wake_rows`, `end_rows`, and
   `revoke_rows`. An orchestration waits as
   `ParkReason.LEASABLE_RESOURCE`.

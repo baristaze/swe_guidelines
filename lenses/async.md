@@ -917,8 +917,8 @@ history lists each lease with the request it answered.
 
 **Source.** Worker Roles, Leases on a Leasable Resource.
 
-**Look for.** `LeasableResourceKind`, `ASK_PAYLOADS`, and the
-`LeasableResourceKindInterface` impls the root registers, and the
+**Look for.** The `LeasableResourceKindInterface` impls the root
+registers by name, each with its ask's shape (`ASK`), and the
 `AskCheckInterface` checks beside them (`check_ask`); the work rows
 `grant_rows` returns and the `job_key` a grant keeps; where an owner
 registers, updates (`update_statement`), and retires its leasable

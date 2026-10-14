@@ -95,15 +95,16 @@ the kinds of thing [Acme is made of](../../../../README.md).
 
 ## How another namespace composes it
 
-A product adds a kind to `LeasableResourceKind` and the shape of its ask
-to `ASK_PAYLOADS`, and registers a `LeasableResourceKindInterface` impl
-for it at the root, and an `AskCheckInterface` impl when the kind
-refuses some asks. Its owner writes the leasable resource with its own
+A namespace names its kind in its own module and writes a
+`LeasableResourceKindInterface` impl for it, whose `ASK` is the shape of
+its ask; the root registers the impl by the kind's name, below the
+marker, and an `AskCheckInterface` impl beside it when the kind refuses
+some asks. Its owner writes the leasable resource with its own
 row through `register_statement` (or `land_leasable_resource` in
 memory), updates it through `update_statement` (or `land_update`) and
 offers it after the commit (`offer`), and retires it through
-`retire_statement`. A thing that waits adds a `WaiterKind` with a
-`WaiterInterface` impl. An orchestration waits as the core's waiter: its
+`retire_statement`. A thing that waits registers a `WaiterInterface`
+impl at the root by its waiter kind's name, the same way. An orchestration waits as the core's waiter: its
 step asks with `park`, and parks on `leasable_resource` until the grant
 wakes it, or its request's end without a lease does. Per-lease facts of
 a product's own live in its own table, keyed by the lease's id ([ADR

@@ -22,8 +22,8 @@ status, a cursor, a total, what the steps applied and skipped, the
 first twenty skipped rows with a reason, a park reason, a fail reason,
 and a version. The one kind is `noop`, the mechanism's own: it steps
 through its input's count and changes nothing else. A product replaces
-it with its kinds. Each declares an input shape in
-`ORCHESTRATION_INPUTS` and a step in the namespace whose rows it
+it with its kinds. Each is registered by its name with its input shape
+(`orchestrations.kinds`), and has a step in the namespace whose rows it
 changes.
 
 **A step is one commit.** A step's effect, the record's next cursor, and

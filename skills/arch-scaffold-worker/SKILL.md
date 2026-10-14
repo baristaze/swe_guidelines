@@ -80,8 +80,9 @@ the maintenance worker should not carry.
    version, since the fences guard the queue row and not the record. An
    effect the handler must make happen rides an outbox row or a work
    item, never a topic alone.
-3. A long-running kind is an `OrchestrationKind` whose step is mapped in
-   `build_loop`, not a handler that loops; it parks or fails as Long-Running
+3. A long-running kind is an `OrchestrationKindSpec` in its namespace's
+   `kinds.py`, registered in `ORCHESTRATION_KINDS` below the marker, whose
+   step is mapped by its name in `build_loop`, not a handler that loops; it parks or fails as Long-Running
    Orchestrations states. A lane is a work kind's, and every orchestration
    kind's steps ride `WorkKind.ORCHESTRATION`, so `--lane` gives no one
    orchestration kind a lane of its own. A long-running kind that needs

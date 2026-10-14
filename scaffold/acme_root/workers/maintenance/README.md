@@ -29,8 +29,9 @@ Add the kind, its payload, and the permission that asks for it as a spec
 in its namespace's `kinds.py`, registered in `KINDS` at the root
 (`acme.om.root`). Write a handler that names the permissions it calls with
 (`REQUIRES`), and add it to `handlers` in `build_loop`; a test holds the
-two to each other. A long-running kind is an `OrchestrationKind` whose step
-is mapped in `build_loop`. A kind that runs on a lane of its own names the
+two to each other. A long-running kind is a spec in its namespace's
+`kinds.py`, registered in `ORCHESTRATION_KINDS`, whose step is mapped by
+its name in `build_loop`. A kind that runs on a lane of its own names the
 lane on its spec, and a replica of this worker serves that lane,
 started with `serve --lane` or `ACME_WORKER_LANE` set to the lane as
 the spec spells it.
@@ -38,8 +39,8 @@ the spec spells it.
 ## Adding a chore
 
 A chore is housekeeping that needs one tenant's own context, such as
-opening the next period of a record kept per period: an
-`OrchestrationKind` started with its `period`, which answers a period
+opening the next period of a record kept per period: an orchestration
+kind started with its `period`, which answers a period
 already open as stored. Add it to `chores` in `build_loop`. The first
 chore also wires `chore_tenants`, the one read across tenants that names
 the live tenants where any chore is due, in id order after a cursor. It

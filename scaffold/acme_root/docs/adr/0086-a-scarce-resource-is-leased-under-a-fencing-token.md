@@ -57,10 +57,10 @@ and this records how Acme holds it.
   the request's answer, and the rows the grant starts land in one
   commit, as outbox rows the relay carries (Database Roles).
 - **Kinds and waiters register as work kinds do** (The Work Queue). A
-  leasable resource kind is a `LeasableResourceKind` with its ask's
-  shape in `ASK_PAYLOADS` and a `LeasableResourceKindInterface`:
-  `may_grant`, read just before a grant, and `grant_rows`, what the
-  grant starts, with one job at most. A waiter is a `WaiterKind` with a
+  leasable resource kind is registered by its name with a
+  `LeasableResourceKindInterface`: its ask's shape (`ASK`), `may_grant`,
+  read just before a grant, and `grant_rows`, what the grant starts, with
+  one job at most. A waiter is registered by its name with a
   `WaiterInterface`: `still_waits`, `wake_rows`, `end_rows`, and
   `revoke_rows`. A no from either hook cancels the request, and the next
   is offered. The core's kind is `noop`, and its waiter is the
