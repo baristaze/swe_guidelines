@@ -22,19 +22,17 @@ from acme.om.exceptions import (
 )
 from acme.om.outbox.types.row import OutboxRow
 from acme.om.tenancy import TenancyManagerInterface
+from acme.om.work.kinds import WorkKinds, WorkKindSpec
 from acme.om.work.manager import WorkManagerInterface
 from acme.om.work.rules import attempts_after_hand_back, is_exhausted, retry_delay
 from acme.om.work.storage import InsertOutcome, WorkStorageInterface
 from acme.om.work.types.work_item import (
-    WORK_ENQUEUE_PERMISSIONS,
-    WORK_PAYLOADS,
     WORK_ROW_PREFIX,
     ScheduledPayload,
     WakeParkedPayload,
     WorkItem,
     WorkKind,
     WorkStatus,
-    relayed_lane,
 )
 
 log = logging.getLogger(__name__)
@@ -62,12 +60,11 @@ def caused_by(rctx: RequestContext, item: WorkItem) -> RequestContext:
     return rctx.model_copy(update={"caused_by_request_id": cause})
 
 
-def not_before(kind: WorkKind, payload: object) -> datetime | None:
-    """When work of this kind may run, read off its payload: the payload's
-    `not_before` for a scheduled kind and for a wake that names a time, None
-    for any other. A payload that does not parse answers None here; `_land`
-    refuses it with the reason."""
-    shape = WORK_PAYLOADS[kind]
+def not_before(shape: type[OmBase], payload: object) -> datetime | None:
+    """When work whose kind carries this shape may run, read off its
+    payload: the payload's `not_before` for a scheduled kind and for a wake
+    that names a time, None for any other. A payload that does not parse
+    answers None here; `_land` refuses it with the reason."""
     if not issubclass(shape, ScheduledPayload | WakeParkedPayload):
         return None
     try:
@@ -76,7 +73,7 @@ def not_before(kind: WorkKind, payload: object) -> datetime | None:
         return None
 
 
-def relayed_key(kind: WorkKind, row: OutboxRow, now: datetime) -> UUID:
+def relayed_key(kind: str, row: OutboxRow, now: datetime) -> UUID:
     """The idempotency key of the item a relayed row lands: the row's id, the
     same on every run of the relay, so a retry creates nothing twice. A wake
     of the org's records parked for one reason, at a time still to come, is
@@ -84,7 +81,7 @@ def relayed_key(kind: WorkKind, row: OutboxRow, now: datetime) -> UUID:
     one mark land one item, which resumes them staggered. A row whose time
     has passed keeps its own key and runs at once, since the item its time
     named may have run before its record parked."""
-    if kind is not WorkKind.WAKE_PARKED:
+    if kind != WorkKind.WAKE_PARKED:
         return row.id
     try:
         wake = WakeParkedPayload.model_validate(row.payload)
@@ -92,7 +89,7 @@ def relayed_key(kind: WorkKind, row: OutboxRow, now: datetime) -> UUID:
         return row.id  # `_land` refuses it with the reason
     if wake.record_id is not None or wake.not_before is None or wake.not_before <= now:
         return row.id
-    return derived_id(row.org_id, wake.not_before, f"{kind.value}:{wake.reason.value}")
+    return derived_id(row.org_id, wake.not_before, f"{kind}:{wake.reason.value}")
 
 
 class WorkManagerImpl(WorkManagerInterface):
@@ -103,7 +100,11 @@ class WorkManagerImpl(WorkManagerInterface):
         change_events: ChangeEventsManagerInterface,
         topics: TopicsInterface,
         options: WorkOptions,
+        kinds: WorkKinds,
     ) -> None:
+        """`kinds` is the registry every kind is read through: its payload,
+        the permission that asks for it, and its lane."""
+        self._kinds = kinds
         self._storage = storage
         self._tenancy = tenancy
         self._change_events = change_events
@@ -115,12 +116,12 @@ class WorkManagerImpl(WorkManagerInterface):
         for on its own, which no core write announced. The actor is the
         context's, and the key and the lane are the caller's. The caller
         authorizes the whole run, which has the service role, so it holds the
-        permission the kind is asked for with; a kind the table does not name
-        is asked for by nobody."""
-        asking = WORK_ENQUEUE_PERMISSIONS.get(item.kind)
-        if asking is None:
-            raise NotAuthorized(f"no permission asks for work of kind {item.kind.value}")
-        ctx.require(asking)
+        permission the kind is asked for with; a kind the registry does not
+        hold is asked for by nobody."""
+        kind = self._kinds.get(item.kind)
+        if kind is None:
+            raise NotAuthorized(f"no permission asks for work of kind {item.kind}")
+        ctx.require(kind.permission)
         now = utcnow()
         queued = item.model_copy(
             update={
@@ -136,7 +137,7 @@ class WorkManagerImpl(WorkManagerInterface):
                 "last_error": None,
             }
         )
-        return await self._land(ctx.org_id, queued)
+        return await self._land(ctx.org_id, kind, queued)
 
     async def enqueue_relayed(self, org_id: UUID, row: OutboxRow) -> WorkItem:
         """The enqueue of work a core write started: the relay makes it from the
@@ -147,36 +148,37 @@ class WorkManagerImpl(WorkManagerInterface):
         caused the work and its trace context come from the row too, which
         names the request that made the write: the row is the whole handoff,
         so nothing here is minted afresh. A row carries no routing of its
-        own, so the lane is the kind's (`relayed_lane`): its own in
-        `WORK_LANES`, else the default one. A kind whose payload is a
+        own, so the lane is the one the kind's spec names, the default one
+        unless it names its own. A kind whose payload is a
         `ScheduledPayload`, and a wake that names a time, waits in the queue
         until its `not_before`."""
-        kind = row.kind.removeprefix(WORK_ROW_PREFIX)
-        if kind not in {k.value for k in WorkKind}:
+        kind = self._kinds.get(row.kind.removeprefix(WORK_ROW_PREFIX))
+        if kind is None:
             raise ValidationFailed(f"outbox row {row.id} asks for unknown work {row.kind}")
         now = utcnow()
-        available_at = max(now, not_before(WorkKind(kind), row.payload) or now)
+        available_at = max(now, not_before(kind.payload, row.payload) or now)
         return await self._land(
             org_id,
+            kind,
             WorkItem(
                 id=new_id(),
                 created_at=now,
                 updated_at=now,
                 created_by=row.actor_id,  # the principal of the write that asked
                 updated_by=EMPTY_UUID,  # the machinery, from here on
-                kind=WorkKind(kind),
+                kind=kind.name,
                 target_id=row.target_id,
-                idempotency_key=relayed_key(WorkKind(kind), row, now),
+                idempotency_key=relayed_key(kind.name, row, now),
                 request_id=row.request_id,  # the request that made the write
                 traceparent=row.traceparent,  # its trace context, for the run's link
                 payload=row.payload,
-                lane=relayed_lane(WorkKind(kind)),
+                lane=kind.lane,
                 status=WorkStatus.QUEUED,
                 available_at=available_at,
             ),
         )
 
-    async def _land(self, org_id: UUID, queued: WorkItem) -> WorkItem:
+    async def _land(self, org_id: UUID, kind: WorkKindSpec, queued: WorkItem) -> WorkItem:
         """The insert both enqueues share: the payload against the shape its kind
         fixes, the create, and the wake. Ids are minted above storage, so the
         only way to present one twice is a retry, and a retry must not create
@@ -184,9 +186,9 @@ class WorkManagerImpl(WorkManagerInterface):
         written and nothing changes, a claim on the row included, so the row
         as stored is the answer and it was announced when it landed."""
         try:
-            WORK_PAYLOADS[queued.kind].model_validate(queued.payload)
+            kind.payload.model_validate(queued.payload)
         except ValidationError as error:
-            raise ValidationFailed(f"payload of {queued.kind.value} work: {error}"[:500]) from None
+            raise ValidationFailed(f"payload of {queued.kind} work: {error}"[:500]) from None
         outcome = await self._storage.create_item(org_id, queued)
         if outcome is not InsertOutcome.INSERTED:
             return await self._stored(org_id, queued, outcome)
@@ -197,7 +199,7 @@ class WorkManagerImpl(WorkManagerInterface):
                 produced_at=queued.created_at,
                 org_id=org_id,
                 lane=queued.lane,
-                kind=queued.kind.value,
+                kind=queued.kind,
             ),
         )
         return queued
@@ -206,7 +208,7 @@ class WorkManagerImpl(WorkManagerInterface):
         self,
         rctx: RequestContext,
         lane: str,
-        kinds: Sequence[WorkKind],
+        kinds: Sequence[str],
         worker_id: str,
         lease: timedelta,
         tenant_cap: int | None = None,
@@ -433,7 +435,7 @@ class WorkManagerImpl(WorkManagerInterface):
         log.error(
             "work item %s (%s) in org %s failed for good: %s",
             item.id,
-            item.kind.value,
+            item.kind,
             org_id,
             reason,
         )
@@ -451,7 +453,7 @@ class WorkManagerImpl(WorkManagerInterface):
             log.error(
                 "work item %s (%s) failed for good: %s",
                 item.id,
-                item.kind.value,
+                item.kind,
                 item.last_error,
             )
             return
@@ -466,7 +468,7 @@ class WorkManagerImpl(WorkManagerInterface):
         log.error(
             "work item %s (%s) in org %s failed for good: %s",
             item.id,
-            item.kind.value,
+            item.kind,
             ctx.org_id,
             item.last_error,
         )
@@ -478,7 +480,7 @@ class WorkManagerImpl(WorkManagerInterface):
                 DEAD_LETTER_KIND,
                 item.id,
                 {
-                    "kind": item.kind.value,
+                    "kind": item.kind,
                     "work_target_id": str(item.target_id),
                     "attempts": item.attempts,
                     "last_error": item.last_error,

@@ -27,6 +27,7 @@ WORK = f"{OM}/work/types/work_item.py"
 WORK_TABLE = f"{OM}/work/storage/tables/work_items.py"
 OUTBOX = f"{OM}/outbox/types/row.py"
 MANAGER = f"{OM}/orders/impl.py"
+SPECS = "WORK_KINDS = (WorkKindSpec(WorkKind.NOOP, NoopPayload, Permission.WRITE),)\n"
 
 GOOD: dict[str, str] = {
     ROOT: """\
@@ -211,7 +212,7 @@ class WorkKind(str, Enum):
 
 
 class WorkItem(Identifiable, Trackable):
-    kind: WorkKind
+    kind: KindName
     target_id: UUID
     idempotency_key: UUID
     request_id: UUID
@@ -225,7 +226,7 @@ class WorkItem(Identifiable, Trackable):
     attempts: int
 
 
-WORK_PAYLOADS = {WorkKind.NOOP: NoopPayload}
+WORK_KINDS = (WorkKindSpec(WorkKind.NOOP, NoopPayload, Permission.WRITE),)
 """,
     WORK_TABLE: """\
 class WorkItems(IdentifiableMixin, TrackableMixin, Base):
@@ -542,14 +543,14 @@ def test_asy_15_the_edge_comes_from_the_options(tmp_path):
 
 def test_asy_16_a_work_item_without_a_lease_and_a_table_without_the_unique_key(tmp_path):
     files = edit(WORK, "    lease_expires_at: datetime | None\n", "")
-    files[WORK] = files[WORK].replace("WORK_PAYLOADS = {WorkKind.NOOP: NoopPayload}\n", "")
+    files[WORK] = files[WORK].replace(SPECS, "")
     files.update(edit(WORK_TABLE, ", unique=True", ""))
     code, report = run(tmp_path, "ASY-16", files)
     assert code == 1
     assert messages(report) == [
         "WorkItem declares no lease_expires_at",
         "WorkItems has no unique index on idempotency_key",
-        "acme.om.work declares no WORK_PAYLOADS dict literal",
+        "acme.om.work declares no WORK_KINDS tuple literal",
     ]
 
 
@@ -753,9 +754,9 @@ def test_asy_15_an_executor_a_with_holds_passes(tmp_path):
     assert code == 0
 
 
-def test_asy_16_the_payload_map_elsewhere_and_a_unique_constraint(tmp_path):
-    files = edit(WORK, "WORK_PAYLOADS = {WorkKind.NOOP: NoopPayload}\n", "")
-    files[f"{OM}/work/kinds.py"] = "WORK_PAYLOADS = {WorkKind.NOOP: NoopPayload}\n"
+def test_asy_16_the_kinds_elsewhere_and_a_unique_constraint(tmp_path):
+    files = edit(WORK, SPECS, "")
+    files[f"{OM}/work/kinds.py"] = SPECS
     files.update(
         edit(
             WORK_TABLE,

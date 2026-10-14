@@ -18,16 +18,17 @@ from acme.infra.topics import EntityChangedPayload, TopicPayload, Topics, WorkAv
 from acme.om.base import EMPTY_UUID, new_id, utcnow
 from acme.om.change_events.storage.impl.memory import ChangeEventStorageMemoryImpl
 from acme.om.change_events.types.change_event import ChangeEvent
-from acme.om.context import AppContext, AppType, RequestContext, TenantContext
+from acme.om.context import AppContext, AppType, Permission, RequestContext, TenantContext
 from acme.om.outbox.impl.relay import DEAD_LETTER_KIND, OutboxOptions, OutboxRelayImpl
 from acme.om.outbox.storage.impl.memory import OutboxStorageMemoryImpl
 from acme.om.outbox.types.row import OutboxRow, outbox_row, versioned_row
-from acme.om.root import Managers, build_managers
+from acme.om.root import KINDS, Managers, build_managers
 from acme.om.storage.impl.memory import StorageMemoryImpl
 from acme.om.tenancy.impl.creates import user_payload
 from acme.om.tenancy.impl.manager import TenancyOptions
 from acme.om.tenancy.storage.impl.memory import TenancyStorageMemoryImpl
-from acme.om.work.types.work_item import WORK_LANES, WorkKind, relayed_lane, work_row_kind
+from acme.om.work.kinds import WorkKindSpec
+from acme.om.work.types.work_item import NoopPayload, WorkKind, work_row_kind
 
 from contracts.outbox_storage import a_user, claim_all, make_row
 from contracts.work_storage import make_item
@@ -223,7 +224,7 @@ async def test_a_write_that_also_starts_work_rides_a_second_row_the_relay_enqueu
     assert await managers.outbox.relay(ctx.org_id, asked)
     enqueued = await storage.get_work_storage().read_item_by_key(ctx.org_id, asked.id)
     assert enqueued is not None
-    assert enqueued.kind is WorkKind.NOOP and enqueued.target_id == user.id
+    assert enqueued.kind == WorkKind.NOOP and enqueued.target_id == user.id
     assert enqueued.created_by == ctx.user_id, "the actor of the write that asked"
     assert enqueued.updated_by == EMPTY_UUID
     # The handoff carries the request that made the write and its trace
@@ -263,28 +264,27 @@ async def test_a_write_that_also_starts_work_rides_a_second_row_the_relay_enqueu
     ), "one row, not two"
 
 
+LONG = WorkKindSpec("LONG", NoopPayload, Permission.WRITE, lane="long")
+"""A kind registered beyond the scaffold's own, on a lane of its own."""
+
+
 @pytest.mark.parametrize(
-    ("lanes", "lane", "capped"),
-    [({WorkKind.NOOP: "long"}, "long", False), ({}, "default", True)],
-    ids=["registered", "unregistered"],
+    ("kind", "lane", "capped"),
+    [(LONG.name, "long", False), (WorkKind.NOOP, "default", True)],
+    ids=["own-lane", "default-lane"],
 )
 async def test_a_relayed_item_lands_on_its_kinds_lane(
-    infra: InfraLocalImpl,
-    monkeypatch: pytest.MonkeyPatch,
-    lanes: dict[WorkKind, str],
-    lane: str,
-    capped: bool,
+    infra: InfraLocalImpl, kind: str, lane: str, capped: bool
 ) -> None:
     """A row carries no lane, so the relay lands the item on its kind's: the
-    one `WORK_LANES` names, else the default one. The wake names that lane, a
+    one its spec names, else the default one. The wake names that lane, a
     worker there claims the item, and a worker on another lane never sees it.
     So a held item counts against the tenant cap of its own lane alone: on a
     lane of its own, the tenant's next item on the default lane is claimed
     under a cap of one there; on the default lane, it fills that cap."""
-    for kind, named in lanes.items():
-        monkeypatch.setitem(WORK_LANES, kind, named)
     storage = StorageMemoryImpl()
-    managers = build_managers(storage, infra, TenancyOptions(dev_sign_in=True))
+    kinds = KINDS.extended((LONG,))
+    managers = build_managers(storage, infra, TenancyOptions(dev_sign_in=True), work_kinds=kinds)
     ctx = await sign_in(managers)
     woken: list[str] = []
 
@@ -295,12 +295,13 @@ async def test_a_relayed_item_lands_on_its_kinds_lane(
     infra.get_topics().subscribe(Topics.WORK_AVAILABLE, "test", record)
     user = a_user()
     change = outbox_row(ctx, "tenancy.user.created", user.id, user_payload(user))
-    asked = outbox_row(ctx, work_row_kind(WorkKind.NOOP), user.id, {})
+    asked = outbox_row(ctx, work_row_kind(kind), user.id, {})
     await storage.get_tenancy_storage().write_user(ctx.org_id, user, (change, asked))
     assert await managers.outbox.relay(ctx.org_id, asked)
 
     enqueued = await storage.get_work_storage().read_item_by_key(ctx.org_id, asked.id)
-    assert enqueued is not None and enqueued.lane == lane == relayed_lane(WorkKind.NOOP)
+    spec = kinds.get(kind)
+    assert spec is not None and enqueued is not None and enqueued.lane == lane == spec.lane
     assert woken == [lane], "the wake names the lane the item is on"
 
     def worker() -> RequestContext:
@@ -310,8 +311,8 @@ async def test_a_relayed_item_lands_on_its_kinds_lane(
 
     lease = timedelta(seconds=30)
     other = "default" if lane == "long" else "long"
-    assert await managers.work.claim(worker(), other, [WorkKind.NOOP], "w0", lease) is None
-    claimed = await managers.work.claim(worker(), lane, [WorkKind.NOOP], "w1", lease)
+    assert await managers.work.claim(worker(), other, [kind], "w0", lease) is None
+    claimed = await managers.work.claim(worker(), lane, [kind], "w1", lease)
     assert claimed is not None and claimed[1].id == enqueued.id
 
     short = await managers.work.enqueue(ctx, make_item())

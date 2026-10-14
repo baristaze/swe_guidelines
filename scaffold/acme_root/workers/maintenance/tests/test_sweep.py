@@ -48,6 +48,7 @@ from acme.om.orchestrations.types.orchestration import (
     OrchestrationStatus,
 )
 from acme.om.outbox import OutboxRelayInterface
+from acme.om.root import KINDS
 from acme.om.tenancy.rules import hash_token, permissions_of
 from acme.om.tenancy.storage.impl.memory import TenancyStorageMemoryImpl
 from acme.om.tenancy.types.org import Org
@@ -187,6 +188,7 @@ def sweeping(
         tally=tally,
         chores=chores,
         chore_tenants=chore_tenants,
+        kinds=KINDS,
         handlers={},
         topics=container.infra.get_topics(),
         liveness=container.infra.get_cache(CacheScope.WORKER_LIVENESS),
@@ -909,6 +911,7 @@ async def test_a_purge_across_tenants_with_a_batch_of_its_own_is_full_at_it(
             "rows": across_recording(calls, "rows", (1, 0)),
         },
         across_batches={"media": 1},
+        kinds=KINDS,
         handlers={},
         topics=container.infra.get_topics(),
         liveness=container.infra.get_cache(CacheScope.WORKER_LIVENESS),

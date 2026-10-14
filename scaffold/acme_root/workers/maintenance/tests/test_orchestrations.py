@@ -37,13 +37,13 @@ LEASE = timedelta(seconds=30)
 KINDS = [WorkKind.ORCHESTRATION, WorkKind.WAKE_PARKED]
 
 
-def handlers_of(container: WorkerContainer) -> Mapping[WorkKind, WorkHandlerInterface]:
+def handlers_of(container: WorkerContainer) -> Mapping[str, WorkHandlerInterface]:
     """The worker's own handlers."""
     return build_loop(container)._handlers  # pyright: ignore[reportPrivateUsage]
 
 
 async def drain(
-    container: WorkerContainer, handlers: Mapping[WorkKind, WorkHandlerInterface]
+    container: WorkerContainer, handlers: Mapping[str, WorkHandlerInterface]
 ) -> list[WorkItem]:
     """Claims every available step and wake-up and runs it with `handlers`,
     settling it as the loop does."""

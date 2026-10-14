@@ -31,14 +31,6 @@ class TenantCapView(BaseModel):
     updated_by: Annotated[UUID, Field(title='Updated By')]
 
 
-class WorkKind(StrEnum):
-    NOOP = 'NOOP'
-    ORCHESTRATION = 'ORCHESTRATION'
-    WAKE_PARKED = 'WAKE_PARKED'
-    DELETE_ACCOUNT = 'DELETE_ACCOUNT'
-    DELETE_ORG = 'DELETE_ORG'
-
-
 class WorkStatus(StrEnum):
     queued = 'queued'
     claimed = 'claimed'
@@ -56,7 +48,7 @@ class OperatorWorkItemView(BaseModel):
     attempts: Annotated[int, Field(title='Attempts')]
     available_at: Annotated[AwareDatetime, Field(title='Available At')]
     id: Annotated[UUID, Field(title='Id')]
-    kind: WorkKind
+    kind: Annotated[str, Field(pattern='^[A-Z][A-Z0-9_]{0,63}$', title='Kind')]
     last_error: Annotated[str | None, Field(title='Last Error')]
     max_attempts: Annotated[int, Field(title='Max Attempts')]
     status: WorkStatus

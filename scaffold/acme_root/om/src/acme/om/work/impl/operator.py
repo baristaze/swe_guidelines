@@ -73,7 +73,7 @@ class WorkOperatorManagerImpl(WorkOperatorManagerInterface):
             "operator %s requeued work item %s (%s) in org %s",
             admin.identity_id,
             item_id,
-            stored.kind.value,
+            stored.kind,
             org_id,
         )
         OUTCOMES.labels(subsystem="work", outcome="requeued").inc()
@@ -85,7 +85,7 @@ class WorkOperatorManagerImpl(WorkOperatorManagerInterface):
                 produced_at=now,
                 org_id=org_id,
                 lane=written.lane,
-                kind=written.kind.value,
+                kind=written.kind,
             ),
         )
         return written
@@ -164,7 +164,7 @@ class WorkOperatorManagerImpl(WorkOperatorManagerInterface):
                     kind=REQUEUED_KIND,
                     target_id=failed.id,
                     payload={
-                        "kind": failed.kind.value,
+                        "kind": failed.kind,
                         "work_target_id": str(failed.target_id),
                         "attempts": failed.attempts,
                         "last_error": failed.last_error,

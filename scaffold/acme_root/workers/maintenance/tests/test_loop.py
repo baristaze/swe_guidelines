@@ -38,6 +38,7 @@ from acme.om.idempotency.impl.manager import IdempotencyOptions
 from acme.om.orchestrations.types.orchestration import Orchestration, OrchestrationKind
 from acme.om.outbox.storage import OutboxStorageInterface
 from acme.om.outbox.types.row import OutboxRow, outbox_row
+from acme.om.root import KINDS
 from acme.om.work import WorkManagerInterface
 from acme.om.work.impl.manager import DEAD_LETTER_KIND, WorkOptions
 from acme.om.work.types.handler import WorkHandlerInterface, WorkParked, WorkRefused
@@ -135,7 +136,7 @@ class LeaseLosingWork(WorkManagerInterface):
         self,
         rctx: RequestContext,
         lane: str,
-        kinds: Sequence[WorkKind],
+        kinds: Sequence[str],
         worker_id: str,
         lease: timedelta,
         tenant_cap: int | None = None,
@@ -257,7 +258,7 @@ class StopOnClaimWork(LeaseLosingWork):
         self,
         rctx: RequestContext,
         lane: str,
-        kinds: Sequence[WorkKind],
+        kinds: Sequence[str],
         worker_id: str,
         lease: timedelta,
         tenant_cap: int | None = None,
@@ -285,7 +286,7 @@ class EnqueueDuringClaimWork(LeaseLosingWork):
         self,
         rctx: RequestContext,
         lane: str,
-        kinds: Sequence[WorkKind],
+        kinds: Sequence[str],
         worker_id: str,
         lease: timedelta,
         tenant_cap: int | None = None,
@@ -312,7 +313,7 @@ class EmptyClaimCountingWork(LeaseLosingWork):
         self,
         rctx: RequestContext,
         lane: str,
-        kinds: Sequence[WorkKind],
+        kinds: Sequence[str],
         worker_id: str,
         lease: timedelta,
         tenant_cap: int | None = None,
@@ -398,12 +399,30 @@ def start_loop(
             "idempotency": unstaged(container.managers.idempotency.purge_across_tenants),
             "change_events": unstaged(container.managers.change_events.purge_across_tenants),
         },
+        kinds=KINDS,
         handlers={WorkKind.NOOP: handler},
         topics=container.infra.get_topics(),
         liveness=liveness or container.infra.get_cache(CacheScope.WORKER_LIVENESS),
         options=options,
     )
     return loop, asyncio.create_task(loop.run())
+
+
+def test_a_handler_for_a_kind_the_registry_does_not_hold_is_refused(tmp_path: Path) -> None:
+    """Nobody can enqueue a kind the root does not register, so a handler for
+    one is a mistake the worker refuses at build, never a kind it claims."""
+    container = build_container(tmp_path)
+    with pytest.raises(ValueError, match="no work kind is registered as STRAY"):
+        WorkerLoop(
+            work=container.managers.work,
+            outbox=container.managers.outbox,
+            purges={},
+            kinds=KINDS,
+            handlers={WorkKind.NOOP: RecordingHandler(), "STRAY": RecordingHandler()},
+            topics=container.infra.get_topics(),
+            liveness=container.infra.get_cache(CacheScope.WORKER_LIVENESS),
+            options=LoopOptions(worker_id="w1"),
+        )
 
 
 async def claim_all(outbox: OutboxStorageInterface) -> list[OutboxRow]:

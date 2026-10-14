@@ -1,20 +1,33 @@
 """Durable background work is a row: what to do, for which record, under
 which producer key, on which lane, and its own claim. Payload shapes are
-fixed per kind by `WORK_PAYLOADS`, as `TOPIC_PAYLOADS` fixes them per topic;
-the row stores the dump."""
+fixed per kind by the kinds' registry (`work.kinds`), as `TOPIC_PAYLOADS`
+fixes them per topic; the row stores the dump."""
 
 from datetime import datetime
 from enum import StrEnum
+from typing import Annotated
 from uuid import UUID
 
-from pydantic import Field
+from pydantic import Field, StringConstraints
 
 from acme.om.base import FrozenMapping, Identifiable, OmBase, Trackable
-from acme.om.context import Permission
 from acme.om.orchestrations.types.orchestration import ParkReason
+
+KIND_NAME = r"^[A-Z][A-Z0-9_]{0,63}$"
+"""A kind's name, in capitals: the queue row's `kind`, and `work.<kind>` on
+an outbox row."""
+
+KindName = Annotated[str, StringConstraints(pattern=KIND_NAME)]
+"""A kind's name as a row and the wire hold it: a string held to
+`KIND_NAME`, never a closed set, since the registry a process knows is
+built at its root (`work.kinds`)."""
 
 
 class WorkKind(StrEnum):
+    """The names of the work namespace's own kinds. A kind is registered by
+    its name (`work.kinds`); a copy names its kinds in its own namespace's
+    `kinds.py`, never here."""
+
     NOOP = "NOOP"  # the maintenance worker's kind: no work beyond the sweep
     ORCHESTRATION = "ORCHESTRATION"  # one step of a long-running record
     WAKE_PARKED = "WAKE_PARKED"  # the reason an org's records parked for is gone
@@ -29,9 +42,9 @@ change, in the same statement, and the relay enqueues the item it names: the
 queue is a database role of its own, so no statement reaches both."""
 
 
-def work_row_kind(kind: WorkKind) -> str:
+def work_row_kind(kind: str) -> str:
     """The outbox row kind that asks for work of this kind."""
-    return WORK_ROW_PREFIX + kind.value
+    return WORK_ROW_PREFIX + kind
 
 
 def asks_for_work(row_kind: str) -> bool:
@@ -48,7 +61,7 @@ class WorkStatus(StrEnum):
 
 
 class WorkItem(Identifiable, Trackable):
-    kind: WorkKind  # what to do
+    kind: KindName  # what to do: a kind the registry holds
     target_id: UUID  # the record it advances
     idempotency_key: UUID  # unique
     # The request that caused the work and the trace context of that request,
@@ -63,7 +76,7 @@ class WorkItem(Identifiable, Trackable):
     traceparent: str | None = None
     payload: FrozenMapping = Field(
         default_factory=dict, validate_default=True
-    )  # the dump of WORK_PAYLOADS[kind]
+    )  # the dump of the kind's payload
     lane: str = (
         "default"  # routing: "default", "region:<id>", ...; a string, because lanes are dynamic
     )
@@ -135,44 +148,3 @@ class DeleteOrgPayload(OmBase):
     last."""
 
     provider_org_id: str | None = None
-
-
-WORK_PAYLOADS: dict[WorkKind, type[OmBase]] = {
-    WorkKind.NOOP: NoopPayload,
-    WorkKind.ORCHESTRATION: OrchestrationPayload,
-    WorkKind.WAKE_PARKED: WakeParkedPayload,
-    WorkKind.DELETE_ACCOUNT: DeleteAccountPayload,
-    WorkKind.DELETE_ORG: DeleteOrgPayload,
-}
-"""The payload shape of every kind; enqueue validates the item's payload against it."""
-
-WORK_ENQUEUE_PERMISSIONS: dict[WorkKind, Permission] = {
-    WorkKind.NOOP: Permission.WRITE,
-    WorkKind.ORCHESTRATION: Permission.WRITE,
-    WorkKind.WAKE_PARKED: Permission.WRITE,
-    # Only an account's deletion asks for this one, relayed from its own
-    # commit: leaving is every person's right whatever their role, so no
-    # route enqueues it, and the permission is the width of the handler.
-    WorkKind.DELETE_ACCOUNT: Permission.MANAGE_MEMBERS,
-    # Only the deletion of a team org, an owner's or an operator's, asks for
-    # this one, relayed from its own commit; no route enqueues it.
-    WorkKind.DELETE_ORG: Permission.MANAGE_MEMBERS,
-}
-"""The permission that asks for each kind. The person who asks authorizes
-the whole run once, so the permission has to be as wide as the run: every
-role that holds it holds every permission the kind's handler calls with,
-which the worker's tests hold each handler to."""
-
-WORK_LANES: dict[WorkKind, str] = {}
-"""The lane of each kind that runs on a lane of its own, such as a long-held
-kind kept off the lane of short items and that lane's tenant cap. A kind it
-does not name runs on the default lane. A layer above adds its own kinds
-here and leaves the relay as it is."""
-
-
-def relayed_lane(kind: WorkKind) -> str:
-    """The lane the relay lands an item of this kind on: its own in
-    `WORK_LANES`, else the default one. A worker of the kind's own reads its
-    lane here too, so the two cannot disagree; a replica of a worker that
-    serves many kinds is deployed on the lane this returns."""
-    return WORK_LANES.get(kind, "default")

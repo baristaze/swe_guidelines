@@ -808,7 +808,7 @@ WORK_FIELDS = (
     "ASY-16",
     options=("namespace", "item"),
     coverage="partial",
-    summary="WorkItem has the queue's fields, WORK_PAYLOADS is a dict literal, the work table has a unique idempotency_key.",
+    summary="WorkItem has the queue's fields, WORK_KINDS is a tuple literal, the work table has a unique idempotency_key.",
 )
 def work_item_shape(project: Project) -> Iterator[Violation]:
     """Reads `[tool.arch-check.options.ASY-16]`: `namespace`, the work queue's OM namespace (`work`), and
@@ -820,9 +820,9 @@ def work_item_shape(project: Project) -> Iterator[Violation]:
     if not project.modules_under(root):
         return
     found = False
-    payloads = False
+    kinds = False
     for file, tree in project.trees(root):
-        payloads = payloads or isinstance(module_value(tree, "WORK_PAYLOADS"), ast.Dict)
+        kinds = kinds or isinstance(module_value(tree, "WORK_KINDS"), ast.Tuple)
         for cls in classes(tree):
             if cls.name != item or has_tablename(cls):
                 continue
@@ -834,8 +834,8 @@ def work_item_shape(project: Project) -> Iterator[Violation]:
     first = project.modules_under(root)[0]
     if not found:
         yield Violation.at(first.rel, None, f"{root} declares no {item}")
-    if not payloads:
-        yield Violation.at(first.rel, None, f"{root} declares no WORK_PAYLOADS dict literal")
+    if not kinds:
+        yield Violation.at(first.rel, None, f"{root} declares no WORK_KINDS tuple literal")
     for t in tables(project, f"{root}.storage.tables"):
         if "idempotency_key" not in own_columns(t.node):
             continue

@@ -12,8 +12,9 @@ from datetime import datetime, timedelta
 from enum import StrEnum
 from uuid import UUID
 
+from acme.om.context import tenantless
 from acme.om.work.types.tenant_cap import TenantCap
-from acme.om.work.types.work_item import WorkItem, WorkKind
+from acme.om.work.types.work_item import WorkItem
 
 
 class InsertOutcome(StrEnum):
@@ -62,10 +63,11 @@ class WorkStorageInterface(ABC):
         ...
 
     @abstractmethod
+    @tenantless
     async def claim_next(
         self,
         lane: str,
-        kinds: Sequence[WorkKind],
+        kinds: Sequence[str],
         worker_id: str,
         lease: timedelta,
         tenant_cap: int | None = None,
@@ -112,6 +114,7 @@ class WorkStorageInterface(ABC):
         ...
 
     @abstractmethod
+    @tenantless
     async def requeue_stale(
         self, now: datetime, stagger: timedelta, limit: int
     ) -> list[tuple[UUID, WorkItem]]:
@@ -130,6 +133,7 @@ class WorkStorageInterface(ABC):
         ...
 
     @abstractmethod
+    @tenantless
     async def purge_items(self, before: datetime, limit: int) -> int:
         """Cross-tenant, for the sweep, in the system scope: deletes at most
         `limit` items done or failed whose last change was before `before`,
@@ -139,6 +143,7 @@ class WorkStorageInterface(ABC):
         ...
 
     @abstractmethod
+    @tenantless
     async def oldest_ready_at(self, now: datetime) -> datetime | None:
         """Cross-tenant, for the sweep's backlog gauge, in the system scope:
         the `available_at` of the queued item that has been ready longest at
@@ -148,6 +153,7 @@ class WorkStorageInterface(ABC):
         ...
 
     @abstractmethod
+    @tenantless
     async def count_failed_since(self, since: datetime) -> int:
         """Cross-tenant, for the sweep's dead-letter gauge, in the system
         scope: how many items are failed and were last changed after `since`,

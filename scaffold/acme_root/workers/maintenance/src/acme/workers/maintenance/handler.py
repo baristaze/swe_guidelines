@@ -1,8 +1,9 @@
 """The handler of NOOP, the kind that keeps the loop honest.
 
 Each handler names the permissions its calls take (`REQUIRES`), and the
-tests hold every role that may ask for the kind (`WORK_ENQUEUE_PERMISSIONS`)
-to them: nobody reaches through the queue what they could not do directly."""
+tests hold every role that may ask for the kind (the permission on its spec,
+`acme.om.work.kinds`) to them: nobody reaches through the queue what they
+could not do directly."""
 
 import logging
 from typing import ClassVar

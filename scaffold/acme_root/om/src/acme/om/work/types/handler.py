@@ -46,7 +46,8 @@ class WorkHandlerInterface(ABC):
 
     REQUIRES: ClassVar[tuple[Permission, ...]] = ()
     """The permissions the handler's calls take. Whoever may ask for the kind
-    holds them all (`WORK_ENQUEUE_PERMISSIONS`), which a test holds."""
+    holds them all (the permission on its spec, `work.kinds`), which a test
+    holds."""
 
     @abstractmethod
     async def handle(self, ctx: TenantContext, item: WorkItem) -> None: ...

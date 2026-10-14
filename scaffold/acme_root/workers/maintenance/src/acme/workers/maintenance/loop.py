@@ -44,8 +44,9 @@ from acme.om.context import AppContext, AppType, RequestContext, TenantContext
 from acme.om.exceptions import LeaseLost, NotFound
 from acme.om.outbox import OutboxRelayInterface
 from acme.om.work import WorkManagerInterface
+from acme.om.work.kinds import WorkKinds
 from acme.om.work.types.handler import WorkHandlerInterface, WorkParked, WorkRefused
-from acme.om.work.types.work_item import WorkItem, WorkKind
+from acme.om.work.types.work_item import WorkItem
 
 log = logging.getLogger(__name__)
 
@@ -144,7 +145,8 @@ class WorkerLoop:
         work: WorkManagerInterface,
         outbox: OutboxRelayInterface,
         purges: Mapping[str, PurgeStep],
-        handlers: Mapping[WorkKind, WorkHandlerInterface],
+        kinds: WorkKinds,
+        handlers: Mapping[str, WorkHandlerInterface],
         across: Mapping[str, AcrossStep] | None = None,
         across_batches: Mapping[str, int] | None = None,
         chores: Mapping[str, ChoreStep] | None = None,
@@ -154,6 +156,12 @@ class WorkerLoop:
         liveness: CacheInterface,
         options: LoopOptions,
     ) -> None:
+        """`handlers` maps a kind's name to its handler, and the loop claims
+        the kinds it names; each is a kind `kinds`, the process's registry,
+        holds, so a handler for a kind nobody can enqueue is refused here."""
+        unknown = sorted(kind for kind in handlers if kind not in kinds)
+        if unknown:
+            raise ValueError(f"no work kind is registered as {', '.join(unknown)}")
         self._work = work
         self._outbox = outbox
         self._purges = purges
@@ -189,7 +197,7 @@ class WorkerLoop:
         self._tallied_at: float | None = None
 
     @property
-    def kinds(self) -> list[WorkKind]:
+    def kinds(self) -> list[str]:
         return list(self._handlers)
 
     @property
@@ -290,7 +298,7 @@ class WorkerLoop:
         # past the end of that request, so the causal edge joins two traces
         # instead of stretching one over both. An item with no trace context
         # on it starts a trace here.
-        span.update_name(f"work {item.kind.value}")
+        span.update_name(f"work {item.kind}")
         for link in links_to(item.traceparent):
             span.add_link(link.context, link.attributes)
         span.set_attributes(self._span_attributes(ctx, item))

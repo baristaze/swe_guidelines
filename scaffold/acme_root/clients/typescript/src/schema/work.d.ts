@@ -82,7 +82,8 @@ export interface components {
              * Format: uuid
              */
             id: string;
-            kind: components["schemas"]["WorkKind"];
+            /** Kind */
+            kind: string;
             /** Last Error */
             last_error: string | null;
             /** Max Attempts */
@@ -128,11 +129,6 @@ export interface components {
              */
             updated_by: string;
         };
-        /**
-         * WorkKind
-         * @enum {string}
-         */
-        WorkKind: "NOOP" | "ORCHESTRATION" | "WAKE_PARKED" | "DELETE_ACCOUNT" | "DELETE_ORG";
         /**
          * WorkStatus
          * @enum {string}

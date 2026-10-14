@@ -19,7 +19,9 @@
             "type": "string"
           },
           "kind": {
-            "$ref": "#/components/schemas/WorkKind"
+            "pattern": "^[A-Z][A-Z0-9_]{0,63}$",
+            "title": "Kind",
+            "type": "string"
           },
           "last_error": {
             "anyOf": [
@@ -111,17 +113,6 @@
         ],
         "title": "TenantCapView",
         "type": "object"
-      },
-      "WorkKind": {
-        "enum": [
-          "NOOP",
-          "ORCHESTRATION",
-          "WAKE_PARKED",
-          "DELETE_ACCOUNT",
-          "DELETE_ORG"
-        ],
-        "title": "WorkKind",
-        "type": "string"
       },
       "WorkStatus": {
         "enum": [

@@ -24,8 +24,8 @@ from acme.om.leases.types.leasable_resource import (
 from acme.om.leases.types.lease import JobClaim, Lease, LeaseStatus
 from acme.om.leases.types.request import LeaseRequest
 from acme.om.outbox.types.row import OutboxRow, outbox_row
-from acme.om.root import Managers
-from acme.om.work.types.work_item import WorkItem, WorkKind, relayed_lane, work_row_kind
+from acme.om.root import KINDS, Managers
+from acme.om.work.types.work_item import WorkItem, WorkKind, work_row_kind
 
 WORKER = AppContext(type=AppType.WORKER, version="worker@test")
 CLAIM = timedelta(minutes=5)
@@ -106,13 +106,15 @@ def an_ask(
 async def claim_job(world: JobWorld, lease: Lease) -> tuple[TenantContext, WorkItem]:
     """The worker's claim on the lease's job, as a worker of its lane claims.
     Items other cases left on the lane are handed back as they were."""
+    job = KINDS.get(WorkKind.NOOP)
+    assert job is not None
     passed: list[tuple[TenantContext, WorkItem]] = []
     try:
         for _ in range(50):
             claimed = await world.managers.work.claim(
                 RequestContext(request_id=new_id(), app=WORKER),
-                relayed_lane(WorkKind.NOOP),
-                [WorkKind.NOOP],
+                job.lane,
+                [job.name],
                 "w1",
                 CLAIM,
             )

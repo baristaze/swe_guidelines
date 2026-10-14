@@ -291,7 +291,7 @@ async def test_the_parks_on_one_mark_land_one_wake_that_resumes_them_staggered(
     # none runs at once.
     assert len(orchestration_step_rows(ctx, parks[0])) == 1
     at_once = WakeParkedPayload(reason=ParkReason.PROVIDER_UNAVAILABLE)
-    assert not_before(WorkKind.WAKE_PARKED, at_once.model_dump(mode="json")) is None
+    assert not_before(WakeParkedPayload, at_once.model_dump(mode="json")) is None
 
 
 async def test_a_wake_resumes_every_record_parked_for_its_reason_a_batch_at_a_time(

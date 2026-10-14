@@ -7,7 +7,7 @@ from uuid import UUID
 from pydantic import Field
 
 from acme.om.work.types.tenant_cap import MAX_CAP
-from acme.om.work.types.work_item import WorkKind, WorkStatus
+from acme.om.work.types.work_item import KindName, WorkStatus
 from acme.services.api.types.common import RequestBody, View
 
 
@@ -17,7 +17,7 @@ class OperatorWorkItemView(View):
     The payload and the claim stay the worker's."""
 
     id: UUID
-    kind: WorkKind
+    kind: KindName
     target_id: UUID
     status: WorkStatus
     available_at: datetime

@@ -38,6 +38,18 @@ from acme.om.tenancy.storage import TenancyStorageInterface
 from acme.om.work import WorkManagerInterface, WorkOperatorManagerInterface
 from acme.om.work.impl.manager import WorkManagerImpl, WorkOptions
 from acme.om.work.impl.operator import WorkOperatorManagerImpl
+from acme.om.work.kinds import WORK_KINDS, WorkKinds
+
+KINDS = WorkKinds(
+    (
+        *WORK_KINDS,
+        # A copy adds its entries below this line.
+    )
+)
+"""Every kind of work this process knows: the work namespace's own, then
+each namespace's that declares kinds in its own `kinds.py`. The work
+manager reads every kind through it, and the worker holds its handlers to
+it."""
 
 
 @dataclass(frozen=True)
@@ -67,6 +79,7 @@ def build_managers(
     leases_options: LeasesOptions | None = None,
     media_options: MediaOptions | None = None,
     orchestrations_options: OrchestrationsOptions | None = None,
+    work_kinds: WorkKinds = KINDS,
     work_options: WorkOptions | None = None,
     # A copy adds its entries below this line.
 ) -> Managers:
@@ -77,7 +90,8 @@ def build_managers(
 
     The options after `integrations` are what the process that sweeps sets
     on the managers it purges through: each one's retention and batch. None
-    keeps that manager's defaults.
+    keeps that manager's defaults. `work_kinds` is the registry the work
+    manager reads every kind through: `KINDS`, unless a test hands another.
 
     Each manager is one call to its builder below, in dependency order: a
     builder takes the storage, the infrastructure, and the sibling managers
@@ -105,7 +119,9 @@ def build_managers(
     change_events = build_change_events(
         storage, tenancy, change_events_options or ChangeEventsOptions()
     )
-    work = build_work(storage, infra, tenancy, change_events, work_options or WorkOptions())
+    work = build_work(
+        storage, infra, tenancy, change_events, work_options or WorkOptions(), work_kinds
+    )
     work_operator = build_work_operator(storage, infra)
     media = build_media(storage, infra, tenancy, outbox, media_options or MediaOptions())
     orchestrations = build_orchestrations(
@@ -274,9 +290,10 @@ def build_work(
     tenancy: TenancyManagerInterface,
     change_events: ChangeEventsManagerInterface,
     options: WorkOptions,
+    kinds: WorkKinds,
 ) -> WorkManagerInterface:
     return WorkManagerImpl(
-        storage.get_work_storage(), tenancy, change_events, infra.get_topics(), options
+        storage.get_work_storage(), tenancy, change_events, infra.get_topics(), options, kinds
     )
 
 
