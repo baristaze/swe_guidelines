@@ -166,7 +166,7 @@ CHECKERS_INIT = '"""arch-check."""\n\n__version__ = "1.2.3"\n'
 ADOPTING = "# Adopting\n\nAdd the marketplace from a tag: `git#v1.2.3`, pinned at `v1.2.3`.\n"
 README = (
     "# Software Design and Architecture Guidelines\n\n"
-    "See [the lenses](lenses/README.md#groups): 2 lenses in one group. Install from `v1.2.3`.\n"
+    "See [the lenses](lenses/README.md#groups), in one group. Install from `v1.2.3`.\n"
 )
 
 SCAFFOLD = """\

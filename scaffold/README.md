@@ -7,22 +7,13 @@ top.
 
 ## What is in it
 
-Everything a multi-tenant product needs before its first domain screen:
-
-- **The object model** (`om/`): tenancy with the operator plane, events and
-  audit, the outbox, idempotency, the work queue, orchestrations, and media.
-  Storage runs on four database roles, each with its own migration chain
-  and a row-level security fence.
-- **Infra and integrations**: cache, buckets, topics, queues, secrets, and
-  observability; the identity provider with its twin; a webhook ingress
-  that checks a signature at the edge and hands the delivery to a worker.
-- **Processes**: the API with its gateway and realtime socket, and the
-  maintenance worker with its sweep.
-- **Apps and clients**: the portal shell, the CLI, the company site, and
-  the TypeScript and Python clients, over the horizontal API.
-- **Operations**: the ops package and its skills, the local stack with its
-  dashboards, Terraform for the cloud, Dockerfiles, and CI and deploy
-  workflows.
+Everything a multi-tenant product needs before its first domain screen,
+in the guideline's layers: the object model at the center, infra and
+integrations beside it, the API and the worker around them, the apps
+and clients at the edge, and the operations that run it all.
+[Its README](acme_root/README.md) maps the tree, and
+[its knowledge map](acme_root/llms.txt) lists each document by the
+reader it serves.
 
 ## What is out
 

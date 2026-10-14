@@ -25,8 +25,6 @@ Rules:
   and list items included; fenced code is neither a lens nor a field,
   so a lens file can show lens syntax in an example;
 - no line of a lens file is wider than 80 columns;
-- a lens count stated in README.md or lenses/README.md ("N lenses") equals
-  the size of the catalog;
 - an optional Shape field, after Severity, names one or two files or
   folders of the scaffold that show the rule, each a path in backticks
   that starts `scaffold/acme_root/` and exists, separated by a comma or
@@ -78,7 +76,6 @@ from _common import NUMBERED_REFERENCE, arguments, commented_lines, fenced_lines
 ROOT = Path(__file__).resolve().parent.parent
 GUIDELINE = ROOT / "architecture.md"
 LENSES = ROOT / "lenses"
-README = ROOT / "README.md"
 RULES = ROOT / "checkers" / "src" / "arch_check" / "rules"
 SCAFFOLD = ROOT / "scaffold"
 
@@ -100,7 +97,6 @@ TABLE_ROW = re.compile(r"^\|\s*`([a-z]+)`\s*\|\s*`([a-z]+\.md)`\s*\|")
 SKIP_SECTIONS = {"Contents"}
 LABELLED = re.compile(r"^(.*?)\s*\(([^()]*)\)$")
 BOLD_LABEL = re.compile(r"\*\*([^*]+?)\.\*\*")
-COUNT = re.compile(r"\b(\d+) lenses\b")
 SENTENCE_END = re.compile(r"[.!?](?=\s|$)")
 IDENTIFIER = re.compile(r"(?=.*(?:_|[a-z][A-Z]|\.|\(\)$))[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*(?:\(\))?")
 FILE_NAME = re.compile(r".+\.(?:py|pyi|toml|json|jsonc|html|md|txt|ya?ml|sql|ts|tsx|js|mjs|lock|cfg|ini|sh|env)")
@@ -584,13 +580,6 @@ def main(argv: Sequence[str] = ()) -> int:
     for rid, (_coverage, rel) in sorted(rules.items()):
         if rid not in checks:
             errors.append(f"{rel}: rule {rid} is registered, and lens {rid} has no Check line")
-    for path in (README, LENSES / "README.md"):
-        if not path.exists():
-            continue
-        for ln, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
-            for m in COUNT.finditer(line):
-                if int(m.group(1)) != total:
-                    errors.append(f"{path.relative_to(ROOT)}:{ln}: says {m.group(1)} lenses, the catalog has {total}")
     if errors:
         print("\n".join(errors))
         print(f"\n{len(errors)} problem(s) in {len(files)} lens file(s)")

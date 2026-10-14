@@ -9,8 +9,8 @@ systems in Python, and the tools that hold a project to it.
 - **[`scaffold/`](scaffold/README.md)**: the domain-agnostic core of a
   system in this shape, a whole monorepo that runs. A new project
   copies it.
-- **[`lenses/`](lenses/README.md)**: 272 lenses in eight groups, the
-  checkable detail under each rule.
+- **[`lenses/`](lenses/README.md)**: the checkable detail under each
+  rule, in eight groups of lenses, one file each.
 - **[`checkers/`](checkers/README.md)**: `arch-check`, the static
   checker. It decides the lenses a program can decide, in a second.
 - **[`skills/`](skills/)**: skills that review a change through the
@@ -108,32 +108,33 @@ machine's paths, so they stay out of the project's history.
 
 ## The skills
 
-| Skill                     | What it does                                          |
-|---------------------------|-------------------------------------------------------|
-| `arch-review-full`        | All eight lens groups in parallel, one report         |
-| `arch-review-<group>`     | One group: `om`, `contracts`, `context`, `storage`, `async`, `network`, `delivery`, `ops` |
-| `arch-scaffold-new`       | Copies the scaffold, runs its gates, adds the first namespace and its entity |
-| `arch-scaffold-namespace` | A new object-model swimlane                           |
-| `arch-scaffold-entity`    | One entity end to end, from type to API               |
-| `arch-scaffold-service`   | A web service                                         |
-| `arch-scaffold-worker`    | A worker role over the work queue                     |
-| `arch-scaffold-app`       | A browser app, an operator console, or a CLI          |
-| `arch-explain`            | Answers a question about the architecture             |
-| `arch-deviate`            | Records a deviation as an ADR in the project          |
-| `arch-upgrade-deps`       | Moves every dependency to its latest stable release   |
-| `arch-upgrade-scaffold`   | Moves a copy of the scaffold, or a layer on it, to a later release, by a merge |
-| `arch-new-aspect`         | Grows the guideline and cascades it through the tools |
-| `arch-benchmark`          | Runs a benchmark scenario                             |
-| `arch-benchmark-browser`  | Asks the chat products a reader would use             |
+Each skill is a folder under [`skills/`](skills/), and its `SKILL.md`
+opens with what it does. The name says the family:
 
-The last three run in a checkout of this repository. A review reads and
-reports; it never edits, and it runs no file of the repository it
-reviews. A scaffold writes into the working tree and never commits.
-`arch-upgrade-scaffold` commits its move, since the merge is the move.
+- `arch-review-<group>` reviews a change through one lens group, and
+  `arch-review-full` runs every group in parallel into one report.
+- `arch-scaffold-<piece>` adds the piece it names in the prescribed
+  shape. `arch-scaffold-new` starts a project: it copies the scaffold,
+  runs its gates, and adds the first namespace and its entity.
+- `arch-upgrade-<what>` moves what it names to a later release:
+  `arch-upgrade-deps` the dependencies, and `arch-upgrade-scaffold` a
+  copy of the scaffold, or a layer on it, by a merge.
+- `arch-explain` answers a question about the architecture, and
+  `arch-deviate` records a deviation as an ADR in the project.
+- `arch-new-aspect` grows the guideline and cascades it through the
+  tools, and `arch-benchmark` and the skills named after it run a
+  benchmark. These run in a checkout of this repository, started by
+  name.
+
+A review reads and reports; it never edits, and it runs no file of the
+repository it reviews. A scaffold writes into the working tree and
+never commits. `arch-upgrade-scaffold` commits its move, since the
+merge is the move.
 
 ## Develop
 
 ```bash
+make help         # every target, with what it does
 make check        # everything CI runs
 make gen-skills   # regenerate the review skills from the template and the lenses
 make gen-toc      # regenerate the table of contents of architecture.md

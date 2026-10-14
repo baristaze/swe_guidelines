@@ -71,16 +71,6 @@ def test_unlisted_and_missing_files_fail(repo, lenses, capsys):
     assert "lists ctx -> context.md, file missing" in out
 
 
-def test_stated_count_must_equal_the_catalog(repo, lenses, capsys):
-    repo.edit("README.md", "2 lenses", "3 lenses")
-    assert lenses.main() == 1
-    assert "README.md:3: says 3 lenses, the catalog has 2" in capsys.readouterr().out
-    repo.edit("README.md", "3 lenses", "2 lenses")
-    repo.edit("lenses/README.md", "Ids are the group prefix", "The 5 lenses here. Ids are the group prefix")
-    assert lenses.main() == 1
-    assert "lenses/README.md" in capsys.readouterr().out
-
-
 def test_principle_over_a_hundred_and_twenty_words_fails(repo, lenses, capsys):
     repo.edit("lenses/om.md", "**Principle.** One table per entity.", "**Principle.** " + "word " * 121)
     assert lenses.main() == 1
@@ -228,7 +218,6 @@ def test_an_id_repeated_in_another_file_fails(repo, lenses, capsys):
     repo.edit("lenses/README.md", "principles  |\n", "principles  |\n| `st` | `storage.md` | The Storage Layer: tables |\n")
     repo.write("lenses/storage.md", repo.read("lenses/om.md").replace("## OM-02 Tables are per entity\n", "## ST-01 Tables\n"))
     repo.edit("lenses/storage.md", "## OM-01 Interfaces first", "## OM-01 Interfaces again")
-    repo.edit("README.md", "2 lenses", "4 lenses")
     assert lenses.main() == 1
     out = capsys.readouterr().out
     assert "storage.md:5: id OM-01 is already used in om.md" in out
