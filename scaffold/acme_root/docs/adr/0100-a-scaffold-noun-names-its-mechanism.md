@@ -33,7 +33,9 @@ settings, its tests, and the prose that names it take the same name.
 Prose that means the running product says "the system".
 
 **A rename moves in place.** A migration renames the table, its
-columns, its constraints, and its indexes, and keeps every row. A
+columns, its constraints, and its indexes, and keeps every row. Its
+not-null constraints are among them: Postgres names each by its table
+and column, and keeps the name through a rename. A
 stored value that names the noun moves in the same migration, under a
 counted lift of the fence, and its downgrade moves it back.
 
