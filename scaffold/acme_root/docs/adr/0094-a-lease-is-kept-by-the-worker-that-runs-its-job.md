@@ -14,9 +14,9 @@ job may wait in its lane past the lease's term, so the lease could lapse
 before the job started. A renewal ran the term again, so a job could not
 ask for the time it needs. A label was a short lower-case token, 32 to a
 leasable resource, so a leasable resource that says what it offers in
-words could not be registered. The guideline's "Leases on a Resource"
-lets the worker that claims the job act for the holder, and this records
-how Acme holds it.
+words could not be registered. The guideline's "Leases on a Leasable
+Resource" lets the worker that claims the job act for the holder, and
+this records how Acme holds it.
 
 ## Decision
 

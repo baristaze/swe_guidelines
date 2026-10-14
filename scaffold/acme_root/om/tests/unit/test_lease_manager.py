@@ -1,7 +1,7 @@
-"""Leases on a resource, over the memory impls: the pure rules, and the
-manager's line, grant, renewal, release, revocation, sweep, and waiters.
-The races of two connections are the Postgres suite's; here each guard is
-the conditional write a caller that arrives second is refused by."""
+"""Leases on a leasable resource, over the memory impls: the pure rules,
+and the manager's line, grant, renewal, release, revocation, sweep, and
+waiters. The races of two connections are the Postgres suite's; here each
+guard is the conditional write a caller that arrives second is refused by."""
 
 from collections import Counter
 from collections.abc import Awaitable, Callable
