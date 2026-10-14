@@ -56,6 +56,7 @@ the heading the folder's `README.md` names.
 | `om/src/<name>/om/storage/impl/postgres.py`, `memory.py` | each root builds its impl and returns it from the getter, each below its marker |
 | `om/src/<name>/om/root.py` | below each marker: the field `<ns>` on `Managers`, the namespace's options on `build_managers`, the call `<ns> = build_<ns>(...)` in its body, `<ns>=<ns>` in `Managers(...)`, and, at the end of the module, `build_<ns>`, which builds `<Ns>ManagerImpl` |
 | `om/README.md` | the namespace's nouns, each defined for a reader with no code, the first linked to the namespace's README, and in the relations the page names |
+| `llms.txt` | a line that links the namespace's README and says what it covers, as the lines of the scaffold's namespaces do, below the section's marker under System developers, and under Tenant users and admins when a tenant's users work with its nouns |
 
 ## Procedure
 

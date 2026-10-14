@@ -102,7 +102,8 @@ left as it is, and the report names it under Kept.
      which the search prints, ends in `ADR`.
 
    - `CHANGELOG.md`: its release sections, when the tree has one.
-   - The Substitutions and Deviations rows of `specs/architecture.md`.
+   - The Substitutions and Deviations rows of `specs/architecture.md`;
+     with a `scaffold` branch, those below each table's marker.
    - The sentences that tell a past, in the Markdown and in the code's
      comments and docstrings. `references/phrases.txt`, in this skill's
      folder, lists the phrases that mark one, a pattern a line, each
@@ -195,7 +196,11 @@ left as it is, and the report names it under Kept.
    substitution or the deviation is, in the present tense, with its end
    condition when it has one. A date, a release, and "ended with" go. A
    row whose ADR step 3 removed goes, or names the ADR that holds it
-   now. The pin line stays as it is. Commit.
+   now. The pin line stays as it is, and so does each table's marker
+   line, `<!-- A copy adds its entries below this line. -->`. With a
+   `scaffold` branch, the rows above a marker are the base's and stay
+   as the render gave them: only the tree's own table below it is
+   cleaned. Commit.
 6. **Rewrite the sentences** of step 2's sweep, each hit judged once.
    - A sentence about the code's past goes, or is rewritten to what the
      code does: what a former release did, what changed, what a value

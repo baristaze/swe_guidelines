@@ -52,12 +52,13 @@ The shape is the API, `services/api/`. Under `services/<service-name>/`:
 | `pyproject.toml` (root) | the member in `[tool.uv.workspace] members` |
 | `Makefile` | `openapi` emits this service's documents, one per namespace it hosts, to `services/<service-name>/openapi/`; `clients/openapi/` stays the API's |
 | `.github/workflows/ci.yml` | the drift step's pathspec names `services/<service-name>/openapi` beside `clients`, in both its `git status --porcelain` calls, so a change or a new file there fails it |
-| `scripts/dev.sh`, `Makefile` (`urls`) | the service started on its port, and its docs in the local URLs |
+| `scripts/dev.sh`, `Makefile` (`urls`) | the service started on its port, and its docs in the local URLs, below the marker in `urls` |
 | `deployment/local/docker-compose.full.yml` (with `--container`) | the service as a container |
 | `.env.example` | every field of its settings under the prefix |
 | `deployment/terraform/modules/environment/main.tf`, `deployment/terraform/environments/*/` | one instance of the service module beside `module "api"`, with its load balancer route |
 | `deployment/terraform/modules/account/variables.tf` | its image repository in `images` |
 | `.github/workflows/deploy-staging.yml`, `deploy-production.yml` | its image built once by staging and promoted by digest, beside the API's |
+| `llms.txt` | the line linking its `README.md`, below the section's marker under System developers |
 
 ## Procedure
 

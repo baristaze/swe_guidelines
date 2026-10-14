@@ -73,7 +73,6 @@ table's sibling by scope, with its policy in its role's first migration:
 | `om/src/<name>/om/<ns>/storage/__init__.py`, `impl/postgres.py`, `impl/memory.py` | the storage operations of the conventions' Names, each with its tenant first by the scope, and `purge_tenant(org_id, limit)` when the namespace gains its first table, as the orchestrations storage has it |
 | `om/src/<name>/om/<ns>/manager.py`, `impl/manager.py` | the manager operations, or, when the manager delegates the entity's duty, those operations in the delegate's `<duty>.py` and `impl/<duty>.py`; and `purge_tenant(ctx)` over the storage's, always on the manager itself, which the maintenance worker calls, its batch from the namespace's options, as `OrchestrationsOptions` carries it |
 | `om/src/<name>/om/root.py`, `workers/maintenance/src/<name>/workers/maintenance/container.py` (first table) | the namespace's options taken by `build_managers`, and the worker's purge batch passed in them, as `orchestrations_options` is |
-| `om/tests/unit/test_session_scope.py` (when `<ns>` is new) | the Postgres impl in `IMPL_INTERFACES` |
 | `om/src/<name>/om/storage/roles.py`, `scopes.py` | the table in `TABLE_ROLES` and in `TABLE_SCOPES` |
 | `om/src/<name>/om/<ns>/README.md` | the noun, what can happen to it, the rules that hold |
 | `om/src/<name>/om/exceptions.py` (when a leaf is needed) | `<Ns>Exception(OmException)` once, then leaves that multiply-inherit a shape (`NotFound`, `Conflict`) |

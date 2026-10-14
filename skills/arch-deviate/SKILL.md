@@ -53,6 +53,10 @@ has a condition for ending.
    Keep it under one page.
 5. When `specs/architecture.md` exists and has a `## Deviations` table,
    append one row: the ADR number, the rule, and a one-line summary.
+   When the section holds the marker line
+   `<!-- A copy adds its entries below this line. -->`, as a copy of
+   the scaffold's does, the row goes below it, in a table of the
+   project's own, which its first row starts under the same header.
 6. An `arch-check` entry goes only with a finding the checker
    reports. The lens's `Check` line says which part that is: the whole
    lens when it reads "decides it", and only the part it names when it

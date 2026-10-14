@@ -137,8 +137,9 @@ revisions with `--`.
    for the source `base.py` names, and for a private one
    `gh api -H 'Accept: application/vnd.github.raw' 'repos/<owner>/<repo>/contents/CHANGELOG.md?ref=<ref>'`.
    Read each entry after the base's release. Note each reversal, each
-   rule that now holds one of the checkout's deviations (the Deviations
-   table in `<root>/specs/architecture.md`), and each step an entry asks
+   rule that now holds one of the checkout's deviations (its own table
+   below the Deviations section's marker in
+   `<root>/specs/architecture.md`), and each step an entry asks
    of a project. Step 7 carries them. A layer's first take has no base
    and no deviation, and skips this step.
 6. **Merge.** `git merge --no-ff --no-commit scaffold`, and on a
@@ -171,7 +172,8 @@ revisions with `--`.
    | The pin | Every pin names this guideline's release, never a layer's ref. In a copy of this guideline, every pin names the target: `specs/architecture.md` and the Makefile's `ARCH_CHECK`. `grep -rn "v<base release>"` finds nothing outside the ADRs and a changelog. In a copy of a layer, and in a layer, a pin takes the source's line: the release of this guideline the source took. |
 
 7. **Carry what the releases ask** (step 5). A deviation whose rule now
-   holds leaves the Deviations table, and a row that deviates in part
+   holds leaves the copy's table below the Deviations section's marker
+   (its header goes with its last row), and a row that deviates in part
    keeps only that part. Its ADR says what still holds. An ADR the
    scaffold gave is done with the merge, which brings the scaffold's own
    change to it; the copy never edits one. Rewrite the copy's own in

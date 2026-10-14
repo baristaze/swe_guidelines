@@ -81,8 +81,8 @@ a copy of the shape still goes wrong.
   beside it on its interface; a manager method that takes no stage is
   declared `@stageless`, and a transition `@transition`. Each is read
   where it is declared, and no list names it. A site that builds a
-  stage above the request stage is listed under
-  `[tool.arch-check.options.CTX-26] sites` and in
+  stage above the request stage is listed below the marker of
+  `[tool.arch-check.options.CTX-26] sites` and of `ALLOWED` in
   `om/tests/unit/test_stage_construction.py`.
 - **An operation goes where its duty is.** In a namespace whose manager
   delegates, a new operation goes to the delegate whose duty it is, and
@@ -190,13 +190,17 @@ a copy of the shape still goes wrong.
 
 A changed file gains an entry: a getter on a root, a field on
 `Managers`, a router in `HOSTED`, a row in a map, a member in the
-workspace. In a composition root or a registry, the entry goes below
-its marker line, `# A copy adds its entries below this line.` (`//` in
-TypeScript), after the entries already there, one to a line with a
-trailing comma. The lines above a marker are the scaffold's, and a
-tree made from it never edits them, so its next release merges beside
-the tree's own entries. Nothing is reordered, and nothing is removed but
-what a skill's Changed table names as removed.
+workspace. In a composition root, a registry, or any other list that
+carries one, the entry goes below its marker line,
+`# A copy adds its entries below this line.` (`//` in TypeScript, and
+`<!-- A copy adds its entries below this line. -->` in Markdown and
+`llms.txt`), after the entries already there, one to a line, with a
+trailing comma where the list takes one. Below a Markdown table's
+marker, the rows go in a table of the tree's own, which its first row
+starts under the same header. The lines above a marker are the
+scaffold's, and a tree made from it never edits them, so its next
+release merges beside the tree's own entries. Nothing is reordered, and
+nothing is removed but what a skill's Changed table names as removed.
 
 ## After writing
 
