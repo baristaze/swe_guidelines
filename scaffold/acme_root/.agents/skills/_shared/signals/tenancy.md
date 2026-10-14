@@ -52,6 +52,10 @@ A finding about a secret names the secret and
 
 ## Report
 
+Locally, where a laptop sets no `ACME_WORKOS_API_KEY` by design, the
+line is `- Identity provider: local sign-in`, and it names no secret
+and no runbook. Otherwise:
+
 ```markdown
 - Identity provider: sign-in <configured | off: acme/<env>/workos_api_key | not in the window>, webhook <configured | off: acme/<env>/workos_webhook_secret | signature refused: acme/<env>/workos_webhook_secret | not in the window>
 ```
