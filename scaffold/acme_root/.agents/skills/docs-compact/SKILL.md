@@ -278,9 +278,12 @@ left as it is, and the report names it under Kept.
    infra-up`, and then `make migrate`, `make migrate-check`, and `make
    test-integration` on a database the run makes and drops, never the
    stack's own: the integration tests empty every table of the
-   database they run on. On a stack another process started and keeps,
-   `make infra-up` is skipped: from this tree it would recreate that
-   stack under the same compose project.
+   database they run on. Another checkout keeps the stack when
+   `docker compose ls --format json` lists this tree's compose project
+   (`COMPOSE_PROJECT_NAME` in `.env`, else the `name:` of
+   `deployment/local/docker-compose.yml`) with its `ConfigFiles`
+   outside this tree. Then `make infra-up` is skipped: from this tree
+   it would recreate that stack under the same compose project.
 
    ```bash
    uv run python ops/audit/auditdb.py create audit_docs_compact_<yyyymmdd>
