@@ -1,7 +1,7 @@
 ---
 name: arch-upgrade-scaffold
 description: "Move a copy of the scaffold, or a layer whose own scaffold builds on it, to a later release by merging it. The scaffold branch holds the scaffold as the repository took it, and a three-way merge brings in what changed since. The first run grafts a base at the release the repository pins, or takes a layer's first scaffold."
-allowed-tools: Read, Grep, Glob, Edit, Write, WebFetch, Bash(python3:*), Bash(git status:*), Bash(git fetch:*), Bash(git ls-remote:*), Bash(git rev-parse:*), Bash(git symbolic-ref:*), Bash(git switch:*), Bash(git log:*), Bash(git show:*), Bash(git diff:*), Bash(git merge:*), Bash(git merge-base:*), Bash(git checkout:*), Bash(git rm:*), Bash(git add:*), Bash(git commit:*), Bash(git ls-files:*), Bash(git ls-tree:*), Bash(grep:*), Bash(uv lock:*), Bash(pnpm install:*), Bash(docker info:*), Bash(make setup), Bash(make check), Bash(make openapi), Bash(make infra-up), Bash(make migrate), Bash(make migrate-check), Bash(make test-integration)
+allowed-tools: Read, Grep, Glob, Edit, Write, WebFetch, Bash(python3:*), Bash(git status:*), Bash(git fetch:*), Bash(git ls-remote:*), Bash(git rev-parse:*), Bash(git symbolic-ref:*), Bash(git switch:*), Bash(git log:*), Bash(git show:*), Bash(git diff:*), Bash(git merge:*), Bash(git merge-base:*), Bash(git checkout:*), Bash(git rm:*), Bash(git add:*), Bash(git commit:*), Bash(git ls-files:*), Bash(git ls-tree:*), Bash(grep:*), Bash(uv lock:*), Bash(pnpm install:*), Bash(docker info:*), Bash(uv run:*), Bash(make setup), Bash(make check), Bash(make openapi), Bash(make infra-up), Bash(make migrate), Bash(make migrate-check), Bash(make test-integration)
 ---
 
 # arch-upgrade-scaffold
@@ -182,7 +182,13 @@ revisions with `--`.
    then `make check`. When
    `docker info` exits 0, also `make infra-up`, `make migrate`,
    `make migrate-check`, and `make test-integration`; otherwise the
-   output names each one skipped. `make setup` formats the Python, and
+   output names each one skipped. On a stack another process started
+   and keeps, `make infra-up` is skipped, since from this checkout it
+   would recreate that stack under the same compose project, and the
+   other three run on a database the run makes and drops there, never
+   the stack's own: as `<root>/.agents/skills/docs-compact/SKILL.md`
+   runs them in its step 8, under the name `audit_upgrade_<yyyymmdd>`.
+   `make setup` formats the Python, and
    what it changes is part of the move: commit it. When the merge
    changed a file under `services/`, also run `make openapi` and commit
    what it regenerates. A gate that fails is fixed, and the
