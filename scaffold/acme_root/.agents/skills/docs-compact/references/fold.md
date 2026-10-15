@@ -56,7 +56,10 @@ stays as it is, and the report says which part.
    ones end where the owned ones begin.
 
 2. The newest migration's commit: `git log -1 --format=%H origin/<main>
-   -- om/migrations/sql om/migrations/versions`.
+   -- om/migrations/sql om/migrations/versions`. On a move's branch
+   (`SKILL.md` step 1), read `HEAD` for `origin/<main>`: the chain the
+   fold folds is the branch's, and a migration the move brought or wrote
+   is deployed nowhere yet, so part 3 stops the fold.
 3. Each environment `deployment/cloud/environments.json` names has
    deployed that commit or a later one. The deploy migrates before it
    rolls out, so its database is then at the head. A tree that is a
