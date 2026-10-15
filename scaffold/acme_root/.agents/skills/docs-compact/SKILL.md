@@ -74,7 +74,13 @@ left as it is, and the report names it under Kept.
    `git rev-parse --verify --quiet <name>` or `git rev-parse --verify
    --quiet origin/<name>` prints a commit: add a suffix then (`-2`). On
    another branch, work there only when `git log
-   --oneline origin/<main>..HEAD` prints nothing; otherwise refuse.
+   --oneline origin/<main>..HEAD` prints nothing, or when the branch
+   holds a move of the tree's base: `git log --first-parent --format=%s
+   origin/<main>..HEAD` lists a subject that starts `The scaffold base
+   moves to`. Otherwise refuse. On a move's branch the skill's commits
+   follow the move's, and the render of the base is the `scaffold`
+   branch the move merged, which may not be pushed yet: wherever a step
+   or `references/fold.md` names `origin/scaffold`, read `scaffold`.
    The evidence folder is `~/Downloads/acme_docs_compact_<yyyy-mm-dd>/`
    and the report `~/Downloads/acme_docs_compact_<yyyy-mm-dd>.md`. When
    either exists, both take the next free suffix (`_2`), so a run never
@@ -272,7 +278,9 @@ left as it is, and the report names it under Kept.
    infra-up`, and then `make migrate`, `make migrate-check`, and `make
    test-integration` on a database the run makes and drops, never the
    stack's own: the integration tests empty every table of the
-   database they run on.
+   database they run on. On a stack another process started and keeps,
+   `make infra-up` is skipped: from this tree it would recreate that
+   stack under the same compose project.
 
    ```bash
    uv run python ops/audit/auditdb.py create audit_docs_compact_<yyyymmdd>
