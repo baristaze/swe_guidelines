@@ -48,7 +48,7 @@ class WaiterKind(StrEnum):
     by its name with its `WaiterInterface`; a copy names its own in its own
     namespace's module, never here."""
 
-    ORCHESTRATION = "orchestration"  # a long-running record parked on `resource`
+    ORCHESTRATION = "orchestration"  # a long-running record parked on `leasable_resource`
 
 
 class LeaseRequest(Identifiable, Trackable):

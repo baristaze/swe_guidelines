@@ -34,7 +34,7 @@ class NoopLeasableResourceKindImpl(LeasableResourceKindInterface):
 
 
 class OrchestrationWaiterImpl(WaiterInterface):
-    """A long-running record waits on its request parked on `resource`. It
+    """A long-running record waits on its request parked on `leasable_resource`. It
     waits while it has not settled. The grant wakes it, and so does its
     request's end without a lease; its next step asks again by its key and
     finds its lease, or the request's end, and fails or asks anew. A

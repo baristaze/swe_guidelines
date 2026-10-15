@@ -844,7 +844,7 @@ class LeaseStorageContract:
 
 
 def parked(record: Orchestration) -> OrchestrationStep:
-    """The record parked on `resource` at its cursor, as a step would write it."""
+    """The record parked on `leasable_resource` at its cursor, as a step would write it."""
     after = advanced(
         record,
         utcnow(),
