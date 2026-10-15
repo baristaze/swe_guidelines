@@ -9,8 +9,9 @@ release's heads and runs its integration suite without its own migration
 tests and the tests the deselect file names. A failure fails the run and
 names the release, and the records are stamped back to the branch either way.
 On a stack another process started, it starts nothing and runs on the
-databases .env names there. The fakes record every call; the real run over
-the compose stack is CI's.
+databases the environment or .env names there, and refuses one that names the
+stack's own. The fakes record every call; the real run over the compose stack
+is CI's.
 """
 
 import json
@@ -220,6 +221,47 @@ def test_on_a_running_stack_it_starts_nothing_and_runs_on_the_databases_env_name
     [suite] = suites(calls)
     assert Path(suite[1]).name == main[:12]
     assert suite[2].endswith(named)
+
+
+def test_on_a_running_stack_without_a_env_the_urls_come_from_the_environment(
+    tmp_path: Path,
+) -> None:
+    """A checkout with no .env runs on the URLs the environment names, and each
+    release before reads its own defaults beneath them."""
+    repo, env, main = repository(tmp_path)
+    (repo / ".env").unlink()
+    commit(repo, "om/migrations/versions/core/2_second.py", "revision = '2'\n")
+    named = "postgresql+asyncpg://acme:acme@127.0.0.1:55432/a_run_of_its_own"
+    result, calls = run(repo, {**env, "ACME_DATABASE_URL": named}, "--running-stack")
+    assert result.returncode == 0, result.stderr
+    assert [call[3:] for call in calls if call[0] == "make"] == [
+        ["--no-print-directory", "migrate"]
+    ]
+    [suite] = suites(calls)
+    assert Path(suite[1]).name == main[:12]
+    assert suite[2] == "ACME_DATABASE_URL=example\n"
+
+
+def test_on_a_running_stack_a_url_on_the_stacks_own_database_is_refused(
+    tmp_path: Path,
+) -> None:
+    """The stack's own database is the one .env.example names, and a run on it
+    would migrate the stack's tables and empty them. A checkout's default .env
+    names it, and so does a URL .env leaves out, which falls to .env.example."""
+    repo, env, _ = repository(tmp_path)
+    stack = (
+        "ACME_DATABASE_URL=postgresql+asyncpg://acme:acme@127.0.0.1:55432/acme\n"
+        "ACME_DATABASE_URL_CORE=postgresql+asyncpg://acme:acme@127.0.0.1:55432/acme?ssl=disable\n"
+    )
+    (repo / ".env.example").write_text(stack)
+    commit(repo, "om/migrations/versions/core/2_second.py", "revision = '2'\n")
+    own = "ACME_DATABASE_URL=postgresql+asyncpg://acme:acme@127.0.0.1:55432/a_run_of_its_own\n"
+    for dotenv, refused in ((stack, "ACME_DATABASE_URL"), (own, "ACME_DATABASE_URL_CORE")):
+        (repo / ".env").write_text(dotenv)
+        result, calls = run(repo, env, "--running-stack")
+        assert result.returncode == 1
+        assert f"{refused} names acme, the stack's own database" in result.stderr
+        assert calls == []
 
 
 def test_the_job_always_reports_and_the_main_ruleset_requires_it() -> None:
