@@ -8,7 +8,9 @@ origin/release when it exists and differs) stamps every role to that
 release's heads and runs its integration suite without its own migration
 tests and the tests the deselect file names. A failure fails the run and
 names the release, and the records are stamped back to the branch either way.
-The fakes record every call; the real run over the compose stack is CI's.
+On a stack another process started, it starts nothing and runs on the
+databases .env names there. The fakes record every call; the real run over
+the compose stack is CI's.
 """
 
 import json
@@ -78,7 +80,7 @@ def repository(tmp_path: Path) -> tuple[Path, dict[str, str], str]:
         **GIT,
     }
     (tmp_path / "bin").mkdir()
-    for tool in ("make", "uv"):
+    for tool in ("make", "uv", "docker"):
         fake = tmp_path / "bin" / tool
         fake.write_text(FAKE)
         fake.chmod(fake.stat().st_mode | stat.S_IEXEC)
@@ -102,10 +104,10 @@ def repository(tmp_path: Path) -> tuple[Path, dict[str, str], str]:
 
 
 def run(
-    repo: Path, env: dict[str, str]
+    repo: Path, env: dict[str, str], *flags: str
 ) -> tuple[subprocess.CompletedProcess[str], list[list[str]]]:
     result = subprocess.run(
-        ["bash", str(repo / "scripts" / "release_before.sh"), "main"],
+        ["bash", str(repo / "scripts" / "release_before.sh"), *flags, "main"],
         capture_output=True,
         text=True,
         env=env,
@@ -193,6 +195,29 @@ def test_a_release_branch_at_the_merge_base_runs_once(tmp_path: Path) -> None:
     assert result.returncode == 0, result.stderr
     assert "origin/release is the merge base, so one release runs" in result.stdout
     assert len(suites(calls)) == 1
+
+
+def test_on_a_running_stack_it_starts_nothing_and_runs_on_the_databases_env_names(
+    tmp_path: Path,
+) -> None:
+    """A stack another process started is left as it is: `make infra-up` from
+    this checkout would recreate it under the same compose project. The run's
+    own database, which .env names, is the one every step reaches."""
+    repo, env, main = repository(tmp_path)
+    named = "ACME_DATABASE_URL=postgresql+asyncpg://acme:acme@127.0.0.1:55432/a_run_of_its_own\n"
+    (repo / ".env").write_text(named)
+    commit(repo, "om/migrations/versions/core/2_second.py", "revision = '2'\n")
+    result, calls = run(repo, env, "--running-stack")
+    assert result.returncode == 0, result.stderr
+    assert "the stack is running, so it starts nothing" in result.stdout
+    assert [call[3:] for call in calls if call[0] == "make"] == [["--no-print-directory", "migrate"]]
+    assert [call for call in calls if call[0] == "docker"] == []
+    # The migration and both stamps read .env here, and the suite reads it last.
+    assert {call[2] for call in calls if call[1] == str(repo.resolve())} == {named}
+    assert len(stamps(calls)) == 2
+    [suite] = suites(calls)
+    assert Path(suite[1]).name == main[:12]
+    assert suite[2].endswith(named)
 
 
 def test_the_job_always_reports_and_the_main_ruleset_requires_it() -> None:

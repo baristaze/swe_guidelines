@@ -4,7 +4,7 @@
 # returns to it. So a migration the release before cannot run on fails its
 # writes for the minutes of the roll, and for good after a rollback.
 #
-#   scripts/release_before.sh [<base>]    # <base> defaults to origin/main
+#   scripts/release_before.sh [--running-stack] [<base>]    # <base> defaults to origin/main
 #
 # A branch that changes nothing under om/migrations since its merge base with
 # <base> ends here, green, with no database. Otherwise it brings the compose
@@ -23,9 +23,22 @@
 # stamped back to this branch's heads, which `make migrate` reads next.
 #
 # Like `make test-integration`, it empties every table of the local stack.
+#
+# With --running-stack it starts nothing and runs no compose command, for a
+# stack another process started and keeps: from this checkout, `make
+# infra-up` would recreate that stack under the same compose project. Each
+# database URL the environment or .env names there is then this run's own,
+# never the stack's, since every table it runs on is emptied.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
+running_stack=""
+reset="make infra-reset"
+if [ "${1:-}" = "--running-stack" ]; then
+  running_stack=1
+  reset="make this run's databases anew"
+  shift
+fi
 base="${1:-origin/main}"
 merge_base="$(git merge-base "$base" HEAD)"
 changed="$(git diff --name-only "$merge_base" HEAD -- om/migrations)"
@@ -60,14 +73,18 @@ work="$(mktemp -d)"
 stamped=""
 cleanup() {
   if [ -n "$stamped" ] && ! "${migrate[@]}" stamp --all --heads-of "$here"; then
-    echo "release before: the version records still name a release before; run this again, or make infra-reset" >&2
+    echo "release before: the version records still name a release before; run this again, or ${reset}" >&2
   fi
   rm -rf "$work"
   git worktree prune
 }
 trap cleanup EXIT
 
-make --no-print-directory infra-up
+if [ -n "$running_stack" ]; then
+  echo "release before: the stack is running, so it starts nothing and runs on the databases this run names"
+else
+  make --no-print-directory infra-up
+fi
 make --no-print-directory migrate
 
 failed=()
