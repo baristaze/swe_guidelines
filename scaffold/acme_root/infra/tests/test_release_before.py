@@ -210,7 +210,9 @@ def test_on_a_running_stack_it_starts_nothing_and_runs_on_the_databases_env_name
     result, calls = run(repo, env, "--running-stack")
     assert result.returncode == 0, result.stderr
     assert "the stack is running, so it starts nothing" in result.stdout
-    assert [call[3:] for call in calls if call[0] == "make"] == [["--no-print-directory", "migrate"]]
+    assert [call[3:] for call in calls if call[0] == "make"] == [
+        ["--no-print-directory", "migrate"]
+    ]
     assert [call for call in calls if call[0] == "docker"] == []
     # The migration and both stamps read .env here, and the suite reads it last.
     assert {call[2] for call in calls if call[1] == str(repo.resolve())} == {named}
