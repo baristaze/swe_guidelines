@@ -11,7 +11,11 @@ their place. A role that owns one revision, or none, is folded already.
 deployment/local/docker-compose.yml`, with `--env-file .env` left out
 when the tree has no `.env`. `<day>` is today's date in UTC,
 `yyyymmdd`, and `<evidence>` is the evidence folder the skill's step 1
-made.
+made. The fold's two databases are made by `ops/audit/auditdb.py`,
+which puts every role on core's instance, as the cloud's one instance
+holds them. So each dump and query below runs on `postgres-core` for
+every role, never on the instance the stack gives a role's own
+database.
 
 ## What the tree owns
 

@@ -101,7 +101,10 @@ left as it is, and the report names it under Kept.
      A hit of the second search is a citation when the line above it,
      which the search prints, ends in `ADR`.
 
-   - `CHANGELOG.md`: its release sections, when the tree has one.
+   - `CHANGELOG.md`: its release sections, when the tree has one. In a
+     layer, the changelog is the one at its repository's root,
+     `$(git rev-parse --show-toplevel)/CHANGELOG.md`, and step 4 cuts
+     that one.
    - The Substitutions and Deviations rows of `specs/architecture.md`;
      with a `scaffold` branch, those below each table's marker.
    - The sentences that tell a past, in the Markdown and in the code's
@@ -202,6 +205,11 @@ left as it is, and the report names it under Kept.
    as the render gave them: only the tree's own table below it is
    cleaned. Commit.
 6. **Rewrite the sentences** of step 2's sweep, each hit judged once.
+   With a `scaffold` branch, a hit on a line the render of its base
+   holds in that file stays as the render gave it, as the base's rows
+   and ADRs do; this prints such a line:
+   `git show origin/scaffold:./<file> | grep -F '<the line>'`. Only the
+   tree's own lines are rewritten.
    - A sentence about the code's past goes, or is rewritten to what the
      code does: what a former release did, what changed, what a value
      once held.
