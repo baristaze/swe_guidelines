@@ -47,9 +47,9 @@ def retry_visibility(
 ) -> timedelta:
     """How long a message kept on receive `attempts` stays hidden: `base`
     times four per receive and capped, then halved and topped up from
-    `jitter`, a function answering between 0 and 1. The shortest wait of one
-    receive is longer than the longest of the one before, and deliveries that
-    failed together do not come back together."""
+    `jitter`, a function answering between 0 and 1. Below the cap, the
+    shortest wait of one receive is longer than the longest of the one
+    before, and deliveries that failed together do not come back together."""
     growth = 4.0 ** min(max(attempts - 1, 0), 32)
     full = min(base.total_seconds() * growth, cap.total_seconds())
     return timedelta(seconds=full / 2 + (full / 2) * jitter())
@@ -118,10 +118,10 @@ class DeliveryOptions(OmBase):
     visibility: timedelta = timedelta(seconds=60)
     """How long a received delivery is hidden from another receive: longer
     than an apply takes, which is a read of the org and one commit."""
-    retry: timedelta = timedelta(seconds=60)
-    """The wait after a delivery's first kept receive, four times longer on
-    each one after it, so a delivery outlasts an outage of hours before the
-    queue dead-letters it."""
+    retry: timedelta = timedelta(seconds=120)
+    """The longest wait after a delivery's first kept receive, and twice the
+    shortest: four times longer on each receive after it, so a delivery
+    outlasts an outage of hours before the queue dead-letters it."""
     backoff: timedelta = timedelta(seconds=5)
     """The pause after a receive that failed, so a queue that is down is not
     asked in a tight loop."""
