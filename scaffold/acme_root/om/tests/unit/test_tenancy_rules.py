@@ -43,6 +43,15 @@ def test_the_sign_in_delay_counts_from_the_last_failure() -> None:
     assert sign_in_delay(9, None, now, **KNOBS) == timedelta(0)
 
 
+@pytest.mark.parametrize("failures", [57, 10_000])
+def test_the_sign_in_delay_stays_at_its_cap_on_a_long_run(failures: int) -> None:
+    now = datetime(2026, 9, 22, 12, 0, tzinfo=UTC)
+    wait = sign_in_delay(
+        failures, now, now, free=10, base=timedelta(seconds=1), cap=timedelta(seconds=30)
+    )
+    assert wait == timedelta(seconds=30)
+
+
 def test_a_totp_code_is_rfc_6238s() -> None:
     """RFC 6238's SHA-1 test vector, cut to the six digits authenticators show:
     at 59 seconds the eight-digit code is 94287082."""

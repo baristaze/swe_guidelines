@@ -22,6 +22,10 @@ MAX_API_KEY_TTL = timedelta(days=90)
 """The longest life a tenant may ask of an api key. `TenancyOptions.api_key_ttl`
 defaults to it and the wire type bounds its request field by it."""
 
+MAX_DOUBLINGS = 30
+"""Past this the sign-in delay is the cap for any base worth having; it also
+keeps the arithmetic in range however long a run of failures grows."""
+
 CREDENTIAL_PREFIXES: dict[str, CredentialKind] = {
     "ses_": CredentialKind.AUTH_SESSION_TOKEN,
     "key_": CredentialKind.API_KEY,
@@ -333,7 +337,8 @@ def sign_in_delay(
     failure. Zero once that has passed."""
     if failures < free or last_failed_at is None:
         return timedelta(0)
-    wait = min(base * (2 ** (failures - free)), cap)
+    doublings = min(failures - free, MAX_DOUBLINGS)
+    wait = min(base * (2**doublings), cap)
     return max(last_failed_at + wait - now, timedelta(0))
 
 
