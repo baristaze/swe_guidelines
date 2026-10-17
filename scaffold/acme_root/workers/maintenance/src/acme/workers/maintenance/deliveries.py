@@ -18,7 +18,7 @@ import json
 import logging
 import random
 from abc import ABC, abstractmethod
-from collections.abc import Callable, Mapping
+from collections.abc import Mapping
 from datetime import timedelta
 from typing import Any
 from uuid import UUID
@@ -32,6 +32,7 @@ from acme.om.change_events.manager import audit_change_event
 from acme.om.context import AppContext, AppType, RequestContext, TenantContext
 from acme.om.exceptions import InvalidCredential
 from acme.om.tenancy import TenancyManagerInterface
+from acme.timing import Draw, RetryPolicy
 
 log = logging.getLogger(__name__)
 
@@ -40,19 +41,6 @@ KEPT = frozenset({"failed", "unknown_provider"})
 
 MAX_VISIBILITY = timedelta(hours=12)
 """The longest the hosted queue hides a message, counted from its receive."""
-
-
-def retry_visibility(
-    attempts: int, base: timedelta, cap: timedelta, jitter: Callable[[], float]
-) -> timedelta:
-    """How long a message kept on receive `attempts` stays hidden: `base`
-    times four per receive and capped, then halved and topped up from
-    `jitter`, a function answering between 0 and 1. Below the cap, the
-    shortest wait of one receive is longer than the longest of the one
-    before, and deliveries that failed together do not come back together."""
-    growth = 4.0 ** min(max(attempts - 1, 0), 32)
-    full = min(base.total_seconds() * growth, cap.total_seconds())
-    return timedelta(seconds=full / 2 + (full / 2) * jitter())
 
 
 class DeliveryProviderInterface[D](ABC):
@@ -135,13 +123,23 @@ class DeliveryConsumer:
         tenancy: TenancyManagerInterface,
         providers: Mapping[str, DeliveryProviderInterface[Any]],
         options: DeliveryOptions,
-        jitter: Callable[[], float] = random.random,
+        jitter: Draw = random.random,
     ) -> None:
         self._queues = queues
         self._tenancy = tenancy
         self._providers = providers
         self._options = options
         self._jitter = jitter
+        # The hosted queue counts its 12 hours from the receive, and the wait
+        # is set within the receive's visibility, so the cap leaves it out.
+        # Four times longer on each receive, half of it drawn: the shortest
+        # wait of a receive is longer than the longest of the one before.
+        self._retry = RetryPolicy(
+            base=options.retry.total_seconds(),
+            cap=(MAX_VISIBILITY - options.visibility).total_seconds(),
+            growth=4.0,
+            jitter=0.5,
+        )
         self._app = AppContext(type=AppType.WORKER, version=f"worker@{options.worker_id}")
         self._stopping = asyncio.Event()
 
@@ -195,17 +193,10 @@ class DeliveryConsumer:
         return outcome
 
     async def _come_back_later(self, message: QueueMessage) -> None:
-        """Hides a kept message for longer on each receive. The hosted queue
-        counts its 12 hours from the receive, and this runs within the
-        receive's visibility, so the cap is 12 hours less that visibility. A
-        change that fails leaves the message to come back after the
-        receive's visibility."""
-        wait = retry_visibility(
-            message.attempts,
-            self._options.retry,
-            MAX_VISIBILITY - self._options.visibility,
-            self._jitter,
-        )
+        """Hides a kept message for longer on each receive. A change that
+        fails leaves the message to come back after the receive's
+        visibility."""
+        wait = timedelta(seconds=self._retry.wait(message.attempts, draw=self._jitter))
         try:
             await self._queues.change_visibility(Queues.WEBHOOKS, message.receipt, wait)
         except Exception:

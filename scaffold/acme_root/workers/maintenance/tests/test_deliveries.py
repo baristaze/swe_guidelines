@@ -22,12 +22,7 @@ from acme.om.base import new_id, utcnow
 from acme.om.change_events.types.change_event import ChangeEvent
 from acme.om.context import TenantContext
 from acme.workers.maintenance.container import WorkerContainer
-from acme.workers.maintenance.deliveries import (
-    MAX_VISIBILITY,
-    DeliveryConsumer,
-    DeliveryOptions,
-    retry_visibility,
-)
+from acme.workers.maintenance.deliveries import MAX_VISIBILITY, DeliveryConsumer, DeliveryOptions
 from acme.workers.maintenance.main import build_consumer
 
 RECEIVED = "identity.event.received"
@@ -39,8 +34,9 @@ def consumer_of(
     """The worker's own consumer, with a long poll that answers at once, and
     the jitter handed in when a test asserts the waits."""
     built = build_consumer(container)
-    built._options = DeliveryOptions(  # pyright: ignore[reportPrivateUsage]
-        worker_id="maintenance-test", wait=timedelta(0)
+    options = built._options  # pyright: ignore[reportPrivateUsage]
+    built._options = options.model_copy(  # pyright: ignore[reportPrivateUsage]
+        update={"wait": timedelta(0)}
     )
     if jitter is not None:
         built._jitter = jitter  # pyright: ignore[reportPrivateUsage]
@@ -215,16 +211,23 @@ async def test_deliveries_that_failed_together_come_back_apart(
     assert held[0] != held[1]
 
 
-def test_the_wait_never_passes_the_queue_maximum() -> None:
-    """However many receives a queue allows, no wait passes the cap, nor
-    overflows on its way there."""
-    cap = MAX_VISIBILITY - timedelta(seconds=60)
-    waits = [
-        retry_visibility(attempts, timedelta(seconds=60), cap, lambda: 1.0)
-        for attempts in (1, 5, 8, 50, 10_000)
-    ]
-    assert all(wait <= cap for wait in waits), waits
-    assert waits[-1] == cap
+async def test_the_wait_never_passes_the_queue_maximum(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """However many receives a queue allows, no wait passes the queue's
+    maximum less the receive's visibility, nor overflows on its way there."""
+    container = build_container(tmp_path)
+    ctx = await sign_in(container)
+    consumer = consumer_of(container, lambda: 1.0)
+    held = held_by(container, monkeypatch)
+    monkeypatch.setattr(container.managers.change_events, "append_change_event", down)
+    message = await queued(container, body_of(delivery_about(container, str(ctx.org_id))))
+    for attempts in (1, 5, 8, 50, 10_000):
+        again = message.model_copy(update={"attempts": attempts})
+        assert await consumer.handle(again) == "failed"
+    cap = MAX_VISIBILITY - DeliveryOptions(worker_id="maintenance-test").visibility
+    assert all(wait <= cap for wait in held), held
+    assert held[-1] == cap
 
 
 async def test_a_provider_this_worker_lacks_leaves_the_message(tmp_path: Path) -> None:

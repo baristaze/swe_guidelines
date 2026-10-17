@@ -141,6 +141,7 @@ dependencies = [
     { name = "acme-infra" },
     { name = "acme-integrations" },
     { name = "acme-om" },
+    { name = "acme-timing" },
     { name = "pydantic-settings" },
 ]
 
@@ -149,6 +150,7 @@ requires-dist = [
     { name = "acme-infra", editable = "infra" },
     { name = "acme-integrations", editable = "integrations" },
     { name = "acme-om", editable = "om" },
+    { name = "acme-timing", editable = "libs/timing" },
     { name = "pydantic-settings", specifier = ">=2.15" },
 ]
 

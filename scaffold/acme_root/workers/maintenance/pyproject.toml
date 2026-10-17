@@ -7,6 +7,7 @@ dependencies = [
     "acme-om",
     "acme-infra",
     "acme-integrations",
+    "acme-timing",
     "pydantic-settings>=2.15",
 ]
 
@@ -17,6 +18,7 @@ acme-maintenance = "acme.workers.maintenance.entry:main"
 acme-om = { workspace = true }
 acme-infra = { workspace = true }
 acme-integrations = { workspace = true }
+acme-timing = { workspace = true }
 
 [build-system]
 requires = ["hatchling"]
