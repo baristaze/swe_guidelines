@@ -174,8 +174,8 @@ a check the process could make itself.
 
 ## DEL-07 The monorepo is grouped by role, with one OM distribution
 
-**Principle.** The repository root groups code by role: `om/`, `infra/`,
-`integrations/`, `gateway/`, `services/`, `workers/`, `apps/`,
+**Principle.** The repository root groups code by role: `libs/`, `om/`,
+`infra/`, `integrations/`, `gateway/`, `services/`, `workers/`, `apps/`,
 `clients/`, `ops/`, `deployment/`, `scripts/`, `specs/`, `docs/`. A
 system that starts as one API process has one entry under `services/`
 and grows the rest. The OM is a single distribution covering every
