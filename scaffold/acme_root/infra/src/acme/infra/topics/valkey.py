@@ -10,6 +10,7 @@ from acme.infra.impl.valkey import ValkeyConnection
 from acme.infra.observability import OUTCOMES
 from acme.infra.topics import TOPIC_PAYLOADS, TopicHandler, TopicPayload, Topics, TopicsInterface
 from acme.infra.topics.dispatch import LocalSubscribers, check_payload
+from acme.timing import Retries, RetryPolicy
 
 log = logging.getLogger(__name__)
 
@@ -22,7 +23,8 @@ class TopicsValkeyImpl(TopicsInterface):
     a process that stopped hearing the bus would degrade to polling latency
     for its workers and to silence for its sockets, without a line to say so."""
 
-    RECONNECT_BACKOFF_SECONDS: tuple[float, ...] = (0.5, 1.0, 2.0, 5.0, 10.0, 30.0)
+    RECONNECT = RetryPolicy(base=0.5, cap=30.0)
+    """The wait before each reopening: 0.5s doubled per failure up to 30s."""
 
     def __init__(self, connection: ValkeyConnection, channel_prefix: str = "acme:topics:") -> None:
         self._connection = connection
@@ -30,7 +32,7 @@ class TopicsValkeyImpl(TopicsInterface):
         self._subscribers = LocalSubscribers()
         self._subscriber: GlideClient | None = None
         self._listener: asyncio.Task[None] | None = None
-        self._failures = 0
+        self._retries = Retries(self.RECONNECT)
 
     async def publish(self, topic: Topics, payload: TopicPayload) -> bool:
         check_payload(topic, payload)
@@ -91,14 +93,14 @@ class TopicsValkeyImpl(TopicsInterface):
             try:
                 if self._subscriber is None:
                     self._subscriber = await self._open_subscriber()
-                    if self._failures:
-                        log.info("topics listener reconnected after %d failures", self._failures)
+                    if self._retries.failures:
+                        log.info(
+                            "topics listener reconnected after %d failures", self._retries.failures
+                        )
                 await self._receive(self._subscriber)
             except GlideError as error:
-                self._failures += 1
+                delay = self._retries.failed()
                 OUTCOMES.labels(subsystem="topics", outcome="listener_failed").inc()
-                backoff = self.RECONNECT_BACKOFF_SECONDS
-                delay = backoff[min(self._failures, len(backoff)) - 1]
                 log.warning(
                     "topics listener failed (%s: %s); reconnecting in %.1fs",
                     type(error).__name__,
@@ -116,7 +118,7 @@ class TopicsValkeyImpl(TopicsInterface):
     async def _receive(self, subscriber: GlideClient) -> None:
         while True:
             message = await subscriber.get_pubsub_message()
-            self._failures = 0
+            self._retries.reset()
             channel = message.channel
             channel = channel.decode() if isinstance(channel, bytes) else str(channel)
             try:

@@ -6,7 +6,7 @@ from sqlalchemy import DateTime, Interval, Uuid, any_, bindparam, func, literal,
 from sqlalchemy.dialects.postgresql import ARRAY
 
 from acme.om.base import EMPTY_UUID, utcnow
-from acme.om.outbox.rules import MAX_DOUBLINGS
+from acme.om.outbox.rules import relay_policy
 from acme.om.outbox.storage import OutboxStorageInterface
 from acme.om.outbox.storage.tables.outbox_rows import OutboxRows
 from acme.om.outbox.types.row import OutboxRow
@@ -43,10 +43,12 @@ class OutboxStoragePostgresImpl(PgStorageBase, OutboxStorageInterface):
             .prefix_with("MATERIALIZED")
         )
         # rules.relay_delay, in SQL: the attempt being spent is attempts + 1,
-        # so its delay is base * 2^attempts, capped.
+        # so its delay is base * 2^attempts, capped. The exponent stops where
+        # the curve meets the cap, so no count of attempts overflows it.
+        policy = relay_policy(backoff_base, backoff_cap)
         delay = func.least(
             literal(backoff_base, Interval())
-            * func.power(2, func.least(OutboxRows.attempts, MAX_DOUBLINGS)),
+            * func.power(policy.growth, func.least(OutboxRows.attempts, policy.steps_to_cap())),
             literal(backoff_cap, Interval()),
         )
         stmt = (

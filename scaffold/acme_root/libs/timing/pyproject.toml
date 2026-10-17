@@ -1,0 +1,16 @@
+[project]
+name = "acme-timing"
+version = "0.1.0"
+description = "The Acme retry wait: one growing, capped wait every distribution shares, and a server's Retry-After."
+requires-python = ">=3.14"
+# A leaf: every distribution may import it, the client included, so it
+# depends on nothing.
+dependencies = []
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+# A subpackage of the shared root `acme`, with no acme/__init__.py (ADR 0001).
+packages = ["src/acme"]

@@ -6,6 +6,7 @@ COPY --from=ghcr.io/astral-sh/uv:0.12 /uv /usr/local/bin/uv
 ENV UV_LINK_MODE=copy UV_COMPILE_BYTECODE=1
 WORKDIR /app
 COPY pyproject.toml uv.lock .python-version ./
+COPY libs/timing/pyproject.toml libs/timing/
 COPY om/pyproject.toml om/
 COPY infra/pyproject.toml infra/
 COPY integrations/pyproject.toml integrations/
@@ -15,6 +16,7 @@ COPY workers/maintenance/pyproject.toml workers/maintenance/
 COPY clients/python/pyproject.toml clients/python/
 COPY apps/cli/pyproject.toml apps/cli/
 RUN uv sync --frozen --no-dev --package acme-maintenance --no-install-workspace
+COPY libs/timing libs/timing
 COPY om om
 COPY infra infra
 COPY integrations integrations

@@ -8,16 +8,13 @@ and each such place names the rule it mirrors."""
 from datetime import timedelta
 
 from acme.om.work.types.work_item import WorkItem
-
-MAX_DOUBLINGS = 30
-"""Past this the delay is the cap for any base worth having; it also keeps the
-arithmetic in range for an item that has failed absurdly often."""
+from acme.timing import RetryPolicy
 
 
 def retry_delay(attempts: int, base: timedelta, cap: timedelta) -> timedelta:
     """A growing delay after `attempts` failed runs: base * 2^(attempts-1), capped."""
-    doublings = min(max(0, attempts - 1), MAX_DOUBLINGS)
-    return min(base * (2**doublings), cap)
+    policy = RetryPolicy(base=base.total_seconds(), cap=cap.total_seconds())
+    return timedelta(seconds=policy.wait(attempts))
 
 
 def is_exhausted(item: WorkItem) -> bool:

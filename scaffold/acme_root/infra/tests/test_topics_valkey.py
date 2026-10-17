@@ -15,6 +15,7 @@ from acme.infra.base import new_id, utcnow
 from acme.infra.impl.valkey import ValkeyConnection
 from acme.infra.topics import TopicPayload, Topics, WorkAvailablePayload
 from acme.infra.topics.valkey import TopicsValkeyImpl
+from acme.timing import RetryPolicy
 
 
 class Message:
@@ -83,7 +84,7 @@ def work_available() -> WorkAvailablePayload:
 
 
 def listener_over(
-    monkeypatch: pytest.MonkeyPatch, subscribers: list[Any], backoff: tuple[float, ...]
+    monkeypatch: pytest.MonkeyPatch, subscribers: list[Any], backoff: RetryPolicy
 ) -> tuple[TopicsValkeyImpl, list[Any]]:
     """A listener whose subscribers are handed out in order; the ones opened so
     far are the second value."""
@@ -96,7 +97,7 @@ def listener_over(
         return subscriber
 
     monkeypatch.setattr(TopicsValkeyImpl, "_open_subscriber", open_next)
-    monkeypatch.setattr(TopicsValkeyImpl, "RECONNECT_BACKOFF_SECONDS", backoff)
+    monkeypatch.setattr(TopicsValkeyImpl, "RECONNECT", backoff)
     topics = TopicsValkeyImpl(ValkeyConnection("valkey://127.0.0.1:1/0", timedelta(seconds=1)))
     return topics, opened
 
@@ -107,7 +108,7 @@ async def test_a_failed_listener_reconnects_and_keeps_delivering(
     sent = work_available()
     first = FailingSubscriber()
     second = DeliveringSubscriber([Message("acme:topics:work_available", sent)])
-    topics, opened = listener_over(monkeypatch, [first, second], (0.01,))
+    topics, opened = listener_over(monkeypatch, [first, second], RetryPolicy(base=0.01, cap=0.01))
     received: asyncio.Queue[TopicPayload] = asyncio.Queue()
 
     async def handler(payload: TopicPayload) -> None:
@@ -143,7 +144,10 @@ async def test_a_received_message_resets_the_backoff(
         DroppingSubscriber([Message(channel, first)]),
         DeliveringSubscriber([Message(channel, last)]),
     ]
-    topics, opened = listener_over(monkeypatch, subscribers, (0.01, 0.06))
+    # 0.01s, then 0.06s: logged to a tenth, 0.0s and 0.1s.
+    topics, opened = listener_over(
+        monkeypatch, subscribers, RetryPolicy(base=0.01, cap=0.06, growth=6.0)
+    )
     received: asyncio.Queue[TopicPayload] = asyncio.Queue()
 
     async def handler(payload: TopicPayload) -> None:
@@ -183,7 +187,7 @@ async def test_a_bus_that_is_down_at_boot_does_not_fail_the_start(
         return delivering
 
     monkeypatch.setattr(TopicsValkeyImpl, "_open_subscriber", open_after_one_failure)
-    monkeypatch.setattr(TopicsValkeyImpl, "RECONNECT_BACKOFF_SECONDS", (0.01,))
+    monkeypatch.setattr(TopicsValkeyImpl, "RECONNECT", RetryPolicy(base=0.01, cap=0.01))
     topics = TopicsValkeyImpl(ValkeyConnection("valkey://127.0.0.1:1/0", timedelta(seconds=1)))
     received: asyncio.Queue[TopicPayload] = asyncio.Queue()
 

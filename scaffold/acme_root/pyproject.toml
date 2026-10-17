@@ -10,6 +10,7 @@ package = false
 [tool.uv.workspace]
 # Every member ships a subpackage of the one root package `acme` (ADR 0001).
 members = [
+    "libs/timing",
     "om",
     "infra",
     "integrations",
@@ -21,6 +22,7 @@ members = [
 ]
 
 [tool.uv.sources]
+acme-timing = { workspace = true }
 acme-om = { workspace = true }
 acme-infra = { workspace = true }
 acme-integrations = { workspace = true }
@@ -57,6 +59,7 @@ pythonpath = [
 ]
 asyncio_default_fixture_loop_scope = "function"
 testpaths = [
+    "libs/timing/tests",
     "om/tests",
     "infra/tests",
     "integrations/tests",

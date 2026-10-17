@@ -2700,6 +2700,7 @@ is the whole tree ([`scaffold/acme_root/`](scaffold/acme_root/)):
 
 ```text
 [root]/
+├── libs/             # leaf distributions any other imports: timing/, the retry wait
 ├── om/               # acme-om: the object model, storage, migrations
 ├── infra/            # acme-infra: cache, buckets, topics, queues, secrets, flags
 ├── integrations/     # third-party providers: interface, client, twin

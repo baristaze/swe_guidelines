@@ -17,6 +17,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from acme.om.context import CredentialKind, OperatorPermission, OperatorRole, Permission, Role
 from acme.om.tenancy.types.org import Org
+from acme.timing import RetryPolicy
 
 MAX_API_KEY_TTL = timedelta(days=90)
 """The longest life a tenant may ask of an api key. `TenancyOptions.api_key_ttl`
@@ -333,7 +334,8 @@ def sign_in_delay(
     failure. Zero once that has passed."""
     if failures < free or last_failed_at is None:
         return timedelta(0)
-    wait = min(base * (2 ** (failures - free)), cap)
+    policy = RetryPolicy(base=base.total_seconds(), cap=cap.total_seconds())
+    wait = timedelta(seconds=policy.wait(failures - free + 1))
     return max(last_failed_at + wait - now, timedelta(0))
 
 

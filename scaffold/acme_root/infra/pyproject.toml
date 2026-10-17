@@ -17,7 +17,11 @@ dependencies = [
     "openfeature-sdk>=0.10.0",
     "launchdarkly-server-sdk>=9.18.1",
     "launchdarkly-openfeature-server>=0.8.2",
+    "acme-timing",
 ]
+
+[tool.uv.sources]
+acme-timing = { workspace = true }
 
 [build-system]
 requires = ["hatchling"]

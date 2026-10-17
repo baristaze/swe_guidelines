@@ -7,11 +7,14 @@ the package that sends a request: each namespace's calls (`calls/`) go through
 import asyncio
 import random
 import ssl
-from collections.abc import Callable
+from dataclasses import replace
+from datetime import datetime
 from typing import Any, Literal, Self
 
 import httpx
 import truststore
+
+from acme.timing import Draw, RetryPolicy, retry_after
 
 APP_HEADER = "X-App"
 APP_VERSION_HEADER = "X-App-Version"
@@ -26,10 +29,10 @@ DEFAULT_RETRIES = 2
 """Extra attempts a retryable failure gets. The caller's settings name this
 one per client too, beside the timeout, so no caller wraps this client in a
 second retry; 0 sends every call exactly once."""
-DEFAULT_BACKOFF_SECONDS = 0.25
-"""The wait before the first extra attempt. It doubles per attempt."""
-MAX_BACKOFF_SECONDS = 5.0
-"""However far the doubling runs, no wait between attempts is longer."""
+RETRY = RetryPolicy(base=0.25, cap=5.0, jitter=0.5)
+"""The wait between attempts: 0.25s before the first extra one, doubled per
+attempt, and never longer than 5s however far the doubling runs. Half of
+each wait is drawn. The caller's settings may name another base."""
 
 RETRYABLE_STATUSES = frozenset({502, 503, 504})
 """The answers that say the API could not serve this call and may serve the
@@ -63,8 +66,8 @@ def may_retry(method: str, idempotency_key: str | None = None) -> bool:
 
 def retry_delay_seconds(
     attempt: int,
-    base: float = DEFAULT_BACKOFF_SECONDS,
-    jitter: Callable[[], float] = random.random,
+    base: float = RETRY.base,
+    jitter: Draw = random.random,
 ) -> float:
     """The wait before attempt `attempt` (1 is the first retry): the base
     doubled per attempt and capped, then halved and topped up from `jitter`.
@@ -74,8 +77,7 @@ def retry_delay_seconds(
     which is what makes the growth assertable. `jitter` is a function of no arguments answering
     between 0 and 1; a test hands one in and asserts both ends of the
     window."""
-    full = min(base * 2 ** max(0, attempt - 1), MAX_BACKOFF_SECONDS)
-    return full / 2 + (full / 2) * jitter()
+    return replace(RETRY, base=base).wait(attempt, draw=jitter)
 
 
 class Unset:
@@ -121,18 +123,16 @@ def trust_store() -> ssl.SSLContext:
     return truststore.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
 
 
-def retry_after_seconds(header: str | None) -> float | None:
-    """A `Retry-After` in seconds, as the gateway sends it; an HTTP date or
-    anything unreadable is no ask at all."""
-    if header is None or not header.strip().isdigit():
-        return None
-    return float(header.strip())
+def retry_after_seconds(header: str | None, now: datetime | None = None) -> float | None:
+    """A `Retry-After` in seconds: whole seconds, as the gateway sends it, or
+    an HTTP date, read against `now`; anything unreadable is no ask at all."""
+    return retry_after(header, now=now)
 
 
 def retry_wait_seconds(curve: float, server_asked: float | None) -> float:
     """The wait before a retry: the curve's, or longer when the server asked
     for longer, and never past the cap."""
-    return min(max(curve, server_asked or 0.0), MAX_BACKOFF_SECONDS)
+    return RETRY.bound(curve, server_asked)
 
 
 def _error_of(response: httpx.Response) -> ApiError:
@@ -177,7 +177,7 @@ class Transport:
         transport: httpx.AsyncBaseTransport | None = None,
         timeout: float = DEFAULT_TIMEOUT_SECONDS,
         retries: int = DEFAULT_RETRIES,
-        backoff_seconds: float = DEFAULT_BACKOFF_SECONDS,
+        backoff_seconds: float = RETRY.base,
     ) -> None:
         self.base_url = base_url.rstrip("/")
         self.app = app
