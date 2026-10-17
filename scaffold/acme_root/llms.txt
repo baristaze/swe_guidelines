@@ -22,6 +22,7 @@ served to it. Exposure is by listing, never by folder.
 - [Files](om/src/acme/om/media/README.md): files as references, the bounded upload straight to the store, and the sweep
 - [Infrastructure](infra/README.md): the capabilities the system asks for, what each promises, and which twin runs where
 - [Integrations](integrations/README.md): the outside providers, their twins, the absent provider, and the webhook check
+- [Timing](libs/timing/README.md): the wait between attempts every loop and client shares, and the reader of a server's Retry-After
 - [The API process](services/api/README.md): where each namespace's routes are, the gateway's guarantees, the subcommands
 - [The maintenance worker](workers/maintenance/README.md): the work queue's loop, the provider deliveries, and the sweep
 - [Deployment](deployment/README.md): what runs where, locally and in the cloud, and the branch convention

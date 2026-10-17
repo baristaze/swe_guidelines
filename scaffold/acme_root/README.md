@@ -65,6 +65,9 @@ follows by hand.
 
 ## Layout
 
+- `libs/`: the leaf distributions any other may import.
+  [timing/](libs/timing/README.md) is the wait between attempts every
+  loop and client shares.
 - [om/](om/README.md): the object model: namespaces, storage, migrations.
 - [infra/](infra/README.md): the capabilities the system asks for and
   never implements itself, each with its twin.
