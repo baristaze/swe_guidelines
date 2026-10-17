@@ -8,14 +8,15 @@ context.
 Every delivery is applied once: what it writes takes an id derived from the
 delivery's key, so a copy the queue hands over again changes nothing. A
 message is deleted once it is applied, or once it can never be (malformed,
-no org, or an org that is gone). Any other failure leaves it to come back
-after its visibility, and the queue dead-letters it past its receives. So
+no org, or an org that is gone). Any other failure leaves it to come back,
+later on each receive, and the queue dead-letters it past its receives. So
 does a provider this worker does not know, since a newer one may."""
 
 import asyncio
 import contextlib
 import json
 import logging
+import random
 from abc import ABC, abstractmethod
 from collections.abc import Mapping
 from datetime import timedelta
@@ -31,11 +32,15 @@ from acme.om.change_events.manager import audit_change_event
 from acme.om.context import AppContext, AppType, RequestContext, TenantContext
 from acme.om.exceptions import InvalidCredential
 from acme.om.tenancy import TenancyManagerInterface
+from acme.timing import Draw, RetryPolicy
 
 log = logging.getLogger(__name__)
 
 KEPT = frozenset({"failed", "unknown_provider"})
 """The outcomes that leave the message on the queue to come back."""
+
+MAX_VISIBILITY = timedelta(hours=12)
+"""The longest the hosted queue hides a message, counted from its receive."""
 
 
 class DeliveryProviderInterface[D](ABC):
@@ -101,6 +106,10 @@ class DeliveryOptions(OmBase):
     visibility: timedelta = timedelta(seconds=60)
     """How long a received delivery is hidden from another receive: longer
     than an apply takes, which is a read of the org and one commit."""
+    retry: timedelta = timedelta(seconds=120)
+    """The longest wait after a delivery's first kept receive, and twice the
+    shortest: four times longer on each receive after it, so a delivery
+    outlasts an outage of hours before the queue dead-letters it."""
     backoff: timedelta = timedelta(seconds=5)
     """The pause after a receive that failed, so a queue that is down is not
     asked in a tight loop."""
@@ -114,11 +123,23 @@ class DeliveryConsumer:
         tenancy: TenancyManagerInterface,
         providers: Mapping[str, DeliveryProviderInterface[Any]],
         options: DeliveryOptions,
+        jitter: Draw = random.random,
     ) -> None:
         self._queues = queues
         self._tenancy = tenancy
         self._providers = providers
         self._options = options
+        self._jitter = jitter
+        # The hosted queue counts its 12 hours from the receive, and the wait
+        # is set within the receive's visibility, so the cap leaves it out.
+        # Four times longer on each receive, half of it drawn: the shortest
+        # wait of a receive is longer than the longest of the one before.
+        self._retry = RetryPolicy(
+            base=options.retry.total_seconds(),
+            cap=(MAX_VISIBILITY - options.visibility).total_seconds(),
+            growth=4.0,
+            jitter=0.5,
+        )
         self._app = AppContext(type=AppType.WORKER, version=f"worker@{options.worker_id}")
         self._stopping = asyncio.Event()
 
@@ -155,18 +176,33 @@ class DeliveryConsumer:
         rctx = RequestContext(request_id=new_id(), app=self._app, traceparent=current_traceparent())
         token = request_id_var.set(str(rctx.request_id))
         try:
-            outcome = await self._apply(rctx, message)
-            if outcome not in KEPT:
-                await self._queues.delete(Queues.WEBHOOKS, message.receipt)
-        except Exception:
-            # A delete that failed is a failure too: the copy that comes
-            # back is a duplicate.
-            log.exception("delivery %s failed on receive %d", message.id, message.attempts)
-            outcome = "failed"
+            try:
+                outcome = await self._apply(rctx, message)
+                if outcome not in KEPT:
+                    await self._queues.delete(Queues.WEBHOOKS, message.receipt)
+            except Exception:
+                # A delete that failed is a failure too: the copy that comes
+                # back is a duplicate.
+                log.exception("delivery %s failed on receive %d", message.id, message.attempts)
+                outcome = "failed"
+            if outcome in KEPT:
+                await self._come_back_later(message)
         finally:
             request_id_var.reset(token)
         OUTCOMES.labels(subsystem="deliveries", outcome=outcome).inc()
         return outcome
+
+    async def _come_back_later(self, message: QueueMessage) -> None:
+        """Hides a kept message for longer on each receive. A change that
+        fails leaves the message to come back after the receive's
+        visibility."""
+        wait = timedelta(seconds=self._retry.wait(message.attempts, draw=self._jitter))
+        try:
+            await self._queues.change_visibility(Queues.WEBHOOKS, message.receipt, wait)
+        except Exception:
+            log.exception(
+                "delivery %s keeps its visibility of receive %d", message.id, message.attempts
+            )
 
     async def _apply(self, rctx: RequestContext, message: QueueMessage) -> str:
         try:
