@@ -2,7 +2,7 @@
 refusal into a typed error, and which call it sends again."""
 
 import json
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
 from typing import Any, cast
 from uuid import UUID, uuid4
 
@@ -12,10 +12,9 @@ import pytest
 from acme.client.client import ApiClient
 from acme.client.realtime import Channel
 from acme.client.transport import (
-    DEFAULT_BACKOFF_SECONDS,
     DEFAULT_RETRIES,
     DEFAULT_TIMEOUT_SECONDS,
-    MAX_BACKOFF_SECONDS,
+    RETRY,
     ApiError,
     may_retry,
     retry_after_seconds,
@@ -465,7 +464,7 @@ def test_which_request_may_be_sent_twice() -> None:
 
 
 def test_the_delay_grows_and_carries_jitter() -> None:
-    base = DEFAULT_BACKOFF_SECONDS
+    base = RETRY.base
     assert retry_delay_seconds(1, base, lambda: 0.0) == 0.125
     assert retry_delay_seconds(1, base, lambda: 1.0) == 0.25
     # The shortest wait of an attempt is the longest wait of the one before it.
@@ -475,7 +474,7 @@ def test_the_delay_grows_and_carries_jitter() -> None:
     spread = {retry_delay_seconds(2, base, lambda r=r: r) for r in (0.0, 0.25, 0.5, 0.75)}
     assert len(spread) == 4 and all(0.25 <= delay <= 0.5 for delay in spread)
     # The doubling stops at the cap, and the real source of randomness stays in.
-    assert retry_delay_seconds(20, base, lambda: 1.0) == MAX_BACKOFF_SECONDS
+    assert retry_delay_seconds(20, base, lambda: 1.0) == RETRY.cap == 5.0
     assert all(0.125 <= retry_delay_seconds(1, base) <= 0.25 for _ in range(50))
 
 
@@ -567,7 +566,7 @@ async def test_a_write_the_api_records_no_outcome_for_is_sent_once() -> None:
 async def test_the_count_and_the_delay_arrive_through_the_constructor() -> None:
     default = ApiClient("http://test", app="cli", app_version="v")
     assert default.retries == DEFAULT_RETRIES
-    assert default.backoff_seconds == DEFAULT_BACKOFF_SECONDS
+    assert default.backoff_seconds == RETRY.base == 0.25
     handler, seen = answering(httpx.Response(503))
     async with retrying(handler, retries=4) as client:
         with pytest.raises(ApiError):
@@ -811,17 +810,19 @@ async def test_admin_revoke_token_deletes_one_by_its_id() -> None:
     assert sent.method == "DELETE" and sent.url.path == path
 
 
-def test_the_servers_retry_after_is_read_in_whole_seconds() -> None:
+def test_the_servers_retry_after_is_read_in_seconds_or_as_a_date() -> None:
     assert retry_after_seconds("2") == 2.0
     assert retry_after_seconds(None) is None
-    assert retry_after_seconds("Wed, 21 Oct 2026 07:28:00 GMT") is None
+    now = datetime(2026, 10, 21, 7, 27, 58, tzinfo=UTC)
+    assert retry_after_seconds("Wed, 21 Oct 2026 07:28:00 GMT", now) == 2.0
+    assert retry_after_seconds("soon") is None
 
 
 def test_a_retry_waits_at_least_what_the_server_asked_up_to_the_cap() -> None:
     assert retry_wait_seconds(0.2, 1.0) == 1.0
     assert retry_wait_seconds(1.5, 1.0) == 1.5
     assert retry_wait_seconds(0.2, None) == 0.2
-    assert retry_wait_seconds(0.2, 60.0) == MAX_BACKOFF_SECONDS
+    assert retry_wait_seconds(0.2, 60.0) == RETRY.cap
 
 
 async def test_a_truncated_stream_names_its_head_on_the_error() -> None:

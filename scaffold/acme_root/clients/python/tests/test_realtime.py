@@ -18,15 +18,18 @@ from websockets.frames import Close
 from acme.client import realtime
 from acme.client.client import ApiClient
 from acme.client.realtime import (
-    BACKOFF_SECONDS,
     Channel,
     ChannelRefused,
     Connect,
     SocketLike,
     reconnect_delay_seconds,
 )
+from acme.timing import RetryPolicy
 
 ORG, USER = uuid4(), uuid4()
+NO_WAIT = RetryPolicy(base=0.0, cap=0.0)
+CURVE = (1.0, 2.0, 4.0, 8.0, 16.0, 30.0)
+"""The top of each reconnect's window, the cap held past the last."""
 
 
 def push(seq: int, kind: str = "tenancy.invitation.created") -> str:
@@ -234,7 +237,7 @@ async def test_the_first_open_hook_runs_after_the_hello_and_before_any_change() 
 async def test_a_first_open_hook_that_fails_runs_again_on_the_next_connect(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(realtime, "BACKOFF_SECONDS", (0.0,))
+    monkeypatch.setattr(realtime, "RECONNECT", NO_WAIT)
     first = FakeSocket([HELLO, SUBSCRIBED, push(1)])
     second = FakeSocket([HELLO, SUBSCRIBED, push(1)])
     calls: list[int] = []
@@ -263,7 +266,7 @@ async def test_a_pong_past_the_cursor_replays_what_no_frame_announced() -> None:
 async def test_a_dropped_socket_reconnects_and_replays_after_the_cursor(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(realtime, "BACKOFF_SECONDS", (0.0,))
+    monkeypatch.setattr(realtime, "RECONNECT", NO_WAIT)
     first = FakeSocket([HELLO, SUBSCRIBED, push(1), Close(1006, "gone")])
     second = FakeSocket([HELLO, SUBSCRIBED, push(4)])
     urls: list[str] = []
@@ -281,7 +284,7 @@ async def test_a_dropped_socket_reconnects_and_replays_after_the_cursor(
 async def test_an_api_that_is_down_while_reconnecting_is_waited_for(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(realtime, "BACKOFF_SECONDS", (0.0,))
+    monkeypatch.setattr(realtime, "RECONNECT", NO_WAIT)
     # The API is down when the channel opens: the ticket call fails at the
     # transport, then the API answers 503 while it comes up, then it is back;
     # later the socket drops and the reconnect finds it healthy.
@@ -308,7 +311,7 @@ async def test_a_ticket_refused_with_401_stops_the_channel() -> None:
 async def test_what_happened_before_the_first_push_is_replayed_on_reconnect(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(realtime, "BACKOFF_SECONDS", (0.0,))
+    monkeypatch.setattr(realtime, "RECONNECT", NO_WAIT)
     # The stream stands at 4 when the socket opens; nothing arrives before it
     # drops; two events happen meanwhile; the reconnect replays them.
     first = FakeSocket([hello_at(4), SUBSCRIBED, Close(1006, "gone")])
@@ -367,7 +370,8 @@ async def test_pings_keep_their_schedule_while_frames_flow(monkeypatch: pytest.M
 async def test_a_hello_starts_the_backoff_over(monkeypatch: pytest.MonkeyPatch) -> None:
     """A quiet listener whose socket drops after every hello is not backed
     off further each time: the hello says the server is there."""
-    monkeypatch.setattr(realtime, "BACKOFF_SECONDS", (0.0, 3600.0))
+    # A first wait of a millisecond, and an hour after it.
+    monkeypatch.setattr(realtime, "RECONNECT", RetryPolicy(base=0.001, cap=3600.0, growth=3.6e6))
     sockets: list[SocketLike] = [
         FakeSocket([hello_at(1), SUBSCRIBED, Close(1006, "gone")]),
         FakeSocket([hello_at(1), SUBSCRIBED, Close(1006, "gone")]),
@@ -405,7 +409,7 @@ async def test_a_trimmed_stream_is_read_afresh_once_and_goes_on_from_the_head() 
 async def test_a_resync_whose_read_fails_leaves_the_cursor_to_resync_again(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(realtime, "BACKOFF_SECONDS", (0.0,))
+    monkeypatch.setattr(realtime, "RECONNECT", NO_WAIT)
     first = FakeSocket([HELLO, SUBSCRIBED, push(1), push(5)])
     second = FakeSocket([hello_at(5), SUBSCRIBED, push(6)])
     asked: list[int] = []
@@ -429,23 +433,23 @@ async def test_a_resync_whose_read_fails_leaves_the_cursor_to_resync_again(
 def test_the_reconnect_delay_grows_and_carries_jitter() -> None:
     """The curve is unchanged: its values are the top of each window. Half of
     each wait is fixed, so the delay grows whatever the randomness answers."""
-    for attempt, full in enumerate(BACKOFF_SECONDS):
+    for attempt, full in enumerate(CURVE):
         assert reconnect_delay_seconds(attempt, lambda: 1.0) == full
         assert reconnect_delay_seconds(attempt, lambda: 0.0) == full / 2
-    shortest = [reconnect_delay_seconds(a, lambda: 0.0) for a in range(len(BACKOFF_SECONDS))]
-    longest = [reconnect_delay_seconds(a, lambda: 1.0) for a in range(len(BACKOFF_SECONDS))]
+    shortest = [reconnect_delay_seconds(a, lambda: 0.0) for a in range(len(CURVE))]
+    longest = [reconnect_delay_seconds(a, lambda: 1.0) for a in range(len(CURVE))]
     assert shortest == sorted(shortest) and longest == sorted(longest)
     # Where the curve doubles, an attempt's shortest wait is the longest wait
     # of the one before it, so two attempts never draw the same delay. The
     # last step is the cap, less than a doubling, so those two windows do
     # overlap, by the second between 15 and 16.
-    for a in range(1, len(BACKOFF_SECONDS)):
-        if BACKOFF_SECONDS[a] >= 2 * BACKOFF_SECONDS[a - 1]:
+    for a in range(1, len(CURVE)):
+        if CURVE[a] >= 2 * CURVE[a - 1]:
             assert shortest[a] == longest[a - 1]
         else:
-            assert (BACKOFF_SECONDS[a - 1], shortest[a], longest[a - 1]) == (16.0, 15.0, 16.0)
+            assert (CURVE[a - 1], shortest[a], longest[a - 1]) == (16.0, 15.0, 16.0)
     spread = {reconnect_delay_seconds(2, lambda r=r: r) for r in (0.0, 0.25, 0.5, 0.75)}
     assert len(spread) == 4 and all(2.0 <= delay <= 4.0 for delay in spread)
     # The last value holds past the end of the curve, jitter and all.
-    assert reconnect_delay_seconds(99, lambda: 1.0) == BACKOFF_SECONDS[-1]
+    assert reconnect_delay_seconds(99, lambda: 1.0) == CURVE[-1]
     assert all(0.5 <= reconnect_delay_seconds(0) <= 1.0 for _ in range(50))
