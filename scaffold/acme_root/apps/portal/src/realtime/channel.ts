@@ -3,7 +3,7 @@
 // tab, the stream cursor, and the notices it hands over.
 // Everything it reaches for is handed in, so the loop runs in a test over a
 // fake socket and fake timers. The provider owns one of these per session.
-import type { change_events } from "@acme/client";
+import { Retries, type change_events } from "@acme/client";
 import type { ConnectionState } from "../store/connection";
 import {
   entityOf,
@@ -23,7 +23,7 @@ import {
   truncatedHead,
   type Cursor,
 } from "./stream";
-import { backoffDelay, DEGRADED_POLL_INTERVAL_MS, HIDDEN_PAUSE_MS, PING_INTERVAL_MS, STABLE_OPEN_MS } from "./timeouts";
+import { DEGRADED_POLL_INTERVAL_MS, HIDDEN_PAUSE_MS, PING_INTERVAL_MS, RECONNECT_POLICY, STABLE_OPEN_MS } from "./timeouts";
 
 const TOPICS = ["entity_changed"];
 
@@ -97,7 +97,7 @@ export function openChannel(deps: ChannelDeps): Channel {
   let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   let stableTimer: ReturnType<typeof setTimeout> | null = null;
   let pauseTimer: ReturnType<typeof setTimeout> | null = null;
-  let attempt = 0;
+  const retries = new Retries(RECONNECT_POLICY);
   let stopped = false;
   let paused = false;
   // Moves on every pause, so a ticket request or a socket from before it
@@ -300,8 +300,8 @@ export function openChannel(deps: ChannelDeps): Channel {
   // waits longer than the last.
   const settle = () => {
     clearStableTimer();
-    if (attempt === 0 && deps.connection.getState().status === "open") return;
-    attempt = 0;
+    if (retries.failures === 0 && deps.connection.getState().status === "open") return;
+    retries.reset();
     connection.reset();
     stopPolling();
   };
@@ -312,7 +312,7 @@ export function openChannel(deps: ChannelDeps): Channel {
   // channel is degraded and polls until a socket settles.
   const scheduleReconnect = () => {
     if (stopped) return;
-    attempt += 1;
+    const delay = retries.failed();
     connection.recordFailure();
     if (deps.connection.getState().failedCycles > 1) {
       connection.setStatus("degraded");
@@ -320,14 +320,14 @@ export function openChannel(deps: ChannelDeps): Channel {
     } else {
       connection.setStatus("connecting");
     }
-    reconnectTimer = setTimeout(() => void connect(), backoffDelay(attempt));
+    reconnectTimer = setTimeout(() => void connect(), delay);
   };
 
   // The first connect says so; a reconnect keeps the status its drop set.
   const connect = async () => {
     if (stopped || paused) return;
     const began = generation;
-    if (attempt === 0) connection.setStatus("connecting");
+    if (retries.failures === 0) connection.setStatus("connecting");
     let ticket: string;
     try {
       ticket = await deps.requestTicket();
@@ -413,7 +413,7 @@ export function openChannel(deps: ChannelDeps): Channel {
     if (stopped || paused) return;
     paused = true;
     generation += 1;
-    attempt = 0;
+    retries.reset();
     quiesce();
     connection.pause();
   };

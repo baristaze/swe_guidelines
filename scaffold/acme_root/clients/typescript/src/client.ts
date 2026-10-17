@@ -6,12 +6,11 @@
 import type { LastOwnerDetail, OwnedOrgRef } from "./types/common";
 import {
   DEFAULT_RETRY_ATTEMPTS,
-  DEFAULT_RETRY_BASE_DELAY_MS,
   isRetryableStatus,
   mayRetryRequest,
+  requestRetryPolicy,
+  Retries,
   retryAfterHeaderMs,
-  retryDelayMs,
-  retryWaitMs,
 } from "./retry";
 
 /** What a `stream_truncated` refusal carries: the highest seq trimmed, and the head to go on from. */
@@ -177,7 +176,7 @@ export function createClient(options: ClientOptions): ApiClient {
   const fetchImpl = options.fetchImpl ?? fetch;
   const baseUrl = options.baseUrl.replace(/\/$/, "");
   const retryAttempts = options.retryAttempts ?? DEFAULT_RETRY_ATTEMPTS;
-  const retryBaseDelayMs = options.retryBaseDelayMs ?? DEFAULT_RETRY_BASE_DELAY_MS;
+  const retryPolicy = requestRetryPolicy(options.retryBaseDelayMs);
 
   async function attempt<T>(
     method: string,
@@ -275,14 +274,15 @@ export function createClient(options: ClientOptions): ApiClient {
     asBlob = false,
   ): Promise<T> {
     const bound = mayRetryRequest(method, requestOptions.idempotencyKey) ? retryAttempts : 0;
-    for (let retry = 0; ; retry += 1) {
+    const retries = new Retries(retryPolicy);
+    for (;;) {
       try {
         return await attempt<T>(method, path, body, requestOptions, asBlob);
       } catch (error) {
-        const spent = retry >= bound;
+        const spent = retries.failures >= bound;
         if (spent || requestOptions.signal?.aborted || !isRetryableFailure(error)) throw error;
         const serverAsked = error instanceof ApiError ? error.retryAfterMs : undefined;
-        await wait(retryWaitMs(retryDelayMs(retry + 1, retryBaseDelayMs), serverAsked), requestOptions.signal);
+        await wait(retries.failed(serverAsked), requestOptions.signal);
         // The caller gave up while this one waited; its reason is the answer.
         if (requestOptions.signal?.aborted) throw error;
       }
