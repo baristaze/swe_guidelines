@@ -45,6 +45,7 @@ PYPROJECT = "pyproject.toml"
 TABLE = "arch-check"
 ADR_DIR = "docs/adr"
 DEFAULT_SRC: tuple[str, ...] = (
+    "libs/*/src",
     "om/src",
     "infra/src",
     "integrations/src",
