@@ -47,6 +47,7 @@ from acme.om.work import WorkManagerInterface
 from acme.om.work.kinds import WorkKinds
 from acme.om.work.types.handler import WorkHandlerInterface, WorkParked, WorkRefused
 from acme.om.work.types.work_item import WorkItem
+from acme.timing import Every
 
 log = logging.getLogger(__name__)
 
@@ -192,9 +193,9 @@ class WorkerLoop:
         # Where the next pass reads the tenants with a chore due from: after
         # the last one this pass ran, or None to read from the first.
         self._chores_after: UUID | None = None
-        # When this worker last counted the system's size, on the event
-        # loop's clock; None until it has, so its first pass counts.
-        self._tallied_at: float | None = None
+        # When this worker next counts the system's size, on the event
+        # loop's clock: its first pass counts.
+        self._tally_due = Every(options.tally_interval.total_seconds())
 
     @property
     def kinds(self) -> list[str]:
@@ -465,9 +466,9 @@ class WorkerLoop:
         return since < (self._options.heartbeat_interval * 3).total_seconds()
 
     async def _heartbeat_forever(self) -> None:
-        while True:
+        # Start to start: a slow beat does not push the next one later.
+        async for _ in Every(self._options.heartbeat_interval.total_seconds()):
             await self._heartbeat_once()
-            await asyncio.sleep(self._options.heartbeat_interval.total_seconds())
 
     async def _heartbeat_once(self) -> None:
         """One beat: recorded in memory first, then published to the cache as best
@@ -507,9 +508,8 @@ class WorkerLoop:
     # Maintenance.
 
     async def _sweep_forever(self) -> None:
-        while True:
+        async for _ in Every(self._options.sweep_interval.total_seconds()):
             await self._sweep_once()
-            await asyncio.sleep(self._options.sweep_interval.total_seconds())
 
     async def _sweep_once(self) -> None:
         """First the cross-tenant steps that bound recovery: the expired
@@ -626,24 +626,21 @@ class WorkerLoop:
         )
 
     async def _tally(self) -> None:
-        """The count of the system's size, when the interval has passed
-        since this worker last made one. One that fails is logged and tried
-        again on the next pass; the tally the operator plane reads stays as
-        it was, and says how old it is."""
-        if self._tally_step is None:
+        """The count of the system's size, on the first pass at or after each
+        of its ticks, an interval apart start to start from the first pass.
+        One that fails is logged and tried again on the next pass; the tally
+        the operator plane reads stays as it was, and says how old it is."""
+        if self._tally_step is None or not self._tally_due.due():
             return
         clock = asyncio.get_running_loop().time
-        due = self._options.tally_interval.total_seconds()
-        if self._tallied_at is not None and clock() - self._tallied_at < due:
-            return
         started = clock()
         try:
             await self._tally_step()
         except Exception:
             log.exception("sweep: the tally of the system's size failed")
             return
-        self._tallied_at = clock()
-        log.info("sweep: counted the system's size in %.3fs", self._tallied_at - started)
+        self._tally_due.advance()
+        log.info("sweep: counted the system's size in %.3fs", clock() - started)
 
     async def _gauges(self) -> dict[str, int]:
         """The four numbers the queue and outbox alarms read, one read each
