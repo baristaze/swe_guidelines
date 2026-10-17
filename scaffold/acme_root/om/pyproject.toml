@@ -9,12 +9,14 @@ dependencies = [
     "sqlalchemy[asyncio]>=2.0.54",
     "asyncpg>=0.31",
     "alembic>=1.20",
+    "acme-timing",
     "acme-infra",
     "acme-integrations",
     "cryptography>=50.0",
 ]
 
 [tool.uv.sources]
+acme-timing = { workspace = true }
 acme-infra = { workspace = true }
 acme-integrations = { workspace = true }
 
