@@ -377,6 +377,19 @@ class RaisingLiveness(MissingLiveness):
         raise RuntimeError("connection refused")
 
 
+class SlowLiveness(MissingLiveness):
+    """A liveness store whose every write takes `seconds` on the loop's clock,
+    and records when each one starts."""
+
+    def __init__(self, seconds: float) -> None:
+        self.seconds = seconds
+        self.put_at: list[float] = []
+
+    async def put(self, org_id: UUID, key: str, value: bytes, ttl: timedelta) -> None:
+        self.put_at.append(asyncio.get_running_loop().time())
+        await asyncio.sleep(self.seconds)
+
+
 def start_loop(
     container: WorkerContainer,
     handler: WorkHandlerInterface,
@@ -993,6 +1006,21 @@ async def test_liveness_fails_once_the_heartbeat_stops(tmp_path: Path) -> None:
     await until(lambda: not loop.alive())
     loop.stop()
     await ended(task)
+
+
+@on_the_test_clock
+async def test_beats_fall_an_interval_apart_however_long_a_beat_takes(tmp_path: Path) -> None:
+    # A beat whose write takes 7 s of its 10 s interval: the next beat still
+    # starts 10 s after it, never 17 s, so a live worker stays as far from the
+    # bound of three intervals as its interval says.
+    container = build_container(tmp_path)
+    await sign_in(container)
+    liveness = SlowLiveness(seconds=7.0)
+    loop, task = start_loop(container, RecordingHandler(), DEFAULTS, liveness=liveness)
+    await asyncio.sleep(45.0)
+    loop.stop()
+    await task
+    assert after(liveness.put_at[0], liveness.put_at) == [0.0, 10.0, 20.0, 30.0, 40.0]
 
 
 @on_the_test_clock
