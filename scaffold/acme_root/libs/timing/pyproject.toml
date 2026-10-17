@@ -1,7 +1,7 @@
 [project]
 name = "acme-timing"
 version = "0.1.0"
-description = "The Acme retry wait: one growing, capped wait every distribution shares, and a server's Retry-After."
+description = "The Acme waits: one growing, capped retry wait, a server's Retry-After, and a loop's fixed period."
 requires-python = ">=3.14"
 # A leaf: every distribution may import it, the client included, so it
 # depends on nothing.
