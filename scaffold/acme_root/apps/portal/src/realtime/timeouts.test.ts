@@ -3,7 +3,7 @@
 // one deployment pinned fails this test.
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { backoffDelay, LOAD_BALANCER_IDLE_TIMEOUT_MS, PING_INTERVAL_MS } from "./timeouts";
+import { LOAD_BALANCER_IDLE_TIMEOUT_MS, PING_INTERVAL_MS, RECONNECT_POLICY } from "./timeouts";
 
 const PINNED_FILE = new URL("../../../../deployment/realtime-timeouts.json", import.meta.url);
 
@@ -47,23 +47,25 @@ describe("realtime timeouts", () => {
     );
   });
 
+  // The jitter is handed in, so these are the same 1s, 4s, and 30s the file
+  // pinned before it carried any.
+  const wait = (attempt: number, draw: number) => RECONNECT_POLICY.waitMs(attempt, { draw: () => draw });
+
   it("backs off exponentially with a cap, which is the top of each window", () => {
-    // The curve and the cap are unchanged; the jitter is handed in, so these
-    // are the same 1s, 4s, and 30s the file pinned before it carried any.
-    expect(backoffDelay(1, () => 1)).toBe(1_000);
-    expect(backoffDelay(3, () => 1)).toBe(4_000);
-    expect(backoffDelay(10, () => 1)).toBe(30_000);
+    expect(wait(1, 1)).toBe(1_000);
+    expect(wait(3, 1)).toBe(4_000);
+    expect(wait(10, 1)).toBe(30_000);
   });
 
   it("carries jitter, so tabs dropped together do not come back together", () => {
     // Half of each wait is jitter and half is fixed, so the shortest wait of
     // an attempt is the longest wait of the one before it and the delay grows
     // whatever the randomness answers.
-    expect(backoffDelay(1, () => 0)).toBe(500);
-    expect(backoffDelay(2, () => 0)).toBe(1_000);
-    expect(backoffDelay(3, () => 0)).toBe(2_000);
-    expect(backoffDelay(10, () => 0)).toBe(15_000);
-    const spread = new Set([0, 0.25, 0.5, 0.75].map((r) => backoffDelay(2, () => r)));
+    expect(wait(1, 0)).toBe(500);
+    expect(wait(2, 0)).toBe(1_000);
+    expect(wait(3, 0)).toBe(2_000);
+    expect(wait(10, 0)).toBe(15_000);
+    const spread = new Set([0, 0.25, 0.5, 0.75].map((r) => wait(2, r)));
     expect(spread.size).toBe(4);
     for (const delay of spread) {
       expect(delay).toBeGreaterThanOrEqual(1_000);
@@ -73,7 +75,7 @@ describe("realtime timeouts", () => {
 
   it("stays inside the window with the real source of randomness too", () => {
     for (let i = 0; i < 20; i += 1) {
-      const delay = backoffDelay(1);
+      const delay = RECONNECT_POLICY.waitMs(1);
       expect(delay).toBeGreaterThanOrEqual(500);
       expect(delay).toBeLessThanOrEqual(1_000);
     }

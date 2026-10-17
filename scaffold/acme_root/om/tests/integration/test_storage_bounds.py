@@ -17,9 +17,11 @@ from typing import Any
 from uuid import UUID
 
 import pytest
-from sqlalchemy import text
+from sqlalchemy import event, text
+from sqlalchemy.engine import Dialect
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.exc import TimeoutError as PoolTimeoutError
+from sqlalchemy.pool import ConnectionPoolEntry
 
 from acme.om.base import EMPTY_UUID, new_id
 from acme.om.change_events.storage.tables.change_events import ChangeEvents
@@ -43,13 +45,28 @@ async def tight_sessions(
     migration_settings: MigrationSettings, migrated: dict[DatabaseRole, str]
 ) -> AsyncIterator[LoginSessions]:
     """The runtime login's sessions under one connection, a short checkout
-    bound, and a short deadline."""
+    bound, and a short deadline.
+
+    A connection still opens under the settings' own checkout bound. The
+    short bound is what a case here means to exceed: the wait for a free
+    connection, or the statement. A fresh connection can take longer than it
+    to open on a loaded host, and a case would then fail on its own first
+    checkout instead of on the bound it holds."""
     pool = RolePool(size=1, checkout_timeout_seconds=0.3, statement_timeout_seconds=0.3)
     sessions, engines = login_sessions(
         migration_settings.role_urls(),
         dict.fromkeys(DatabaseRole, pool),
         system_urls=migration_settings.system_role_urls(),
     )
+    opening = migration_settings.database_checkout_timeout_seconds
+
+    def open_within_the_settings_bound(
+        dialect: Dialect, record: ConnectionPoolEntry, args: list[Any], params: dict[str, Any]
+    ) -> None:
+        params["timeout"] = opening
+
+    for engine in engines.values():
+        event.listen(engine.sync_engine, "do_connect", open_within_the_settings_bound)
     yield sessions
     for engine in engines.values():
         await engine.dispose()

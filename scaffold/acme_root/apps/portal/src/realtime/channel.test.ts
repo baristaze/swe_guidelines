@@ -7,7 +7,7 @@ import { CLOSE_UNAUTHENTICATED, openChannel, SOCKET_OPEN, type Channel, type Soc
 import type { Envelope, ChangeEventEnvelope } from "./envelopes";
 import { watchPage, type PageLike } from "./pageVisibility";
 import { changeEventEnvelope } from "./stream";
-import { backoffDelay, DEGRADED_POLL_INTERVAL_MS, HIDDEN_PAUSE_MS, PING_INTERVAL_MS, STABLE_OPEN_MS } from "./timeouts";
+import { DEGRADED_POLL_INTERVAL_MS, HIDDEN_PAUSE_MS, PING_INTERVAL_MS, RECONNECT_POLICY, STABLE_OPEN_MS } from "./timeouts";
 
 class FakeSocket implements SocketLike {
   readyState = 0;
@@ -129,7 +129,7 @@ describe("reconnect backoff", () => {
   /** Fixes the jitter at `draw` for this test; answers the wait of each attempt. */
   function jitterAt(draw: number): (attempt: number) => number {
     vi.spyOn(Math, "random").mockReturnValue(draw);
-    return (attempt) => backoffDelay(attempt, () => draw);
+    return (attempt) => RECONNECT_POLICY.waitMs(attempt, { draw: () => draw });
   }
 
   it("signs out on a 4401 close and never reconnects", async () => {
