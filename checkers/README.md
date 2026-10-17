@@ -81,8 +81,8 @@ scaffolded project names only its package:
 ```toml
 [tool.arch-check]
 package = "acme"
-# src = ["om/src", "infra/src", "integrations/src", "gateway/src", "services/*/src",
-#        "workers/*/src", "apps/*/src", "clients/*/src", "ops/src"]
+# src = ["libs/*/src", "om/src", "infra/src", "integrations/src", "gateway/src",
+#        "services/*/src", "workers/*/src", "apps/*/src", "clients/*/src", "ops/src"]
 # exclude = ["**/migrations/**"]
 # local = ["tools/arch_check"]
 ```
