@@ -40,6 +40,7 @@ from acme.services.api.realtime.send_buffer import SendBuffer
 from acme.services.api.realtime.timeouts import IDLE_TIMEOUT_SECONDS
 from acme.services.api.services.realtime import RIGHTS_CHANGED, RealtimeServiceInterface
 from acme.services.api.types.change_events import IssuedTicketView
+from acme.timing import Every
 
 log = logging.getLogger(__name__)
 router = APIRouter(prefix="/realtime", tags=["change_events"])
@@ -169,15 +170,12 @@ async def recheck_until_refused(
     interval at most. A check that cannot be made raises, and the socket
     closes as on any failure of its handler: a database out of reach is no
     proof that the credential still holds."""
-    wait = phase(interval)
-    while True:
-        await asyncio.sleep(wait)
+    async for _ in Every(interval, phase=phase(interval)):
         reason = await realtime.recheck(principal)
         if reason is not None:
             log.info("socket of user %s closed on its recheck: %s", principal.ctx.user_id, reason)
             end(reason)
             return
-        wait = interval
 
 
 @router.websocket("")

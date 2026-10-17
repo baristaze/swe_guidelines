@@ -31,7 +31,7 @@ from acme.client.envelopes import (
 )
 from acme.client.stream import Cursor, Gap, Next, Seen, behind, is_last_page, place
 from acme.client.transport import LIMIT_MAX, ApiError, trust_store
-from acme.timing import Draw, RetryPolicy
+from acme.timing import Draw, Every, RetryPolicy
 
 log = logging.getLogger(__name__)
 
@@ -201,9 +201,9 @@ class Channel:
         The server counts only what the client sends as a sign of life, so a
         socket busy with pushes, or one mid-replay, would idle out without
         it. A send that fails is left to the reader, which sees the same
-        closed socket."""
-        while True:
-            await asyncio.sleep(interval)
+        closed socket. The first ping goes one interval in, and the pings
+        fall an interval apart start to start, however long a send takes."""
+        async for _ in Every(interval, phase=interval):
             try:
                 await socket.send(PING_COMMAND)
             except OSError, websockets.exceptions.WebSocketException:
