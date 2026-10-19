@@ -1,9 +1,9 @@
 # The Python tools make and CI run, at the versions they run. The
 # Makefile and the workflows read each pin from this file, and
 # dependabot proposes the next release of each. Nothing installs it.
-uv==0.12.23
+uv==0.13.0
 pytest==9.1.1
 pyyaml==6.0.3
 jsonschema==4.26.0
-ruff==0.16.10
+ruff==0.17.0
 mypy==2.4.0
