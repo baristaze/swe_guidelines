@@ -5,60 +5,55 @@ included, stay on its GitHub release. Releases are tagged
 `vMAJOR.MINOR.PATCH`; see `CONTRIBUTING.md` for what bumps which
 number.
 
-## 0.62.0 (2026-10-17)
+## 0.63.0 (2026-10-21)
 
-Retry waits and periodic loops come from one shared package, and a few
-retry paths are fixed. Minor: the monorepo names a `libs/` folder for
-pure libraries every package may import.
-
-### Added
-
-- `libs/timing` (`acme-timing`), a package with no dependency that
-  every package may import: `RetryPolicy`, a growing, capped wait with a
-  share of it drawn at random and a server's Retry-After as its floor,
-  which never overflows; `Retries`, one loop's count of failures over a
-  policy; `retry_after`, which reads seconds or an HTTP date; and
-  `Every`, work on a fixed grid, start to start, that skips the ticks a
-  long run missed. The folder tree and DEL-07 name `libs/`, and
-  arch-check's default sources read it.
-- The TypeScript client exports `RetryPolicy` and `Retries`, the twins
-  of the Python ones.
-- `scripts/release_before.sh` takes `--running-stack`, for a stack
-  another process started: it starts nothing and refuses a database URL
-  that names the stack's own database.
+A person signs in through the identity provider alone, on every stack,
+and nothing keeps a password. Minor, with two reversals: the guideline's
+password sign-in, and the scaffold's sign-in by an address alone.
 
 ### Changed
 
-- The outbox, work, and sign-in waits, the Python client's retry and
-  reconnect waits, and the topics listener take their waits from
-  `RetryPolicy`, each the wait it gave before, but the topics listener's
-  reconnect, which now doubles from 0.5 s to 30 s.
-- The Python client reads a Retry-After given as an HTTP date.
-- The TypeScript client's retry loop and the portal's reconnect wait by
-  `RetryPolicy` and `Retries`.
-- The worker's heartbeat, sweep, and tally, the Python client's
-  keepalive, and the API socket's recheck of a viewer's access run on
-  `Every`, start to start, each with its period.
-- `arch-upgrade-scaffold` and `docs-compact` state the cases their
-  steps left to a guess on a first move across a fold, and for a copy
-  that takes its render's folded chains; the merge table moves to
-  `references/merge.md`.
-- CI's release-before step reads the queue chain's head by its parents.
+- The guideline keeps no password. A person signs in through the
+  identity provider, by an email code, an OAuth provider (Google,
+  Microsoft, Apple, GitHub), or the org's single sign-on. A first
+  sign-in is the sign-up, an address the provider has not verified is
+  refused, and recovery is the provider's email code. Every stack signs
+  in through the provider, a local one through its development
+  environment. The per-address delay in storage guards the second
+  factor. CTX-28, CTX-36, CTX-38, NET-09, NET-11, NET-35, OPS-07,
+  OPS-20, DEL-05, and DEL-34 follow (reversal: open sign-up, the
+  operator's password reset, and the password sign-in leave the
+  guideline).
+- The scaffold signs in only through WorkOS, the local stack through
+  the Staging application, and answers `503` there without its key. The
+  WorkOS runbook names the methods: email code, Google, Microsoft,
+  Apple, GitHub, and single sign-on, with passwords off.
+- Every test suite signs in through the identity twin, with one helper
+  per suite. Each id the twin mints carries a mark of its instance, so
+  a fresh twin over a shared database matches no earlier person.
+- `make seed` makes each seeded person a plus-address of one base
+  address, `SEED_EMAIL` in `.env` (git's `user.email` when unset):
+  `<local>+acme+local+ajax@<domain>` owns Ajax, the second org's owner
+  is an admin of Ajax and a local operator, and `+personal` is a member.
+  It refuses a base on a domain that takes no mail. A copy's CI
+  telemetry job sets its own base. An existing checkout sets
+  `SEED_EMAIL` in `.env` and runs `make reset`.
+- An unmatched portal path shows a "Page not found" page, and a sign-in
+  the provider cannot serve says so.
 
-### Fixed
+### Added
 
-- The sign-in delay caps its doublings, so a long run of wrong codes no
-  longer raises.
-- A failed delivery comes back later on each receive: 60 to 120 s
-  first, four times longer after each, half of it random, capped below
-  the queue's 12 hours.
-- The storage bound tests open their connections under the settings'
-  checkout bound, so a slow connect no longer fails them.
-- `test_openapi_documents.py` admits a document of enums alone.
+- `acme-api mint-local-login --email ...`, the local mint: it prints a
+  sign-in token for each address, from the local database, and refuses
+  at boot outside `local` and `test` (`ACME_LOCAL_LOGIN_MINT`). It has
+  no route and no page. The traffic generator mints a run's people with
+  it in one process. ADR 0104.
 
 ### Removed
 
-- `MAX_DOUBLINGS` in the outbox, work, and tenancy rules, and the
-  Python client's backoff constants: `RetryPolicy` holds the bound.
-- The TypeScript client's `retryDelayMs` and `retryWaitMs`, and the
-  portal's `backoffDelay`: `RetryPolicy.waitMs` takes their place.
+- The sign-in by an address alone: `POST /v1/auth/dev-sign-in`,
+  `ACME_DEV_SIGN_IN_ENABLED`, the portal's `/login/dev`, and
+  `--dev-email` on `acme login`, `acme-ops token`, and `acme-ops work
+  requeue` (reversal: ADR 0029 is removed). `SEED_MEMBER_EMAIL` and
+  `SEED_ADMIN_EMAIL` are no longer set on their own: the seed derives
+  them from the base.
