@@ -98,3 +98,43 @@ def test_dev_script_takes_the_exported_value_over_dotenv(tmp_path: Path) -> None
     lines = seen.read_text().splitlines()
     assert lines
     assert set(lines) == {f"{EXPORTED}|dotenv@example.test"}
+
+
+SEEDED = (
+    "seeded:\n"
+    "\t@printf '%s\\n' '$(SEED_OWNER_EMAIL)' '$(SEED_ADMIN_EMAIL)' '$(SEED_MEMBER_EMAIL)'\n"
+)
+
+
+def _seeded(checkout: Path, env: dict[str, str], *arguments: str) -> list[str]:
+    (checkout / "seeded.mk").write_text(SEEDED)
+    done = subprocess.run(
+        ["make", "-s", "-f", "Makefile", "-f", "seeded.mk", "seeded", *arguments],
+        cwd=checkout,
+        env=env,
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    return done.stdout.splitlines()
+
+
+def test_each_seeded_person_is_a_plus_address_of_the_base(tmp_path: Path) -> None:
+    """Every seeded person has an address WorkOS can send a code to, all in
+    the mailbox of the one base address: the owner of the first org, the
+    owner of the second (an admin of the first), and the member."""
+    checkout = _checkout(tmp_path)
+    assert _seeded(checkout, _shell(), "SEED_EMAIL=dev@example.com") == [
+        "dev+acme+local+ajax@example.com",
+        "dev+acme+local+fabrikam@example.com",
+        "dev+acme+local+personal@example.com",
+    ]
+
+
+def test_with_no_base_the_seed_takes_gits_address(tmp_path: Path) -> None:
+    checkout = _checkout(tmp_path)
+    (checkout / ".env").write_text("")
+    git_config = tmp_path / "gitconfig"
+    git_config.write_text("[user]\n\temail = me@example.org\n")
+    shell = _shell(GIT_CONFIG_GLOBAL=str(git_config), GIT_CONFIG_NOSYSTEM="1")
+    assert _seeded(checkout, shell)[0] == "me+acme+local+ajax@example.org"

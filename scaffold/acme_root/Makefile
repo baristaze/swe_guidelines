@@ -20,6 +20,16 @@ $(foreach name,$(EXPORTED),$(eval EXPORTED.$(name) := $$(value $(name))))
 include $(ENV_FILES)
 $(foreach name,$(EXPORTED),$(eval $(name) := $$(EXPORTED.$(name))))
 COMPOSE_ENV := $(foreach file,$(ENV_FILES),--env-file $(file))
+# The seeded people's addresses, each a plus-address of one base address
+# WorkOS can send a code to: SEED_EMAIL from .env or the shell, else git's
+# user.email (.env.example lists who is who).
+ifndef SEED_EMAIL
+SEED_EMAIL := $(shell git config user.email 2>/dev/null)
+endif
+seed_address = $(firstword $(subst @, ,$(SEED_EMAIL)))+acme+local+$(1)@$(word 2,$(subst @, ,$(SEED_EMAIL)))
+SEED_OWNER_EMAIL := $(call seed_address,$(SEED_SLUG))
+SEED_ADMIN_EMAIL := $(call seed_address,$(SEED_SECOND_SLUG))
+SEED_MEMBER_EMAIL := $(call seed_address,personal)
 # The one switch between hosts: on Linux, host.docker.internal is the bridge
 # gateway, which a process on 127.0.0.1 never answers, so the devx collector
 # that scrapes the host processes joins the host's network there.
@@ -125,8 +135,8 @@ reset: ## Wipe every container and all local data, then `make up`
 .PHONY: urls
 urls: ## Print the local URLs and the seeded sign-ins
 	@echo ""
-	@echo "  Portal         http://localhost:$(ACME_PORTAL_PORT)   /login through WorkOS; /login/dev as $(SEED_EMAIL) or $(SEED_MEMBER_EMAIL)"
-	@echo "                 two orgs: $(SEED_ADMIN_EMAIL) at /login/dev   owner of $(SEED_SECOND_ORG), admin of $(SEED_ORG)"
+	@echo "  Portal         http://localhost:$(ACME_PORTAL_PORT)   /login through WorkOS, as $(SEED_OWNER_EMAIL) or $(SEED_MEMBER_EMAIL)"
+	@echo "                 two orgs and the operator plane: $(SEED_ADMIN_EMAIL)   owner of $(SEED_SECOND_ORG), admin of $(SEED_ORG)"
 	@echo "  API docs       http://127.0.0.1:$(ACME_PORT)/docs"
 	@echo "  pgweb          http://localhost:$(ACME_PGWEB_PORT)   core; a bookmark per role in its connect dialog"
 	@echo "  Valkey Admin   http://localhost:$(ACME_VALKEY_ADMIN_PORT)"
@@ -200,9 +210,13 @@ migrate: ## Make the database logins, then apply every role's migration chain to
 	uv run --package acme-om python -m acme.om.storage.migrate upgrade --all --local
 
 # The SEED_* values come from .env (or .env.example); override any of them
-# there or on the command line, e.g. `make seed SEED_EMAIL=me@example.test`.
-# The admin owns the second org and joins the first as an admin: one person
-# with two memberships, each under a different role.
+# there or on the command line, e.g. `make seed SEED_EMAIL=you@example.com`.
+# Each person's address is a plus-address of SEED_EMAIL (see the top of this
+# file), so WorkOS delivers their code to its owner's mailbox.
+# The admin owns the second org, joins the first as an admin, and is an
+# operator on the local allowlist: one person with two memberships, each
+# under a different role, who signs in to the operator plane as everyone
+# does, through WorkOS, the device flow, and the second factor.
 # Then the two local operators, the system's own identities of
 # acme.ops.environments.LOCAL_OPERATORS: a read operator and the
 # provisioner, which writes. The read operator's token goes into the
@@ -213,9 +227,10 @@ migrate: ## Make the database logins, then apply every role's migration chain to
 # since each lasts an hour.
 .PHONY: seed
 seed: ## Create two local orgs with an owner, a member, and an admin of both to sign in as, and the two local operators; a no-op once they exist
+	@case "$(SEED_EMAIL)" in ?*@?*) ;; *) echo "make seed: no base address; set SEED_EMAIL in .env to your own, or git's user.email" >&2; exit 2 ;; esac
 	uv run --package acme-api acme-api bootstrap --if-absent \
 		--org "$(SEED_ORG)" --slug "$(SEED_SLUG)" --name "$(SEED_NAME)" \
-		--email "$(SEED_EMAIL)"
+		--email "$(SEED_OWNER_EMAIL)"
 	uv run --package acme-api acme-api add-member --slug "$(SEED_SLUG)" \
 		--name "$(SEED_MEMBER_NAME)" --email "$(SEED_MEMBER_EMAIL)"
 	uv run --package acme-api acme-api bootstrap --if-absent \
@@ -223,6 +238,8 @@ seed: ## Create two local orgs with an owner, a member, and an admin of both to 
 		--email "$(SEED_ADMIN_EMAIL)"
 	uv run --package acme-api acme-api add-member --slug "$(SEED_SLUG)" --role admin \
 		--name "$(SEED_ADMIN_NAME)" --email "$(SEED_ADMIN_EMAIL)"
+	uv run --package acme-api acme-api grant-operator --permission write \
+		--email "$(SEED_ADMIN_EMAIL)"
 	uv run --package acme-api acme-api grant-operator --permission read \
 		--email operator@platform.acme.invalid
 	uv run --package acme-api acme-api grant-operator --permission write \
