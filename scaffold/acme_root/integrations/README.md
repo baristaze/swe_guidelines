@@ -29,7 +29,7 @@ says how a sign-in becomes a person.
 |----------------|------------|
 | `identity/workos.py` | WorkOS AuthKit through the pinned `workos` SDK. At start it proves the key is the application's, and refuses to boot on any other ([ADR 0033](../docs/adr/0033-the-workos-key-is-the-applications.md)). |
 | `identity/twin.py` | The provider in memory, for tests and CI. It signs its own deliveries with the provider's scheme. Every id it mints starts with `twin_`. |
-| `identity/absent.py` | The provider of a process with none configured, a local stack with no key among them: every call is `ProviderUnavailable`, which the API answers as `503`. The local sign-in by address still works. |
+| `identity/absent.py` | The provider of a process with none configured, a local stack with no key among them: every call is `ProviderUnavailable`, which the API answers as `503`, and nobody signs in. |
 
 ## The webhook check
 

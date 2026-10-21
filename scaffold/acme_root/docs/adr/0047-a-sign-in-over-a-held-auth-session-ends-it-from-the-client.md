@@ -10,9 +10,8 @@ holds two live auth sessions (the guideline, Stages, and One Tenant at a
 Time).
 
 A sign-in does not present the auth session. A tab still signed in can open
-`/login` or `/login/dev` and sign in again, as another person or into
-another org, and `acme login` can run over an auth session the file still
-keeps. That exchange presents the sign-in credential (`lgn_`). A client
+`/login` and sign in again, as another person or into another org, and
+`acme login` can run over an auth session the file still keeps. That exchange presents the sign-in credential (`lgn_`). A client
 that takes up the new auth session and drops the old token leaves the old
 auth session live on the server until it expires, with its socket open.
 

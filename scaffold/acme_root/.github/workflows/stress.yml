@@ -3,9 +3,9 @@
 # money, so it happens because someone asked for it.
 #
 # A run is refused today, before it provisions anything: the traffic
-# generator signs its people in by the local sign-in, which a deployed
-# environment does not serve (ADR 0029), and a person there signs in
-# through WorkOS in a browser. The workflow stays as the shape of a run.
+# generator signs its people in by the local mint, which only a local
+# database has (ADR 0104), and a person there signs in through WorkOS in
+# a browser. The workflow stays as the shape of a run.
 #
 # There is no environment input. Staging is the only environment this
 # workflow knows, so production cannot be picked from a dropdown by mistake

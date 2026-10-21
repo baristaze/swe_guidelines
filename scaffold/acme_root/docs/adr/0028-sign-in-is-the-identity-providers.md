@@ -9,18 +9,18 @@ password through a verified mailbox, a sign-up that proves the address
 is the person's, a delay against guessing, and single sign-on for a team
 whose company runs its own identity provider.
 
-The Gateway makes an external identity provider one more credential
-kind. The provider proves who the person is and hands the tenancy
-manager an issuer and a subject. The manager finds or creates the
+An external identity provider is how a person signs in: there is no
+password and no other door. The provider proves who the person is and
+hands the tenancy manager an issuer and a subject. The manager finds or creates the
 identity keyed on that pair, through `read_identity_by_issuer_subject`.
 The provider is an integration: one interface, a real client, and a
 twin (Twins for External Services).
 
 ## Decision
 
-**WorkOS AuthKit is the sign-in.** An email code or link, Google,
-GitHub, and an org's single sign-on all come through AuthKit's hosted
-page. The portal's `/login` starts it through `POST /v1/auth/sign-in`,
+**WorkOS AuthKit is the sign-in.** An email code, Google, Microsoft,
+Apple, GitHub, and an org's single sign-on all come through AuthKit's
+hosted page, with its Password method off. The portal's `/login` starts it through `POST /v1/auth/sign-in`,
 and the portal's `/auth/callback` hands the code to
 `POST /v1/auth/callback`, where the API exchanges it server-side. The
 tab that started the sign-in keeps a random `state` in its session
@@ -42,7 +42,10 @@ made, with the person's personal org, in one commit. A first sign-in is
 the sign-up. An address the provider has not verified is refused.
 
 **Acme keeps no password.** There is no password form, no sign-up form,
-and no reset. The per-address delay guards the second factor.
+and no reset, and WorkOS keeps none either: a person proves an address
+by a code sent to it, or another provider proves it. No route signs a
+person in by address, on any stack. The per-address delay guards the
+second factor.
 
 **The operator's second factor is a step of its own.**
 `POST /v1/auth/second-factor` takes a sign-in and a TOTP code, and
@@ -96,8 +99,9 @@ AuthKit's hosted page cannot be twinned faithfully, the exception the
 guideline names for a shared development tenant. So the local stack
 signs in through the staging environment's application, whose redirects
 include the local portal. Without its key the local stack still runs,
-and the local sign-in
-([ADR 0029](0029-a-local-sign-in-by-address.md)) is its door.
+and nobody signs in. Its seeded people have addresses WorkOS can send a
+code to, and the machines that drive it take a login from the local
+mint ([ADR 0104](0104-the-local-stack-signs-in-through-the-provider-and-machines-through-a-local-mint.md)).
 
 **One reconcile command holds WorkOS's configuration.**
 `acme-ops workos-bootstrap` reads `deployment/workos/environments.yaml`
@@ -117,5 +121,5 @@ Account recovery is WorkOS's: its email code proves the address, so an
 operator resets nothing.
 
 A traffic run against a deployed environment needs people it can sign
-in without a browser. The local sign-in is refused there, so such a run
+in without a browser. The local mint is refused there, so such a run
 refuses to start and says why.

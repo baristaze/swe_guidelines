@@ -19,9 +19,9 @@ read.
 - `identity provider: none (ACME_WORKOS_API_KEY is not set)` and
   `every sign-in through one answers 503`: nobody can sign in through
   WorkOS. `acme/<env>/workos_api_key` is `off`, or the API's tasks
-  started before it was written. A laptop that sets no
-  `ACME_WORKOS_API_KEY` signs people in by the local sign-in on
-  purpose, so this line is not a finding locally.
+  started before it was written. A laptop may set no
+  `ACME_WORKOS_API_KEY`, and then signs nobody in on purpose, so this
+  line is not a finding locally.
 - `ACME_WORKOS_API_KEY is not the API key of the WorkOS application`,
   and the API's tasks stop at start: the secret holds a key WorkOS
   refuses as the Acme App's (the environment's API key, another
@@ -53,8 +53,8 @@ A finding about a secret names the secret and
 ## Report
 
 Locally, where a laptop sets no `ACME_WORKOS_API_KEY` by design, the
-line is `- Identity provider: local sign-in`, and it names no secret
-and no runbook. Otherwise:
+line is `- Identity provider: no key, nobody signs in`, and it names no
+secret and no runbook. Otherwise:
 
 ```markdown
 - Identity provider: sign-in <configured | off: acme/<env>/workos_api_key | not in the window>, webhook <configured | off: acme/<env>/workos_webhook_secret | signature refused: acme/<env>/workos_webhook_secret | not in the window>

@@ -63,9 +63,11 @@ revoked without the other.
 5. **Set the Sessions tab by hand**: maximum session length 30 days,
    inactivity timeout 14 days, the same bounds as Acme's own auth session
    ([ADR 0063](../../adr/0063-auth-sessions-last-weeks.md)).
-6. **Turn on the sign-in methods**: email, Google, and GitHub, with
-   passwords off. Production needs OAuth credentials of its own at Google
-   and GitHub.
+6. **Set the sign-in methods by hand**, the same in every environment:
+   email code, Google, Microsoft, Apple, and GitHub on, single sign-on
+   per org, and Password off. Nothing in Acme takes a password, so a
+   Password method left on is a door nobody guards. Production needs
+   OAuth credentials of its own at Google, Microsoft, Apple, and GitHub.
 7. **Add the webhook endpoint** (below). Until it exists and is
    enabled, the bootstrap names it as a dashboard step and fails.
 
@@ -136,10 +138,18 @@ read -rs ACME_WORKOS_API_KEY && export ACME_WORKOS_API_KEY
 make up
 ```
 
-Without a key the stack still runs: a sign-in through WorkOS answers
-`503`, and the local sign-in by address (`/login/dev`) works. The tests
-and CI run the twin (`ACME_IDENTITY_PROVIDER=twin`), which signs its own
-webhook deliveries and needs no secret. A key is never committed.
+A local person signs in as anyone does, with the same methods, and an
+admin reaches the operator plane through the device flow and the second
+factor. The seeded people are plus-addresses of your own `SEED_EMAIL`,
+so each code arrives in your mailbox (`make urls` lists them). Without a
+key the stack still runs and nobody signs in: a sign-in through WorkOS
+answers `503`. No route signs anyone in by address. The machines that
+drive the local stack take a login from the local mint, `acme-api
+mint-local-login`, which refuses any environment but `local` and `test`
+([ADR 0104](../../adr/0104-the-local-stack-signs-in-through-the-provider-and-machines-through-a-local-mint.md)).
+The tests and CI run the twin (`ACME_IDENTITY_PROVIDER=twin`), which
+issues the codes, signs its own webhook deliveries, and needs no secret.
+A key is never committed.
 
 ## Rotation
 

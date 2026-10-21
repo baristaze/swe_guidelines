@@ -15,7 +15,7 @@ credential of theirs.
 Every other stage above the request stage comes from a credential its
 caller presents. An integration presents the provider's signature,
 which proves the delivery and not the person. And an address alone
-proves nobody: the seeding, the operator plane, and the local sign-in
+proves nobody: the seeding, the operator plane, and the local mint
 each make a person from an address someone typed.
 
 ## Decision
@@ -62,9 +62,8 @@ one read from a stored row or one from a request's body.
   their authority at the moment the delivery arrives, and a member who
   has left or been removed stops acting at once.
 - A member the seeding or an operator added cannot be acted for until
-  they sign in through the provider once. A person who signs in locally
-  by address alone stays unproven; a local run proves one through the
-  provider's twin.
+  they sign in through the provider once. A person the local mint signed
+  in stays unproven; a test proves one through the provider's twin.
 - The address decides who the person is, as it does at a sign-in: when
   an address moves to another person at the provider, their first
   sign-in links the identity to them, and the integration follows it.

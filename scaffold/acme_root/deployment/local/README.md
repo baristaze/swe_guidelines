@@ -28,7 +28,7 @@ knob names its port as a number, so it changes with the port
 
 | Service | Knob, default | Inside the network | Sign-in |
 |---------|---------------|--------------------|---------|
-| portal | `ACME_PORTAL_PORT`, 55173 | `portal:8080` | `/login/dev` by address after `make seed`; `/login` through WorkOS once `ACME_WORKOS_API_KEY` is set |
+| portal | `ACME_PORTAL_PORT`, 55173 | `portal:8080` | `/login` through WorkOS once `ACME_WORKOS_API_KEY` is set, as a seeded person after `make seed` |
 | api (`/docs`, `/metrics`, `/healthz`) | `ACME_PORT`, 8000 | `api:8000` | |
 | postgres-core | `ACME_POSTGRES_CORE_PORT`, 55432 | `postgres-core:5432` | database `acme`; the logins are below |
 | postgres-activity | `ACME_POSTGRES_ACTIVITY_PORT`, 55433 | `postgres-activity:5432` | as above |
@@ -84,7 +84,7 @@ hold for all of them. The init script runs on an empty data directory only.
 | Backing services plus dashboards | `make devx-up` |
 | Backing services plus app containers | `make stack-up` |
 | Apply new migrations | `make migrate` |
-| Seed again, or other people | `make seed SEED_EMAIL=me@example.test`, or the `SEED_*` knobs in `.env` |
+| Seed again, or other people | `make seed SEED_EMAIL=you@example.com`, or the `SEED_*` knobs in `.env` |
 
 For one service at a time, name both files, both env files, and the
 profile:

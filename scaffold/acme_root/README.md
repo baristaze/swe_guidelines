@@ -20,9 +20,10 @@ make reset    # wipe the data and the containers, then `make up`
 make urls     # print the URLs and the sign-ins again
 ```
 
-`make up` ends by printing every local URL and the seeded sign-ins,
-and `make urls` prints them again. The portal's `/login/dev` signs in
-a seeded person by address alone; `/login` goes through WorkOS once
+`make up` ends by printing every local URL and the seeded people, and
+`make urls` prints them again. Each seeded person is a plus-address of
+your `SEED_EMAIL` (set it in `.env`; git's `user.email` otherwise), and
+signs in at `/login` through WorkOS, as anyone does, once
 `ACME_WORKOS_API_KEY` is set. [The local stack](deployment/local/README.md#ports)
 has every port, each a knob in `.env.example`: set it in `.env` when a
 port is taken.

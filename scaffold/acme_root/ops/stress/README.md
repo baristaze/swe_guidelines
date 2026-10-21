@@ -6,8 +6,9 @@ client does and reads the signals back when it ends.
 
 ## The session
 
-Each person signs in once per run, by the local sign-in, and out once at
-the end. A session opens the realtime channel, reads `/v1/me`, lists the
+Each person signs in once per run, by the local mint (one `acme-api
+mint-local-login` for all of them, on the local database), and out once
+at the end. A session opens the realtime channel, reads `/v1/me`, lists the
 members, writes the person's display name, creates an API key and revokes
 it, reads the change events, and waits to see its own change on the socket. A
 person thinks between steps.

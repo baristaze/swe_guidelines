@@ -18,8 +18,7 @@ mint one.
 
 The CLI signs in as a person and follows the person's rules instead of
 the key's. It holds one auth session, in one org. `acme login` signs the
-person in through the identity provider's device flow, or locally with
-`--dev-email` ([ADR 0029](0029-a-local-sign-in-by-address.md)). It
+person in through the identity provider's device flow, on every stack. It
 exchanges the sign-in for an auth session in one org and keeps it in
 `$ACME_HOME/auth_session.json` (`~/.config/acme` by default).
 

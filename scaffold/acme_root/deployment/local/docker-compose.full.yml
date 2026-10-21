@@ -52,9 +52,9 @@ services:
       # Sign-in through the Acme App, the WorkOS staging environment's
       # application, whose redirects include this stack's portal. The key and
       # the webhook secret are that application's own, from the shell or
-      # .env, never written here. Without the key, WorkOS answers 503 and the
-      # local sign-in by address still works; with a key of another
-      # application, the API refuses to start.
+      # .env, never written here. Without the key, WorkOS answers 503 and
+      # nobody signs in; with a key of another application, the API refuses
+      # to start.
       ACME_IDENTITY_PROVIDER: workos
       ACME_WORKOS_CLIENT_ID: ${ACME_WORKOS_CLIENT_ID:-client_STAGING_PLACEHOLDER}
       ACME_WORKOS_API_KEY: ${ACME_WORKOS_API_KEY:-}
@@ -63,7 +63,6 @@ services:
       # its port, or the Vite dev server's.
       ACME_SIGN_IN_REDIRECT_URIS: '["http://localhost:${ACME_PORTAL_PORT:-55173}/auth/callback","http://localhost:5173/auth/callback"]'
       ACME_SIGN_OUT_RETURN_URIS: '["http://localhost:${ACME_PORTAL_PORT:-55173}/signed-out","http://localhost:5173/signed-out"]'
-      ACME_DEV_SIGN_IN_ENABLED: "true"
     ports:
       - "127.0.0.1:${ACME_PORT:-8000}:8000"
     depends_on: &on-the-stack

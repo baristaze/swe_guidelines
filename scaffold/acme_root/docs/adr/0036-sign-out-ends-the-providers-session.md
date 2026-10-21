@@ -42,11 +42,11 @@ the one claim it needs and nothing else, so it does not check the
 signature. The id is not a secret, and it leaves the server only inside
 the logout address the browser follows.
 
-**The device sign-in and the local sign-in sign out of Acme alone.**
+**The device sign-in and the local mint sign out of Acme alone.**
 The browser that confirms a device code may be another machine's, and
 a terminal has no browser to send to a logout. So a device sign-in
 keeps no AuthKit session, and `acme logout` ends Acme's auth session only.
-The local sign-in has no provider.
+A login the local mint made has no provider ([ADR 0104](0104-the-local-stack-signs-in-through-the-provider-and-machines-through-a-local-mint.md)).
 
 ## Consequences
 
