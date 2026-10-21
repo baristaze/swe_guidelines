@@ -1,8 +1,8 @@
 # WorkOS: the identity provider
 
-People sign in through WorkOS AuthKit: an email code or link, Google,
-GitHub, or their team's own single sign-on. WorkOS proves who the person
-is; the identity, its orgs, and its auth sessions are Acme's own
+People sign in through WorkOS AuthKit: an email code, Google, Microsoft,
+Apple, GitHub, or their team's own single sign-on. WorkOS proves who the
+person is; the identity, its orgs, and its auth sessions are Acme's own
 ([ADR 0028](../../adr/0028-sign-in-is-the-identity-providers.md)). This
 page says what lives where, what is set by hand once, what a command
 checks, and what to do when it breaks.

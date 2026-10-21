@@ -1,10 +1,10 @@
 """The identity provider's real client: WorkOS, through its Python SDK.
 
-AuthKit is the hosted sign-in (an email code or link, Google, GitHub, and an
-organization's single sign-on); the code it hands back is exchanged here,
-server-side. This process holds one credential: the Acme App application's
-API key, made on that application's own API keys tab. It is the client
-secret of the exchange, which is a confidential client's, and it
+AuthKit is the hosted sign-in (an email code, Google, Microsoft, Apple,
+GitHub, and an organization's single sign-on); the code it hands back is
+exchanged here, server-side. This process holds one credential: the Acme App
+application's API key, made on that application's own API keys tab. It is
+the client secret of the exchange, which is a confidential client's, and it
 authenticates every management call (organizations, invitations, the admin
 portal), so an invitation carries the application's context. The key of
 another application, or of the environment, is not it: WorkOS answers the

@@ -11,8 +11,8 @@ are settings (CTX-36), and the guideline names no value for either.
 NIST SP 800-63B puts a sign-in with one factor at AAL1, the lowest
 assurance level. There it asks for re-authentication about once every 30
 days of an extended auth session, and sets no idle timeout. A tenant auth session
-here rests on one factor: an email code or link, Google, GitHub, or the
-team's own single sign-on.
+here rests on one factor: an email code, Google, Microsoft, Apple,
+GitHub, or the team's own single sign-on.
 
 ## Decision
 
