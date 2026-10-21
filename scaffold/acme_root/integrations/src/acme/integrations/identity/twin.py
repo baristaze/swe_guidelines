@@ -1,5 +1,5 @@
-"""The identity provider's twin: deterministic, in-process, and for a local
-environment only (the configured root refuses it anywhere else). It speaks
+"""The identity provider's twin: in-process, the same answer to the same
+call, and for a local environment only (the configured root refuses it anywhere else). It speaks
 the interface's shapes and keeps its own users, organizations, codes,
 device sign-ins, and invitations in memory.
 
@@ -9,12 +9,15 @@ coming back with a code, `confirm_device` for a person confirming a device
 sign-in, `accept_invitation` for a person following an invitation's link,
 and `verify_domain` for an organization's admin proving a domain. Every id
 it mints says it is the twin's (`twin_`), so a row that holds one names its
-provenance."""
+provenance, and carries a mark of the instance that minted it: two twins
+over one database, two test runs or a process started again, never hand
+two people the same subject."""
 
 import base64
 import hashlib
 import itertools
 import json
+import secrets
 from datetime import UTC, datetime, timedelta
 from typing import Literal
 from urllib.parse import urlencode
@@ -58,6 +61,7 @@ def s256(verifier: str) -> str:
 class IdentityProviderTwinImpl(IdentityProviderInterface):
     def __init__(self, clock: type[datetime] = datetime) -> None:
         self._counter = itertools.count(1)
+        self._mark = secrets.token_hex(4)
         self._clock = clock
         self.users: dict[str, ProvidedUser] = {}
         self.organizations: dict[str, ProvidedOrganization] = {}
@@ -76,7 +80,7 @@ class IdentityProviderTwinImpl(IdentityProviderInterface):
         for a test of the retry."""
 
     def _id(self, kind: str) -> str:
-        return f"twin_{kind}_{next(self._counter):06d}"
+        return f"twin_{kind}_{self._mark}_{next(self._counter):06d}"
 
     def _now(self) -> datetime:
         return self._clock.now(UTC)
