@@ -48,7 +48,6 @@ KEYS = (
     "ACME_AWS_REGION",
     "SEED_SLUG",
     "SEED_EMAIL",
-    "SEED_MEMBER_EMAIL",
 )
 """Every key an environment file may set; anything else in it is ignored."""
 
@@ -79,11 +78,20 @@ CLOUD_REGION = "us-west-2"
 """The region deployment/cloud/environments.json names; a test holds them equal."""
 
 
+def seed_address(base: str, tag: str) -> str:
+    """A seeded person's address, as `make seed` derives it from the base,
+    SEED_EMAIL: `<local>+acme+local+<tag>@<domain>`, which WorkOS delivers to
+    the base's mailbox. The owner's tag is the org's slug, the member's
+    `personal`."""
+    local, _, domain = base.partition("@")
+    return f"{local}+acme+local+{tag}@{domain}"
+
+
 @dataclass(frozen=True)
 class SeedPeople:
     """The org and the two people `make seed` creates, which a local run with
-    `--orgs 0` drives instead of provisioning tenants of its own. They sign
-    in by the local sign-in, by address alone."""
+    `--orgs 0` drives instead of provisioning tenants of its own. A run
+    signs them in by the local mint."""
 
     slug: str
     owner_email: str
@@ -236,11 +244,13 @@ def environment_of(
         return value if value else default
 
     seed: SeedPeople | None = None
-    if values.get("SEED_EMAIL") or local:
+    base = get("SEED_EMAIL") or ""
+    if "@" in base:
+        slug = get("SEED_SLUG", "ajax") or "ajax"
         seed = SeedPeople(
-            slug=get("SEED_SLUG", "ajax") or "ajax",
-            owner_email=get("SEED_EMAIL", "owner@example.test") or "owner@example.test",
-            member_email=get("SEED_MEMBER_EMAIL", "bob@example.test") or "bob@example.test",
+            slug=slug,
+            owner_email=seed_address(base, slug),
+            member_email=seed_address(base, "personal"),
         )
     api_url = get("ACME_API_URL", LOCAL_API_URL if local else None)
     if not api_url:
@@ -304,8 +314,25 @@ def load_environment(
     for key in KEYS:
         if env.get(key):
             values[key] = env[key]
+    if local and not values.get("SEED_EMAIL"):
+        # As `make seed` does: the base is git's address when .env names none.
+        values["SEED_EMAIL"] = git_user_email(root or repository_root())
     token = provisioner_token_in(provisioner_file_of(file), env) if provisioner else None
     return environment_of(name, {k: v for k, v in values.items() if k in KEYS}, token)
+
+
+def git_user_email(checkout: Path | None) -> str:
+    """git's `user.email` in the checkout, or empty when git has none."""
+    try:
+        return subprocess.run(
+            ["git", "config", "user.email"],
+            cwd=checkout,
+            capture_output=True,
+            text=True,
+            check=False,
+        ).stdout.strip()
+    except OSError:
+        return ""
 
 
 def local_addresses(env: Environment) -> dict[str, str]:

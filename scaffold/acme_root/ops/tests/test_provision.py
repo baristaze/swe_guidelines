@@ -56,8 +56,11 @@ class OperatorPlane:
     def __call__(self, request: httpx.Request) -> httpx.Response:
         self.requests.append(request)
         method, path = request.method, request.url.path
-        if path == "/v1/auth/dev-sign-in":
-            return httpx.Response(404, json={"error": {"code": "not_found", "message": "no"}})
+        if path == "/v1/auth/memberships":
+            # A login the plane does not know: the run's sign-ins are refused.
+            return httpx.Response(
+                401, json={"error": {"code": "not_authenticated", "message": "no"}}
+            )
         if request.headers.get("authorization") != f"Bearer {self.token}":
             return httpx.Response(
                 401, json={"error": {"code": "not_authenticated", "message": "no"}}
@@ -144,20 +147,21 @@ async def test_a_run_removes_its_tenants_when_it_ends_even_when_no_one_signed_in
         duration_seconds=0.3,
         transport=httpx.MockTransport(plane),
         pause_after_failure=0.1,
+        mint=lambda emails: [f"lgn_{n}" for n, _ in enumerate(emails)],
     )
     assert result.report.sessions.started == 0
-    assert any("was refused at sign-in: 404" in note for note in result.report.notes)
+    assert any("was refused at sign-in: 401" in note for note in result.report.notes)
     assert sorted(plane.deleted) == sorted(plane.orgs)
     assert "removed 2 of the run's 2 org(s)" in result.report.notes
 
 
 async def test_a_run_on_a_deployed_environment_is_refused_before_it_provisions() -> None:
     """A deployed environment signs people in through the identity provider,
-    and the run's people sign in by the local sign-in, which it does not
-    serve: nothing is created, and the refusal says why."""
+    and the run's people sign in by the local mint, which only a local
+    database has: nothing is created, and the refusal says why."""
     plane = OperatorPlane()
     for orgs in (0, 2):
-        with pytest.raises(DeployedSignIn, match="only the local stack serves"):
+        with pytest.raises(DeployedSignIn, match="by the local mint, on the local database"):
             await run_traffic(
                 environment(), PROFILE, orgs=orgs, transport=httpx.MockTransport(plane)
             )

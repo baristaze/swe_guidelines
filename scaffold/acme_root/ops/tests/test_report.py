@@ -55,7 +55,7 @@ def test_the_sign_ins_are_totalled_beside_the_working_requests() -> None:
     """A target's p95 is the working requests', so the report splits them:
     the sign-in and the sign-out of a run are few and not what it measures."""
     samples = [
-        Sample("/v1/auth/dev-sign-in", "POST", 200, 900.0),
+        Sample("/v1/auth/memberships", "GET", 200, 900.0),
         Sample("/v1/auth/sessions", "POST", 200, 40.0),
         Sample("/v1/users", "GET", 200, 10.0),
         Sample("/v1/api-keys", "POST", 201, 20.0),

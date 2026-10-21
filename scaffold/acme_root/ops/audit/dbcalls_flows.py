@@ -19,7 +19,7 @@ from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "services" / "api" / "tests"))
 
-from api_support import add_member, seed_request
+from api_support import add_member, callback_body, seed_request
 
 from acme.om.base import new_id
 from acme.om.context import AppContext, AppType, RequestContext, Role
@@ -40,7 +40,9 @@ def worker_request() -> RequestContext:
 
 
 async def login(w: Any, email: str) -> str:
-    r = await w.client.post("/v1/auth/dev-sign-in", json={"email": email})
+    """A person signs in through the identity provider's twin and the
+    callback route, as the portal does."""
+    r = await w.client.post("/v1/auth/callback", json=callback_body(w.container, email))
     assert r.status_code == 200, r.text
     return r.json()["token"]
 
@@ -101,10 +103,10 @@ async def sign_in(w: Any) -> None:
     ):
         await w.http(
             area,
-            f"POST /v1/auth/dev-sign-in ({label})",
+            f"POST /v1/auth/callback ({label})",
             "POST",
-            "/v1/auth/dev-sign-in",
-            json={"email": email},
+            "/v1/auth/callback",
+            json=callback_body(w.container, email),
         )
     token = await login(w, st["owner_email"])
     await w.http(

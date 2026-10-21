@@ -399,24 +399,19 @@ async def mint_operator_token(
     env: Environment,
     transport: httpx.AsyncBaseTransport | None = None,
     *,
-    dev_email: str | None = None,
     sleep: Callable[[float], Awaitable[object]] | None = None,
     permission: str = "read",
 ) -> MintedToken:
     """A person's operator token, `read` unless asked otherwise. The person
-    signs in through the identity provider (or, on the local stack with
-    `--dev-email`, by the local sign-in), then the TOTP code is asked for
-    here, in the person's own terminal, and goes only to the second-factor
+    signs in through the identity provider on every stack, the local one
+    too, then the TOTP code is asked for here, in the person's own terminal, and goes only to the second-factor
     route, which ends the sign-in it verified. The mint ends the verified
     one in turn, so what is left is the token. A mint the plane refuses ends
     nothing, so that sign-in is signed out here before the refusal goes on."""
     async with ApiClient(
         env.api_url, app=OPERATOR_APP, app_version=app_version(), transport=transport
     ) as client:
-        if dev_email is not None:
-            login_token = (await client.dev_sign_in(dev_email)).token
-        else:
-            login_token = await device_sign_in(client, sleep=sleep or asyncio.sleep)
+        login_token = await device_sign_in(client, sleep=sleep or asyncio.sleep)
         code = (await asyncio.to_thread(getpass.getpass, "TOTP code: ")).strip()
         try:
             verified = await client.verify_second_factor(login_token, code)
@@ -449,19 +444,13 @@ def not_enrolled(error: ApiError) -> bool:
     )
 
 
-def in_a_persons_terminal(args: argparse.Namespace, env: Environment) -> bool:
-    """Whether a sign-in may start here: a terminal a person holds, and the
-    local sign-in only where the local stack serves it. Says why not."""
+def in_a_persons_terminal() -> bool:
+    """Whether a sign-in may start here: a terminal a person holds. Says why
+    not."""
     if not sys.stdin.isatty():
         print(
             "an operator's sign-in happens in a person's own terminal: the person signs "
             "in and gives the TOTP code there, and no agent holds either",
-            file=sys.stderr,
-        )
-        return False
-    if getattr(args, "dev_email", None) is not None and env.name != "local":
-        print(
-            "--dev-email signs in by the local sign-in, which only --env local serves",
             file=sys.stderr,
         )
         return False
@@ -533,33 +522,28 @@ async def token_command(
     """Writes an operator token into its file without printing it: the
     operator's, minted after a sign-in with the second factor, into the
     environment's file, or the provisioner's, copied from the secret the grant
-    job wrote, into the provisioner's file beside it. On the local
-    stack either is the local operator's that `make seed` made, minted by the
-    grant command, unless `--dev-email` names a person who signs in. With
-    `--list` or `--revoke`, reads or ends the operator's own tokens instead."""
+    job wrote, into the provisioner's file beside it. On the local stack
+    either is the local operator's that `make seed` made, minted by the grant
+    command. With `--list` or `--revoke`, reads or ends the operator's own
+    tokens instead."""
     if getattr(args, "list", False) or getattr(args, "revoke", None) is not None:
         return await own_tokens_command(args, transport)
     env = load_environment(args.env)
     file = ops_file(env.name)
-    if env.name not in CLOUD_ENVIRONMENTS and getattr(args, "dev_email", None) is None:
+    if env.name not in CLOUD_ENVIRONMENTS:
         file = write_local_token(env, args.identity, mint_local_token(args.identity))
         print(f"wrote {TOKEN_KEYS[args.identity]} into {file}; it expires within the hour")
         return OK
     if args.identity == "operator":
-        if not in_a_persons_terminal(args, env):
+        if not in_a_persons_terminal():
             return USAGE
-        minted = await mint_operator_token(
-            env, transport, dev_email=getattr(args, "dev_email", None)
-        )
+        minted = await mint_operator_token(env, transport)
         write_value(file, "ACME_OPERATOR_TOKEN", minted.token)
         print(
             f"wrote ACME_OPERATOR_TOKEN into {file}; it expires within the hour. "
             f"Its id is {minted.id}: `--revoke {minted.id}` ends it sooner"
         )
         return OK
-    if env.name not in CLOUD_ENVIRONMENTS:
-        print("--dev-email signs in a person, who mints an operator's token", file=sys.stderr)
-        return USAGE
     file = token_file(env.name, "provisioner")
     write_value(file, PROVISIONER_KEY, await read_provisioner_token(env, args.profile))
     print(f"wrote {PROVISIONER_KEY} into {file}; it expires within the hour")
@@ -626,12 +610,10 @@ async def work_requeue_command(
     cannot run this. The `write` token is signed out once the call is made,
     so it ends then and not an hour later."""
     env = load_environment(args.env)
-    if not in_a_persons_terminal(args, env):
+    if not in_a_persons_terminal():
         return USAGE
     try:
-        minted = await mint_operator_token(
-            env, transport, dev_email=getattr(args, "dev_email", None), permission="write"
-        )
+        minted = await mint_operator_token(env, transport, permission="write")
     except ApiError as error:
         if error.status == 403:
             print(
@@ -734,11 +716,6 @@ def build_parser() -> argparse.ArgumentParser:
         help="provisioner only: the person's own AWS profile that reads the secret; "
         "the environment's sign-in profile when absent (production's needs acme-prod-power)",
     )
-    p_token.add_argument(
-        "--dev-email",
-        help="operator on --env local only: sign in by the local sign-in with this address, "
-        "instead of minting the local read operator's token",
-    )
 
     p_work = sub.add_parser("work", help="the work queue, as an operator moves it")
     work_sub = p_work.add_subparsers(dest="work_command", required=True)
@@ -750,11 +727,6 @@ def build_parser() -> argparse.ArgumentParser:
     p_requeue.add_argument("--env", required=True)
     p_requeue.add_argument("--org", required=True, type=UUID, help="the org the item is in")
     p_requeue.add_argument("item", type=UUID, help="the failed item's id")
-    p_requeue.add_argument(
-        "--dev-email",
-        help="on --env local only: sign in by the local sign-in with this address "
-        "instead of through the identity provider",
-    )
 
     p_workos = sub.add_parser(
         "workos-bootstrap",

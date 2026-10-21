@@ -55,11 +55,27 @@ def test_local_with_no_file_reads_the_checkout_and_the_fixed_addresses(tmp_path:
     (root / ".env").write_text("SEED_EMAIL=me@example.test\n")
     env = load_environment("local", home=tmp_path, root=root, process_env={})
     assert env.api_url == LOCAL_API_URL
-    assert env.seed is not None and env.seed.owner_email == "me@example.test"
+    # The seeded people are plus-addresses of the base, as `make seed` makes them.
+    assert env.seed is not None and env.seed.owner_email == "me+acme+local+ajax@example.test"
+    assert env.seed.member_email == "me+acme+local+personal@example.test"
     assert env.seed.slug == "ajax"
     assert env.error_tracker_token == LOCAL_ERROR_TRACKER_TOKEN
     assert env.prometheus_url and env.jaeger_url and not env.is_cloud
     assert env.operator_token is None and env.provisioner_token is None
+
+
+def test_with_no_base_the_seeded_people_are_gits_address(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root = tmp_path / "repo"
+    root.mkdir()
+    (root / ".env.example").write_text("SEED_SLUG=ajax\n")
+    git_config = tmp_path / "gitconfig"
+    git_config.write_text("[user]\n\temail = me@example.org\n")
+    monkeypatch.setenv("GIT_CONFIG_GLOBAL", str(git_config))
+    monkeypatch.setenv("GIT_CONFIG_NOSYSTEM", "1")
+    env = load_environment("local", home=tmp_path, root=root, process_env={})
+    assert env.seed is not None and env.seed.owner_email == "me+acme+local+ajax@example.org"
 
 
 def test_a_cloud_environment_needs_its_file(tmp_path: Path) -> None:
@@ -280,9 +296,11 @@ def test_the_seed_grants_the_local_operators_this_package_mints_for() -> None:
     two: one list, read here from the recipe."""
     recipe = (REPOSITORY / "Makefile").read_text().split("\nseed:", 1)[1].split("\n\n", 1)[0]
     granted = re.findall(r"--permission (read|write) \\\n\s+--email (\S+)", recipe)
-    assert granted == [
+    assert [grant for grant in granted if grant[1].endswith("@platform.acme.invalid")] == [
         ("read", LOCAL_OPERATORS["operator"]),
         ("write", LOCAL_OPERATORS["provisioner"]),
     ]
+    # The seeded admin is a person on the allowlist too, who signs in to it.
+    assert ("write", '"$(SEED_ADMIN_EMAIL)"') in granted
     assert "acme-ops token --env local --identity operator" in recipe
     assert "acme-ops token --env local --identity provisioner" in recipe

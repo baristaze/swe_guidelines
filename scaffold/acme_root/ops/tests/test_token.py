@@ -73,9 +73,6 @@ class SignInRoutes:
                 self.pending -= 1
                 return httpx.Response(400, json={"error": {"code": code, "message": "wait"}})
             return httpx.Response(200, json={"token": "lgn_first", **LOGIN})
-        if path == "/v1/auth/dev-sign-in":
-            assert body["email"] == "ops@example.test"
-            return httpx.Response(200, json={"token": "lgn_first", **LOGIN})
         if path == "/v1/auth/second-factor":
             assert request.headers["authorization"] == "Bearer lgn_first"
             assert body == {"totp_code": "123456"}
@@ -149,7 +146,7 @@ async def test_the_operator_token_is_minted_in_a_terminal_and_written_unprinted(
     monkeypatch.setattr(ops_main.asyncio, "sleep", no_wait)
     routes = SignInRoutes(pending=1)
     code = await token_command(
-        argparse.Namespace(env="staging", identity="operator", profile=None, dev_email=None),
+        argparse.Namespace(env="staging", identity="operator", profile=None),
         transport=httpx.MockTransport(routes),
     )
     assert code == 0
@@ -181,45 +178,12 @@ async def test_an_operator_who_has_not_enrolled_is_told_to_enrol(
     routes = SignInRoutes(pending=0, enrolled=False)
     with pytest.raises(ValueError, match=r"enrol first .*The second factor"):
         await token_command(
-            argparse.Namespace(env="staging", identity="operator", profile=None, dev_email=None),
+            argparse.Namespace(env="staging", identity="operator", profile=None),
             transport=httpx.MockTransport(routes),
         )
     assert routes.signed_out == ["lgn_first"]
     assert "/v1/admin/me/tokens" not in routes.paths
     assert file.read_text() == before
-
-
-async def test_the_local_stack_signs_the_operator_in_by_address(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    file = env_file(tmp_path, "local")
-    monkeypatch.setenv("HOME", str(tmp_path))
-    monkeypatch.setattr("sys.stdin", Terminal())
-    monkeypatch.setattr(ops_main.getpass, "getpass", lambda prompt: "123456")
-    routes = SignInRoutes()
-    code = await token_command(
-        argparse.Namespace(
-            env="local", identity="operator", profile=None, dev_email="ops@example.test"
-        ),
-        transport=httpx.MockTransport(routes),
-    )
-    assert code == 0
-    assert routes.paths[0] == "/v1/auth/dev-sign-in"
-    assert "ACME_OPERATOR_TOKEN=opt_minted\n" in file.read_text()
-
-
-async def test_the_local_sign_in_is_refused_for_a_deployed_environment(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    env_file(tmp_path, "staging")
-    monkeypatch.setenv("HOME", str(tmp_path))
-    monkeypatch.setattr("sys.stdin", Terminal())
-    code = await token_command(
-        argparse.Namespace(
-            env="staging", identity="operator", profile=None, dev_email="ops@example.test"
-        )
-    )
-    assert code == 2
 
 
 async def test_the_operator_token_is_never_minted_without_a_terminal(
@@ -245,7 +209,7 @@ class GrantCommand:
         self.calls.append(argv)
         holder = argv[argv.index("--mint-token") + 1]
         out = f"opr_{holder}_minted\n" if self.returncode == 0 else ""
-        err = "WARNING the local sign-in by address alone is on\n"
+        err = "WARNING no identity provider: every sign-in through one answers 503\n"
         if self.returncode:
             err += "acme.om.exceptions.NotAnOperator: no operator holds that email\n"
         return subprocess.CompletedProcess(argv, self.returncode, out, err)
@@ -262,9 +226,7 @@ async def test_the_local_operators_tokens_are_minted_into_a_new_owner_only_file(
     grant = GrantCommand()
     monkeypatch.setattr(ops_main.subprocess, "run", grant)
     for identity in ("operator", "provisioner"):
-        code = await token_command(
-            argparse.Namespace(env="local", identity=identity, profile=None, dev_email=None)
-        )
+        code = await token_command(argparse.Namespace(env="local", identity=identity, profile=None))
         assert code == 0
     assert [call[call.index("--email") + 1] for call in grant.calls] == [
         LOCAL_OPERATORS["operator"],
@@ -290,9 +252,7 @@ async def test_the_local_operators_tokens_are_minted_into_a_new_owner_only_file(
     assert "opr_" not in captured.out + captured.err
     # A fresh token replaces its line and leaves every other one as it was.
     file.write_text(file.read_text() + "# mine\n")
-    code = await token_command(
-        argparse.Namespace(env="local", identity="operator", profile=None, dev_email=None)
-    )
+    code = await token_command(argparse.Namespace(env="local", identity="operator", profile=None))
     assert code == 0
     assert file.read_text().endswith("# mine\n")
     assert file.read_text().count("ACME_OPERATOR_TOKEN=") == 1
@@ -304,24 +264,9 @@ async def test_a_local_operator_the_seed_did_not_make_names_the_seed(
     monkeypatch.setenv("HOME", str(tmp_path))
     monkeypatch.setattr(ops_main.subprocess, "run", GrantCommand(returncode=1))
     with pytest.raises(ValueError, match="make seed") as refused:
-        await token_command(
-            argparse.Namespace(env="local", identity="provisioner", profile=None, dev_email=None)
-        )
+        await token_command(argparse.Namespace(env="local", identity="provisioner", profile=None))
     assert "no operator holds that email" in str(refused.value)
     assert not (tmp_path / ".config" / "acme" / "ops" / "local.env").exists()
-
-
-async def test_a_person_signs_in_for_the_operators_token_and_never_the_provisioners(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    env_file(tmp_path, "local")
-    monkeypatch.setenv("HOME", str(tmp_path))
-    code = await token_command(
-        argparse.Namespace(
-            env="local", identity="provisioner", profile=None, dev_email="ops@example.test"
-        )
-    )
-    assert code == 2
 
 
 async def test_the_provisioners_token_is_copied_into_its_own_file_and_never_printed(
@@ -384,7 +329,11 @@ ORG, ITEM = UUID(int=1), UUID(int=2)
 
 
 def requeue_args(env: str = "local") -> argparse.Namespace:
-    return argparse.Namespace(env=env, org=ORG, item=ITEM, dev_email="ops@example.test")
+    return argparse.Namespace(env=env, org=ORG, item=ITEM)
+
+
+async def no_wait(seconds: float) -> None:
+    return None
 
 
 async def test_a_requeue_mints_a_write_token_for_itself_and_keeps_it_nowhere(
@@ -395,6 +344,7 @@ async def test_a_requeue_mints_a_write_token_for_itself_and_keeps_it_nowhere(
     monkeypatch.setenv("HOME", str(tmp_path))
     monkeypatch.setattr("sys.stdin", Terminal())
     monkeypatch.setattr(ops_main.getpass, "getpass", lambda prompt: "123456")
+    monkeypatch.setattr(ops_main.asyncio, "sleep", no_wait)
     routes = RequeueRoutes(
         200,
         {
@@ -427,6 +377,7 @@ async def test_a_requeue_the_plane_refuses_says_why_and_exits_one(
     monkeypatch.setenv("HOME", str(tmp_path))
     monkeypatch.setattr("sys.stdin", Terminal())
     monkeypatch.setattr(ops_main.getpass, "getpass", lambda prompt: "123456")
+    monkeypatch.setattr(ops_main.asyncio, "sleep", no_wait)
     refusal: dict[str, object] = {
         "error": {"code": "work_not_failed", "message": "work item is queued, not failed"}
     }
@@ -446,6 +397,7 @@ async def test_a_mint_the_plane_refuses_signs_the_sign_in_out(
     monkeypatch.setenv("HOME", str(tmp_path))
     monkeypatch.setattr("sys.stdin", Terminal())
     monkeypatch.setattr(ops_main.getpass, "getpass", lambda prompt: "123456")
+    monkeypatch.setattr(ops_main.asyncio, "sleep", no_wait)
     routes = RequeueRoutes(200, {})
     routes.mint_status = 403
     code = await work_requeue_command(requeue_args(), transport=httpx.MockTransport(routes))
@@ -567,8 +519,6 @@ async def test_a_requeue_never_runs_without_a_terminal(
     monkeypatch.setenv("HOME", str(tmp_path))
     monkeypatch.setattr("sys.stdin", io.StringIO())
     assert await work_requeue_command(requeue_args("staging")) == 2
-    monkeypatch.setattr("sys.stdin", Terminal())
-    assert await work_requeue_command(requeue_args("staging")) == 2, "no local sign-in there"
 
 
 def test_the_requeue_takes_the_org_and_the_item_by_id() -> None:

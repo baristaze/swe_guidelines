@@ -387,7 +387,6 @@ async def world(name: str) -> AsyncIterator[World]:
         {
             **common,
             "totp_encryption_key": "YWNtZS10ZXN0cy10b3RwLWtleS10aGlydHktdHdvISE=",
-            "dev_sign_in_enabled": True,
             "sentry_dsn": None,
             "otel_endpoint": None,
         }

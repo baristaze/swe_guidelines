@@ -170,7 +170,7 @@ def test_the_target_judges_the_working_requests_and_not_the_sign_ins() -> None:
     the verdict instead of mixing them into the number the target holds."""
     scenario = load_scenario(HERE / "smoke.yaml")  # target: p95 500 ms
     samples = [Sample("/v1/users", "GET", 200, 10.0) for _ in range(100)]
-    samples += [Sample("/v1/auth/dev-sign-in", "POST", 200, 2500.0) for _ in range(4)]
+    samples += [Sample("/v1/auth/memberships", "GET", 200, 2500.0) for _ in range(4)]
     report = Report.of(
         samples,
         environment="local",

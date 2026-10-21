@@ -2,20 +2,18 @@
 never a manager: a session is what a person does in the portal, and a run is
 many sessions at once, for a bounded time, at a profile.
 
-A person signs in once, at the start of the run: the local sign-in, by
-address alone, then the exchange for a session token in the org. Every
-session that person drives reuses that token, and the sign-out comes once,
-at the end. The API counts every sign-in against a per-address rate limit,
-and a run signs all its people in from one address; a session that signed in
-for itself would measure that limit instead of the application. One sign-in
-per person leaves little room for a refusal, so a sign-in the rate limit
-turns away waits the window out and asks again, a bounded number of times,
-and a run that still signs nobody in fails and says why.
+A person signs in once, at the start of the run. The run's people have no
+browser or mailbox, so their logins come from the local mint
+(`acme-api mint-local-login`), one process for all of them on the local
+database, and each is exchanged for a session token in the person's org.
+Every session that person drives reuses that token, and the sign-out comes
+once, at the end. A run that signs nobody in fails and says why.
 
-The local sign-in is the local stack's alone: a deployed environment signs
-people in through the identity provider, in a browser, and answers the
-local sign-in with 404. So a run against a deployed environment is refused
-before it provisions anything.
+The local mint is the local stack's alone: it is a command and never a
+route, and it refuses any environment but `local` and `test`. A deployed
+environment signs people in through the identity provider, in a browser.
+So a run against a deployed environment is refused before it provisions
+anything.
 
 A session: open the socket, read the person (`GET /v1/me`), list the
 members, write the person's display name (`PATCH /v1/me`), create an API key
@@ -40,6 +38,7 @@ import asyncio
 import logging
 import random
 import re
+import subprocess
 import time
 from collections.abc import AsyncIterator, Callable
 from dataclasses import dataclass, field
@@ -55,8 +54,13 @@ from acme.client.client import ApiClient
 from acme.client.envelopes import EntityChanged
 from acme.client.realtime import Channel, Connect, State
 from acme.client.transport import REQUEST_ID_HEADER, ApiError, trust_store
-from acme.client.types.tenancy import ApiKeyView, IssuedApiKeyView, UserView
-from acme.ops.environments import Environment
+from acme.client.types.tenancy import (
+    ApiKeyView,
+    IssuedApiKeyView,
+    MembershipChoicePageView,
+    UserView,
+)
+from acme.ops.environments import Environment, repository_root
 from acme.ops.profiles import Profile
 from acme.ops.report import Report, Sample, Sessions
 
@@ -81,21 +85,12 @@ FAILED_SESSION_PAUSE_SECONDS = 5.0
 """A person whose session failed does not start another at once. Without the
 pause a refusal is a tight loop of sessions, which is a flood and not
 traffic."""
-LOGIN_WINDOW_SECONDS = 60.0
-"""The login limiter's window, a minute, and so how long a sign-in refused
-with a 429 waits before it asks again when the answer names no `Retry-After`.
-Waiting the whole window is the one wait that is certain to clear it."""
-LOGIN_WAIT_CAP_SECONDS = 120.0
-"""However long an answer asks a sign-in to wait, no single wait is longer.
-Past this the environment is closed to the run, and hanging is worse than
-failing."""
-MAX_LOGIN_WAITS = 2
-"""How many times one run waits out a closed login window. Two covers the
-window the step before the run filled; a run that needs more is not waiting
-out a window, it is waiting on an environment that will not have it."""
+MINT_TIMEOUT_SECONDS = 120.0
+"""The longest the local mint may take to sign a run's people in: one
+process, which boots once and writes a login per person."""
 NO_ONE_SIGNED_IN = (
-    "no one signed in, so the run drove no session; the likeliest cause is the "
-    "per-address rate limit on POST /v1/auth/dev-sign-in, and every refusal is named above"
+    "no one signed in, so the run drove no session; every refusal, the local "
+    "mint's among them, is named above"
 )
 """What a run that signed nobody in says, in its notes and on stderr. It is
 the one outcome where the report is empty for a reason worth naming."""
@@ -400,13 +395,44 @@ def seat_order(people: list[Person]) -> list[Person]:
 
 @dataclass(frozen=True)
 class SignIns:
-    """What a run's sign-ins came to: the seats, a note per refusal and per
-    wait, and how long the run spent waiting out a closed login window. The
-    wait is reported because it is time the run was not driving traffic."""
+    """What a run's sign-ins came to: the seats, and a note per refusal."""
 
     seats: list[Seat]
     notes: list[str]
-    waited_seconds: float = 0.0
+
+
+Mint = Callable[[list[str]], list[str]]
+"""The local mint as the run calls it: the people's addresses in, their
+logins out, in the same order. Injected by tests."""
+
+
+def mint_logins(emails: list[str]) -> list[str]:
+    """The local mint's logins for a run's people, in their order: one
+    `acme-api mint-local-login` process for all of them, on the local
+    database. The tokens are captured here and never echoed; a refusal is a
+    ValueError that names the mint's last line on stderr."""
+    root = repository_root()
+    if root is None:
+        raise ValueError("run this from the acme checkout; the local mint is a command of acme-api")
+    command = ["uv", "run", "--package", "acme-api", "acme-api", "mint-local-login"]
+    for email in emails:
+        command += ["--email", email]
+    try:
+        answer = subprocess.run(
+            command,
+            cwd=root,
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=MINT_TIMEOUT_SECONDS,
+        )
+    except subprocess.TimeoutExpired:
+        raise ValueError(f"no answer in {MINT_TIMEOUT_SECONDS:.0f} s") from None
+    tokens = [line for line in answer.stdout.splitlines() if line.startswith("lgn_")]
+    if answer.returncode != 0 or len(tokens) != len(emails):
+        said = (answer.stderr.strip().splitlines() or ["no answer"])[-1]
+        raise ValueError(said)
+    return tokens
 
 
 async def sign_in(
@@ -415,68 +441,44 @@ async def sign_in(
     *,
     transport: httpx.AsyncBaseTransport,
     samples: list[Sample],
-    wait: Callable[[float], Any] = asyncio.sleep,
-    window_seconds: float = LOGIN_WINDOW_SECONDS,
-    max_waits: int = MAX_LOGIN_WAITS,
+    mint: Mint = mint_logins,
 ) -> SignIns:
-    """Signs each person in once, one after another: a login, then the
-    exchange for a session token in their org. The requests are the run's
-    like any other and land in `samples`.
-
-    A person the API refuses is named in a note and left out. A 429 is the
-    one refusal the run does not take as final: the address's login window is
-    closed, and a window opens again on its own. The run waits it out and
-    asks for the same person again, for as long as the answer's `Retry-After`
-    asks and otherwise the whole window, at most `max_waits` times in a run.
-    After the last wait a 429 stands like any other refusal and stops the
-    sign-ins there, since asking again would only add to the count that
-    closed the window. `wait` is the pause, injected by tests."""
+    """Signs each person in once: the local mint makes every person's login
+    in one process, and each login is exchanged for a session token in the
+    person's org, which the places the login lists name. The requests are
+    the run's like any other and land in `samples`. A person the API refuses
+    is named in a note and left out; a mint that refuses signs nobody in, and
+    the note says why."""
+    if not people:
+        return SignIns([], [])
+    try:
+        tokens = await asyncio.to_thread(mint, [person.email for person in people])
+    except ValueError as refused:
+        return SignIns([], [f"the local mint signed nobody in: {refused}"])
     recording = RecordingTransport(transport, also=samples)
     seats: list[Seat] = []
     notes: list[str] = []
-    waits_left = max_waits
-    waited = 0.0
     async with ApiClient(
         env.api_url, app=SESSION_APP, app_version=app_version(), transport=recording
     ) as client:
-        queue = list(people)
-        while queue:
-            person = queue[0]
+        for person, login in zip(people, tokens, strict=True):
             try:
-                login = await client.dev_sign_in(person.email)
-                choices = [m for m in login.memberships if m.org.slug == person.org_slug]
+                places = MembershipChoicePageView.model_validate(
+                    await client.request("GET", "/v1/auth/memberships", token=login)
+                )
+                choices = [m for m in places.items if m.org.slug == person.org_slug]
                 if not choices:
                     notes.append(f"{person.email} is not a member of {person.org_slug}")
-                    queue.pop(0)
                     continue
-                session = await client.exchange_auth_session(login.token, choices[0].org.id)
+                session = await client.exchange_auth_session(login, choices[0].org.id)
             except ApiError as error:
-                if error.status == 429 and waits_left > 0:
-                    waits_left -= 1
-                    pause = min(error.retry_after or window_seconds, LOGIN_WAIT_CAP_SECONDS)
-                    notes.append(
-                        f"{person.email} was refused at sign-in: 429 {error.code}; "
-                        f"the run waited {pause:.0f} s for the login window and asked again"
-                    )
-                    waited += pause
-                    await wait(pause)
-                    continue
                 notes.append(f"{person.email} was refused at sign-in: {error.status} {error.code}")
-                if error.status == 429:
-                    notes.append(
-                        f"the address's login window is still closed after {max_waits} wait(s); "
-                        "no one else signed in"
-                    )
-                    break
-                queue.pop(0)
                 continue
             except httpx.HTTPError as failure:
                 notes.append(f"{person.email} was refused at sign-in: {type(failure).__name__}")
-                queue.pop(0)
                 continue
             seats.append(Seat(person, session.token, session.user.id))
-            queue.pop(0)
-    return SignIns(seats, notes, waited)
+    return SignIns(seats, notes)
 
 
 async def sign_out(
@@ -523,14 +525,14 @@ def is_run_tenant(slug: str) -> bool:
 
 class DeployedSignIn(ValueError):
     """A run against a deployed environment, refused before it provisions
-    anything: its people would sign in by the local sign-in, which only the
-    local stack serves."""
+    anything: its people sign in by the local mint, which only a local
+    database has."""
 
     def __init__(self, env: Environment) -> None:
         super().__init__(
             f"{env.name!r} signs people in through the identity provider, in a browser; "
-            "the traffic generator's people sign in by the local sign-in, which only the "
-            "local stack serves, so no run starts there"
+            "the traffic generator's people sign in by the local mint, on the local "
+            "database, so no run starts there"
         )
 
 
@@ -555,7 +557,10 @@ class Tenants:
 
 async def seeded_people(env: Environment) -> Tenants:
     if env.seed is None:
-        raise ValueError(f"environment {env.name!r} names no seeded people; provision with --orgs")
+        raise ValueError(
+            f"environment {env.name!r} names no seeded people: set SEED_EMAIL in .env, "
+            "as `make seed` reads it, or provision with --orgs"
+        )
     seed = env.seed
     people = [
         Person(seed.owner_email, seed.slug),
@@ -681,7 +686,7 @@ async def run_traffic(
     connect: Connect | None = None,
     people: list[Person] | None = None,
     pause_after_failure: float = FAILED_SESSION_PAUSE_SECONDS,
-    login_wait: Callable[[float], Any] = asyncio.sleep,
+    mint: Mint = mint_logins,
 ) -> RunResult:
     """The run signs its people in, drives sessions at `profile.concurrency`
     at once over their seats in turn until the duration is up, and signs them
@@ -695,11 +700,8 @@ async def run_traffic(
     refusal never becomes a flood.
 
     The run signs in one person per worker at most, since that is as many as
-    can drive at once, and one sign-in per person from one address is what a
-    per-address rate limit has room for. A sign-in the limit refuses waits
-    the window out and asks again, a bounded number of times; the deadline
-    moves by what was waited, so the wait comes out of nobody's driving
-    time. `login_wait` is that pause, injected by tests."""
+    can drive at once, all of them through one call of the local mint.
+    `mint` is that call, injected by tests."""
     duration = profile.duration_seconds if duration_seconds is None else duration_seconds
     wanted_orgs = profile.orgs if orgs is None else orgs
     if env.is_cloud:
@@ -773,17 +775,8 @@ async def run_traffic(
 
     try:
         wanted = seat_order(people)[: profile.concurrency]
-        signed = await sign_in(env, wanted, transport=inner, samples=samples, wait=login_wait)
+        signed = await sign_in(env, wanted, transport=inner, samples=samples, mint=mint)
         seats = signed.seats
-        if signed.waited_seconds:
-            # A wait for the login window is not traffic, so the duration
-            # does not spend itself on it: the deadline moves by what was
-            # waited and the run still drives for as long as it was asked to.
-            clock.deadline += signed.waited_seconds
-            notes.append(
-                f"the run waited {signed.waited_seconds:.0f} s in all for the login window; "
-                "the duration does not count it"
-            )
         notes.append(
             f"signed in {len(seats)} of {len(wanted)} people, one sign-in each for the whole run"
         )
