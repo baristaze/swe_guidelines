@@ -143,7 +143,9 @@ def test_with_no_base_the_seed_takes_gits_address(tmp_path: Path) -> None:
     assert _seeded(checkout, shell)[0] == "me+acme+local+ajax@example.org"
 
 
-def _seed(checkout: Path, env: dict[str, str]) -> tuple[subprocess.CompletedProcess[str], list[str]]:
+def _seed(
+    checkout: Path, env: dict[str, str]
+) -> tuple[subprocess.CompletedProcess[str], list[str]]:
     """`make seed` in the copy, with a `uv` that records the arguments of each
     command it is handed in place of running it, and a home of its own."""
     bin_dir = checkout / "bin"
