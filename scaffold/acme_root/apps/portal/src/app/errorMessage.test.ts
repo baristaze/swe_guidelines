@@ -4,8 +4,8 @@ import { asSentence, errorMessage } from "./errorMessage";
 
 describe("errorMessage", () => {
   it("says a refusal as a sentence, with no request id", () => {
-    expect(errorMessage(new ApiError(401, "not_authenticated", "email or password is wrong", "req_1"), "no")).toBe(
-      "Email or password is wrong.",
+    expect(errorMessage(new ApiError(401, "sign_in_refused", "the sign-in was refused", "req_1"), "no")).toBe(
+      "The sign-in was refused.",
     );
     expect(errorMessage(new ApiError(409, "conflict", "already exists", "req_2"), "no")).toBe("Already exists.");
   });

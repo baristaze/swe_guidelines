@@ -3,7 +3,6 @@ import { DEFAULT_RETRY_ATTEMPTS, DEFAULT_RETRY_BASE_DELAY_MS } from "@acme/clien
 import { DEFAULT_REQUEST_TIMEOUT_MS, resolveConfig } from "./config";
 
 const defaults = {
-  devSignIn: false,
   requestTimeoutMs: DEFAULT_REQUEST_TIMEOUT_MS,
   retryAttempts: DEFAULT_RETRY_ATTEMPTS,
   retryBaseDelayMs: DEFAULT_RETRY_BASE_DELAY_MS,
@@ -59,7 +58,6 @@ describe("runtime config", () => {
         sentryDsn: "http://k@localhost:58000/1",
         environment: "local",
         ...defaults,
-        devSignIn: true,
       });
     }
   });
@@ -69,12 +67,5 @@ describe("runtime config", () => {
     // the cloud's distribution does, so local calls are same-origin too.
     expect(resolveConfig(null, {}, origin).apiUrl).toBe(origin);
     expect(resolveConfig(null, { VITE_API_URL: "" }, origin).apiUrl).toBe(origin);
-  });
-
-  it("offers the local sign-in locally and only where a config names it", () => {
-    expect(resolveConfig({ apiUrl: "", devSignIn: true }, {}, origin).devSignIn).toBe(true);
-    expect(resolveConfig({ apiUrl: "", devSignIn: "yes" }, {}, origin).devSignIn).toBe(false);
-    expect(resolveConfig(null, {}, origin).devSignIn).toBe(true);
-    expect(resolveConfig(null, { VITE_DEV_SIGN_IN: "false" }, origin).devSignIn).toBe(false);
   });
 });

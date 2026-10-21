@@ -172,3 +172,10 @@ it("lands on the new org's home after creating one at /orgs/new", async () => {
   expect(after.every((read) => read.token === tokenOf("gamma"))).toBe(true);
   expect(after.filter((read) => read.path === "/v1/me")).toHaveLength(1);
 });
+
+it("shows the not-found page at an address no route serves", async () => {
+  await open("/login/elsewhere");
+  expect(container.textContent).toContain("Page not found");
+  expect(container.textContent).not.toContain("Sign in");
+  expect(net.calls).toHaveLength(0);
+});

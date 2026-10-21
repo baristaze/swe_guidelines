@@ -1,10 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useLocation } from "react-router-dom";
-import { errorMessage } from "../../app/errorMessage";
-import { runtimeConfig } from "../../app/config";
 import { useStartSignIn } from "../../queries/tenancy";
 import { newState, rememberSignIn, takeAccountDeleted, takeSignedOut } from "../../store/signInState";
-import { landingPath, readStart } from "./signInModel";
+import { landingPath, readStart, startFailure } from "./signInModel";
 
 /** `/login`, the identity provider's "initiate login" address: it starts a
  * sign-in at once. The tab keeps a fresh state with where to land and the
@@ -15,15 +13,14 @@ export function useLoginVm({ arrivedSignedOut = false }: { arrivedSignedOut?: bo
   const location = useLocation();
   const start = useStartSignIn();
   const [error, setError] = useState<string | null>(null);
-  const devSignIn = runtimeConfig().devSignIn;
-  const asked = readStart(location.search, devSignIn);
+  const asked = readStart(location.search);
   const returnTo = landingPath((location.state as { from?: unknown } | null)?.from);
   const started = useRef(false);
   // Read once per visit: a tab that just signed out waits to be asked.
   const [justSignedOut] = useState(() => takeSignedOut() || arrivedSignedOut);
   // Read once too: a tab whose account was just deleted says so, and waits.
   const [accountDeleted] = useState(() => takeAccountDeleted());
-  const wait = asked.offerDev || justSignedOut || accountDeleted;
+  const wait = justSignedOut || accountDeleted;
 
   const go = useCallback(async () => {
     setError(null);
@@ -44,7 +41,7 @@ export function useLoginVm({ arrivedSignedOut = false }: { arrivedSignedOut?: bo
       });
       window.location.assign(answer.authorization_url);
     } catch (caught) {
-      setError(errorMessage(caught, "Sign-in could not start."));
+      setError(startFailure(caught));
     }
     // The inputs are read from the address once; a retry starts the same sign-in again.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -62,7 +59,6 @@ export function useLoginVm({ arrivedSignedOut = false }: { arrivedSignedOut?: bo
     wait,
     signedOut: justSignedOut,
     accountDeleted,
-    devSignIn,
     retry: () => void go(),
   };
 }

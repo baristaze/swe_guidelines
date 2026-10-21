@@ -94,7 +94,6 @@ describe("initErrorReporting", () => {
     apiUrl: "https://acme.test",
     sentryDsn: "https://key@errors.acme.test/1",
     environment: "test",
-    devSignIn: false,
     requestTimeoutMs: 1000,
     retryAttempts: 0,
     retryBaseDelayMs: 0,

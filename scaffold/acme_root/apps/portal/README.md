@@ -30,4 +30,7 @@ pnpm --filter @acme/portal test
 make openapi                      # regenerates the client's types
 ```
 
-On the local stack, `/login/dev` signs in by address alone.
+A person signs in only through the identity provider, at `/login`. On
+the local stack the portal signs in through WorkOS's Staging
+application. Without its key the API answers `503`, the page says
+sign-in is not available, and nobody signs in.

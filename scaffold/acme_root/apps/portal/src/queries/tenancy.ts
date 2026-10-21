@@ -188,14 +188,6 @@ export function useFinishSignIn() {
   });
 }
 
-/** The local stack's sign-in by address alone; a deployed API answers 404. */
-export function useDevSignIn() {
-  return useMutation({
-    mutationFn: (body: tenancy.DevSignInRequest) =>
-      api.post<tenancy.IssuedLoginView>("/v1/auth/dev-sign-in", body, { token: null }),
-  });
-}
-
 /** Revokes the session the token names. The server answers with the session,
  * revoked, and where the browser goes to end the identity provider's session
  * behind it, which sends the browser back to `return_to`. */

@@ -1,7 +1,7 @@
-import type { tenancy } from "@acme/client";
+import { ApiError, type tenancy } from "@acme/client";
 import { describe, expect, it } from "vitest";
 import type { PendingSignIn } from "../../store/signInState";
-import { callbackStep, checkEmail, chooseOrg, landingPath, readStart } from "./signInModel";
+import { callbackStep, chooseOrg, landingPath, readStart, startFailure } from "./signInModel";
 
 const membership = (name: string, kind: "personal" | "team" = "team"): tenancy.MembershipChoiceView => ({
   org: { id: name, name, slug: name.toLowerCase(), kind, created_at: "2026-01-01T00:00:00Z" },
@@ -38,7 +38,7 @@ describe("where signing in lands", () => {
   });
 
   it("never lands on a page of the sign-in itself", () => {
-    for (const path of ["/login", "/login/dev", "/auth/callback?code=x", "/sign-in", "/sign-up"]) {
+    for (const path of ["/login", "/auth/callback?code=x", "/sign-in", "/sign-up"]) {
       expect(landingPath(path)).toBe("/");
     }
   });
@@ -46,18 +46,24 @@ describe("where signing in lands", () => {
 
 describe("what /login was asked for", () => {
   it("carries an invitation's token and the sign-up screen", () => {
-    expect(readStart("?invitation_token=inv&screen_hint=sign-up", false)).toEqual({
+    expect(readStart("?invitation_token=inv&screen_hint=sign-up")).toEqual({
       invitationToken: "inv",
       signUp: true,
-      offerDev: false,
     });
-    expect(readStart("", false)).toEqual({ invitationToken: null, signUp: false, offerDev: false });
+    expect(readStart("")).toEqual({ invitationToken: null, signUp: false });
+  });
+});
+
+describe("what /login says when the sign-in cannot start", () => {
+  it("says sign-in is not available when the API cannot reach a provider", () => {
+    const unavailable = new ApiError(503, "unavailable", "internal error", "req_1");
+    expect(startFailure(unavailable)).toBe("Sign-in is not available right now.");
   });
 
-  it("waits to offer the local sign-in only where the stack serves it and dev=1 asks", () => {
-    expect(readStart("?dev=1", true).offerDev).toBe(true);
-    expect(readStart("?dev=1", false).offerDev).toBe(false);
-    expect(readStart("", true).offerDev).toBe(false);
+  it("says any other failure with its reference", () => {
+    expect(startFailure(new ApiError(500, "internal", "internal error", "req_2"))).toBe(
+      "Internal error. Reference: req_2",
+    );
   });
 });
 
@@ -85,12 +91,5 @@ describe("what a callback may do", () => {
 
   it("refuses a callback with no code", () => {
     expect(callbackStep("?state=mine", known).kind).toBe("refused");
-  });
-});
-
-describe("the local sign-in", () => {
-  it("asks for an address", () => {
-    expect(checkEmail("nope")).not.toBeNull();
-    expect(checkEmail("a@b.c")).toBeNull();
   });
 });

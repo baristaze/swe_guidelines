@@ -1,5 +1,4 @@
-import { useNavigate } from "react-router-dom";
-import { Button, Card, ErrorText, LinkButton, Muted, Page } from "../../design/kit";
+import { Button, Card, ErrorText, Muted, Page } from "../../design/kit";
 import { tokens } from "../../design/tokens";
 import { GONE_LINE } from "../settings/deleteAccountModel";
 import { useLoginVm } from "./useLoginVm";
@@ -8,7 +7,6 @@ import { useLoginVm } from "./useLoginVm";
  * logout ended its session and sent the browser back here. */
 export function LoginPage({ signedOut = false }: { signedOut?: boolean }) {
   const vm = useLoginVm({ arrivedSignedOut: signedOut });
-  const navigate = useNavigate();
   return (
     <Page title="Sign in to Acme" narrow>
       <Card>
@@ -38,11 +36,6 @@ export function LoginPage({ signedOut = false }: { signedOut?: boolean }) {
           )}
         </div>
       </Card>
-      {vm.devSignIn ? (
-        <Muted style={{ textAlign: "center", fontSize: tokens.font.size.sm }}>
-          On the local stack: <LinkButton onClick={() => navigate("/login/dev")}>the local sign-in</LinkButton>
-        </Muted>
-      ) : null}
     </Page>
   );
 }

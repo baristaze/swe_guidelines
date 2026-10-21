@@ -1,5 +1,6 @@
 // Pure: what the sign-in pages decide. No React, no fetch, no storage.
-import type { tenancy } from "@acme/client";
+import { ApiError, type tenancy } from "@acme/client";
+import { errorMessage } from "../../app/errorMessage";
 import { byPlace } from "../../app/orgChipModel";
 import type { PendingSignIn } from "../../store/signInState";
 
@@ -16,7 +17,7 @@ export function chooseOrg(memberships: tenancy.MembershipChoiceView[]): OrgChoic
 }
 
 /** The pages a sign-in passes through, never a place to land on. */
-const SIGN_IN_PATHS = new Set(["/login", "/login/dev", "/auth/callback", "/sign-in", "/sign-up"]);
+const SIGN_IN_PATHS = new Set(["/login", "/auth/callback", "/sign-in", "/sign-up"]);
 
 /** Where to land after signing in: the page RequireAuth turned away, when it
  * named one of ours, and the home page otherwise. What the history state
@@ -31,19 +32,25 @@ export function landingPath(from: unknown): string {
 export interface SignInStart {
   invitationToken: string | null;
   signUp: boolean;
-  /** `?dev=1` on a stack that offers the local sign-in: show the link and wait. */
-  offerDev: boolean;
 }
 
 /** What `/login` was asked for. An invitation's link carries its token; the
  * sign-up screen is asked for with `screen_hint=sign-up`. */
-export function readStart(search: string, devSignIn: boolean): SignInStart {
+export function readStart(search: string): SignInStart {
   const query = new URLSearchParams(search);
   return {
     invitationToken: query.get("invitation_token") || null,
     signUp: query.get("screen_hint") === "sign-up",
-    offerDev: devSignIn && query.get("dev") === "1",
   };
+}
+
+/** What `/login` says when the sign-in cannot start. An `unavailable` answer
+ * is a provider the API cannot reach, or none configured, as on a local stack
+ * with no key: nobody can sign in, so the page says that, with no reference
+ * to quote. Any other failure is said as every screen says one. */
+export function startFailure(caught: unknown): string {
+  if (caught instanceof ApiError && caught.code === "unavailable") return "Sign-in is not available right now.";
+  return errorMessage(caught, "Sign-in could not start.");
 }
 
 export type CallbackStep =
@@ -73,9 +80,4 @@ export function callbackStep(
   const code = query.get("code");
   if (!code) return { kind: "refused", message: "The sign-in came back without a code. Start it again." };
   return { kind: "exchange", code, pending };
-}
-
-/** The local sign-in asks for an address and nothing else. */
-export function checkEmail(email: string): string | null {
-  return email.includes("@") ? null : "Enter an email address.";
 }
