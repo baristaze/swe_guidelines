@@ -248,23 +248,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/v1/auth/dev-sign-in": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Dev Sign In */
-        post: operations["dev_sign_in"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/v1/auth/device": {
         parameters: {
             query?: never;
@@ -843,23 +826,6 @@ export interface components {
         DeleteOrgRequest: {
             /** Name */
             name: string;
-        };
-        /**
-         * DevSignInRequest
-         * @description Local and test only: a sign-in by address alone, with no browser round
-         *     trip, for the seed, the traffic generator, and the tests. A
-         *     person nobody knew is made, with their personal org. A deployed
-         *     environment never serves it: the route answers 404 there, and the
-         *     process refuses to start with it on.
-         */
-        DevSignInRequest: {
-            /**
-             * Display Name
-             * @default
-             */
-            display_name: string;
-            /** Email */
-            email: string;
         };
         /**
          * DeviceSignInView
@@ -2168,42 +2134,6 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["SignInCallbackRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["IssuedLoginView"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    dev_sign_in: {
-        parameters: {
-            query?: never;
-            header?: {
-                "x-app"?: string | null;
-                "x-app-version"?: string | null;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["DevSignInRequest"];
             };
         };
         responses: {

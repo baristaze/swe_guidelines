@@ -22,7 +22,7 @@ from acme.om.context import AppContext, AppType, Permission, RequestContext, Ten
 from acme.om.outbox.impl.relay import DEAD_LETTER_KIND, OutboxOptions, OutboxRelayImpl
 from acme.om.outbox.storage.impl.memory import OutboxStorageMemoryImpl
 from acme.om.outbox.types.row import OutboxRow, outbox_row, versioned_row
-from acme.om.root import KINDS, Managers, build_managers
+from acme.om.root import KINDS, Managers
 from acme.om.storage.impl.memory import StorageMemoryImpl
 from acme.om.tenancy.impl.creates import user_payload
 from acme.om.tenancy.impl.manager import TenancyOptions
@@ -31,6 +31,7 @@ from acme.om.work.kinds import WorkKindSpec
 from acme.om.work.types.work_item import NoopPayload, WorkKind, work_row_kind
 
 from contracts.outbox_storage import a_user, claim_all, make_row
+from contracts.signing_in import managers_signing_in, provider_login
 from contracts.work_storage import make_item
 
 NO_GRACE = OutboxOptions(grace=timedelta(0), backoff_base=timedelta(0), max_attempts=2)
@@ -64,7 +65,7 @@ async def test_the_row_carries_the_trace_context_its_stage_carries(
     stage. A span open when the row is written is not where it looks: the
     stage was minted with the trace context of its request, or with none when
     no tracer was configured, and the far side then starts its own trace."""
-    managers = build_managers(StorageMemoryImpl(), infra, TenancyOptions(dev_sign_in=True))
+    managers = managers_signing_in(StorageMemoryImpl(), infra, TenancyOptions())
     ctx = await sign_in(managers)
     user = a_user()
     tracer = TracerProvider().get_tracer("acme.om.tests")
@@ -184,7 +185,7 @@ async def sign_in(managers: Managers) -> TenantContext:
         return RequestContext(request_id=new_id(), app=app)
 
     _, org = await tenancy.bootstrap(request(), "Ajax", "ajax", "ann@example.test", "Ann")
-    login = await tenancy.sign_in.dev_sign_in(request(), "ann@example.test")
+    login = await provider_login(tenancy, "ann@example.test")
     identity = await tenancy.authenticate_login(request(), login.token)
     issued = await tenancy.sign_in.exchange_login(identity, org.id)
     return await tenancy.authenticate(request(), issued.token)
@@ -200,7 +201,7 @@ async def test_a_write_that_also_starts_work_rides_a_second_row_the_relay_enqueu
     from the row, and it presents the row's id as the item's idempotency key,
     which is the same on every run: a relay that runs twice leaves one item."""
     storage = StorageMemoryImpl()
-    managers = build_managers(storage, infra, TenancyOptions(dev_sign_in=True))
+    managers = managers_signing_in(storage, infra, TenancyOptions())
     ctx = await sign_in(managers)
     woken: list[TopicPayload] = []
 
@@ -284,7 +285,7 @@ async def test_a_relayed_item_lands_on_its_kinds_lane(
     under a cap of one there; on the default lane, it fills that cap."""
     storage = StorageMemoryImpl()
     kinds = KINDS.extended((LONG,))
-    managers = build_managers(storage, infra, TenancyOptions(dev_sign_in=True), work_kinds=kinds)
+    managers = managers_signing_in(storage, infra, TenancyOptions(), work_kinds=kinds)
     ctx = await sign_in(managers)
     woken: list[str] = []
 
@@ -446,7 +447,7 @@ async def test_a_work_row_is_done_once_enqueued_though_its_wake_up_is_dropped(
     wake-up costs latency and the row is done. The entity change beside it
     told no one, so it stays pending."""
     storage = StorageMemoryImpl()
-    managers = build_managers(storage, infra, TenancyOptions(dev_sign_in=True))
+    managers = managers_signing_in(storage, infra, TenancyOptions())
     ctx = await sign_in(managers)
     user = a_user()
     change = outbox_row(ctx, "tenancy.user.created", user.id, user_payload(user))
@@ -478,7 +479,7 @@ async def test_the_push_names_the_version_a_versioned_row_carries_and_none_other
     infra.get_topics().subscribe(Topics.ENTITY_CHANGED, "test", record)
     outbox = OutboxStorageMemoryImpl()
     tenancy = TenancyStorageMemoryImpl(outbox)
-    managers = build_managers(StorageMemoryImpl(), infra, TenancyOptions(dev_sign_in=True))
+    managers = managers_signing_in(StorageMemoryImpl(), infra, TenancyOptions())
     ctx = await sign_in(managers)
     rows = []
     for payload in ({"version": 4}, {}, {"version": "4"}, {"version": True}):

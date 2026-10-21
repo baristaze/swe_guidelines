@@ -9,7 +9,7 @@ from uuid import UUID
 
 from acme.infra.cache import CacheInterface, CacheScope
 from acme.infra.impl.local import InfraLocalImpl
-from acme.integrations.identity.absent import IdentityProviderAbsentImpl
+from acme.integrations.identity.twin import IdentityProviderTwinImpl
 from acme.om.base import new_id, utcnow
 from acme.om.change_events.storage.impl.memory import ChangeEventStorageMemoryImpl
 from acme.om.context import (
@@ -35,6 +35,7 @@ from acme.om.tenancy.types.membership import Membership
 from acme.om.tenancy.types.user import User
 
 from contracts.second_factor import TOTP_KEY, SteppingClock
+from contracts.signing_in import provider_login, signing_in
 
 APP = AppContext(type=AppType.PORTAL, version="portal@test")
 
@@ -62,14 +63,16 @@ def make_manager(
     relay = OutboxRelayImpl(
         outbox or OutboxStorageMemoryImpl(), ChangeEventStorageMemoryImpl(), infra.get_topics()
     )
-    return build_tenancy(
+    twin = IdentityProviderTwinImpl()
+    manager = build_tenancy(
         storage,
         relay,
         cache or infra.get_cache(CacheScope.REALTIME_TICKET),
-        options or TenancyOptions(dev_sign_in=True, totp_encryption_key=TOTP_KEY),
+        options or TenancyOptions(totp_encryption_key=TOTP_KEY),
         clock or SteppingClock(),
-        identity_provider=IdentityProviderAbsentImpl(),
+        identity_provider=twin,
     )
+    return signing_in(manager, twin)
 
 
 async def token_operator(manager: TenancyManagerInterface, email: str) -> OperatorContext:
@@ -80,9 +83,9 @@ async def token_operator(manager: TenancyManagerInterface, email: str) -> Operat
 
 
 async def sign_in(manager: TenancyManagerInterface, email: str, org_id: UUID) -> TenantContext:
-    login = await manager.sign_in.dev_sign_in(request(), email)
     issued = await manager.sign_in.exchange_login(
-        await manager.authenticate_login(request(), login.token), org_id
+        await manager.authenticate_login(request(), (await provider_login(manager, email)).token),
+        org_id,
     )
     return await manager.authenticate(request(), issued.token)
 
@@ -177,13 +180,13 @@ async def seed_operator(
 
 async def signed_up(manager: TenancyManagerInterface, email: str, name: str) -> TenantContext:
     """A person who signed in the first time, in a session in their personal org."""
-    issued = await manager.sign_in.dev_sign_in(request(), email, name)
+    issued = await provider_login(manager, email, name)
     return await sign_in_with(manager, email, issued.memberships[0].org.id)
 
 
 async def sign_in_with(manager: TenancyManagerInterface, email: str, org_id: UUID) -> TenantContext:
-    login = await manager.sign_in.dev_sign_in(request(), email)
     session = await manager.sign_in.exchange_login(
-        await manager.authenticate_login(request(), login.token), org_id
+        await manager.authenticate_login(request(), (await provider_login(manager, email)).token),
+        org_id,
     )
     return await manager.authenticate(request(), session.token)

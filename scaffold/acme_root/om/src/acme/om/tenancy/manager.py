@@ -74,8 +74,8 @@ class TenancyManagerInterface(ABC):
         that context beside the org. `operator_role` puts the owner's
         identity on the operator allowlist with that role, or widens the
         entry it has; it never narrows one. The owner holds no credential:
-        they sign in through the identity provider, or locally through the
-        local sign-in, with the address.
+        they sign in through the identity provider with the address, locally
+        too.
         """
         ...
 
@@ -238,7 +238,7 @@ class TenancyManagerInterface(ABC):
         permissions, and their teams, on the credential kind `INTERNAL`.
         Only a proven address counts: one the identity provider verified when
         the person signed in through it. An address the seeding, the operator
-        plane, or the local sign-in typed proves nobody until then.
+        plane, or the local mint typed proves nobody until then.
 
         None when no identity holds the address, when nobody has proven it,
         and when its person is not a live member of the org: the integration

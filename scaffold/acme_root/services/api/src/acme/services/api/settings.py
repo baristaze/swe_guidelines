@@ -11,9 +11,9 @@ from acme.infra.impl.settings import CLOUD_ENVIRONMENTS, InfraSettings
 from acme.integrations.settings import IntegrationsSettings
 from acme.om.storage.settings import StorageSettings
 
-DEV_SIGN_IN_ENVIRONMENTS = frozenset({"local", "test"})
-"""Where the sign-in by address alone may be on. Anywhere else it is
-refused at boot, the way a local backend is."""
+LOCAL_LOGIN_MINT_ENVIRONMENTS = frozenset({"local", "test"})
+"""Where the local mint may be on. Anywhere else it is refused at boot, the
+way a local backend is."""
 
 
 class ApiSettings(StorageSettings, InfraSettings, IntegrationsSettings):
@@ -123,10 +123,12 @@ class ApiSettings(StorageSettings, InfraSettings, IntegrationsSettings):
         "http://localhost:55173/signed-out",
         "http://localhost:5173/signed-out",
     ]
-    # The sign-in by address alone, with no browser round trip, for the
-    # seed, the traffic generator, and the tests. Off unless set, and
-    # refused at boot outside a local or test environment.
-    dev_sign_in_enabled: bool = False
+    # The local mint: a login for an address on the local database, with no
+    # provider, for the machines that drive a local stack and have no
+    # browser or mailbox. Off in every process but `acme-api
+    # mint-local-login`, which turns it on, and refused at boot outside a
+    # local or test environment. No route reaches it (ADR 0104).
+    local_login_mint: bool = False
     # How long an invitation's link works, from its send or resend.
     invitation_lifetime_days: int = Field(default=7, ge=1, le=30)
     # The interactive API docs and the OpenAPI document, served locally for
@@ -183,12 +185,12 @@ class ApiSettings(StorageSettings, InfraSettings, IntegrationsSettings):
 
     @model_validator(mode="after")
     def local_doors_stay_local(self) -> ApiSettings:
-        """The local sign-in is refused outside a local or test environment,
+        """The local mint is refused outside a local or test environment,
         and a deployed environment's sign-in and sign-out come back to its own
         https address and nowhere else. Each refusal names the setting."""
-        if self.dev_sign_in_enabled and self.environment not in DEV_SIGN_IN_ENVIRONMENTS:
+        if self.local_login_mint and self.environment not in LOCAL_LOGIN_MINT_ENVIRONMENTS:
             raise ValueError(
-                "ACME_DEV_SIGN_IN_ENABLED=true is refused when "
+                "ACME_LOCAL_LOGIN_MINT=true is refused when "
                 + f"ACME_ENVIRONMENT={self.environment}"
             )
         if self.environment in CLOUD_ENVIRONMENTS:

@@ -6,12 +6,10 @@ from uuid import UUID
 
 import httpx
 import pytest
-from api_support import OWNER, enrolled_sign_in, seed_request, sign_in_as
+from api_support import OWNER, callback_body, enrolled_sign_in, seed_request, sign_in_as
 
 from acme.om.context import OperatorRole, Role
 from acme.services.api.container import AppContainer
-
-DEE = {"email": "dee@example.test", "display_name": "Dee"}
 
 
 def bearer(token: str) -> dict[str, str]:
@@ -40,7 +38,7 @@ async def test_the_memberships_are_read_with_the_sign_in_or_a_session(
     client: httpx.AsyncClient, container: AppContainer
 ) -> None:
     ajax, beta = await two_orgs(client, container)
-    login = await client.post("/v1/auth/dev-sign-in", json={"email": OWNER["email"]})
+    login = await client.post("/v1/auth/callback", json=callback_body(container, OWNER["email"]))
     token = login.json()["token"]
     by_login = await client.get("/v1/auth/memberships", headers=bearer(token))
     assert by_login.status_code == 200, by_login.text
@@ -76,7 +74,7 @@ async def test_a_switch_ends_the_session_it_was_presented_with(
     client: httpx.AsyncClient, container: AppContainer
 ) -> None:
     ajax, beta = await two_orgs(client, container)
-    held = await sign_in_as(client, OWNER["email"], UUID(ajax))
+    held = await sign_in_as(client, container, OWNER["email"], UUID(ajax))
     held_token = held["Authorization"].removeprefix("Bearer ")
     switched = await enter(client, held_token, beta)
     me = await client.get("/v1/me", headers=bearer(switched))
@@ -98,7 +96,9 @@ async def test_a_sign_in_is_exchanged_once(
     client: httpx.AsyncClient, container: AppContainer
 ) -> None:
     ajax, beta = await two_orgs(client, container)
-    login = (await client.post("/v1/auth/dev-sign-in", json={"email": OWNER["email"]})).json()
+    login = (
+        await client.post("/v1/auth/callback", json=callback_body(container, OWNER["email"]))
+    ).json()
     session = await enter(client, login["token"], ajax)
     # Again with the same sign-in, for the same org or another: 401, and no
     # second session. A retry after a lost answer meets the same refusal.
@@ -123,7 +123,9 @@ async def test_exchanges_of_one_sign_in_at_once_make_one_session(
 ) -> None:
     """Three clicks on the picker, delivered together: one session, and two 401s."""
     ajax, _ = await two_orgs(client, container)
-    login = (await client.post("/v1/auth/dev-sign-in", json={"email": OWNER["email"]})).json()
+    login = (
+        await client.post("/v1/auth/callback", json=callback_body(container, OWNER["email"]))
+    ).json()
     answers = await asyncio.gather(
         *(
             client.post("/v1/auth/sessions", json={"org_id": ajax}, headers=bearer(login["token"]))
@@ -160,17 +162,20 @@ async def test_a_session_never_admits_an_operator(
 # A team org of one's own.
 
 
-async def signed_up_session(client: httpx.AsyncClient) -> dict[str, str]:
+async def signed_up_session(client: httpx.AsyncClient, container: AppContainer) -> dict[str, str]:
     """Dee signs in for the first time and enters her personal org; the
     tenant headers back."""
-    body = (await client.post("/v1/auth/dev-sign-in", json=DEE)).json()
+    signed_in = await client.post(
+        "/v1/auth/callback", json=callback_body(container, "dee@example.test", "Dee")
+    )
+    body = signed_in.json()
     return bearer(await enter(client, body["token"], body["memberships"][0]["org"]["id"]))
 
 
 async def test_a_person_creates_a_team_org_and_switches_to_it(
-    client: httpx.AsyncClient,
+    client: httpx.AsyncClient, container: AppContainer
 ) -> None:
-    home = await signed_up_session(client)
+    home = await signed_up_session(client, container)
     created = await client.post(
         "/v1/orgs", json={"name": "Dee's Bakery"}, headers=home | {"Idempotency-Key": "o1"}
     )
@@ -189,8 +194,10 @@ async def test_a_person_creates_a_team_org_and_switches_to_it(
     assert sorted(m["org"]["kind"] for m in places) == ["personal", "team"]
 
 
-async def test_a_retried_create_makes_one_org(client: httpx.AsyncClient) -> None:
-    home = await signed_up_session(client)
+async def test_a_retried_create_makes_one_org(
+    client: httpx.AsyncClient, container: AppContainer
+) -> None:
+    home = await signed_up_session(client, container)
     body = {"name": "Cafe", "slug": "cafe"}
     first = await client.post("/v1/orgs", json=body, headers=home | {"Idempotency-Key": "o1"})
     again = await client.post("/v1/orgs", json=body, headers=home | {"Idempotency-Key": "o1"})
@@ -203,14 +210,18 @@ async def test_a_retried_create_makes_one_org(client: httpx.AsyncClient) -> None
 
 
 @pytest.mark.parametrize("body", [{"name": ""}, {"name": "Cafe", "slug": "Not A Slug"}, {}])
-async def test_a_malformed_org_is_refused(client: httpx.AsyncClient, body: dict[str, str]) -> None:
-    home = await signed_up_session(client)
+async def test_a_malformed_org_is_refused(
+    client: httpx.AsyncClient, container: AppContainer, body: dict[str, str]
+) -> None:
+    home = await signed_up_session(client, container)
     refused = await client.post("/v1/orgs", json=body, headers=home | {"Idempotency-Key": "o1"})
     assert refused.status_code == 422, refused.text
 
 
-async def test_an_api_key_creates_no_org(client: httpx.AsyncClient) -> None:
-    home = await signed_up_session(client)
+async def test_an_api_key_creates_no_org(
+    client: httpx.AsyncClient, container: AppContainer
+) -> None:
+    home = await signed_up_session(client, container)
     key = await client.post(
         "/v1/api-keys",
         headers=home | {"Idempotency-Key": "k1"},
@@ -226,14 +237,14 @@ async def test_an_api_key_creates_no_org(client: httpx.AsyncClient) -> None:
 async def test_the_person_of_a_personal_org_stays_in_it(
     client: httpx.AsyncClient, container: AppContainer
 ) -> None:
-    home = await signed_up_session(client)
+    home = await signed_up_session(client, container)
     me = (await client.get("/v1/me", headers=home)).json()
     # The seeding puts a second owner in her personal org; nothing refuses it.
     tenancy = container.managers.tenancy
     org = await container.storage.get_tenancy_storage().read_org(UUID(me["org"]["id"]))
     assert org is not None
     await tenancy.add_member(seed_request(), org.slug, "eve@example.test", "Eve", Role.OWNER)
-    eve = await sign_in_as(client, "eve@example.test", org.id)
+    eve = await sign_in_as(client, container, "eve@example.test", org.id)
     # Even an owner of it neither removes her nor changes her role.
     for refused in (
         await client.delete(f"/v1/memberships/{me['user']['id']}", headers=eve),

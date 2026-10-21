@@ -10,7 +10,6 @@ import pytest
 
 from acme.infra.cache import CacheScope
 from acme.infra.impl.local import InfraLocalImpl
-from acme.integrations.identity.absent import IdentityProviderAbsentImpl
 from acme.om.base import new_id, utcnow
 from acme.om.change_events.storage.impl.memory import ChangeEventStorageMemoryImpl
 from acme.om.context import Role
@@ -24,7 +23,6 @@ from acme.om.exceptions import (
 from acme.om.outbox.impl.relay import OutboxRelayImpl
 from acme.om.outbox.storage.impl.memory import OutboxStorageMemoryImpl
 from acme.om.outbox.types.row import OutboxRow
-from acme.om.root import build_tenancy
 from acme.om.tenancy import TenancyManagerInterface
 from acme.om.tenancy.impl.manager import TenancyOptions
 from acme.om.tenancy.storage.impl.memory import TenancyStorageMemoryImpl
@@ -33,6 +31,7 @@ from acme.om.tenancy.types.org import OrgKind
 from acme.om.tenancy.types.user import PERSONAL_FIELDS, User
 
 from contracts.outbox_storage import claim_all
+from contracts.signing_in import provider_login, tenancy_signing_in
 from contracts.tenancy import SpyRelay, add_member, make_manager, request, sign_in, signed_up
 
 
@@ -73,7 +72,7 @@ async def test_removing_a_member_soft_deletes_the_user_and_ends_access(
     bob = await add_member(storage, org.id, "bob@example.test", Role.ADMIN)
     cid = await add_member(storage, org.id, "cid@example.test", Role.MEMBER)
     admin = await sign_in(manager, "bob@example.test", org.id)
-    cid_login = await manager.sign_in.dev_sign_in(request(), "cid@example.test")
+    cid_login = await provider_login(manager, "cid@example.test")
     cid_session = await manager.sign_in.exchange_login(
         await manager.authenticate_login(request(), cid_login.token), org.id
     )
@@ -95,7 +94,7 @@ async def test_removing_a_member_soft_deletes_the_user_and_ends_access(
     with pytest.raises(CredentialExpired):  # revoked with the member
         await manager.authenticate(request(), cid_session.token)
     # Removed from the team, Cid keeps the one place nobody removes him from.
-    left = (await manager.sign_in.dev_sign_in(request(), "cid@example.test")).memberships
+    left = (await provider_login(manager, "cid@example.test")).memberships
     assert [m.org.kind for m in left] == [OrgKind.PERSONAL]
     with pytest.raises(NotFound):
         await manager.members.remove_member(admin, cid.id)
@@ -113,12 +112,11 @@ async def test_removing_a_member_revokes_their_credentials_and_announces_each(
     storage: TenancyStorageMemoryImpl, infra: InfraLocalImpl, outbox: OutboxStorageMemoryImpl
 ) -> None:
     relay = SpyRelay(OutboxRelayImpl(outbox, ChangeEventStorageMemoryImpl(), infra.get_topics()))
-    manager = build_tenancy(
+    manager = tenancy_signing_in(
         storage,
         relay,
         infra.get_cache(CacheScope.REALTIME_TICKET),
-        TenancyOptions(dev_sign_in=True),
-        identity_provider=IdentityProviderAbsentImpl(),
+        TenancyOptions(),
     )
     _, org = await manager.bootstrap(request(), "Ajax", "ajax", "ann@example.test", "Ann")
     owner = await sign_in(manager, "ann@example.test", org.id)
@@ -160,12 +158,11 @@ async def test_no_event_about_a_user_carries_who_they_are(
     reaches the user row and not the stream, so the stream never holds the
     email or the name."""
     relay = SpyRelay(OutboxRelayImpl(outbox, ChangeEventStorageMemoryImpl(), infra.get_topics()))
-    manager = build_tenancy(
+    manager = tenancy_signing_in(
         storage,
         relay,
         infra.get_cache(CacheScope.REALTIME_TICKET),
-        TenancyOptions(dev_sign_in=True),
-        identity_provider=IdentityProviderAbsentImpl(),
+        TenancyOptions(),
     )
     _, org = await manager.bootstrap(request(), "Ajax", "ajax", "ann@example.test", "Ann")
     owner = await sign_in(manager, "ann@example.test", org.id)

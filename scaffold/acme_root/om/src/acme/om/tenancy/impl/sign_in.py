@@ -168,10 +168,10 @@ class TenancySignInManagerImpl(TenancySignInManagerInterface):
             raise SignInRefused(f"the sign-in was refused: {error.message}") from None
         return await self._signed_in(rctx, signed_in)
 
-    async def dev_sign_in(
+    async def mint_local_login(
         self, rctx: RequestContext, email: str, display_name: str = ""
     ) -> IssuedLogin:
-        if not self._options.dev_sign_in:
+        if not self._options.local_login_mint:
             raise NotFound("Not Found")
         if is_platform_email(email):
             raise ValidationFailed("that address belongs to the system")

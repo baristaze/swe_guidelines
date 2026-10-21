@@ -151,24 +151,6 @@ class DeleteOrgRequest(BaseModel):
     name: Annotated[str, Field(max_length=200, min_length=1, title='Name')]
 
 
-class DevSignInRequest(BaseModel):
-    """
-    Local and test only: a sign-in by address alone, with no browser round
-    trip, for the seed, the traffic generator, and the tests. A
-    person nobody knew is made, with their personal org. A deployed
-    environment never serves it: the route answers 404 there, and the
-    process refuses to start with it on.
-    """
-
-    model_config = ConfigDict(
-        extra='forbid',
-    )
-    display_name: Annotated[str | None, Field(max_length=200, title='Display Name')] = (
-        ''
-    )
-    email: Annotated[str, Field(max_length=320, min_length=3, title='Email')]
-
-
 class DeviceSignInView(BaseModel):
     """
     The start of a sign-in for a device with no browser, the command

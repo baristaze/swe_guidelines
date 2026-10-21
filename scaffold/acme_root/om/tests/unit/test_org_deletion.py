@@ -27,7 +27,6 @@ from acme.om.outbox.impl.relay import OutboxRelayImpl
 from acme.om.outbox.relay import OutboxRelayInterface
 from acme.om.outbox.storage.impl.memory import OutboxStorageMemoryImpl
 from acme.om.outbox.types.row import OutboxRow
-from acme.om.root import build_tenancy
 from acme.om.tenancy import TenancyManagerInterface
 from acme.om.tenancy.impl.manager import TenancyOptions
 from acme.om.tenancy.storage.impl.memory import TenancyStorageMemoryImpl
@@ -36,6 +35,7 @@ from acme.om.tenancy.types.org import Org
 from acme.om.work.types.work_item import WorkKind, work_row_kind
 
 from contracts.second_factor import TOTP_KEY
+from contracts.signing_in import provider_login, tenancy_signing_in
 
 APP = AppContext(type=AppType.PORTAL, version="portal@test")
 
@@ -112,12 +112,12 @@ def manager(
     tmp_path: Path,
 ) -> TenancyManagerInterface:
     infra = InfraLocalImpl(tmp_path)
-    return build_tenancy(
+    return tenancy_signing_in(
         storage,
         relay,
         infra.get_cache(CacheScope.REALTIME_TICKET),
-        TenancyOptions(dev_sign_in=True, totp_encryption_key=TOTP_KEY),
-        identity_provider=twin,
+        TenancyOptions(totp_encryption_key=TOTP_KEY),
+        twin=twin,
     )
 
 
@@ -129,7 +129,7 @@ async def dev(
     manager: TenancyManagerInterface, email: str, org_id: UUID | None = None
 ) -> TenantContext:
     """A person signed in locally, in `org_id` or else their personal org."""
-    login = await manager.sign_in.dev_sign_in(request(), email)
+    login = await provider_login(manager, email)
     if org_id is None:
         org_id = next(m.org.id for m in login.memberships if m.org.personal)
     issued = await manager.sign_in.exchange_login(
@@ -215,7 +215,7 @@ async def test_everyone_loses_the_org_in_one_commit_and_the_rest_is_asked_for(
     invitation = await storage.read_invitation(org.id, invited.id)
     assert invitation is not None and invitation.state is InvitationState.REVOKED
     # Bob's picker no longer offers it.
-    login = await manager.sign_in.dev_sign_in(request(), "bob@example.test")
+    login = await provider_login(manager, "bob@example.test")
     assert org.id not in {m.org.id for m in login.memberships}
     # The org waits, live and let go of its provider organization, for the queue.
     closed = await storage.read_org(org.id)

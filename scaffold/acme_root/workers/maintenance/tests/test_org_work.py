@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import cast
 
 import pytest
-from worker_support import build_container, request, signing, upload
+from worker_support import build_container, provider_login, request, upload
 
 from acme.integrations.exceptions import ProviderRefused, ProviderUnavailable
 from acme.integrations.identity.twin import IdentityProviderTwinImpl
@@ -31,10 +31,10 @@ def handler_of(container: WorkerContainer) -> WorkHandlerInterface:
 
 
 async def signed_in_owner(container: WorkerContainer) -> TenantContext:
-    """Ajax's owner, signed in by address: an org is deleted from a session."""
+    """Ajax's owner, signed in through the twin: an org is deleted from a session."""
     tenancy = container.managers.tenancy
     await tenancy.bootstrap(request(), "Ajax", "ajax", "owner@ajax.test", "Owner")
-    login = await signing(container).sign_in.dev_sign_in(request(), "owner@ajax.test")
+    login = await provider_login(container, "owner@ajax.test")
     identity = await tenancy.authenticate_login(request(), login.token)
     ajax = next(m.org.id for m in login.memberships if not m.org.personal)
     issued = await tenancy.sign_in.exchange_login(identity, ajax)

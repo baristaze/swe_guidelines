@@ -20,7 +20,6 @@ from acme.services.api.types.tenancy import (
     DeleteOrgRequest,
     DeviceSignInView,
     DeviceTokenRequest,
-    DevSignInRequest,
     ExchangeAuthSessionRequest,
     IdentityView,
     InvitationPageView,
@@ -75,11 +74,6 @@ class TenancyServiceInterface(ABC):
     async def finish_device_sign_in(
         self, rctx: RequestContext, body: DeviceTokenRequest
     ) -> IssuedLoginView: ...
-
-    @abstractmethod
-    async def dev_sign_in(self, rctx: RequestContext, body: DevSignInRequest) -> IssuedLoginView:
-        """System-internal, local and test only."""
-        ...
 
     @abstractmethod
     async def verify_second_factor(

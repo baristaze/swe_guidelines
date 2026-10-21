@@ -1,4 +1,7 @@
-"""Helpers the API tests share: the test container and the sign-in flow."""
+"""Helpers the API tests share: the test container and the sign-in flow,
+which goes through the identity provider's twin as the portal's goes through
+the provider: the twin issues the code a browser brings back, and the
+callback route exchanges it."""
 
 import asyncio
 import base64
@@ -12,6 +15,8 @@ from uuid import UUID
 import httpx
 
 from acme.infra.impl.local import InfraLocalImpl
+from acme.integrations.identity.twin import IdentityProviderTwinImpl
+from acme.integrations.impl.configured import IntegrationsOverImpl
 from acme.integrations.root import IntegrationsInterface
 from acme.om.base import new_id, utcnow
 from acme.om.context import AppContext, AppType, OperatorRole, RequestContext, Role
@@ -19,6 +24,7 @@ from acme.om.storage.impl.memory import StorageMemoryImpl
 from acme.om.storage.root import StorageInterface
 from acme.om.tenancy.rules import totp_code, totp_step
 from acme.om.tenancy.types.identity import Identity
+from acme.om.tenancy.types.issued import IssuedLogin
 from acme.om.tenancy.types.membership import Membership
 from acme.om.tenancy.types.user import User
 from acme.services.api.container import AppContainer
@@ -27,6 +33,9 @@ from acme.services.api.settings import ApiSettings
 OWNER = {"email": "ann@example.test", "name": "Ann"}
 TOTP_KEY = "YWNtZS10ZXN0cy10b3RwLWtleS10aGlydHktdHdvISE="
 """A Fernet-shaped key for the test container's TOTP secrets, tests only."""
+VERIFIER = "v" * 43
+"""The PKCE verifier a test's callback sends: the twin checks one only for a
+code issued with a challenge, and the helpers here issue none."""
 
 
 def seed_request() -> RequestContext:
@@ -40,43 +49,69 @@ def build_container(
     integrations: IntegrationsInterface | None = None,
     **overrides: object,
 ) -> AppContainer:
-    """The test container over the memory storage root and the local infra
-    root, with the local sign-in on. A test that needs a bound or a deadline
-    of its own names the settings it overrides, one that needs storage to
-    behave a certain way passes its own root, and one that signs in through
-    the identity provider passes the integrations root over the twin. The
-    developer's `.env` is never read: its DSN would send every error a test
-    raises on purpose to the local tracker."""
+    """The test container over the memory storage root, the local infra
+    root, and the identity provider's twin, which every test signs people in
+    through. A test that needs a bound or a deadline of its own names the
+    settings it overrides, one that needs storage to behave a certain way
+    passes its own root, and one that needs no provider passes
+    `absent_integrations()`. The developer's `.env` is never read: its DSN
+    would send every error a test raises on purpose to the local tracker."""
     settings = ApiSettings.model_validate(
         {
             "_env_file": None,
             "environment": "test",
             "totp_encryption_key": TOTP_KEY,
-            "dev_sign_in_enabled": True,
             **overrides,
         }
     )
     return AppContainer.for_tests(
-        storage or StorageMemoryImpl(), InfraLocalImpl(tmp_path), settings, integrations
+        storage or StorageMemoryImpl(),
+        InfraLocalImpl(tmp_path),
+        settings,
+        integrations or IntegrationsOverImpl(IdentityProviderTwinImpl()),
     )
 
 
-async def dev_login(client: httpx.AsyncClient, email: str) -> str:
-    """The local sign-in by address alone, which the test container has on:
-    the login credential, before any tenant is chosen."""
-    login = await client.post("/v1/auth/dev-sign-in", json={"email": email})
-    assert login.status_code == 200, login.text
-    return login.json()["token"]
+def twin_of(container: AppContainer) -> IdentityProviderTwinImpl:
+    """The identity provider's twin the container signs people in through."""
+    provider = container.integrations.get_identity_provider()
+    assert isinstance(provider, IdentityProviderTwinImpl), "this container has no twin"
+    return provider
 
 
-async def sign_in_as(client: httpx.AsyncClient, email: str, org_id: UUID) -> dict[str, str]:
+def callback_body(container: AppContainer, email: str, name: str = "") -> dict[str, str]:
+    """What the portal posts to `/v1/auth/callback` once the person finished
+    the provider's sign-in: the code the twin issued for them, and the
+    verifier. A person nobody knew is signed up by it, with their personal
+    org, named `name` when one is given."""
+    first, _, last = name.partition(" ")
+    code = twin_of(container).issue_code(email, first_name=first or None, last_name=last or None)
+    return {"code": code, "code_verifier": VERIFIER}
+
+
+async def login_token(client: httpx.AsyncClient, container: AppContainer, email: str) -> str:
+    """A person signs in through the twin and the callback route: the login
+    credential, before any tenant is chosen."""
+    answer = await client.post("/v1/auth/callback", json=callback_body(container, email))
+    assert answer.status_code == 200, answer.text
+    return answer.json()["token"]
+
+
+async def provider_login(container: AppContainer, email: str) -> IssuedLogin:
+    """The same sign-in for a test that drives the manager and no route: the
+    twin's code, finished by the manager's own callback."""
+    code = twin_of(container).issue_code(email)
+    return await container.managers.tenancy.sign_in.sign_in_with_code(seed_request(), code)
+
+
+async def sign_in_as(
+    client: httpx.AsyncClient, container: AppContainer, email: str, org_id: UUID
+) -> dict[str, str]:
     """Signs a person in and chooses a tenant; returns the tenant headers."""
-    login = await client.post("/v1/auth/dev-sign-in", json={"email": email})
-    assert login.status_code == 200, login.text
     session = await client.post(
         "/v1/auth/sessions",
         json={"org_id": str(org_id)},
-        headers={"Authorization": f"Bearer {login.json()['token']}"},
+        headers={"Authorization": f"Bearer {await login_token(client, container, email)}"},
     )
     assert session.status_code == 200, session.text
     return {
@@ -91,7 +126,25 @@ async def sign_in(client: httpx.AsyncClient, container: AppContainer) -> dict[st
     _, org = await container.managers.tenancy.bootstrap(
         seed_request(), "Ajax", "ajax", OWNER["email"], OWNER["name"]
     )
-    return await sign_in_as(client, OWNER["email"], org.id)
+    return await sign_in_as(client, container, OWNER["email"], org.id)
+
+
+async def minted_owner(client: httpx.AsyncClient, container: AppContainer) -> dict[str, str]:
+    """Bootstraps an org and signs its owner in by the local mint, for a test
+    whose container fronts no twin (no provider, or a stubbed WorkOS) and is
+    about something past the sign-in; the container is built with
+    `local_login_mint` on. Returns the tenant headers."""
+    _, org = await container.managers.tenancy.bootstrap(
+        seed_request(), "Ajax", "ajax", OWNER["email"], OWNER["name"]
+    )
+    login = await container.managers.tenancy.sign_in.mint_local_login(
+        seed_request(), OWNER["email"]
+    )
+    session = await client.post(
+        "/v1/auth/sessions", json={"org_id": str(org.id)}, headers=bearer(login.token)
+    )
+    assert session.status_code == 200, session.text
+    return {**bearer(session.json()["token"]), "X-App": "portal", "X-App-Version": "portal@test"}
 
 
 async def add_member(container: AppContainer, org_id: UUID, email: str, role: Role) -> User:
@@ -181,7 +234,7 @@ async def enrolled_sign_in(
     await container.managers.tenancy.bootstrap(
         seed_request(), slug.title(), slug, email, "Op", operator_role=role
     )
-    first = await dev_login(client, email)
+    first = await login_token(client, container, email)
     enrolling = bearer(first)
     minted = await client.post("/v1/admin/me/totp", headers=enrolling)
     assert minted.status_code == 200, minted.text
@@ -192,7 +245,7 @@ async def enrolled_sign_in(
     assert confirmed.status_code == 200, confirmed.text
     login = await client.post(
         "/v1/auth/second-factor",
-        headers=bearer(await dev_login(client, email)),
+        headers=bearer(await login_token(client, container, email)),
         json={"totp_code": code_at(secret, 1)},
     )
     assert login.status_code == 200, login.text

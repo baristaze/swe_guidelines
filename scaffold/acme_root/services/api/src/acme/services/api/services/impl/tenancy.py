@@ -20,7 +20,6 @@ from acme.services.api.types.tenancy import (
     DeleteOrgRequest,
     DeviceSignInView,
     DeviceTokenRequest,
-    DevSignInRequest,
     ExchangeAuthSessionRequest,
     IdentityView,
     InvitationPageView,
@@ -115,11 +114,6 @@ class TenancyServiceImpl(TenancyServiceInterface):
         self, rctx: RequestContext, body: DeviceTokenRequest
     ) -> IssuedLoginView:
         return login_view(await self._tenancy.sign_in.finish_device_sign_in(rctx, body.device_code))
-
-    async def dev_sign_in(self, rctx: RequestContext, body: DevSignInRequest) -> IssuedLoginView:
-        return login_view(
-            await self._tenancy.sign_in.dev_sign_in(rctx, body.email, body.display_name)
-        )
 
     async def verify_second_factor(
         self, ictx: IdentityContext, body: SecondFactorRequest

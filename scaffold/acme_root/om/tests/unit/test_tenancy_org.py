@@ -15,6 +15,7 @@ from acme.om.tenancy.impl.manager import TenancyOptions
 from acme.om.tenancy.storage.impl.memory import TenancyStorageMemoryImpl
 from acme.om.tenancy.types.org import OrgKind
 
+from contracts.signing_in import provider_login
 from contracts.tenancy import make_manager, request, sign_in, sign_in_with, signed_up
 
 
@@ -40,7 +41,7 @@ async def test_a_signed_in_person_creates_a_team_org_and_switches_to_it(
     assert place.org.created_by == place.user.id
     # The session stays where it was; the exchange is the switch.
     assert dee.org_id != place.org.id
-    login = await manager.sign_in.dev_sign_in(request(), "dee@example.test")
+    login = await provider_login(manager, "dee@example.test")
     assert {m.org.kind for m in login.memberships} == {OrgKind.PERSONAL, OrgKind.TEAM}
     there = await sign_in_with(manager, "dee@example.test", place.org.id)
     assert there.org_id == place.org.id and there.security.role is Role.OWNER
@@ -84,9 +85,7 @@ async def test_a_rerun_of_a_create_answers_with_the_org_it_made(
 async def test_a_team_org_counts_toward_the_bound(
     storage: TenancyStorageMemoryImpl, infra: InfraLocalImpl
 ) -> None:
-    manager = make_manager(
-        storage, infra, TenancyOptions(dev_sign_in=True, max_orgs_per_identity=2)
-    )
+    manager = make_manager(storage, infra, TenancyOptions(max_orgs_per_identity=2))
     dee = await signed_up(manager, "dee@example.test", "Dee")
     await manager.org.create_org(dee, "One", None)
     with pytest.raises(MembershipLimitReached):

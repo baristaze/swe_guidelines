@@ -41,5 +41,5 @@ class AuthSession(Identifiable, Trackable):
     # the sign-in left one (AuthKit's, through its hosted page): the sign-out
     # ends it too. Carried from the sign-in to every session exchanged from
     # it. Not a secret, and never on the wire but in the sign-out's answer;
-    # None for the device sign-in, the local sign-in, and an operator token.
+    # None for the device sign-in, the local mint, and an operator token.
     provider_session_id: str | None = None

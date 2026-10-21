@@ -235,7 +235,7 @@ async def test_the_size_is_what_the_first_responder_reads(
 
 
 async def test_the_creates_run_under_the_operators_idempotency_record(
-    client: httpx.AsyncClient, writer: dict[str, str]
+    client: httpx.AsyncClient, container: AppContainer, writer: dict[str, str]
 ) -> None:
     """A creating route of the operator plane carries a key like every other:
     the retry replays the org the first call created, a reused key with
@@ -286,9 +286,9 @@ async def test_the_creates_run_under_the_operators_idempotency_record(
     assert blank.status_code == 422, blank.text
 
     # Both people sign into the org the operator made, with the roles given.
-    otto = await sign_in_as(client, "otto@example.test", org_id)
+    otto = await sign_in_as(client, container, "otto@example.test", org_id)
     assert (await client.get("/v1/me", headers=otto)).json()["role"] == "owner"
-    bob = await sign_in_as(client, "bob@example.test", org_id)
+    bob = await sign_in_as(client, container, "bob@example.test", org_id)
     assert (await client.get("/v1/me", headers=bob)).json()["role"] == "admin"
     listed = await client.get(f"/v1/admin/orgs/{org_id}/members", headers=writer)
     assert sorted(m["email"] for m in listed.json()["items"]) == [

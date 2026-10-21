@@ -22,7 +22,7 @@ from typing import Any
 
 import httpx
 import pytest
-from api_support import build_container, sign_in
+from api_support import build_container, minted_owner
 
 from acme.infra.base import utcnow
 from acme.infra.buckets import BucketsInterface
@@ -138,6 +138,7 @@ def over(tmp_path: Path, workos: WorkOS, deadline: float) -> AppContainer:
         tmp_path,
         integrations=IntegrationsOverImpl(provider),
         request_deadline_seconds=deadline,
+        local_login_mint=True,
     )
 
 
@@ -203,7 +204,7 @@ async def test_the_calls_of_one_request_share_its_deadline(tmp_path: Path) -> No
     workos = WorkOS(slowly)
     container = over(tmp_path, workos, deadline=0.8)
     async with serving(container) as client:
-        owner = await sign_in(client, container)
+        owner = await minted_owner(client, container)
         workos.calls.clear()
         answered.clear()
         began = time.monotonic()

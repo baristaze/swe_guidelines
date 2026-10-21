@@ -29,10 +29,11 @@ plane. This is one of the kinds of thing
 
 ## What can happen
 
-- **Sign in** through the identity provider's hosted page, its device
-  flow for the CLI, or, on a developer's machine, by address alone. A
-  first sign-in is the sign-up: the identity, its personal org, its
-  user, and the owner membership land together.
+- **Sign in** through the identity provider's hosted page, or its device
+  flow for the CLI, on every stack. A first sign-in is the sign-up: the
+  identity, its personal org, its user, and the owner membership land
+  together. The local mint, a command on a local database and never a
+  route, makes a login for the machines that drive a local stack.
 - **Exchange and switch.** A sign-in becomes an auth session in one org. An
   auth session presented to the exchange is a switch, and ends in the same
   write. The new auth session keeps its deadline: only a sign-in starts the

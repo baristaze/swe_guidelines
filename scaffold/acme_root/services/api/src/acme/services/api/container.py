@@ -73,7 +73,7 @@ def tenancy_options(settings: ApiSettings) -> TenancyOptions:
         totp_encryption_key=totp_key(settings),
         sign_in_redirect_uris=tuple(settings.sign_in_redirect_uris),
         sign_out_return_uris=tuple(settings.sign_out_return_uris),
-        dev_sign_in=settings.dev_sign_in_enabled,
+        local_login_mint=settings.local_login_mint,
         invitation_ttl_days=settings.invitation_lifetime_days,
     )
 
@@ -167,7 +167,6 @@ class AppContainer:
             {
                 "_env_file": None,
                 "environment": "test",
-                "dev_sign_in_enabled": True,
             }
         )
         # No identity provider unless the test hands one in.
@@ -213,8 +212,6 @@ class AppContainer:
         log.info("%s started with %s", self.settings.service_name, ", ".join(chosen))
         if not self.integrations.get_identity_provider().configured:
             log.warning("no identity provider: every sign-in through one answers 503")
-        if self.settings.dev_sign_in_enabled:
-            log.warning("the local sign-in by address alone is on")
         if self.settings.totp_encryption_key is None:
             log.warning(
                 "no TOTP encryption key: the operator plane refuses every enrolment "

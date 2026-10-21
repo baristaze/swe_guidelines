@@ -39,7 +39,7 @@ async def test_managers_are_built_once_for_any_number_of_requests(
             # (the gateway refuses before media), events.
             for path in ("/healthz", "/readyz", "/v1/media/files", "/v1/change-events", "/metrics"):
                 await client.get(path)
-            await client.post("/v1/auth/dev-sign-in", json={"email": "nobody@example.test"})
+            await client.post("/v1/auth/callback", json={"code": "c", "code_verifier": "v" * 43})
     assert len(calls) == 1
     # Every router resolves the same frozen object the container built.
     assert app.state.container.managers is container.managers

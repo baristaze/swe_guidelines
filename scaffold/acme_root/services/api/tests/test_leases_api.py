@@ -63,7 +63,7 @@ async def a_member(
     client: httpx.AsyncClient, container: AppContainer, org_id: UUID, name: str, role: Role
 ) -> dict[str, str]:
     await add_member(container, org_id, f"{name}@example.test", role)
-    return await sign_in_as(client, f"{name}@example.test", org_id)
+    return await sign_in_as(client, container, f"{name}@example.test", org_id)
 
 
 async def test_a_lease_is_granted_renewed_released_and_the_line_moves_on(
@@ -248,7 +248,7 @@ async def test_the_history_lists_newest_first_with_requests_and_no_tenant_reads_
     _, other = await container.managers.tenancy.bootstrap(
         seed_request(), "Other", "other", "eve@other.test", "Eve"
     )
-    eve = await sign_in_as(client, "eve@other.test", other.id)
+    eve = await sign_in_as(client, container, "eve@other.test", other.id)
     assert (await client.get("/v1/leases", headers=eve)).json()["items"] == []
     mine = await client.get(
         "/v1/leases", headers=eve, params={"leasable_resource_id": str(dock.id)}
@@ -270,7 +270,7 @@ async def test_another_tenants_leases_answer_as_missing_ones(
     _, other = await container.managers.tenancy.bootstrap(
         seed_request(), "Other", "other", "eve@other.test", "Eve"
     )
-    eve = await sign_in_as(client, "eve@other.test", other.id)
+    eve = await sign_in_as(client, container, "eve@other.test", other.id)
     request_id, lease_id = granted["request"]["id"], granted["lease"]["id"]
     swept: list[tuple[str, str, dict[str, Any]]] = [
         ("GET", f"/v1/leases/requests/{request_id}", {}),

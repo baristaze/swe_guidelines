@@ -4,8 +4,9 @@ the error envelope, and a person who is gone the moment the answer comes."""
 from uuid import UUID
 
 import httpx
-from api_support import OWNER, add_member, dev_login, seed_request, sign_in_as
+from api_support import OWNER, add_member, login_token, seed_request, sign_in_as
 
+from acme.integrations.identity.twin import TWIN_LOGOUT
 from acme.om.context import OperatorRole, Role
 from acme.services.api.container import AppContainer
 
@@ -19,7 +20,7 @@ async def test_the_confirmation_must_be_the_accounts_email(
 ) -> None:
     ajax = await org_of(client, owner)
     await add_member(container, ajax, "bob@example.test", Role.MEMBER)
-    bob = await sign_in_as(client, "bob@example.test", ajax)
+    bob = await sign_in_as(client, container, "bob@example.test", ajax)
     wrong = await client.post("/v1/me/deletion", headers=bob, json={"email": OWNER["email"]})
     assert wrong.status_code == 422
     assert wrong.json()["error"]["code"] == "validation_failed"
@@ -47,7 +48,7 @@ async def test_an_operator_is_refused_until_the_role_is_off(
 ) -> None:
     ajax = await org_of(client, owner)
     await add_member(container, ajax, "ops@example.test", Role.MEMBER)
-    ops = await sign_in_as(client, "ops@example.test", ajax)
+    ops = await sign_in_as(client, container, "ops@example.test", ajax)
     tenancy = container.managers.tenancy
     await tenancy.grant_operator(seed_request(), "ops@example.test", OperatorRole.READ)
     refused = await client.post("/v1/me/deletion", headers=ops, json={"email": "ops@example.test"})
@@ -61,13 +62,15 @@ async def test_a_deleted_account_is_signed_out_everywhere_and_can_start_again(
 ) -> None:
     ajax = await org_of(client, owner)
     bob_user = await add_member(container, ajax, "bob@example.test", Role.MEMBER)
-    bob = await sign_in_as(client, "bob@example.test", ajax)
+    bob = await sign_in_as(client, container, "bob@example.test", ajax)
     places = await client.get(
         "/v1/auth/memberships",
-        headers={"Authorization": f"Bearer {await dev_login(client, 'bob@example.test')}"},
+        headers={
+            "Authorization": f"Bearer {await login_token(client, container, 'bob@example.test')}"
+        },
     )
     home = next(p["org"]["id"] for p in places.json()["items"] if p["org"]["kind"] == "personal")
-    at_home = await sign_in_as(client, "bob@example.test", UUID(home))
+    at_home = await sign_in_as(client, container, "bob@example.test", UUID(home))
     key = await client.post("/v1/api-keys", headers=at_home, json={"name": "ci", "role": "member"})
     assert key.status_code == 201, key.text
 
@@ -76,7 +79,8 @@ async def test_a_deleted_account_is_signed_out_everywhere_and_can_start_again(
     )
     assert deleted.status_code == 200, deleted.text
     body = deleted.json()
-    assert body["deleted_at"] and body["provider_logout_url"] is None, "a local sign-in"
+    # Bob signed in through the provider, so the answer names its logout.
+    assert body["deleted_at"] and body["provider_logout_url"].startswith(TWIN_LOGOUT)
 
     for headers in (bob, at_home, {"Authorization": f"Bearer {key.json()['key']}"}):
         assert (await client.get("/v1/me", headers=headers)).status_code == 401
@@ -88,7 +92,9 @@ async def test_a_deleted_account_is_signed_out_everywhere_and_can_start_again(
     # The same address signs up again as somebody new.
     again = await client.get(
         "/v1/auth/memberships",
-        headers={"Authorization": f"Bearer {await dev_login(client, 'bob@example.test')}"},
+        headers={
+            "Authorization": f"Bearer {await login_token(client, container, 'bob@example.test')}"
+        },
     )
     fresh = again.json()["items"]
     assert [p["org"]["kind"] for p in fresh] == ["personal"]

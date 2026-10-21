@@ -11,7 +11,7 @@ from starlette.requests import HTTPConnection
 
 from acme.infra.observability import current_trace_id, current_traceparent
 from acme.om.context import AppContext, AppType, IdentityContext, RequestContext, TenantContext
-from acme.om.exceptions import NotAuthenticated, NotFound, OmException, ValidationFailed
+from acme.om.exceptions import NotAuthenticated, OmException, ValidationFailed
 from acme.om.tenancy.types.socket_ticket import SocketPrincipal
 from acme.services.api.gateway.admission import deadline_of
 from acme.services.api.gateway.observability import request_id_of
@@ -91,15 +91,6 @@ async def current_context(
 
 
 Ctx = Annotated[TenantContext, Depends(current_context)]
-
-
-async def dev_sign_in_open(request: Request) -> None:
-    """The local sign-in's door, open only where `dev_sign_in_enabled` is on,
-    which a deployed environment refuses at boot. Closed, the route answers
-    404 exactly as a route that does not exist does, before the body is
-    read."""
-    if not container_of(request).settings.dev_sign_in_enabled:
-        raise NotFound("Not Found")
 
 
 async def current_identity(

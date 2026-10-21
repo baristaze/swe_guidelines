@@ -130,7 +130,7 @@ class TenancyOperatorManagerImpl(TenancyOperatorManagerInterface):
         operator_role: OperatorRole,
         expires_in: timedelta | None = None,
     ) -> IssuedOperatorToken:
-        # A token never mints a token, and a password alone never mints one:
+        # A token never mints a token, and a sign-in alone never mints one:
         # the stage must come from a sign-in that verified a code.
         if admin.credential_kind is not CredentialKind.LOGIN or not admin.second_factor:
             raise NotAuthorized("an operator token is minted from a sign-in with a second factor")

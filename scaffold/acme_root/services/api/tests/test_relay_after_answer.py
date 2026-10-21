@@ -105,7 +105,7 @@ async def test_every_write_of_a_request_relays_after_it(
         org_id = UUID((await client.get("/v1/orgs/current", headers=owner)).json()["id"])
         bob = await add_member(container, org_id, "bob@example.test", Role.MEMBER)
         for _ in range(2):
-            await sign_in_as(client, "bob@example.test", org_id)
+            await sign_in_as(client, container, "bob@example.test", org_id)
         heard.clear()
         at_answer: list[int] = []
 

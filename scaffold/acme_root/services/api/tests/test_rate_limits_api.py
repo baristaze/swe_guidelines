@@ -77,7 +77,7 @@ async def another_session(
     """A second session of the owner the first one belongs to, in its org."""
     token = headers["Authorization"].removeprefix("Bearer ")
     ctx = await container.managers.tenancy.authenticate(seed_request(), token)
-    return await sign_in_as(client, OWNER["email"], ctx.org_id)
+    return await sign_in_as(client, container, OWNER["email"], ctx.org_id)
 
 
 async def revoked_session(

@@ -10,7 +10,6 @@ import pytest
 from acme.infra.cache import CacheScope
 from acme.infra.impl.local import InfraLocalImpl
 from acme.infra.topics import EntityChangedPayload, TopicPayload, Topics
-from acme.integrations.identity.absent import IdentityProviderAbsentImpl
 from acme.om.base import new_id, utcnow
 from acme.om.change_events.storage.impl.memory import ChangeEventStorageMemoryImpl
 from acme.om.context import AppContext, AppType, CredentialKind, Permission, Role, TenantContext
@@ -27,11 +26,11 @@ from acme.om.idempotency.types.attempt import Attempt, lease_bound
 from acme.om.idempotency.types.record import IdempotencyRecord
 from acme.om.outbox.impl.relay import OutboxRelayImpl
 from acme.om.outbox.storage.impl.memory import OutboxStorageMemoryImpl
-from acme.om.root import build_tenancy
 from acme.om.tenancy import TenancyManagerInterface
 from acme.om.tenancy.impl.manager import TenancyOptions
 from acme.om.tenancy.storage.impl.memory import TenancyStorageMemoryImpl
 
+from contracts.signing_in import provider_login, tenancy_signing_in
 from contracts.tenancy import SpyRelay, add_member, make_manager, request, sign_in
 
 
@@ -155,9 +154,7 @@ async def test_a_rerun_of_the_create_reissues_the_secret_on_the_same_key(
 async def test_api_key_ttl_is_bounded_by_the_option(
     storage: TenancyStorageMemoryImpl, infra: InfraLocalImpl
 ) -> None:
-    manager = make_manager(
-        storage, infra, TenancyOptions(dev_sign_in=True, api_key_ttl=timedelta(days=30))
-    )
+    manager = make_manager(storage, infra, TenancyOptions(api_key_ttl=timedelta(days=30)))
     _, org = await manager.bootstrap(request(), "Ajax", "ajax", "ann@example.test", "Ann")
     owner = await sign_in(manager, "ann@example.test", org.id)
 
@@ -181,7 +178,7 @@ async def test_sessions_are_listed_revoked_and_logged_out(
     first, second = [
         await manager.sign_in.exchange_login(
             await manager.authenticate_login(
-                request(), (await manager.sign_in.dev_sign_in(request(), "ann@example.test")).token
+                request(), (await provider_login(manager, "ann@example.test")).token
             ),
             org.id,
         )
@@ -221,8 +218,8 @@ async def test_sessions_are_listed_revoked_and_logged_out(
     )
     out = signed_out.auth_session
     assert out.id == ctx.security.credential_id and out.revoked_at is not None
-    # The local sign-in leaves no session at the provider to end.
-    assert signed_out.provider_logout_url is None
+    # The sign-in came through the provider, so the answer names its logout.
+    assert signed_out.provider_logout_url is not None
     with pytest.raises(CredentialExpired):
         await manager.authenticate(request(), first.token)
 
@@ -234,12 +231,11 @@ async def test_revoking_a_session_announces_it_on_the_bus_without_its_token(
     reaches it as any change does, an outbox row the relay publishes. The
     event is a record, not a credential: its snapshot has no token hash."""
     relay = SpyRelay(OutboxRelayImpl(outbox, ChangeEventStorageMemoryImpl(), infra.get_topics()))
-    manager = build_tenancy(
+    manager = tenancy_signing_in(
         storage,
         relay,
         infra.get_cache(CacheScope.REALTIME_TICKET),
-        TenancyOptions(dev_sign_in=True),
-        identity_provider=IdentityProviderAbsentImpl(),
+        TenancyOptions(),
     )
     published: list[TopicPayload] = []
 
@@ -266,7 +262,7 @@ async def test_revoking_a_session_announces_it_on_the_bus_without_its_token(
     # Logging out is the same revocation, announced the same way.
     third = await manager.sign_in.exchange_login(
         await manager.authenticate_login(
-            request(), (await manager.sign_in.dev_sign_in(request(), "ann@example.test")).token
+            request(), (await provider_login(manager, "ann@example.test")).token
         ),
         org.id,
     )
@@ -284,9 +280,7 @@ async def test_revoking_a_session_announces_it_on_the_bus_without_its_token(
 async def test_a_page_of_dead_sessions_never_hides_a_live_one(
     storage: TenancyStorageMemoryImpl, infra: InfraLocalImpl, outbox: OutboxStorageMemoryImpl
 ) -> None:
-    manager = make_manager(
-        storage, infra, TenancyOptions(dev_sign_in=True, max_limit=1), outbox=outbox
-    )
+    manager = make_manager(storage, infra, TenancyOptions(max_limit=1), outbox=outbox)
     _, org = await manager.bootstrap(request(), "Ajax", "ajax", "ann@example.test", "Ann")
     older = await sign_in(manager, "ann@example.test", org.id)
     newer = await sign_in(manager, "ann@example.test", org.id)
@@ -304,9 +298,7 @@ async def test_a_page_of_dead_sessions_never_hides_a_live_one(
 async def test_a_members_own_keys_are_found_behind_a_page_of_others(
     storage: TenancyStorageMemoryImpl, infra: InfraLocalImpl, outbox: OutboxStorageMemoryImpl
 ) -> None:
-    manager = make_manager(
-        storage, infra, TenancyOptions(dev_sign_in=True, max_limit=2), outbox=outbox
-    )
+    manager = make_manager(storage, infra, TenancyOptions(max_limit=2), outbox=outbox)
     _, org = await manager.bootstrap(request(), "Ajax", "ajax", "ann@example.test", "Ann")
     owner = await sign_in(manager, "ann@example.test", org.id)
     await add_member(storage, org.id, "bob@example.test", Role.MEMBER)

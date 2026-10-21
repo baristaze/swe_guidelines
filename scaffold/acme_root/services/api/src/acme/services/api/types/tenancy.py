@@ -139,17 +139,6 @@ class DeviceTokenRequest(RequestBody):
     device_code: str = Field(min_length=1, max_length=500)
 
 
-class DevSignInRequest(RequestBody):
-    """Local and test only: a sign-in by address alone, with no browser round
-    trip, for the seed, the traffic generator, and the tests. A
-    person nobody knew is made, with their personal org. A deployed
-    environment never serves it: the route answers 404 there, and the
-    process refuses to start with it on."""
-
-    email: str = Field(min_length=3, max_length=320)
-    display_name: str = Field(default="", max_length=200)
-
-
 class SecondFactorRequest(RequestBody):
     """The code from an authenticator, presented with a sign-in credential.
     The answer is a new sign-in that records the verified code, which the

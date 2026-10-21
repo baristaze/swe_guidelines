@@ -51,6 +51,7 @@ from acme.om.tenancy.types.issued import IssuedLogin
 from acme.om.tenancy.types.org import Org, OrgKind
 
 from contracts.second_factor import TOTP_KEY, SteppingClock
+from contracts.signing_in import provider_login, signing_in
 from contracts.tenancy import request
 
 CALLBACK = "http://localhost:55173/auth/callback"
@@ -69,15 +70,15 @@ def build(
     outbox: OutboxStorageMemoryImpl,
     twin: IdentityProviderTwinImpl | None,
     *,
-    dev_sign_in: bool = True,
+    local_login_mint: bool = True,
 ) -> TenancyManagerInterface:
     relay = OutboxRelayImpl(outbox, ChangeEventStorageMemoryImpl(), infra.get_topics())
-    return build_tenancy(
+    manager = build_tenancy(
         storage,
         relay,
         infra.get_cache(CacheScope.REALTIME_TICKET),
         TenancyOptions(
-            dev_sign_in=dev_sign_in,
+            local_login_mint=local_login_mint,
             totp_encryption_key=TOTP_KEY,
             sign_in_redirect_uris=(CALLBACK,),
             sign_out_return_uris=(SIGNED_OUT,),
@@ -85,6 +86,7 @@ def build(
         SteppingClock(),
         identity_provider=twin or IdentityProviderAbsentImpl(),
     )
+    return manager if twin is None else signing_in(manager, twin)
 
 
 @pytest.fixture
@@ -125,7 +127,7 @@ async def owner_of_team(
 ) -> TenantContext:
     """The owner of a team org, in a session there."""
     _, org = await manager.bootstrap(request(), "Ajax", "ajax", email, "Ann")
-    return await enter(manager, await manager.sign_in.dev_sign_in(request(), email), org.id)
+    return await enter(manager, await provider_login(manager, email), org.id)
 
 
 # Where the browser goes.
@@ -339,40 +341,40 @@ async def test_a_device_asked_too_often_is_told_to_slow_down(
         await manager.sign_in.finish_device_sign_in(request(), "any")
 
 
-# The local sign-in.
+# The local mint.
 
 
-async def test_the_local_sign_in_is_not_there_unless_it_is_on(
+async def test_the_local_mint_is_not_there_unless_it_is_on(
     storage: TenancyStorageMemoryImpl, infra: InfraLocalImpl, outbox: OutboxStorageMemoryImpl
 ) -> None:
-    off = build(storage, infra, outbox, None, dev_sign_in=False)
+    off = build(storage, infra, outbox, None, local_login_mint=False)
     with pytest.raises(NotFound):
-        await off.sign_in.dev_sign_in(request(), "dee@example.test")
+        await off.sign_in.mint_local_login(request(), "dee@example.test")
     assert await storage.count_orgs() == 0
 
 
-async def test_the_local_sign_in_makes_a_person_once_and_then_finds_them(
+async def test_the_local_mint_makes_a_person_once_and_then_finds_them(
     manager: TenancyManagerInterface, storage: TenancyStorageMemoryImpl
 ) -> None:
-    first = await manager.sign_in.dev_sign_in(request(), "dee@example.test", "Dee")
+    first = await manager.sign_in.mint_local_login(request(), "dee@example.test", "Dee")
     [place] = first.memberships
     assert place.org.personal and place.org.name == "Dee"
-    again = await manager.sign_in.dev_sign_in(request(), "dee@example.test")
+    again = await manager.sign_in.mint_local_login(request(), "dee@example.test")
     assert [m.org.id for m in again.memberships] == [place.org.id]
     with pytest.raises(ValidationFailed):
-        await manager.sign_in.dev_sign_in(request(), "not-an-address")
+        await manager.sign_in.mint_local_login(request(), "not-an-address")
     with pytest.raises(ValidationFailed):
-        await manager.sign_in.dev_sign_in(request(), "smoke@platform.acme.invalid")
+        await manager.sign_in.mint_local_login(request(), "smoke@platform.acme.invalid")
     assert await storage.count_orgs() == 1
 
 
-async def test_the_local_sign_in_finds_a_person_in_any_case(
+async def test_the_local_mint_finds_a_person_in_any_case(
     manager: TenancyManagerInterface, storage: TenancyStorageMemoryImpl
 ) -> None:
-    first = await manager.sign_in.dev_sign_in(request(), "Dee@Example.test", "Dee")
+    first = await manager.sign_in.mint_local_login(request(), "Dee@Example.test", "Dee")
     [place] = first.memberships
     assert place.user.email == "dee@example.test"
-    again = await manager.sign_in.dev_sign_in(request(), "DEE@example.TEST")
+    again = await manager.sign_in.mint_local_login(request(), "DEE@example.TEST")
     assert [m.org.id for m in again.memberships] == [place.org.id]
     assert await storage.count_orgs() == 1
 
@@ -409,15 +411,11 @@ async def test_an_invitation_needs_a_member_manager_and_a_role_at_most_theirs(
 ) -> None:
     ann = await owner_of_team(manager)
     await manager.add_member(request(), "ajax", "vic@ajax.example", "Vic", Role.ADMIN)
-    vic = await enter(
-        manager, await manager.sign_in.dev_sign_in(request(), "vic@ajax.example"), ann.org_id
-    )
+    vic = await enter(manager, await provider_login(manager, "vic@ajax.example"), ann.org_id)
     with pytest.raises(NotAuthorized):
         await manager.members.invite_member(vic, "own@ajax.example", Role.OWNER)
     await manager.add_member(request(), "ajax", "mem@ajax.example", "Mem", Role.MEMBER)
-    mem = await enter(
-        manager, await manager.sign_in.dev_sign_in(request(), "mem@ajax.example"), ann.org_id
-    )
+    mem = await enter(manager, await provider_login(manager, "mem@ajax.example"), ann.org_id)
     with pytest.raises(NotAuthorized):
         await manager.members.invite_member(mem, "x@ajax.example", Role.VIEWER)
     for email, role in (
@@ -610,15 +608,13 @@ async def test_the_single_sign_on_link_is_a_team_orgs_for_a_member_manager(
     assert f"organization={org.provider_org_id}" in link and "intent=sso" in link
     with pytest.raises(ValidationFailed):
         await manager.members.sso_setup_link(ann, "sso", "https://evil.example/settings")
-    login = await manager.sign_in.dev_sign_in(request(), "ann@ajax.example")
+    login = await provider_login(manager, "ann@ajax.example")
     personal = next(m.org for m in login.memberships if m.org.personal)
     in_personal = await enter(manager, login, personal.id)
     with pytest.raises(ValidationFailed):
         await manager.members.sso_setup_link(in_personal, "sso", SETTINGS)
     await manager.add_member(request(), "ajax", "mem@ajax.example", "Mem", Role.MEMBER)
-    mem = await enter(
-        manager, await manager.sign_in.dev_sign_in(request(), "mem@ajax.example"), ann.org_id
-    )
+    mem = await enter(manager, await provider_login(manager, "mem@ajax.example"), ann.org_id)
     with pytest.raises(NotAuthorized):
         await manager.members.sso_setup_link(mem, "domain_verification", SETTINGS)
 
@@ -672,7 +668,7 @@ async def test_a_personal_org_never_gets_a_member_through_single_sign_on(
     storage: TenancyStorageMemoryImpl,
     twin: IdentityProviderTwinImpl,
 ) -> None:
-    login = await manager.sign_in.dev_sign_in(request(), "ann@ajax.example", "Ann")
+    login = await provider_login(manager, "ann@ajax.example", "Ann")
     personal = login.memberships[0].org
     ann = await enter(manager, login, personal.id)
     # Invited into the personal org, its organization at the provider exists.
@@ -811,7 +807,7 @@ async def test_a_sign_out_to_a_return_not_listed_is_refused_and_ends_nothing(
     ]
 
 
-async def test_a_device_or_a_local_sign_in_signs_out_of_acme_alone(
+async def test_a_device_sign_in_or_a_minted_login_signs_out_of_acme_alone(
     manager: TenancyManagerInterface, twin: IdentityProviderTwinImpl
 ) -> None:
     started = await manager.sign_in.start_device_sign_in(request())
@@ -819,7 +815,7 @@ async def test_a_device_or_a_local_sign_in_signs_out_of_acme_alone(
     device = await manager.sign_in.finish_device_sign_in(request(), started.device_code)
     _, ictx = await signed_in_at(manager, device, device.memberships[0].org.id)
     assert (await manager.sign_in.logout(ictx, SIGNED_OUT)).provider_logout_url is None
-    local = await manager.sign_in.dev_sign_in(request(), "eve@example.test")
+    local = await manager.sign_in.mint_local_login(request(), "eve@example.test")
     _, ictx = await signed_in_at(manager, local, local.memberships[0].org.id)
     assert (await manager.sign_in.logout(ictx, SIGNED_OUT)).provider_logout_url is None
 

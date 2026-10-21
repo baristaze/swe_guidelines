@@ -86,15 +86,18 @@ class TenancySignInManagerInterface(ABC):
 
     @abstractmethod
     @transition
-    async def dev_sign_in(
+    async def mint_local_login(
         self, rctx: RequestContext, email: str, display_name: str = ""
     ) -> IssuedLogin:
-        """System-internal, local and test only: a sign-in by address alone,
-        for the seed, the demo recorders, the traffic generator, and the tests,
-        which need people without a browser round trip. The identity is found
-        by the email or made with its personal org, as a first sign-in makes
-        one. NotFound unless the process was built with it on, which a deployed
-        environment refuses at boot."""
+        """System-internal, local and test only: the local mint, a login
+        for an address on the local database, with no provider. It is
+        behind `acme-api mint-local-login` alone, never a route or a
+        page, for the machines with no browser or mailbox that need a
+        seeded person: the traffic generator and its stress runs, the
+        browser checks, and the demo recorders. The identity is found by
+        the email or made with its personal org, as a first sign-in makes
+        one. NotFound unless the process was built with `local_login_mint`
+        on, which a deployed environment refuses at boot."""
         ...
 
     @abstractmethod

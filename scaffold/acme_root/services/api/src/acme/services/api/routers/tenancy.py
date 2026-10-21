@@ -16,10 +16,10 @@
   `return_to`, one of this environment's `ACME_SIGN_OUT_RETURN_URIS`, and
   answers the row it ended with `provider_logout_url`: WorkOS's logout
   for the AuthKit session the sign-in left in the browser, or null when
-  there is none (the device sign-in, the local sign-in, an operator
-  token). Locally and in the tests only, sign in by address alone
-  (`/v1/auth/dev-sign-in`, ADR 0029); a deployed process refuses to start
-  with it on.
+  there is none (the device sign-in, an operator token, a login the local
+  mint made). No route signs a person in by address: on every stack a
+  login comes from the provider's code or a confirmed device, and the
+  local mint is a command, never a route (ADR 0104).
 - **Me.** The current org, my user, my identity, and my display name; a
   new team org I own (`/v1/orgs/current`, `/v1/me`, `/v1/me/identity`,
   `/v1/orgs`).
@@ -85,10 +85,10 @@ plane, the operator service."""
 
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Response
+from fastapi import APIRouter, Response
 
 from acme.services.api.gateway.admin import EnrollingOperatorCtx, MintingOperatorCtx, OperatorCtx
-from acme.services.api.gateway.auth import Ctx, Identity, Rctx, dev_sign_in_open
+from acme.services.api.gateway.auth import Ctx, Identity, Rctx
 from acme.services.api.gateway.idempotency import Idem, OperatorIdem
 from acme.services.api.gateway.ratelimit import rate_limited
 from acme.services.api.gateway.resolve import AdminService, FlagsService, TenancyService
@@ -108,7 +108,6 @@ from acme.services.api.types.tenancy import (
     DeleteOrgRequest,
     DeviceSignInView,
     DeviceTokenRequest,
-    DevSignInRequest,
     ExchangeAuthSessionRequest,
     FlagsView,
     IdentityView,
@@ -183,19 +182,6 @@ async def finish_device_sign_in(
     rctx: Rctx, tenancy: TenancyService, body: DeviceTokenRequest
 ) -> IssuedLoginView:
     return await tenancy.finish_device_sign_in(rctx, body)
-
-
-# Local and test only: 404 wherever it is off, as a route that does not
-# exist answers, and a deployed process refuses to start with it on.
-@router.post(
-    "/auth/dev-sign-in",
-    response_model=IssuedLoginView,
-    dependencies=[Depends(dev_sign_in_open), rate_limited("login")],
-)
-async def dev_sign_in(
-    rctx: Rctx, tenancy: TenancyService, body: DevSignInRequest
-) -> IssuedLoginView:
-    return await tenancy.dev_sign_in(rctx, body)
 
 
 @router.post(

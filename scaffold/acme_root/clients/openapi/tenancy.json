@@ -343,29 +343,6 @@
         "title": "DeleteOrgRequest",
         "type": "object"
       },
-      "DevSignInRequest": {
-        "additionalProperties": false,
-        "description": "Local and test only: a sign-in by address alone, with no browser round\ntrip, for the seed, the traffic generator, and the tests. A\nperson nobody knew is made, with their personal org. A deployed\nenvironment never serves it: the route answers 404 there, and the\nprocess refuses to start with it on.",
-        "properties": {
-          "display_name": {
-            "default": "",
-            "maxLength": 200,
-            "title": "Display Name",
-            "type": "string"
-          },
-          "email": {
-            "maxLength": 320,
-            "minLength": 3,
-            "title": "Email",
-            "type": "string"
-          }
-        },
-        "required": [
-          "email"
-        ],
-        "title": "DevSignInRequest",
-        "type": "object"
-      },
       "DeviceSignInView": {
         "description": "The start of a sign-in for a device with no browser, the command\nline. The person opens `verification_uri_complete` (or\n`verification_uri` and types `user_code`) in any browser; the device\nkeeps `device_code` to itself and asks `POST /v1/auth/device/token`\nwith it every `interval` seconds, for at most `expires_in` seconds.",
         "properties": {
@@ -3164,81 +3141,6 @@
         ]
       }
     },
-    "/v1/auth/dev-sign-in": {
-      "post": {
-        "operationId": "dev_sign_in",
-        "parameters": [
-          {
-            "in": "header",
-            "name": "x-app",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-App"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-app-version",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-App-Version"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/DevSignInRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/IssuedLoginView"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "common.json#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Dev Sign In",
-        "tags": [
-          "tenancy"
-        ]
-      }
-    },
     "/v1/auth/device": {
       "post": {
         "operationId": "start_device_sign_in",
@@ -5946,7 +5848,7 @@
   },
   "tags": [
     {
-      "description": "Tenancy: who a caller is, and the org it acts in.\n\n- **Sign-in.** Start a sign-in at the identity provider, WorkOS AuthKit,\n  for this environment's portal callback, and finish it with the code the\n  browser brought back, which the API exchanges server-side; a person\n  nobody knew is signed up by it, with their personal org\n  (`/v1/auth/sign-in`, `/v1/auth/callback`). Start and finish a device\n  sign-in for the command line (`/v1/auth/device`,\n  `/v1/auth/device/token`). Confirm an operator's second factor on a\n  sign-in (`/v1/auth/second-factor`). List my places; exchange the login,\n  once, or switch an auth session, for an auth session in one org; sign\n  out (`/v1/auth/memberships`, `/v1/auth/sessions`, `/v1/auth/logout`).\n  The sign-out ends the credential presented, whichever a person holds:\n  an auth session, a login (with or without its second factor), or an\n  operator token; an API key has none and is `401`. It takes an optional\n  `return_to`, one of this environment's `ACME_SIGN_OUT_RETURN_URIS`, and\n  answers the row it ended with `provider_logout_url`: WorkOS's logout\n  for the AuthKit session the sign-in left in the browser, or null when\n  there is none (the device sign-in, the local sign-in, an operator\n  token). Locally and in the tests only, sign in by address alone\n  (`/v1/auth/dev-sign-in`, ADR 0029); a deployed process refuses to start\n  with it on.\n- **Me.** The current org, my user, my identity, and my display name; a\n  new team org I own (`/v1/orgs/current`, `/v1/me`, `/v1/me/identity`,\n  `/v1/orgs`).\n- **Delete my account.** From an auth session, with the account's email\n  typed to confirm: the account goes at once, in every org, and the\n  answer names the identity provider's logout, as a sign-out does. `409\n  last_owner` names each team org the person is the last owner of, in the\n  envelope's `last_owner.orgs`; `403 operator_role_held` refuses an\n  operator (`POST /v1/me/deletion`, ADR 0041).\n- **Delete this organization.** From an owner's auth session, with the\n  org's name typed to confirm: everyone in the team org loses it at once,\n  and the answer carries the owner's new auth session in their personal\n  org. `403 not_authorized` refuses an admin, a member, and an API key;\n  `409 personal_org_fixed` refuses a personal org\n  (`POST /v1/orgs/current/deletion`, ADR 0042).\n- **Members.** The org's members and their roles a page at a time, a\n  member's role, removing a member (`/v1/users`, `/v1/memberships`,\n  `/v1/memberships/{user_id}`).\n- **Invitations and single sign-on.** Invite a person by email with a\n  role, under an Idempotency-Key; the identity provider sends the email.\n  The org's pending invitations a page at a time, sending one again,\n  revoking one. A short-lived link to the provider's admin portal, where\n  an owner or an admin of a team org sets up single sign-on or proves a\n  domain (`/v1/invitations`, `/v1/invitations/{invitation_id}/resend`,\n  `/v1/invitations/{invitation_id}`, `/v1/orgs/current/sso-link`).\n- **Credentials.** My live auth sessions and revoking one; the org's API\n  keys, creating one, revoking one (`/v1/auth/sessions`, `/v1/api-keys`).\n- **Flags.** The session's flags that a client reads to decide what it\n  shows, under an entity tag, so a client that asks again with it is\n  answered `304` until a value changes (`/v1/flags`).\n- **The identity provider's deliveries.** Outside `/v1`, since their\n  shape is the provider's (`routers/webhooks.py`, `/webhooks/identity`).\n- **The operator plane.** For an identity on the operator allowlist,\n  across every org: create an org with its owner, add a member, read an\n  org and its members, list every org a page at a time, delete a team org\n  as its owner does (closed for everyone in it at once; the worker ends\n  its providers and then deletes it; a personal org is refused), and read\n  the system's size: the tenant count, the user count, and the change\n  events of twenty-four hours, as the maintenance worker last counted\n  them, with the moment it did (`404` before its first count; the route\n  counts nothing) (`/v1/admin/orgs`, `/v1/admin/orgs/{org_id}`,\n  `/v1/admin/orgs/{org_id}/members`, `/v1/admin/size`). An org's change\n  events and its work are their own namespaces' operator routes, under the\n  same plane. The plane's routes take OperatorContext and cannot reach a\n  tenant manager, because no TenantContext exists on this path. A read\n  needs the read permission of the allowlist entry and a write the write\n  one; the manager decides, and a refusal is the same `not_authorized` a\n  viewer's write gets. The creating routes run under the operator's\n  idempotency record, keyed like every other creating route. Every read\n  and write takes an operator token (`OperatorCtx`), which refuses a\n  sign-in `operator_token_required`. An operator enrols the second factor\n  once, at the first sign-in to the plane, and until then only the two\n  enrolment routes answer (`EnrollingOperatorCtx`, `/v1/admin/me/totp`,\n  `/v1/admin/me/totp/confirm`). A sign-in that verified a TOTP code mints\n  one operator token, one permission and an hour at most, and ends in that\n  mint (`MintingOperatorCtx`, `POST /v1/admin/me/tokens`). An operator\n  lists their own live tokens and revokes one by its id, refused from its\n  next request; another operator's is `404` (`GET /v1/admin/me/tokens`,\n  `DELETE /v1/admin/me/tokens/{token_id}`, ADR 0068).\n\nEvery function is one call into the tenancy service, or, on the operator\nplane, the operator service.",
+      "description": "Tenancy: who a caller is, and the org it acts in.\n\n- **Sign-in.** Start a sign-in at the identity provider, WorkOS AuthKit,\n  for this environment's portal callback, and finish it with the code the\n  browser brought back, which the API exchanges server-side; a person\n  nobody knew is signed up by it, with their personal org\n  (`/v1/auth/sign-in`, `/v1/auth/callback`). Start and finish a device\n  sign-in for the command line (`/v1/auth/device`,\n  `/v1/auth/device/token`). Confirm an operator's second factor on a\n  sign-in (`/v1/auth/second-factor`). List my places; exchange the login,\n  once, or switch an auth session, for an auth session in one org; sign\n  out (`/v1/auth/memberships`, `/v1/auth/sessions`, `/v1/auth/logout`).\n  The sign-out ends the credential presented, whichever a person holds:\n  an auth session, a login (with or without its second factor), or an\n  operator token; an API key has none and is `401`. It takes an optional\n  `return_to`, one of this environment's `ACME_SIGN_OUT_RETURN_URIS`, and\n  answers the row it ended with `provider_logout_url`: WorkOS's logout\n  for the AuthKit session the sign-in left in the browser, or null when\n  there is none (the device sign-in, an operator token, a login the local\n  mint made). No route signs a person in by address: on every stack a\n  login comes from the provider's code or a confirmed device, and the\n  local mint is a command, never a route (ADR 0104).\n- **Me.** The current org, my user, my identity, and my display name; a\n  new team org I own (`/v1/orgs/current`, `/v1/me`, `/v1/me/identity`,\n  `/v1/orgs`).\n- **Delete my account.** From an auth session, with the account's email\n  typed to confirm: the account goes at once, in every org, and the\n  answer names the identity provider's logout, as a sign-out does. `409\n  last_owner` names each team org the person is the last owner of, in the\n  envelope's `last_owner.orgs`; `403 operator_role_held` refuses an\n  operator (`POST /v1/me/deletion`, ADR 0041).\n- **Delete this organization.** From an owner's auth session, with the\n  org's name typed to confirm: everyone in the team org loses it at once,\n  and the answer carries the owner's new auth session in their personal\n  org. `403 not_authorized` refuses an admin, a member, and an API key;\n  `409 personal_org_fixed` refuses a personal org\n  (`POST /v1/orgs/current/deletion`, ADR 0042).\n- **Members.** The org's members and their roles a page at a time, a\n  member's role, removing a member (`/v1/users`, `/v1/memberships`,\n  `/v1/memberships/{user_id}`).\n- **Invitations and single sign-on.** Invite a person by email with a\n  role, under an Idempotency-Key; the identity provider sends the email.\n  The org's pending invitations a page at a time, sending one again,\n  revoking one. A short-lived link to the provider's admin portal, where\n  an owner or an admin of a team org sets up single sign-on or proves a\n  domain (`/v1/invitations`, `/v1/invitations/{invitation_id}/resend`,\n  `/v1/invitations/{invitation_id}`, `/v1/orgs/current/sso-link`).\n- **Credentials.** My live auth sessions and revoking one; the org's API\n  keys, creating one, revoking one (`/v1/auth/sessions`, `/v1/api-keys`).\n- **Flags.** The session's flags that a client reads to decide what it\n  shows, under an entity tag, so a client that asks again with it is\n  answered `304` until a value changes (`/v1/flags`).\n- **The identity provider's deliveries.** Outside `/v1`, since their\n  shape is the provider's (`routers/webhooks.py`, `/webhooks/identity`).\n- **The operator plane.** For an identity on the operator allowlist,\n  across every org: create an org with its owner, add a member, read an\n  org and its members, list every org a page at a time, delete a team org\n  as its owner does (closed for everyone in it at once; the worker ends\n  its providers and then deletes it; a personal org is refused), and read\n  the system's size: the tenant count, the user count, and the change\n  events of twenty-four hours, as the maintenance worker last counted\n  them, with the moment it did (`404` before its first count; the route\n  counts nothing) (`/v1/admin/orgs`, `/v1/admin/orgs/{org_id}`,\n  `/v1/admin/orgs/{org_id}/members`, `/v1/admin/size`). An org's change\n  events and its work are their own namespaces' operator routes, under the\n  same plane. The plane's routes take OperatorContext and cannot reach a\n  tenant manager, because no TenantContext exists on this path. A read\n  needs the read permission of the allowlist entry and a write the write\n  one; the manager decides, and a refusal is the same `not_authorized` a\n  viewer's write gets. The creating routes run under the operator's\n  idempotency record, keyed like every other creating route. Every read\n  and write takes an operator token (`OperatorCtx`), which refuses a\n  sign-in `operator_token_required`. An operator enrols the second factor\n  once, at the first sign-in to the plane, and until then only the two\n  enrolment routes answer (`EnrollingOperatorCtx`, `/v1/admin/me/totp`,\n  `/v1/admin/me/totp/confirm`). A sign-in that verified a TOTP code mints\n  one operator token, one permission and an hour at most, and ends in that\n  mint (`MintingOperatorCtx`, `POST /v1/admin/me/tokens`). An operator\n  lists their own live tokens and revokes one by its id, refused from its\n  next request; another operator's is `404` (`GET /v1/admin/me/tokens`,\n  `DELETE /v1/admin/me/tokens/{token_id}`, ADR 0068).\n\nEvery function is one call into the tenancy service, or, on the operator\nplane, the operator service.",
       "name": "tenancy"
     }
   ]

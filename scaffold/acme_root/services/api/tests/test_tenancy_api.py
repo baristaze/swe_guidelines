@@ -12,10 +12,11 @@ from api_support import (
     add_member,
     bearer,
     build_container,
+    callback_body,
     client_over,
     code_at,
-    dev_login,
     enrol_operator,
+    login_token,
     run,
     seed_request,
     sign_in_as,
@@ -23,6 +24,7 @@ from api_support import (
 from starlette.testclient import TestClient
 from starlette.websockets import WebSocketDisconnect
 
+from acme.integrations.impl.configured import absent_integrations
 from acme.om.context import OperatorRole, Role
 from acme.om.idempotency.impl.manager import IdempotencyOptions
 from acme.om.work.types.work_item import WorkKind
@@ -83,14 +85,18 @@ async def test_sign_in_is_rate_limited_per_client(tmp_path: Path) -> None:
     # mechanism is the same at any size, so this process gets a small one.
     # Every sign-in route counts against it; the callback of a process with
     # no provider answers 503 and still counts.
-    container = build_container(tmp_path, login_rate_limit=SMALL_BUDGET)
+    container = build_container(
+        tmp_path, integrations=absent_integrations(), login_rate_limit=SMALL_BUDGET
+    )
     budget = container.rate_limits.of("login").limit
     assert budget == SMALL_BUDGET
     async with client_over(container) as client:
         for index in range(budget):
             body = {"code": f"code-{index}", "code_verifier": "v" * 43}
             assert (await client.post("/v1/auth/callback", json=body)).status_code == 503
-        rejected = await client.post("/v1/auth/dev-sign-in", json={"email": "nobody@example.test"})
+        rejected = await client.post(
+            "/v1/auth/callback", json={"code": "one-more", "code_verifier": "v" * 43}
+        )
     assert rejected.status_code == 429
     assert rejected.json()["error"]["code"] == "rate_limited"
     assert int(rejected.headers["Retry-After"]) >= 1
@@ -107,7 +113,7 @@ async def test_a_guessed_second_factor_waits_before_its_next_try(
     """Per email and in the database, beside the per-address limit: after the
     free run of wrong codes even the right one is answered 429 with the wait."""
     _, secret = await enrol_operator(client, container, "root@example.test", OperatorRole.WRITE)
-    login = bearer(await dev_login(client, "root@example.test"))
+    login = bearer(await login_token(client, container, "root@example.test"))
     for _ in range(container.settings.sign_in_free_failures):
         wrong = await client.post(
             "/v1/auth/second-factor", headers=login, json={"totp_code": "000000"}
@@ -155,7 +161,7 @@ async def test_a_member_cannot_mint_a_service_key(
 ) -> None:
     org_id = UUID((await client.get("/v1/orgs/current", headers=owner)).json()["id"])
     await add_member(container, org_id, "bob@example.test", Role.MEMBER)
-    bob = await sign_in_as(client, "bob@example.test", org_id)
+    bob = await sign_in_as(client, container, "bob@example.test", org_id)
     for headers in (bob, owner):
         refused = await client.post(
             "/v1/api-keys", headers=headers, json={"name": "svc", "role": "service"}
@@ -314,7 +320,7 @@ async def test_idempotency_keys_are_per_user_inside_a_tenant(
 ) -> None:
     org_id = (await client.get("/v1/orgs/current", headers=owner)).json()["id"]
     await add_member(container, UUID(org_id), "bob@example.test", Role.MEMBER)
-    bob = await sign_in_as(client, "bob@example.test", UUID(org_id))
+    bob = await sign_in_as(client, container, "bob@example.test", UUID(org_id))
     body = {"name": "ci", "role": "member"}
 
     first = await client.post(
@@ -335,7 +341,7 @@ async def test_members_are_promoted_and_removed_by_a_member_manager(
 ) -> None:
     org_id = UUID((await client.get("/v1/orgs/current", headers=owner)).json()["id"])
     bob = await add_member(container, org_id, "bob@example.test", Role.VIEWER)
-    as_bob = await sign_in_as(client, "bob@example.test", org_id)
+    as_bob = await sign_in_as(client, container, "bob@example.test", org_id)
     # A viewer reads another member by its id, as it reads the list.
     owner_id = (await client.get("/v1/me", headers=owner)).json()["user"]["id"]
     assert (await client.get(f"/v1/users/{owner_id}", headers=as_bob)).status_code == 200
@@ -395,7 +401,7 @@ async def test_sessions_are_listed_revoked_and_logged_out(
     client: httpx.AsyncClient, container: AppContainer, owner: dict[str, str]
 ) -> None:
     org_id = UUID((await client.get("/v1/orgs/current", headers=owner)).json()["id"])
-    other = await sign_in_as(client, OWNER["email"], org_id)
+    other = await sign_in_as(client, container, OWNER["email"], org_id)
 
     listed = await client.get("/v1/auth/sessions", headers=owner)
     assert listed.status_code == 200, listed.text
@@ -463,7 +469,7 @@ async def test_an_operator_never_deletes_a_personal_org(
     client: httpx.AsyncClient, container: AppContainer
 ) -> None:
     admin, _ = await enrol_operator(client, container, "root@example.test", OperatorRole.WRITE)
-    login = await dev_login(client, OWNER["email"])
+    login = await login_token(client, container, OWNER["email"])
     places = await client.get("/v1/auth/memberships", headers=bearer(login))
     home = next(p["org"] for p in places.json()["items"] if p["org"]["kind"] == "personal")
     refused = await client.delete(f"/v1/admin/orgs/{home['id']}", headers=admin)
@@ -480,7 +486,7 @@ def test_realtime_channel_delivers_tenant_events(tmp_path: Path) -> None:
     )
     app = create_app(container)
     with TestClient(app) as tc:
-        login = tc.post("/v1/auth/dev-sign-in", json={"email": OWNER["email"]})
+        login = tc.post("/v1/auth/callback", json=callback_body(container, OWNER["email"]))
         session = tc.post(
             "/v1/auth/sessions",
             json={"org_id": str(org.id)},

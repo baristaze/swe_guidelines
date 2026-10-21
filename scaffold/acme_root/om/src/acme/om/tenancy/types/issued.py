@@ -74,7 +74,7 @@ class SignedOut(OmBase):
     """A credential ended by its own holder, a session, a sign-in, or an
     operator token, and where the browser goes next to end the identity
     provider's session behind it: None when the sign-in left none there
-    (the device sign-in, the local sign-in, an operator token)."""
+    (the device sign-in, the local mint, an operator token)."""
 
     auth_session: AuthSession
     provider_logout_url: str | None = None

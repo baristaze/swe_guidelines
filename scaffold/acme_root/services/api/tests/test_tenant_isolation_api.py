@@ -12,7 +12,7 @@ from uuid import UUID
 
 import httpx
 import pytest
-from api_support import add_member, build_container, run, seed_request, sign_in_as
+from api_support import add_member, build_container, callback_body, run, seed_request, sign_in_as
 from starlette.testclient import TestClient
 
 from acme.integrations.identity.twin import IdentityProviderTwinImpl
@@ -94,7 +94,7 @@ async def seed_tenant(
     bytes take a pending one."""
     email = f"owner@{slug}.test"
     _, org = await container.managers.tenancy.bootstrap(seed_request(), name, slug, email, name)
-    headers = await sign_in_as(client, email, org.id)
+    headers = await sign_in_as(client, container, email, org.id)
     member = await add_member(container, org.id, f"member@{slug}.test", Role.MEMBER)
     files: list[str] = []
     keys: list[str] = []
@@ -294,12 +294,12 @@ async def test_a_cursor_minted_in_another_tenant_carries_nothing_across(
 
 
 async def test_a_sign_in_is_not_exchangeable_for_another_tenant(
-    client: httpx.AsyncClient, tenants: tuple[Tenant, Tenant]
+    client: httpx.AsyncClient, container: AppContainer, tenants: tuple[Tenant, Tenant]
 ) -> None:
     """The one place a caller names a tenant: A's person exchanges a login
     for a session in B and is refused, and the login lists only A."""
     caller, other = tenants
-    login = await client.post("/v1/auth/dev-sign-in", json={"email": "owner@ajax.test"})
+    login = await client.post("/v1/auth/callback", json=callback_body(container, "owner@ajax.test"))
     assert login.status_code == 200, login.text
     places = login.json()["memberships"]
     assert [m["org"]["id"] for m in places if m["org"]["kind"] == "team"] == [str(caller.org_id)]
@@ -326,10 +326,12 @@ async def test_the_event_stream_stops_at_the_tenant_boundary(
     assert {*caller.file_ids, *caller.api_key_ids} <= ids_in(mine.json())
 
 
-def sign_in_over(tc: TestClient, slug: str, org_id: UUID) -> dict[str, str]:
+def sign_in_over(
+    tc: TestClient, container: AppContainer, slug: str, org_id: UUID
+) -> dict[str, str]:
     """The sign-in of a seeded tenant's owner, driven by the test client: a
     socket is opened in process and an async client cannot open one."""
-    login = tc.post("/v1/auth/dev-sign-in", json={"email": f"owner@{slug}.test"})
+    login = tc.post("/v1/auth/callback", json=callback_body(container, f"owner@{slug}.test"))
     assert login.status_code == 200, login.text
     session = tc.post(
         "/v1/auth/sessions",
@@ -355,8 +357,8 @@ def test_a_socket_of_one_tenant_never_hears_a_change_in_another(tmp_path: Path) 
         )
         orgs[slug] = org.id
     with TestClient(create_app(container)) as tc:
-        mine = sign_in_over(tc, "ajax", orgs["ajax"])
-        theirs = sign_in_over(tc, "other", orgs["other"])
+        mine = sign_in_over(tc, container, "ajax", orgs["ajax"])
+        theirs = sign_in_over(tc, container, "other", orgs["other"])
         ticket = tc.post("/v1/realtime/tickets", headers=mine).json()["ticket"]
         with tc.websocket_connect(f"/v1/realtime?ticket={ticket}") as ws:
             hello = ws.receive_json()

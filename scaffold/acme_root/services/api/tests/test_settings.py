@@ -72,7 +72,7 @@ LOCAL_DEFAULT_SERVES_THE_CLOUD = {
     "auth_session_lifetime_seconds": "the local lifetime is the lifetime",
     "auth_session_idle_lifetime_seconds": "the local lifetime is the lifetime",
     "operator_token_max_lifetime_seconds": "an hour, the guideline's bound, everywhere",
-    "dev_sign_in_enabled": "off everywhere it is not set, and refused outside local and test",
+    "local_login_mint": "off everywhere but the local mint, and refused outside local and test",
     "invitation_lifetime_days": "the local lifetime is the lifetime",
     "workos_base_url": "the hosted API everywhere",
     "workos_timeout_seconds": "the local default is the tuning",

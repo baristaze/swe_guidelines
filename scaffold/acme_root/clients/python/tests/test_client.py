@@ -157,12 +157,12 @@ async def test_the_sign_in_flow_uses_the_credential_it_is_given() -> None:
     }
     recorder = Recorder(
         {
-            "/v1/auth/dev-sign-in": httpx.Response(200, json=login),
+            "/v1/auth/callback": httpx.Response(200, json=login),
             "/v1/auth/sessions": httpx.Response(200, json=session),
         }
     )
     async with client_over(recorder, token=None) as client:
-        issued = await client.dev_sign_in("ann@example.test")
+        issued = await client.finish_sign_in("code-1", "v" * 43)
         exchanged = await client.exchange_auth_session(issued.token, issued.memberships[0].org.id)
     assert exchanged.token == "ses_2" and exchanged.org.slug == "ajax"
     assert "authorization" not in recorder.requests[0].headers
@@ -196,7 +196,6 @@ async def test_the_sign_in_calls_carry_no_bearer_and_no_key() -> None:
             "/v1/auth/callback": httpx.Response(200, json=LOGIN),
             "/v1/auth/device": httpx.Response(200, json=device),
             "/v1/auth/device/token": httpx.Response(200, json=LOGIN),
-            "/v1/auth/dev-sign-in": httpx.Response(200, json=LOGIN),
         }
     )
     async with client_over(recorder, token="ses_stale") as client:
@@ -206,10 +205,9 @@ async def test_the_sign_in_calls_carry_no_bearer_and_no_key() -> None:
         called_back = await client.finish_sign_in("code-1", "v" * 43)
         begun = await client.start_device_sign_in()
         confirmed = await client.finish_device_sign_in(begun.device_code)
-        local = await client.dev_sign_in("dee@example.test", "Dee")
     assert started.authorization_url == "https://auth.example.test/authorize"
     assert begun.user_code == "ABCD-EFGH" and begun.interval == 5
-    assert called_back.token == confirmed.token == local.token == "lgn_1"
+    assert called_back.token == confirmed.token == "lgn_1"
     for sent in recorder.requests:
         assert "authorization" not in sent.headers and "idempotency-key" not in sent.headers
     bodies = [json.loads(r.content) if r.content else None for r in recorder.requests]
@@ -223,7 +221,6 @@ async def test_the_sign_in_calls_carry_no_bearer_and_no_key() -> None:
         {"code": "code-1", "code_verifier": "v" * 43},
         None,
         {"device_code": "dc-1"},
-        {"email": "dee@example.test", "display_name": "Dee"},
     ]
 
 

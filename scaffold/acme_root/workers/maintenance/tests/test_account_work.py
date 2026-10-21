@@ -52,7 +52,7 @@ async def bob_signs_in(
     org."""
     tenancy = container.managers.tenancy
     await tenancy.add_member(request(), "ajax", "bob@example.test", "Bob", Role.MEMBER)
-    through = signing(container, container.identity_provider)
+    through = signing(container)
     places: list[TenantContext] = []
     login = await through.sign_in.sign_in_with_code(
         request(), identity_of(container).issue_code("bob@example.test")

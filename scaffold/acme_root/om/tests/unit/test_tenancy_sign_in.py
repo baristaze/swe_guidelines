@@ -13,7 +13,6 @@ import pytest
 
 from acme.infra.cache import CacheScope
 from acme.infra.impl.local import InfraLocalImpl
-from acme.integrations.identity.absent import IdentityProviderAbsentImpl
 from acme.om.base import EMPTY_UUID, new_id, utcnow
 from acme.om.change_events.storage.impl.memory import ChangeEventStorageMemoryImpl
 from acme.om.context import CredentialKind, OperatorRole, Role
@@ -26,7 +25,6 @@ from acme.om.exceptions import (
 )
 from acme.om.outbox.impl.relay import OutboxRelayImpl
 from acme.om.outbox.storage.impl.memory import OutboxStorageMemoryImpl
-from acme.om.root import build_tenancy
 from acme.om.tenancy import TenancyManagerInterface
 from acme.om.tenancy.impl.manager import TenancyOptions
 from acme.om.tenancy.impl.operator import TenancyOperatorManagerImpl
@@ -40,6 +38,7 @@ from acme.om.tenancy.types.user import User
 
 from contracts.factories import make_user
 from contracts.second_factor import SteppingClock, enrolled_operator, second_factor
+from contracts.signing_in import provider_login, tenancy_signing_in
 from contracts.tenancy import (
     SpyRelay,
     add_member,
@@ -85,7 +84,7 @@ async def test_only_a_sign_in_credential_verifies_a_second_factor(
 ) -> None:
     await seed_operator(manager, "root@example.test")
     _, secret = await enrolled_operator(manager, operator, clock, "root@example.test")
-    login = await manager.sign_in.dev_sign_in(request(), "root@example.test")
+    login = await provider_login(manager, "root@example.test")
     ops = next(m.org for m in login.memberships if m.org.slug == "root")
     session = await manager.sign_in.exchange_login(
         await manager.authenticate_login(request(), login.token), ops.id
@@ -101,7 +100,7 @@ async def test_only_a_sign_in_credential_verifies_a_second_factor(
 async def test_exchange_needs_a_membership_in_that_org(manager: TenancyManagerInterface) -> None:
     await manager.bootstrap(request(), "Ajax", "ajax", "ann@example.test", "Ann")
     _, other = await manager.bootstrap(request(), "Beta", "beta", "bob@example.test", "Bob")
-    login = await manager.sign_in.dev_sign_in(request(), "ann@example.test")
+    login = await provider_login(manager, "ann@example.test")
     with pytest.raises(NotAuthorized):
         await manager.sign_in.exchange_login(
             await manager.authenticate_login(request(), login.token), other.id
@@ -123,7 +122,7 @@ async def test_exchange_refuses_a_gone_org_or_membership_as_not_authorized(
     await storage.write_membership(
         org.id, ended.model_copy(update={"deleted_at": utcnow(), "deleted_by": org.created_by})
     )
-    login = await manager.sign_in.dev_sign_in(request(), "bob@example.test")
+    login = await provider_login(manager, "bob@example.test")
     with pytest.raises(NotAuthorized):
         await manager.sign_in.exchange_login(
             await manager.authenticate_login(request(), login.token), org.id
@@ -139,7 +138,7 @@ async def test_exchange_refuses_a_gone_org_or_membership_as_not_authorized(
     )
     admin = await token_operator(manager, "root@example.test")
     await operator.delete_org(admin, org.id)
-    login = await manager.sign_in.dev_sign_in(request(), "ann@example.test")
+    login = await provider_login(manager, "ann@example.test")
     identity = await manager.authenticate_login(request(), login.token)
     with pytest.raises(NotAuthorized):
         await manager.sign_in.exchange_login(identity, org.id)
@@ -156,7 +155,7 @@ async def test_the_second_factor_ends_the_sign_in_it_verified(
     the right one ends the sign-in it was verified on."""
     await seed_operator(manager, "root@example.test")
     _, secret = await enrolled_operator(manager, operator, clock, "root@example.test")
-    plain = await manager.sign_in.dev_sign_in(request(), "root@example.test")
+    plain = await provider_login(manager, "root@example.test")
     with pytest.raises(InvalidCredential):
         await manager.sign_in.verify_second_factor(
             await manager.authenticate_login(request(), plain.token), "000000"
@@ -175,7 +174,7 @@ async def test_a_sign_out_ends_the_credential_presented_whichever_it_is(
     """A sign-in with no code, a sign-in with its code, and an operator token
     each end on their own sign-out; the next use of each is refused."""
     await manager.bootstrap(request(), "Ajax", "ajax", "ann@example.test", "Ann")
-    picker = await manager.sign_in.dev_sign_in(request(), "ann@example.test")
+    picker = await provider_login(manager, "ann@example.test")
     out = await manager.sign_in.logout(await manager.authenticate_login(request(), picker.token))
     assert out.auth_session.credential_kind is CredentialKind.LOGIN and out.auth_session.revoked_at
     with pytest.raises(CredentialExpired):
@@ -221,11 +220,11 @@ async def test_a_person_has_one_personal_org_whatever_races_to_make_it(
 ) -> None:
     storage = RacedPersonalStorage(outbox)
     manager = make_manager(storage, infra, outbox=outbox)
-    await manager.sign_in.dev_sign_in(request(), "dee@example.test", "Dee")
+    await provider_login(manager, "dee@example.test", "Dee")
     [personal_org] = [o for o in await storage.read_orgs(10) if o.personal]
     # The sign-in reads no personal org and tries to make one; the unique key
     # keeps the one the first sign-in made, and the sign-in still answers.
-    await manager.sign_in.dev_sign_in(request(), "dee@example.test")
+    await provider_login(manager, "dee@example.test")
     orgs = await storage.read_orgs(10)
     assert [o.id for o in orgs if o.personal] == [personal_org.id]
     identity = await storage.read_identity_by_email_digest(email_digest("dee@example.test"))
@@ -240,11 +239,11 @@ async def test_a_person_with_no_personal_org_gets_one_at_sign_in(
 ) -> None:
     # An identity and a team org, and no personal org.
     org, user = await tenant_with_no_personal_org(storage, "gus@example.test", "Gus", "gus-co")
-    login = await manager.sign_in.dev_sign_in(request(), "gus@example.test")
+    login = await provider_login(manager, "gus@example.test")
     kinds = sorted((m.org.kind, m.org.name) for m in login.memberships)
     assert kinds == [(OrgKind.PERSONAL, "Gus"), (OrgKind.TEAM, org.name)]
     # Once: the next sign-in finds it.
-    again = await manager.sign_in.dev_sign_in(request(), "gus@example.test")
+    again = await provider_login(manager, "gus@example.test")
     assert {m.org.id for m in again.memberships} == {m.org.id for m in login.memberships}
     assert user.identity_id == next(
         m.org.personal_identity_id for m in again.memberships if m.org.personal
@@ -300,7 +299,7 @@ async def test_the_memberships_of_an_identity_page_and_skip_the_gone(
             _, org = await manager.bootstrap(request(), name, slug, f"owner@{slug}.test", "Owner")
             await manager.add_member(request(), slug, "ann@example.test", "Ann", Role.MEMBER)
         orgs.append(org)
-    login = await manager.sign_in.dev_sign_in(request(), "ann@example.test")
+    login = await provider_login(manager, "ann@example.test")
     ictx = await manager.authenticate_login(request(), login.token)
     every = await manager.sign_in.get_identity_memberships(ictx, None, limit=10)
     # Three team orgs, and Ann's personal org.
@@ -331,22 +330,21 @@ async def test_a_switch_ends_the_session_it_was_presented_with_in_the_same_write
     storage: TenancyStorageMemoryImpl, infra: InfraLocalImpl, outbox: OutboxStorageMemoryImpl
 ) -> None:
     relay = SpyRelay(OutboxRelayImpl(outbox, ChangeEventStorageMemoryImpl(), infra.get_topics()))
-    manager = build_tenancy(
+    manager = tenancy_signing_in(
         storage,
         relay,
         infra.get_cache(CacheScope.REALTIME_TICKET),
-        TenancyOptions(dev_sign_in=True),
-        identity_provider=IdentityProviderAbsentImpl(),
+        TenancyOptions(),
     )
     _, ajax = await manager.bootstrap(request(), "Ajax", "ajax", "ann@example.test", "Ann")
     await manager.bootstrap(request(), "Beta", "beta", "bea@example.test", "Bea")
     await manager.add_member(request(), "beta", "ann@example.test", "Ann", Role.MEMBER)
     beta = await storage.read_org_by_slug("beta")
     assert beta is not None
-    login = await manager.sign_in.dev_sign_in(request(), "ann@example.test")
+    login = await provider_login(manager, "ann@example.test")
     ictx = await manager.authenticate_login(request(), login.token)
     tab = await manager.sign_in.exchange_login(ictx, ajax.id)
-    other_login = await manager.sign_in.dev_sign_in(request(), "ann@example.test")
+    other_login = await provider_login(manager, "ann@example.test")
     other_tab = await manager.sign_in.exchange_login(
         await manager.authenticate_login(request(), other_login.token), ajax.id
     )
@@ -385,7 +383,7 @@ async def test_a_switch_ends_the_session_it_was_presented_with_in_the_same_write
 
 async def test_two_switches_on_one_session_admit_one(manager: TenancyManagerInterface) -> None:
     _, ajax = await manager.bootstrap(request(), "Ajax", "ajax", "ann@example.test", "Ann")
-    login = await manager.sign_in.dev_sign_in(request(), "ann@example.test")
+    login = await provider_login(manager, "ann@example.test")
     tab = await manager.sign_in.exchange_login(
         await manager.authenticate_login(request(), login.token), ajax.id
     )
@@ -429,7 +427,7 @@ async def test_a_session_made_from_a_session_keeps_its_deadline(
         assert row is not None and row.expires_at == issued.expires_at
         return row.expires_at
 
-    login = await manager.sign_in.dev_sign_in(request(), "ann@example.test")
+    login = await provider_login(manager, "ann@example.test")
     first = await exchange(login.token, ajax.id)
     signed_in_until = await deadline(first)
 
@@ -444,15 +442,11 @@ async def test_a_session_made_from_a_session_keeps_its_deadline(
     assert await deadline(home) == signed_in_until, "the landing after an org's deletion"
 
     # A new sign-in is what starts a new lifetime.
-    again = await exchange(
-        (await manager.sign_in.dev_sign_in(request(), "ann@example.test")).token, beta.id
-    )
+    again = await exchange((await provider_login(manager, "ann@example.test")).token, beta.id)
     assert await deadline(again) > signed_in_until
     # A lifetime set shorter since the sign-in binds the next session too: the
     # earlier of the two deadlines, never the later.
-    a_day = make_manager(
-        storage, infra, TenancyOptions(dev_sign_in=True, auth_session_ttl=timedelta(days=1))
-    )
+    a_day = make_manager(storage, infra, TenancyOptions(auth_session_ttl=timedelta(days=1)))
     capped = await a_day.sign_in.exchange_login(
         await a_day.authenticate_login(request(), again.token), beta.id
     )
@@ -464,7 +458,7 @@ async def test_a_sign_in_is_exchanged_once(
 ) -> None:
     _, ajax = await manager.bootstrap(request(), "Ajax", "ajax", "ann@example.test", "Ann")
     _, gamma = await manager.bootstrap(request(), "Gamma", "gamma", "gus@example.test", "Gus")
-    login = await manager.sign_in.dev_sign_in(request(), "ann@example.test")
+    login = await provider_login(manager, "ann@example.test")
     ictx = await manager.authenticate_login(request(), login.token)
     # A refused exchange ends nothing: the sign-in still stands.
     with pytest.raises(NotAuthorized):
@@ -497,7 +491,7 @@ async def test_two_exchanges_of_one_sign_in_admit_one(
     ends in the write that lands the one session, so the others find it
     ended."""
     _, ajax = await manager.bootstrap(request(), "Ajax", "ajax", "ann@example.test", "Ann")
-    login = await manager.sign_in.dev_sign_in(request(), "ann@example.test")
+    login = await provider_login(manager, "ann@example.test")
     # All verified before any writes: the storage decides.
     proofs = [await manager.authenticate_login(request(), login.token) for _ in range(3)]
     outcomes = await asyncio.gather(
@@ -551,7 +545,7 @@ async def test_a_sign_in_reads_the_places_once_and_lists_the_living_ones(
     by user id, and not an org deleted or a membership ended. They are read
     in one read, so a person in five orgs costs what a person in one does."""
     storage = CountedReads(outbox)
-    manager = make_manager(storage, infra, TenancyOptions(dev_sign_in=True), outbox=outbox)
+    manager = make_manager(storage, infra, TenancyOptions(), outbox=outbox)
     orgs = [
         (await manager.bootstrap(request(), f"Org {i}", f"org-{i}", "ann@example.test", "Ann"))[1]
         for i in range(5)
@@ -559,10 +553,10 @@ async def test_a_sign_in_reads_the_places_once_and_lists_the_living_ones(
     await manager.bootstrap(request(), "Solo", "solo", "bob@example.test", "Bob")
 
     storage.reads.clear()
-    one = await manager.sign_in.dev_sign_in(request(), "bob@example.test")
+    one = await provider_login(manager, "bob@example.test")
     reads_for_one = storage.reads.copy()
     storage.reads.clear()
-    five = await manager.sign_in.dev_sign_in(request(), "ann@example.test")
+    five = await provider_login(manager, "ann@example.test")
     assert storage.reads == reads_for_one, "the reads do not grow with the orgs"
     assert storage.reads["read_memberships_by_identity"] == 1
     assert len(team(one.memberships)) == 1
@@ -576,7 +570,7 @@ async def test_a_sign_in_reads_the_places_once_and_lists_the_living_ones(
     ended = await storage.read_membership_for_user(orgs[3].id, left.user.id)
     assert ended is not None
     await storage.write_membership(orgs[3].id, ended.model_copy(update={"deleted_at": utcnow()}))
-    again = await manager.sign_in.dev_sign_in(request(), "ann@example.test")
+    again = await provider_login(manager, "ann@example.test")
     assert {m.org.id for m in team(again.memberships)} == {orgs[0].id, orgs[2].id, orgs[4].id}
     kept = {m.org.id: m for m in five.memberships}
     for place in again.memberships:

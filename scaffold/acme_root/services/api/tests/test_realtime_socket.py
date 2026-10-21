@@ -14,7 +14,16 @@ from uuid import UUID
 
 import httpx
 import pytest
-from api_support import OWNER, add_member, build_container, run, seed_request, sign_in_as
+from api_support import (
+    OWNER,
+    add_member,
+    build_container,
+    callback_body,
+    provider_login,
+    run,
+    seed_request,
+    sign_in_as,
+)
 from httpx import ASGITransport
 from starlette.testclient import TestClient, WebSocketTestSession
 from starlette.types import Message, Scope
@@ -103,7 +112,7 @@ def test_a_client_that_drops_mid_stream_is_not_an_error(
 
     monkeypatch.setattr(SendBuffer, "drain", dead_drain)
     with TestClient(create_app(container)) as tc:
-        login = tc.post("/v1/auth/dev-sign-in", json={"email": OWNER["email"]})
+        login = tc.post("/v1/auth/callback", json=callback_body(container, OWNER["email"]))
         session = tc.post(
             "/v1/auth/sessions",
             json={"org_id": str(org.id)},
@@ -133,7 +142,7 @@ async def test_the_close_after_the_peer_left_is_not_an_error(
     async with app.router.lifespan_context(app):
         transport = ASGITransport(app=app)
         async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
-            headers = await sign_in_as(client, OWNER["email"], org.id)
+            headers = await sign_in_as(client, container, OWNER["email"], org.id)
             ticket = (await client.post("/v1/realtime/tickets", headers=headers)).json()["ticket"]
         inbound: asyncio.Queue[Message] = asyncio.Queue()
         outbound: list[Message] = []
@@ -185,7 +194,7 @@ def test_a_binary_frame_is_a_bad_command_and_the_socket_stays_open(tmp_path: Pat
         )
     )
     with TestClient(create_app(container)) as tc:
-        owner = sign_in(tc, OWNER["email"], org.id)
+        owner = sign_in(tc, container, OWNER["email"], org.id)
         with open_socket(tc, owner) as ws:
             assert ws.receive_json()["type"] == "hello"
             ws.send_bytes(b"\x00\x01")
@@ -205,7 +214,7 @@ def auth_session_token(container: AppContainer) -> str:
     tenancy = container.managers.tenancy
 
     async def issue() -> str:
-        login = await tenancy.sign_in.dev_sign_in(seed_request(), OWNER["email"])
+        login = await provider_login(container, OWNER["email"])
         identity = await tenancy.authenticate_login(seed_request(), login.token)
         return (await tenancy.sign_in.exchange_login(identity, org.id)).token
 
@@ -240,8 +249,8 @@ def test_a_socket_is_closed_with_4401_when_the_session_behind_it_expires(tmp_pat
     assert closed.value.reason == "credential_expired"
 
 
-def sign_in(tc: TestClient, email: str, org_id: UUID) -> dict[str, str]:
-    login = tc.post("/v1/auth/dev-sign-in", json={"email": email})
+def sign_in(tc: TestClient, container: AppContainer, email: str, org_id: UUID) -> dict[str, str]:
+    login = tc.post("/v1/auth/callback", json=callback_body(container, email))
     session = tc.post(
         "/v1/auth/sessions",
         json={"org_id": str(org_id)},
@@ -265,8 +274,8 @@ def test_revoking_the_session_behind_a_socket_closes_it_and_no_other(tmp_path: P
         )
     )
     with TestClient(create_app(container)) as tc:
-        first = sign_in(tc, OWNER["email"], org.id)
-        second = sign_in(tc, OWNER["email"], org.id)
+        first = sign_in(tc, container, OWNER["email"], org.id)
+        second = sign_in(tc, container, OWNER["email"], org.id)
         with open_socket(tc, first) as ws:
             assert ws.receive_json()["type"] == "hello"
             assert tc.post("/v1/auth/logout", headers=second).status_code == 200
@@ -288,8 +297,8 @@ def test_removing_a_member_closes_their_socket(tmp_path: Path) -> None:
     )
     bob = run(add_member(container, org.id, "bob@example.test", Role.MEMBER))
     with TestClient(create_app(container)) as tc:
-        owner = sign_in(tc, OWNER["email"], org.id)
-        member = sign_in(tc, "bob@example.test", org.id)
+        owner = sign_in(tc, container, OWNER["email"], org.id)
+        member = sign_in(tc, container, "bob@example.test", org.id)
         with open_socket(tc, member) as ws:
             assert ws.receive_json()["type"] == "hello"
             assert tc.delete(f"/v1/memberships/{bob.id}", headers=owner).status_code == 200
@@ -307,7 +316,7 @@ def test_revoking_an_api_key_closes_the_socket_it_opened(tmp_path: Path) -> None
         )
     )
     with TestClient(create_app(container)) as tc:
-        owner = sign_in(tc, OWNER["email"], org.id)
+        owner = sign_in(tc, container, OWNER["email"], org.id)
         issued = tc.post("/v1/api-keys", headers=owner, json={"name": "ci", "role": "member"})
         key = {"Authorization": f"Bearer {issued.json()['key']}"}
         with open_socket(tc, key) as ws:
@@ -350,7 +359,7 @@ def test_a_hello_that_cannot_read_the_head_leaves_no_task_behind(
 
     monkeypatch.setattr(SendBuffer, "drain", counted_drain)
     with TestClient(create_app(container)) as tc:
-        headers = sign_in(tc, OWNER["email"], org.id)
+        headers = sign_in(tc, container, OWNER["email"], org.id)
         with pytest.raises(WebSocketDisconnect) as closed:
             with open_socket(tc, headers) as ws:
                 ws.receive_json()  # the hello that the failed read never built
@@ -388,7 +397,7 @@ def test_a_revocation_during_the_hello_still_closes_the_socket(
 
     monkeypatch.setattr(service, "head", head_while_revoked)
     with TestClient(create_app(container)) as tc:
-        headers = sign_in(tc, OWNER["email"], org.id)
+        headers = sign_in(tc, container, OWNER["email"], org.id)
         with open_socket(tc, headers) as ws:
             # The hello may or may not go out before the close does.
             with pytest.raises(WebSocketDisconnect) as closed:
@@ -433,7 +442,7 @@ def test_a_command_that_fails_closes_the_socket_and_leaves_no_subscription(
 
     monkeypatch.setattr(service, "head", head)
     with TestClient(create_app(container)) as tc:
-        headers = sign_in(tc, OWNER["email"], org.id)
+        headers = sign_in(tc, container, OWNER["email"], org.id)
         with open_socket(tc, headers) as ws:
             assert ws.receive_json()["type"] == "hello"
             ws.send_json({"op": "subscribe", "topic": "entity_changed"})
@@ -492,7 +501,7 @@ def test_a_socket_the_database_did_not_answer_in_time_logs_warnings(
     closes: list[tuple[int, str | None]] = []
     try:
         with TestClient(create_app(container)) as tc:
-            headers = sign_in(tc, OWNER["email"], org.id)
+            headers = sign_in(tc, container, OWNER["email"], org.id)
             # The hello cannot read the head.
             with pytest.raises(WebSocketDisconnect) as closed:
                 with open_socket(tc, headers) as ws:
@@ -570,8 +579,8 @@ def test_a_change_of_role_closes_the_socket_to_reconnect(tmp_path: Path) -> None
     )
     bob = run(add_member(container, org.id, "bob@example.test", Role.ADMIN))
     with TestClient(create_app(container)) as tc:
-        owner = sign_in(tc, OWNER["email"], org.id)
-        member = sign_in(tc, "bob@example.test", org.id)
+        owner = sign_in(tc, container, OWNER["email"], org.id)
+        member = sign_in(tc, container, "bob@example.test", org.id)
         with open_socket(tc, member) as ws:
             assert ws.receive_json()["type"] == "hello"
             changed = tc.patch(f"/v1/memberships/{bob.id}", headers=owner, json={"role": "member"})
@@ -597,7 +606,7 @@ def test_a_change_of_role_the_bus_lost_closes_the_socket_within_the_recheck(
     bob = run(add_member(container, org.id, "bob@example.test", Role.ADMIN))
     storage = container.storage.get_tenancy_storage()
     with TestClient(create_app(container)) as tc:
-        member = sign_in(tc, "bob@example.test", org.id)
+        member = sign_in(tc, container, "bob@example.test", org.id)
         with open_socket(tc, member) as ws:
             assert ws.receive_json()["type"] == "hello"
             membership = run(storage.read_membership_for_user(org.id, bob.id))
@@ -617,7 +626,7 @@ async def test_the_recheck_runs_every_interval_until_it_is_refused(tmp_path: Pat
     container = build_container(tmp_path)
     tenancy = container.managers.tenancy
     _, org = await tenancy.bootstrap(seed_request(), "Ajax", "ajax", OWNER["email"], OWNER["name"])
-    login = await tenancy.sign_in.dev_sign_in(seed_request(), OWNER["email"])
+    login = await provider_login(container, OWNER["email"])
     identity = await tenancy.authenticate_login(seed_request(), login.token)
     ctx = await tenancy.authenticate(
         seed_request(), (await tenancy.sign_in.exchange_login(identity, org.id)).token

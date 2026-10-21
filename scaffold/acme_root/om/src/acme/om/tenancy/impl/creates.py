@@ -194,7 +194,7 @@ async def create_person(
     """A person nobody has seen before, whole: the identity, their personal
     org, their user in it, and the owner membership, in one commit. Every way
     a person comes to exist calls this, a first sign-in through the identity
-    provider and the local sign-in among them: it takes the identity as the
+    provider and the local mint among them: it takes the identity as the
     caller built it, the provider's link and all, and asks nothing about an
     org. An email or a personal org taken meanwhile is
     `UniqueKeyTaken`, and nothing lands. `new=False` is the one other case:

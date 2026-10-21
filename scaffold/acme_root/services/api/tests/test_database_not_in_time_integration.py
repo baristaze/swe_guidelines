@@ -43,9 +43,9 @@ def settings_over_postgres(tmp_path: Path, **overrides: Any) -> ApiSettings:
             "buckets_root": tmp_path / "buckets",
             "queues_backend": "memory",
             "secrets_backend": "local",
-            "dev_sign_in_enabled": True,
             "sentry_dsn": None,
             "otel_endpoint": None,
+            "identity_provider": "twin",
             **overrides,
         }
     )
@@ -66,7 +66,7 @@ async def over_postgres(
         _, org = await container.managers.tenancy.bootstrap(
             seed_request(), "Ajax", f"ajax-{suffix}", email, OWNER["name"]
         )
-        yield container, client, await sign_in_as(client, email, org.id)
+        yield container, client, await sign_in_as(client, container, email, org.id)
 
 
 @asynccontextmanager

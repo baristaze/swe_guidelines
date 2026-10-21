@@ -42,6 +42,7 @@ class Serving:
     address: str
     org: Org
     server: uvicorn.Server
+    container: AppContainer
 
     async def settled(self) -> None:
         """Waits for the server's socket handlers to end, so what a client's
@@ -70,7 +71,7 @@ async def serving(container: AppContainer) -> AsyncIterator[Serving]:
     await server.startup()
     running = asyncio.create_task(server.main_loop())
     try:
-        yield Serving(f"127.0.0.1:{port}", org, server)
+        yield Serving(f"127.0.0.1:{port}", org, server, container)
     finally:
         server.should_exit = True
         await running
@@ -96,7 +97,7 @@ async def test_a_refused_ticket_is_a_4401_close_on_the_wire(served: Serving) -> 
 
 async def ticket_for(served: Serving) -> str:
     async with httpx.AsyncClient(base_url=f"http://{served.address}") as client:
-        headers = await sign_in_as(client, OWNER["email"], served.org.id)
+        headers = await sign_in_as(client, served.container, OWNER["email"], served.org.id)
         return (await client.post("/v1/realtime/tickets", headers=headers)).json()["ticket"]
 
 
@@ -140,7 +141,7 @@ async def test_a_flood_of_hints_drops_hints_and_not_the_pong(tmp_path: Path) -> 
     container = build_container(tmp_path, realtime_send_buffer_size=STREAM_LANE)
     async with serving(container) as served:
         async with httpx.AsyncClient(base_url=f"http://{served.address}") as client:
-            headers = await sign_in_as(client, OWNER["email"], served.org.id)
+            headers = await sign_in_as(client, served.container, OWNER["email"], served.org.id)
             ticket = (await client.post("/v1/realtime/tickets", headers=headers)).json()["ticket"]
             channel = f"ws://{served.address}/v1/realtime?ticket={ticket}"
             async with websockets.connect(channel) as ws:

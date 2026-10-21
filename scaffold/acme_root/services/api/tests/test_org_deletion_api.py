@@ -5,7 +5,7 @@ comes, and the owner landing in their personal org."""
 from uuid import UUID
 
 import httpx
-from api_support import OWNER, add_member, dev_login, sign_in_as
+from api_support import OWNER, add_member, login_token, sign_in_as
 
 from acme.om.context import Role
 from acme.services.api.container import AppContainer
@@ -22,7 +22,7 @@ async def test_only_the_owner_deletes_and_only_by_the_orgs_name(
     await add_member(container, ajax, "bob@example.test", Role.MEMBER)
     await add_member(container, ajax, "cid@example.test", Role.ADMIN)
     for email in ("bob@example.test", "cid@example.test"):
-        other = await sign_in_as(client, email, ajax)
+        other = await sign_in_as(client, container, email, ajax)
         refused = await client.post(
             "/v1/orgs/current/deletion", headers=other, json={"name": "Ajax"}
         )
@@ -34,11 +34,13 @@ async def test_only_the_owner_deletes_and_only_by_the_orgs_name(
     assert (await client.get("/v1/orgs/current", headers=owner)).status_code == 200
 
 
-async def test_a_personal_org_is_refused_on_this_route(client: httpx.AsyncClient) -> None:
-    login = await dev_login(client, OWNER["email"])
+async def test_a_personal_org_is_refused_on_this_route(
+    client: httpx.AsyncClient, container: AppContainer
+) -> None:
+    login = await login_token(client, container, OWNER["email"])
     places = await client.get("/v1/auth/memberships", headers={"Authorization": f"Bearer {login}"})
     home = next(p["org"] for p in places.json()["items"] if p["org"]["kind"] == "personal")
-    at_home = await sign_in_as(client, OWNER["email"], UUID(home["id"]))
+    at_home = await sign_in_as(client, container, OWNER["email"], UUID(home["id"]))
     refused = await client.post(
         "/v1/orgs/current/deletion", headers=at_home, json={"name": home["name"]}
     )
@@ -51,7 +53,7 @@ async def test_everyone_is_out_at_once_and_the_owner_lands_at_home(
 ) -> None:
     ajax = await org_of(client, owner)
     await add_member(container, ajax, "bob@example.test", Role.MEMBER)
-    bob = await sign_in_as(client, "bob@example.test", ajax)
+    bob = await sign_in_as(client, container, "bob@example.test", ajax)
     key = await client.post("/v1/api-keys", headers=bob, json={"name": "ci", "role": "member"})
     assert key.status_code == 201, key.text
 
@@ -69,7 +71,7 @@ async def test_everyone_is_out_at_once_and_the_owner_lands_at_home(
     assert me.status_code == 200 and me.json()["org"]["id"] == landing["org"]["id"]
     # Nobody's picker offers Ajax any more.
     for email in (OWNER["email"], "bob@example.test"):
-        login = await dev_login(client, email)
+        login = await login_token(client, container, email)
         places = await client.get(
             "/v1/auth/memberships", headers={"Authorization": f"Bearer {login}"}
         )

@@ -1,14 +1,13 @@
 """Sign-in through the identity provider, over the whole API in-process with
-the provider's twin: the start, the callback, the device sign-in, the local
-sign-in, and the second factor."""
+the provider's twin: the start, the callback, the device sign-in, and the
+second factor; and no route that signs a person in by address alone."""
 
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 import httpx
 import pytest
-from api_support import OWNER, bearer, build_container, dev_login, seed_request
-from fastapi import FastAPI
+from api_support import OWNER, bearer, build_container, login_token, seed_request
 from httpx import ASGITransport
 from pydantic import ValidationError
 
@@ -18,10 +17,15 @@ from acme.integrations.identity.twin import (
     TWIN_LOGOUT,
     IdentityProviderTwinImpl,
 )
-from acme.integrations.impl.configured import IntegrationsConfiguredImpl, IntegrationsOverImpl
+from acme.integrations.impl.configured import (
+    IntegrationsConfiguredImpl,
+    IntegrationsOverImpl,
+    absent_integrations,
+)
 from acme.services.api.app import create_app
 from acme.services.api.container import AppContainer
 from acme.services.api.settings import ApiSettings
+from acme.services.api.types.tenancy import IssuedAuthSessionView, IssuedLoginView
 
 CALLBACK = "http://localhost:55173/auth/callback"
 SIGNED_OUT = "http://localhost:55173/signed-out"
@@ -100,7 +104,7 @@ async def test_a_short_state_is_refused(client: httpx.AsyncClient) -> None:
 
 
 async def test_no_provider_answers_503(tmp_path: Path) -> None:
-    container = build_container(tmp_path)
+    container = build_container(tmp_path, integrations=absent_integrations())
     app = create_app(container)
     async with app.router.lifespan_context(app):
         transport = ASGITransport(app=app, raise_app_exceptions=False)
@@ -200,42 +204,66 @@ async def test_a_declined_device_sign_in_is_refused(
     assert refused.status_code == 401 and refused.json()["error"]["code"] == "sign_in_refused"
 
 
-async def test_the_local_sign_in_makes_or_finds_the_person(client: httpx.AsyncClient) -> None:
-    first = await client.post(
-        "/v1/auth/dev-sign-in", json={"email": "dee@example.test", "display_name": "Dee"}
-    )
-    assert first.status_code == 200, first.text
-    [place] = first.json()["memberships"]
-    assert place["org"]["kind"] == "personal" and place["org"]["name"] == "Dee"
-    again = await client.post("/v1/auth/dev-sign-in", json={"email": "dee@example.test"})
-    assert [m["org"]["id"] for m in again.json()["memberships"]] == [place["org"]["id"]]
-    platform = await client.post(
-        "/v1/auth/dev-sign-in", json={"email": "smoke@platform.acme.invalid"}
-    )
-    assert platform.status_code == 422, platform.text
+SIGN_IN_ROUTES = {
+    ("POST", "/v1/auth/callback"),
+    ("POST", "/v1/auth/device/token"),
+    ("POST", "/v1/auth/second-factor"),
+    ("POST", "/v1/auth/sessions"),
+}
+"""Every route under /v1/auth that answers a sign-in or a session: the
+provider's code, a device the person confirmed at the provider, and two
+that take a sign-in one of those made. A route added here is a door."""
 
 
-async def test_the_local_sign_in_is_no_route_where_it_is_off(tmp_path: Path) -> None:
-    container = build_container(tmp_path, dev_sign_in_enabled=False)
+async def test_no_route_signs_a_person_in_by_address(tmp_path: Path) -> None:
+    """The local stack too: an address opens no door. A route by address
+    answers 404 as a route that does not exist does, and every route that
+    answers a sign-in or a session is refused without the provider's code,
+    a confirmed device, or a sign-in already made from one."""
+    container = build_container(tmp_path, environment="local")
     app = create_app(container)
+    answers = {
+        f"#/components/schemas/{view.__name__}" for view in (IssuedLoginView, IssuedAuthSessionView)
+    }
+    issuing = {
+        (method.upper(), path)
+        for path, operations in app.openapi()["paths"].items()
+        if path.startswith("/v1/auth")
+        for method, operation in operations.items()
+        if operation["responses"]
+        .get("200", {})
+        .get("content", {})
+        .get("application/json", {})
+        .get("schema", {})
+        .get("$ref")
+        in answers
+    }
+    assert issuing == SIGN_IN_ROUTES
+    by_address = {"email": "dee@example.test", "display_name": "Dee"}
     async with app.router.lifespan_context(app):
         transport = ASGITransport(app=app, raise_app_exceptions=False)
         async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
-            closed = await client.post("/v1/auth/dev-sign-in", json={"email": "d@example.test"})
-            malformed = await client.post("/v1/auth/dev-sign-in", json={})
+            door = await client.post("/v1/auth/dev-sign-in", json=by_address)
             missing = await client.post("/v1/auth/no-such-route", json={})
-    for answer in (closed, malformed, missing):
+            refused = [
+                await client.post(path, json={**by_address, "code": "c", "device_code": "d"})
+                for _, path in sorted(SIGN_IN_ROUTES)
+            ]
+    for answer in (door, missing):
         assert answer.status_code == 404, answer.text
         error = answer.json()["error"]
         assert (error["code"], error["message"]) == ("not_found", "Not Found")
+    for answer in refused:
+        assert answer.status_code in (401, 422), answer.text
+        assert "token" not in answer.json()
 
 
 async def test_the_second_factor_is_verified_on_a_sign_in_only(
-    client: httpx.AsyncClient, app: FastAPI
+    client: httpx.AsyncClient, container: AppContainer
 ) -> None:
     """A person with no second factor enrolled is refused: the check is the
     identity's, and a code nobody could have made is wrong either way."""
-    token = await dev_login(client, "dee@example.test")
+    token = await login_token(client, container, "dee@example.test")
     refused = await client.post(
         "/v1/auth/second-factor", headers=bearer(token), json={"totp_code": "123456"}
     )
@@ -294,22 +322,18 @@ async def test_a_sign_out_with_no_body_still_ends_the_session(
     assert "return_to" not in query and query["session_id"]
 
 
-async def test_a_session_signed_in_another_way_signs_out_of_acme_alone(
+async def test_a_session_signed_in_on_a_device_signs_out_of_acme_alone(
     client: httpx.AsyncClient, twin: IdentityProviderTwinImpl
 ) -> None:
-    local = await session_of(
-        client, await client.post("/v1/auth/dev-sign-in", json={"email": "eve@example.test"})
-    )
     device = (await client.post("/v1/auth/device")).json()
     twin.confirm_device(device["user_code"], "dee@example.test")
     by_device = await session_of(
         client,
         await client.post("/v1/auth/device/token", json={"device_code": device["device_code"]}),
     )
-    for headers in (local, by_device):
-        out = await client.post("/v1/auth/logout", json={"return_to": SIGNED_OUT}, headers=headers)
-        assert out.status_code == 200, out.text
-        assert out.json()["provider_logout_url"] is None and out.json()["revoked_at"]
+    out = await client.post("/v1/auth/logout", json={"return_to": SIGNED_OUT}, headers=by_device)
+    assert out.status_code == 200, out.text
+    assert out.json()["provider_logout_url"] is None and out.json()["revoked_at"]
 
 
 @pytest.mark.parametrize(
@@ -329,19 +353,6 @@ async def test_a_sign_out_return_that_is_not_this_environments_is_refused(
     assert refused.status_code == 422, refused.text
     still = await client.get("/v1/me", headers=headers)
     assert still.status_code == 200, still.text
-
-
-@pytest.mark.parametrize("environment", ["dev", "staging", "production"])
-def test_a_deployed_environment_refuses_the_local_sign_in(environment: str) -> None:
-    with pytest.raises(ValidationError, match="ACME_DEV_SIGN_IN_ENABLED"):
-        ApiSettings.model_validate(
-            {
-                "_env_file": None,
-                "environment": environment,
-                "dev_sign_in_enabled": True,
-                "sign_in_redirect_uris": ["https://app.example.test/auth/callback"],
-            }
-        )
 
 
 @pytest.mark.parametrize(

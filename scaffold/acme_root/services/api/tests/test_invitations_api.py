@@ -7,11 +7,11 @@ from uuid import UUID
 
 import httpx
 import pytest
-from api_support import add_member, build_container, seed_request, sign_in, sign_in_as
+from api_support import add_member, build_container, minted_owner, seed_request, sign_in_as
 from httpx import ASGITransport
 
 from acme.integrations.identity.twin import TWIN_PORTAL, IdentityProviderTwinImpl
-from acme.integrations.impl.configured import IntegrationsOverImpl
+from acme.integrations.impl.configured import IntegrationsOverImpl, absent_integrations
 from acme.om.context import Role
 from acme.services.api.app import create_app
 from acme.services.api.container import AppContainer
@@ -95,7 +95,7 @@ async def test_only_a_member_manager_invites(
 ) -> None:
     org_id = UUID((await client.get("/v1/orgs/current", headers=owner)).json()["id"])
     await add_member(container, org_id, "bob@example.test", Role.MEMBER)
-    bob = await sign_in_as(client, "bob@example.test", org_id)
+    bob = await sign_in_as(client, container, "bob@example.test", org_id)
     refused = await invite(client, bob, "cat@example.test", "inv-1")
     assert refused.status_code == 403, refused.text
     assert (await client.get("/v1/invitations", headers=bob)).status_code == 403
@@ -113,7 +113,7 @@ async def test_another_tenants_invitation_does_not_exist(
     _, beta = await container.managers.tenancy.bootstrap(
         seed_request(), "Beta", "beta", "bea@example.test", "Bea"
     )
-    bea = await sign_in_as(client, "bea@example.test", beta.id)
+    bea = await sign_in_as(client, container, "bea@example.test", beta.id)
     for answer in (
         await client.post(f"/v1/invitations/{sent['id']}/resend", headers=bea),
         await client.delete(f"/v1/invitations/{sent['id']}", headers=bea),
@@ -157,12 +157,12 @@ async def test_a_team_org_opens_single_sign_on_and_a_personal_one_has_none(
 async def test_single_sign_on_is_refused_where_no_provider_is(
     tmp_path: Path,
 ) -> None:
-    container = build_container(tmp_path)
+    container = build_container(tmp_path, integrations=absent_integrations(), local_login_mint=True)
     app = create_app(container)
     async with app.router.lifespan_context(app):
         transport = ASGITransport(app=app, raise_app_exceptions=False)
         async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
-            owner = await sign_in(client, container)
+            owner = await minted_owner(client, container)
             link = await client.post(
                 "/v1/orgs/current/sso-link",
                 headers=owner,

@@ -13,6 +13,8 @@ from acme.om.tenancy.impl.operator import TenancyOperatorManagerImpl
 from acme.om.tenancy.rules import TOTP_STEP, totp_code, totp_step
 from acme.om.tenancy.types.issued import IssuedLogin
 
+from contracts.signing_in import provider_login
+
 TOTP_KEY = "YWNtZS10ZXN0cy10b3RwLWtleS10aGlydHktdHdvISE="
 """A Fernet-shaped key (URL-safe base64 of 32 bytes), for tests only."""
 
@@ -55,7 +57,7 @@ async def enrolled_operator(
     again with a second code, a token minted with the whole of its entry, and
     admitted on that token. Returns that stage and the secret, for a test
     that signs in again."""
-    login = await manager.sign_in.dev_sign_in(operator_request(), email)
+    login = await provider_login(manager, email, rctx=operator_request())
     enrolling = await manager.admit_operator(
         await manager.authenticate_login(operator_request(), login.token)
     )
@@ -94,9 +96,9 @@ async def signed_in_operator(
 
 
 async def second_factor(manager: TenancyManagerInterface, email: str, code: str) -> IssuedLogin:
-    """A sign-in by address, then its second factor: the login the operator
-    gate admits an enrolled operator on."""
-    login = await manager.sign_in.dev_sign_in(operator_request(), email)
+    """A sign-in through the provider, then its second factor: the login the
+    operator gate admits an enrolled operator on."""
+    login = await provider_login(manager, email, rctx=operator_request())
     return await manager.sign_in.verify_second_factor(
         await manager.authenticate_login(operator_request(), login.token), code
     )

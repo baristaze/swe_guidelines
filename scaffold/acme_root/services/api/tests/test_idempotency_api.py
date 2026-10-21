@@ -108,7 +108,7 @@ async def test_keys_are_personal_inside_a_tenant(
 ) -> None:
     org_id = UUID((await client.get("/v1/orgs/current", headers=owner)).json()["id"])
     await add_member(container, org_id, "bob@example.test", Role.MEMBER)
-    bob = await sign_in_as(client, "bob@example.test", org_id)
+    bob = await sign_in_as(client, container, "bob@example.test", org_id)
     first = await client.post(FILES, headers={**owner, "Idempotency-Key": "k"}, json=BODY)
     second = await client.post(FILES, headers={**bob, "Idempotency-Key": "k"}, json=BODY)
     assert first.status_code == 201 and second.status_code == 201

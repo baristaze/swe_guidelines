@@ -217,7 +217,7 @@ async def test_a_viewer_reads_files_and_starts_or_deletes_none(
     stored = await upload(client, owner)
     org_id = UUID((await client.get("/v1/me", headers=owner)).json()["org"]["id"])
     await add_member(container, org_id, "vic@example.test", Role.VIEWER)
-    viewer = await sign_in_as(client, "vic@example.test", org_id)
+    viewer = await sign_in_as(client, container, "vic@example.test", org_id)
     listed = await client.get("/v1/media/files", headers=viewer)
     assert [f["id"] for f in listed.json()["items"]] == [stored["id"]]
     assert (await start(client, viewer)).status_code == 403
@@ -235,7 +235,7 @@ async def test_an_upload_is_its_starters_until_it_is_stored(
     started = (await start(client, owner)).json()
     org_id = UUID((await client.get("/v1/me", headers=owner)).json()["org"]["id"])
     await add_member(container, org_id, "mia@example.test", Role.MEMBER)
-    mia = await sign_in_as(client, "mia@example.test", org_id)
+    mia = await sign_in_as(client, container, "mia@example.test", org_id)
     file_id = started["id"]
     assert (await client.get(f"/v1/media/files/{file_id}", headers=mia)).status_code == 200
     moves: list[tuple[str, str, dict]] = [
@@ -258,7 +258,7 @@ async def test_another_tenants_file_answers_as_a_missing_one(
     _, other = await container.managers.tenancy.bootstrap(
         seed_request(), "Other", "other", "eve@other.test", "Eve"
     )
-    eve = await sign_in_as(client, "eve@other.test", other.id)
+    eve = await sign_in_as(client, container, "eve@other.test", other.id)
     file_id = stored["id"]
     swept: list[tuple[str, str, dict]] = [
         ("GET", f"/v1/media/files/{file_id}", {}),

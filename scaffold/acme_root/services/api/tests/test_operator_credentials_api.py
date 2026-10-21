@@ -11,10 +11,11 @@ import httpx
 import pytest
 from api_support import (
     bearer,
+    callback_body,
     code_at,
-    dev_login,
     enrol_operator,
     enrolled_sign_in,
+    login_token,
     secret_of,
     seed_request,
 )
@@ -39,7 +40,9 @@ async def test_an_operator_enrols_a_second_factor_before_the_plane_admits_them(
         "Root",
         operator_role=OperatorRole.WRITE,
     )
-    first = await client.post("/v1/auth/dev-sign-in", json={"email": "root@example.test"})
+    first = await client.post(
+        "/v1/auth/callback", json=callback_body(container, "root@example.test")
+    )
     enrolling = bearer(first.json()["token"])
     # Allowlisted, no factor yet: every route but the two enrolment ones refuses.
     for path in ("/v1/admin/me", "/v1/admin/orgs", "/v1/admin/size"):
@@ -66,7 +69,7 @@ async def test_an_operator_enrols_a_second_factor_before_the_plane_admits_them(
     assert required.json()["error"]["code"] == "second_factor_required"
     # The code is verified on a sign-in, which answers with a new one and
     # ends the one it was verified on.
-    fresh = bearer(await dev_login(client, "root@example.test"))
+    fresh = bearer(await login_token(client, container, "root@example.test"))
     bad = await client.post("/v1/auth/second-factor", headers=fresh, json={"totp_code": "000000"})
     assert bad.status_code == 401, bad.text
     code = code_at(secret, 1)
@@ -83,7 +86,7 @@ async def test_an_operator_enrols_a_second_factor_before_the_plane_admits_them(
     reused = await client.post("/v1/auth/second-factor", headers=fresh, json={"totp_code": code})
     assert reused.status_code == 401, reused.text
     # A session is no sign-in: the second factor is verified on a login only.
-    other = bearer(await dev_login(client, "root@example.test"))
+    other = bearer(await login_token(client, container, "root@example.test"))
     org_id = (await client.get("/v1/auth/memberships", headers=other)).json()["items"][0]
     session = await client.post(
         "/v1/auth/sessions", headers=other, json={"org_id": org_id["org"]["id"]}
@@ -219,7 +222,7 @@ async def test_a_sign_out_ends_the_sign_in_or_the_token_presented(
     """The one sign-out takes every credential a person holds: a sign-in at
     the picker, an operator's sign-in with its code, and an operator token.
     Each is refused after. An api key has none: its holder revokes it."""
-    picker = bearer(await dev_login(client, "owner@example.test"))
+    picker = bearer(await login_token(client, container, "owner@example.test"))
     out = await client.post("/v1/auth/logout", headers=picker)
     assert out.status_code == 200, out.text
     assert out.json()["credential_kind"] == "login" and out.json()["revoked_at"]

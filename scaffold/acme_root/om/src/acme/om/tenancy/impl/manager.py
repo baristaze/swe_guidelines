@@ -140,9 +140,10 @@ class TenancyOptions(OmBase):
     """Where the identity provider's logout may send a person back to: this
     environment's own portal page for it, each one of the application's
     sign-out URIs at the provider. A return not named here is refused."""
-    dev_sign_in: bool = False
-    """The local sign-in by address alone, for local and test processes. A
-    deployed environment refuses it at boot, so it is never on there."""
+    local_login_mint: bool = False
+    """The local mint, a login for an address with no provider, on only in
+    the local mint's own process and the tests. A deployed environment
+    refuses it at boot, so it is never on there."""
     invitation_ttl_days: int = 7
     """How long an invitation's link works, from its send or resend."""
 

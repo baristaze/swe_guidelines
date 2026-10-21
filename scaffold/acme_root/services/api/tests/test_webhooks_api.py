@@ -16,7 +16,7 @@ from acme.infra.queues import Queues
 from acme.integrations.identity.deliveries import DELIVERY_NAMESPACE, SIGNATURE_HEADER, sign
 from acme.integrations.identity.twin import IdentityProviderTwinImpl
 from acme.integrations.identity.workos import IdentityProviderWorkOSImpl
-from acme.integrations.impl.configured import IntegrationsOverImpl
+from acme.integrations.impl.configured import IntegrationsOverImpl, absent_integrations
 from acme.services.api.container import AppContainer
 
 ROUTE = "/webhooks/identity"
@@ -131,7 +131,7 @@ async def test_a_process_with_no_secret_answers_503(tmp_path: Path, provider: st
     """A process that holds no signing secret cannot check a delivery, so it
     refuses every one as unavailable, the answer the provider retries."""
     if provider == "none":
-        container = build_container(tmp_path)
+        container = build_container(tmp_path, integrations=absent_integrations())
     else:
         workos = IdentityProviderWorkOSImpl(
             client_id="client_test",

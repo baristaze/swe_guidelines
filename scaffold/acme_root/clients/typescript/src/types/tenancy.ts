@@ -20,7 +20,6 @@ export type MembershipChoicePageView = Schemas["MembershipChoicePageView"];
 export type SignInStartRequest = Schemas["SignInStartRequest"];
 export type SignInStartView = Schemas["SignInStartView"];
 export type SignInCallbackRequest = Schemas["SignInCallbackRequest"];
-export type DevSignInRequest = Schemas["DevSignInRequest"];
 export type IssuedLoginView = Schemas["IssuedLoginView"];
 export type ExchangeAuthSessionRequest = Schemas["ExchangeAuthSessionRequest"];
 export type IssuedAuthSessionView = Schemas["IssuedAuthSessionView"];

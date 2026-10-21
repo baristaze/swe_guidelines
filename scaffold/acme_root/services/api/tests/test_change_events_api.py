@@ -5,7 +5,7 @@ from datetime import timedelta
 from pathlib import Path
 
 import httpx
-from api_support import OWNER, build_container, run, seed_request
+from api_support import OWNER, build_container, callback_body, run, seed_request
 from starlette.testclient import TestClient
 
 from acme.om.base import utcnow
@@ -81,7 +81,7 @@ def test_a_push_carries_the_stream_position(tmp_path: Path) -> None:
         )
     )
     with TestClient(create_app(container)) as tc:
-        login = tc.post("/v1/auth/dev-sign-in", json={"email": OWNER["email"]})
+        login = tc.post("/v1/auth/callback", json=callback_body(container, OWNER["email"]))
         session = tc.post(
             "/v1/auth/sessions",
             json={"org_id": str(org.id)},

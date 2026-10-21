@@ -77,18 +77,6 @@ class TenancyCalls(Transport):
         )
         return IssuedLoginView.model_validate(answer)
 
-    async def dev_sign_in(self, email: str, display_name: str = "") -> IssuedLoginView:
-        """Local and test only: a sign-in by address alone, which a deployed
-        environment answers with 404. A person nobody knew is made, with
-        their personal org."""
-        answer = await self.request(
-            "POST",
-            "/v1/auth/dev-sign-in",
-            json={"email": email, "display_name": display_name},
-            token=None,
-        )
-        return IssuedLoginView.model_validate(answer)
-
     async def verify_second_factor(self, login_token: str, totp_code: str) -> IssuedLoginView:
         """A sign-in's second factor: a new sign-in that records the verified
         code, which the operator plane asks of an enrolled operator."""

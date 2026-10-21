@@ -29,9 +29,9 @@ async def test_each_session_reads_its_own_audiences_flags_and_a_held_snapshot_an
     (tmp_path / "flags.json").write_text(
         json.dumps({FLAG: {"orgs": {str(ajax.id): False}, "users": {str(bob.id): True}}})
     )
-    ann = await sign_in_as(client, OWNER["email"], ajax.id)
-    bob_headers = await sign_in_as(client, "bob@example.test", ajax.id)
-    eve = await sign_in_as(client, "eve@other.test", other.id)
+    ann = await sign_in_as(client, container, OWNER["email"], ajax.id)
+    bob_headers = await sign_in_as(client, container, "bob@example.test", ajax.id)
+    eve = await sign_in_as(client, container, "eve@other.test", other.id)
 
     answers = {
         name: await client.get("/v1/flags", headers=headers)
@@ -85,14 +85,20 @@ async def test_an_upload_the_flag_turns_off_is_refused_with_its_code(
     body = {"name": "report.pdf", "content_type": "application/pdf", "size_bytes": 10}
     refused = await client.post(
         "/v1/media/files",
-        headers={**await sign_in_as(client, OWNER["email"], ajax.id), "Idempotency-Key": "k-1"},
+        headers={
+            **await sign_in_as(client, container, OWNER["email"], ajax.id),
+            "Idempotency-Key": "k-1",
+        },
         json=body,
     )
     assert refused.status_code == 403
     assert refused.json()["error"]["code"] == "feature_off"
     taken = await client.post(
         "/v1/media/files",
-        headers={**await sign_in_as(client, "eve@other.test", other.id), "Idempotency-Key": "k-2"},
+        headers={
+            **await sign_in_as(client, container, "eve@other.test", other.id),
+            "Idempotency-Key": "k-2",
+        },
         json=body,
     )
     assert taken.status_code == 201, taken.text
