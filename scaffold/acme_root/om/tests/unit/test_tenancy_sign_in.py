@@ -1,8 +1,8 @@
-"""The sign-in delegate over the memory storage, with no identity
-provider: the local sign-in and the personal org it makes, the second
-factor, the exchange of a sign-in for a session and the switch between
-orgs, the places an identity holds, and the sign-out. A sign-in through the
-identity provider runs over its twin, in `test_tenancy_identity_provider.py`."""
+"""The sign-in delegate over the memory storage, every person signed in
+through the identity provider's twin: the personal org a first sign-in
+makes, the second factor, the exchange of a sign-in for a session and the
+switch between orgs, the places an identity holds, and the sign-out. The
+provider's own paths are in `test_tenancy_identity_provider.py`."""
 
 import asyncio
 from collections import Counter

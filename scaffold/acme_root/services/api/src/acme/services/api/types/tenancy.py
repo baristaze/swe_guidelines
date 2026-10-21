@@ -221,7 +221,7 @@ class SignedOutView(AuthSessionView):
     token, and `provider_logout_url`: where the browser goes next to end the
     identity provider's session behind it, so the next sign-in on this
     browser asks who it is. Null when the sign-in left no session there
-    (the device sign-in, the local sign-in, an operator token). It names the
+    (the device sign-in, the local mint, an operator token). It names the
     provider's session, which is not a secret."""
 
     provider_logout_url: str | None = None

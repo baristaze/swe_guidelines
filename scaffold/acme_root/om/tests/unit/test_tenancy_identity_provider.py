@@ -1,4 +1,4 @@
-"""Signing in through the identity provider, the local sign-in, invitations,
+"""Signing in through the identity provider, the local mint, invitations,
 single sign-on, and the member an integration acts as by the address a
 sign-in proved, over the memory storage and the provider's twin."""
 

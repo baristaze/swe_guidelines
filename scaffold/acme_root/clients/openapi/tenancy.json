@@ -1241,7 +1241,7 @@
         "type": "object"
       },
       "SignedOutView": {
-        "description": "The credential that ended, a session, a sign-in, or an operator\ntoken, and `provider_logout_url`: where the browser goes next to end the\nidentity provider's session behind it, so the next sign-in on this\nbrowser asks who it is. Null when the sign-in left no session there\n(the device sign-in, the local sign-in, an operator token). It names the\nprovider's session, which is not a secret.",
+        "description": "The credential that ended, a session, a sign-in, or an operator\ntoken, and `provider_logout_url`: where the browser goes next to end the\nidentity provider's session behind it, so the next sign-in on this\nbrowser asks who it is. Null when the sign-in left no session there\n(the device sign-in, the local mint, an operator token). It names the\nprovider's session, which is not a secret.",
         "properties": {
           "created_at": {
             "format": "date-time",

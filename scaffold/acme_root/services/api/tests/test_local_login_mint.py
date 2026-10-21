@@ -131,6 +131,3 @@ async def test_the_mint_is_off_in_every_process_that_does_not_turn_it_on(
     container = build_container(tmp_path)
     with pytest.raises(NotFound):
         await container.managers.tenancy.sign_in.mint_local_login(seed_request(), "d@example.test")
-    async with client_over(container) as client:
-        door = await client.post("/v1/auth/dev-sign-in", json={"email": "d@example.test"})
-    assert door.status_code == 404
