@@ -10,7 +10,7 @@ from typing import Any
 
 import httpx
 import pytest
-from api_support import OWNER, add_member, build_container, run, seed_request
+from api_support import OWNER, add_member, build_container, callback_body, run, seed_request
 from starlette.testclient import TestClient
 from typer.testing import CliRunner
 
@@ -71,7 +71,7 @@ class Stack:
         return self._tokens[email]
 
     def _sign_in(self, email: str) -> str:
-        login = self.tc.post("/v1/auth/dev-sign-in", json={"email": email})
+        login = self.tc.post("/v1/auth/callback", json=callback_body(self.container, email))
         assert login.status_code == 200, login.text
         session = self.tc.post(
             "/v1/auth/sessions",

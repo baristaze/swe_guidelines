@@ -177,14 +177,6 @@ def login(
     no_browser: Annotated[
         bool, typer.Option("--no-browser", help="Print the address; open no browser.")
     ] = False,
-    dev_email: Annotated[
-        str | None,
-        typer.Option(
-            "--dev-email",
-            help="Local stack only: sign in as this address with no browser. "
-            "A deployed API has no such door and answers 404.",
-        ),
-    ] = None,
     api: Api = None,
 ) -> None:
     """Sign in through the browser with a one-time code and keep the session
@@ -196,10 +188,7 @@ def login(
 
     async def go() -> None:
         async with build_client(api_url, None) as client:
-            if dev_email is not None:
-                issued = await client.dev_sign_in(dev_email)
-            else:
-                issued = await device_sign_in(client, browser=not no_browser)
+            issued = await device_sign_in(client, browser=not no_browser)
             try:
                 chosen = choose_org(issued.memberships, org)
             except LookupError as slugs:

@@ -4,8 +4,7 @@ Acme from the terminal. A command does one thing and returns; `listen`
 stays and prints every change in the org as it happens.
 
 ```bash
-uv run acme login --org ajax        # confirm the code in the browser
-uv run acme login --dev-email bob@example.test --org ajax   # local stack only
+uv run acme login --org ajax        # confirm the code in the browser, on every stack
 uv run acme whoami
 uv run acme orgs                    # * marks the auth session's org
 uv run acme switch fabrikam         # the old auth session ends

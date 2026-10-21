@@ -315,10 +315,14 @@ def test_a_code_nobody_confirms_expires_with_exit_1(
     assert "the code expired before it was confirmed" in result.output
 
 
-def test_the_local_sign_in_takes_an_address_alone(stack: Stack) -> None:
-    signed = stack.acme("login", "--dev-email", BOB["email"], "--org", "ajax", token=None)
+def test_a_member_signs_in_on_the_device_and_no_address_signs_in_alone(
+    stack: Stack, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    signed = stack.login("--org", "ajax", monkeypatch=monkeypatch, email=BOB["email"])
     assert signed.exit_code == 0, signed.output
-    assert signed.output.startswith("signed in as Bob at Ajax (member)\nsession kept in ")
+    assert "\nsigned in as Bob at Ajax (member)\nsession kept in " in signed.output
+    by_address = stack.acme("login", "--dev-email", BOB["email"], token=None)
+    assert by_address.exit_code == 2 and "No such option" in by_address.output
 
 
 def test_not_signed_in_is_exit_3(stack: Stack) -> None:
@@ -424,7 +428,7 @@ def test_a_timeout_the_environment_got_wrong_is_a_usage_error(
         "ACME_HTTP_TIMEOUT_SECONDS": bad,
     }
     runner = CliRunner()
-    for command in (["whoami"], ["listen"], ["login", "--dev-email", "a@b.test"]):
+    for command in (["whoami"], ["listen"], ["login", "--no-browser"]):
         result = runner.invoke(main.app, command, env=environment, catch_exceptions=False)
         assert result.exit_code == 2, f"{command}: {result.output}"
         assert result.output.startswith("ACME_HTTP_TIMEOUT_SECONDS"), result.output
@@ -473,20 +477,18 @@ def test_a_token_the_environment_got_wrong_is_a_usage_error(
     assert "secret" not in result.output
 
 
-def test_a_session_that_cannot_be_kept_is_a_usage_error(stack: Stack, tmp_path: Path) -> None:
+def test_a_session_that_cannot_be_kept_is_a_usage_error(
+    stack: Stack, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """The API signed the caller in, but ACME_HOME names a place the CLI
     cannot write: one line naming the place, exit 2, no traceback."""
     blocked = tmp_path / "not-a-directory"
     blocked.write_text("")
-    result = stack.acme(
-        "login",
-        "--dev-email",
-        OWNER["email"],
-        token=None,
-        env={"ACME_HOME": str(blocked / "acme")},
-    )
+    stack.confirm_as(OWNER["email"], monkeypatch)
+    result = stack.acme("login", token=None, env={"ACME_HOME": str(blocked / "acme")})
     assert result.exit_code == 2, result.output
-    assert result.output.startswith("the session cannot be kept in "), result.output
+    # After the sign-in's own lines, one line naming the place.
+    assert result.output.splitlines()[-1].startswith("the session cannot be kept in ")
 
 
 def test_a_session_that_cannot_be_forgotten_is_a_usage_error(
