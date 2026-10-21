@@ -16,6 +16,7 @@ import subprocess
 from pathlib import Path
 
 import pytest
+import yaml
 
 ROOT = Path(__file__).resolve().parents[2]
 URL = "ACME_DATABASE_MIGRATION_URL"
@@ -163,6 +164,12 @@ def _seed(checkout: Path, env: dict[str, str]) -> tuple[subprocess.CompletedProc
     return done, ran.read_text().splitlines() if ran.exists() else []
 
 
+def _no_git_identity(tmp_path: Path) -> dict[str, str]:
+    empty = tmp_path / "gitconfig"
+    empty.write_text("")
+    return {"GIT_CONFIG_GLOBAL": str(empty), "GIT_CONFIG_NOSYSTEM": "1"}
+
+
 @pytest.mark.parametrize(
     "base", ["owner@example.test", "me@acme.example", "me@acme.invalid", "me@localhost"]
 )
@@ -188,3 +195,20 @@ def test_the_seed_takes_a_base_that_takes_mail(tmp_path: Path) -> None:
     assert done.returncode == 0, done.stderr
     assert "--email dev+acme+local+ajax@example.com" in ran[0]
 
+
+def test_the_telemetry_job_seeds_on_a_runner_with_no_git_identity(tmp_path: Path) -> None:
+    """The copy's CI job copies `.env.example`, which names no base, onto a
+    runner with no git identity: the seed has no base until the job's own
+    environment names one, which the round trip and the traffic run read too."""
+    workflow = yaml.safe_load((ROOT / ".github" / "workflows" / "ci.yml").read_text())
+    job_env = {name: str(value) for name, value in workflow["jobs"]["telemetry"]["env"].items()}
+    checkout = _checkout(tmp_path)
+    shutil.copy(ROOT / ".env.example", checkout / ".env")
+    runner = _shell(**_no_git_identity(tmp_path))
+    done, ran = _seed(checkout, runner)
+    assert done.returncode == 2 and "no base address" in done.stderr
+    assert ran == []
+    done, ran = _seed(checkout, {**runner, **job_env})
+    assert done.returncode == 0, done.stderr
+    local, domain = job_env["SEED_EMAIL"].split("@")
+    assert f"--email {local}+acme+local+ajax@{domain}" in ran[0]
