@@ -199,13 +199,18 @@ async def test_the_operator_token_is_never_minted_without_a_terminal(
 class GrantCommand:
     """The grant command `acme-ops` runs on the local stack: records what it
     was asked and prints a token, as it does on a local database, beside the
-    log lines it writes to stderr."""
+    log lines it writes to stderr. It stands in for every process the command
+    starts, so it also answers the read of git's address the local
+    environment makes when nothing names SEED_EMAIL, as a machine with no git
+    identity does: nothing, and exit 1."""
 
     def __init__(self, returncode: int = 0) -> None:
         self.returncode = returncode
         self.calls: list[list[str]] = []
 
     def __call__(self, argv: list[str], **_: object) -> subprocess.CompletedProcess[str]:
+        if argv == ["git", "config", "user.email"]:
+            return subprocess.CompletedProcess(argv, 1, "", "")
         self.calls.append(argv)
         holder = argv[argv.index("--mint-token") + 1]
         out = f"opr_{holder}_minted\n" if self.returncode == 0 else ""
