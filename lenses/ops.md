@@ -189,7 +189,7 @@ agent; an investigator role that trusts another account, or a
 principal by a copied generated name; an agent profile holding a key
 of its own instead of chaining from a person's session; a production
 everyday permission set that writes; a sign-in to the identity center
-with no second factor; an operator admitted to the plane on a password
+with no second factor; an operator admitted to the plane on a sign-in
 alone, or with a factor no operator identity enrolled.
 
 **Severity.** high
@@ -522,7 +522,8 @@ everything that drives the system at load rides it. It drives the
 edge, the app-specific services, never a domain service and never a
 manager, with realistic sessions. A profile sets how many tenants,
 people, and concurrent users, and the think time; four ship: light,
-regular, heavy, stress. It runs against any environment.
+regular, heavy, stress. It runs against the local stack, where the
+local mint signs its people in.
 
 **Source.** Operations, Traffic and Stress.
 

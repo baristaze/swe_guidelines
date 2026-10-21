@@ -231,7 +231,8 @@ answer for good and the client's only exit is a new key and a second
 row; a
 bespoke replay mechanism for one route that differs from the shared
 primitive. (What a create that issued a secret stores is NET-31. A
-sign-up has no tenant or principal to hold a marker, and is NET-35.)
+first sign-in has no tenant or principal to hold a marker, and is
+NET-35.)
 
 **Severity.** high
 
@@ -273,14 +274,13 @@ paths in router modules; the rest is judged.
 
 **Principle.** The gateway verifies credentials and asks the tenancy
 manager for the principal; tenancy is an ordinary namespace. Nothing
-it stores can be presented as a credential: a password is a
-memory-hard hash under its own salt; a key, token, or ticket is a
-SHA-256 digest shown once and looked up by digest, its entropy the
-defense. Every path that adds a member to an org lands through one
-create, `add_member_to`. Where a system bounds who may join, the create
-asks the org's gate once the person is known to be new to the org; the
-gate refuses before anything is written, and its outbox rows ride the
-add's commit.
+it stores can be presented as a credential, and it keeps no password:
+a key, token, or ticket is a SHA-256 digest shown once and looked up
+by digest, its entropy the defense. Every path that adds a member to an
+org lands through one create, `add_member_to`. Where a system bounds
+who may join, the create asks the org's gate once the person is known
+to be new to the org; the gate refuses before anything is written, and
+its outbox rows ride the add's commit.
 
 **Source.** The Network Layer, Auth: the Gateway Verifies, the Tenancy
 Domain Owns.
@@ -288,7 +288,7 @@ Domain Owns.
 **Look for.** Where sign-up, invitation, role management, key rotation,
 and auth session refresh are implemented (organizations, identities, users,
 memberships, teams, credentials, auth sessions, invitations); whether the
-gateway holds its own user or token tables; the hashing in the tenancy
+gateway holds its own user or token tables; the digests in the tenancy
 rules, what the credential tables hold, and the `Issued...View` that
 shows a secret once. Every path that adds a member, whether it goes
 through the one create, and where a gate on who may join is asked.
@@ -296,8 +296,8 @@ through the one create, and where a gate on who may join is asked.
 **Violation.** Identity logic inside gateway middleware; credential
 tables owned by the gateway rather than the tenancy namespace; a
 manager that cannot be tested without the HTTP layer; a password
-hashed with a fast digest or no salt; a key, token, or ticket stored
-in the clear, or looked up by anything but its digest. A path that adds
+stored in any form; a key, token, or ticket stored in the clear, or
+looked up by anything but its digest. A path that adds
 a member around the one create, so the gate is never asked; a gate
 asked before the person is known to be new to the org, so a repeated
 add is refused or counted again; a refusal that comes after a row is
@@ -897,29 +897,30 @@ system's own is a decision the guideline makes, not a breach.)
 
 **Severity.** high
 
-## NET-35 Sign-up opens a deployed environment
+## NET-35 A first sign-in opens a deployed environment
 
-**Principle.** Sign-up takes no principal. It creates the identity,
-its first org, and the owner membership in one transaction, and
-answers as a sign-in does. It is rate-limited, takes no idempotency
-key, and refuses a held email as a conflict. It is open by default;
-one setting closes it to a not found. Email is not verified, by
-choice.
+**Principle.** A first sign-in is the sign-up, and takes no principal.
+It creates the identity, its personal org, and the owner membership in
+one commit, and answers as any sign-in does. It is rate-limited and
+takes no idempotency key. An address the provider has not verified is
+refused, and an address an identity already holds is that person's,
+linked to the provider's subject.
 
 **Source.** The Network Layer, Auth: the Gateway Verifies, the Tenancy
 Domain Owns; The Business Layer, Operations Without a Principal.
 
-**Look for.** The sign-up route and the tenancy operation behind it:
-its transaction, its answer beside the sign-in's, its rate limit, and
-the setting that closes it. How a person enters a deployed
-environment, which carries no seed.
+**Look for.** The route that takes the provider's code and the tenancy
+transition behind it: its commit, its answer beside a returning
+person's, its rate limit, and where it refuses an unverified address.
+How a person enters a deployed environment, which carries no seed.
 
-**Violation.** Sign-up writes spread over several transactions, so a
-failure leaves an identity with no org or an org with no owner; an
+**Violation.** A first sign-in whose writes spread over several
+commits, so a failure leaves an identity with no org or an org with no
+owner; two first sign-ins of one address that make two identities; an
 answer without the memberships, so the client needs a second path into
-the exchange; no rate limit; a held email answered with anything but a
-conflict; a deployed environment no person can enter; a closed sign-up
-that answers differently from a missing route.
+the exchange; no rate limit; an unverified address admitted; a sign-up
+route of its own beside the provider's; a deployed environment no
+person can enter.
 
 **Severity.** medium
 

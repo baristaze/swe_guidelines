@@ -1530,11 +1530,11 @@ that the same process serves. It admits the person's own sign-in with a
 second factor, a TOTP code, or an operator token, and never an API key
 or a tenant's auth session; then `admit_operator` checks the allowlist. A
 tenant's sign-in needs no second factor, but the operator plane reads
-across tenants, so a password alone never admits to it. An agent never
-signs in with a password. It presents an operator token: minted by an
-operator with a second factor or by the grant job, naming one identity
-and one permission its entry grants (`write` implies `read`), expiring
-within the hour, and stored as its digest, found by
+across tenants, so a sign-in alone never admits to it. An agent
+presents an operator token: minted by an operator with a second factor
+or by the grant job, naming one identity and one permission its entry
+grants (`write` implies `read`), expiring within the hour, and stored
+as its digest, found by
 `read_auth_session_by_digest`. An operator with no confirmed second factor
 yet is admitted with `OperatorPermission.ENROL` alone, which reaches the
 two enrolment calls and nothing else.
@@ -1562,23 +1562,25 @@ member twice. Its refusal comes before anything is written. The outbox
 rows it answers ride the add's commit, so what it counts moves only
 with a member who landed.
 
-Sign-up opens a deployed environment: the identity, its first org, and
-the owner membership, in one transaction. It is open by default, and a
-setting closes it. There is no email verification, a choice with two
-named costs: sign-up tells whether an address is taken, and anyone can
-claim an address they do not own. With no verified mailbox there is no
-recovery by mail either: an operator resets a lost password through the
-operator plane, as an operator write audited with the identity it
-reset. Verification is the first thing to add when a product mails the
-address or trusts it.
+The system keeps no password. A person signs in through the identity
+provider, an integration: by an email code, an OAuth provider such as
+Google, Microsoft, Apple, or GitHub, or the org's single sign-on. The
+tenancy manager exchanges the provider's code for an issuer, a subject,
+and a verified address. It finds the identity by the first two, else by
+the address, else creates it with its personal org, and produces the
+`IdentityContext`. A first sign-in is the sign-up, and an unverified
+address is refused. Recovery is the provider's email code, so an
+operator resets nothing.
 
-An external identity provider is one more credential kind: the gateway
-verifies its token, and the tenancy manager finds or creates the
-identity by issuer and subject and produces the same `IdentityContext`
-a sign-in does. Nothing stored can be presented as a credential: a
-password is a memory-hard hash, and a key, an auth session, or a ticket a
-digest, shown once in the `Issued...View` that minted it. Failed
-sign-ins are throttled in storage, per email digest.
+Every stack signs in through the provider, a local one through the
+provider's development environment, and no route signs a person in by
+an address alone. A machine on a local stack with no browser or mailbox, such as
+the traffic generator, takes a sign-in token from a local mint: a
+command on the local database, refused outside `local` and `test`.
+Nothing stored can be presented as a credential: a key, an auth
+session, or a ticket is a digest, shown once in the `Issued...View`
+that minted it. Wrong second-factor codes are delayed in storage, per
+email digest.
 
 ### Intra-Service Communication
 
@@ -2482,8 +2484,9 @@ client, and a deterministic twin that speaks its wire shapes, signs its
 own synthetic deliveries, and runs in-process or on disk
 ([`twin.py`](scaffold/acme_root/integrations/src/acme/integrations/identity/twin.py)).
 Tests, the local stack, and CI run the twin, and the real client is
-proven against recorded fixtures. A twin refuses to run outside a local
-environment.
+proven against recorded fixtures. On the local stack, a person signs
+in through the identity provider itself. A twin refuses to run outside
+a local environment.
 
 ### What a Process Refuses
 

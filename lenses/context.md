@@ -735,30 +735,41 @@ auth session's idle window; a paused connection that ends the auth session.
 
 **Severity.** high
 
-## CTX-28 An external identity provider is one more credential kind
+## CTX-28 A person signs in through the identity provider alone
 
-**Principle.** An external identity provider's token is a credential
-kind: the gateway verifies it against the provider's published keys
-and hands the tenancy manager the issuer and the subject, whose
-transition finds or creates the identity keyed on that pair and
-produces the `IdentityContext` a sign-in does. The provider is an
-integration (DEL-05); nothing below the gateway knows which spoke.
+**Principle.** The system keeps no password. A person signs in through
+the identity provider, by an email code, an OAuth provider, or the
+org's single sign-on. The tenancy manager's transition exchanges the
+provider's code for an issuer, a subject, and a verified address, finds
+the identity by the first two, else by the address, else creates it
+with its personal org, and produces the `IdentityContext`. An
+unverified address is refused. Every stack signs in through the
+provider, and no route signs a person in by an address alone: a
+machine on a local stack takes its token from the local mint, a
+command refused outside `local` and `test`. The provider is an
+integration (DEL-05); nothing below the manager knows the method.
 
 **Source.** The Network Layer, Auth: the Gateway Verifies, the Tenancy
 Domain Owns.
 
-**Look for.** Where a provider's token is verified and what it
-produces; the key the identity is stored under; whether the exchange
-into a tenant auth session, the memberships, and the auth sessions are the ones
-every person has; the provider's interface, real client, and twin in
-the `integrations/` distribution, and the container that wires one of
-them at boot.
+**Look for.** Where the provider's code is exchanged and what it
+produces; the order the identity is found in, and where an unverified
+address is refused; every route and page that issues a sign-in, and
+the local mint and where it refuses; whether the exchange into a
+tenant auth session, the memberships, and the auth sessions are the
+ones every person has; the provider's interface, real client, and twin
+in the `integrations/` distribution, and the container that wires one
+of them at boot.
 
-**Violation.** A provider's token accepted as an auth session on tenant
-routes; an identity keyed on an email the provider may reassign; a
-second auth session or membership model for federated users; a tenant
-manager that branches on the provider; no local twin, so the sign-in
-cannot run without the network (the twin itself is DEL-05).
+**Violation.** A password stored or accepted, a sign-up form beside
+the provider's, or a route that signs a person in by an address alone,
+on any stack; a local mint with a route or a page, or one that runs
+outside `local` and `test`; a provider's token accepted on tenant
+routes in place of an auth session; an unverified address admitted, or
+an identity keyed on an email the provider may reassign; a second auth
+session or membership model for federated users; a tenant manager that
+branches on the provider; no twin, so the tests cannot sign in without
+the network (the twin itself is DEL-05).
 
 **Severity.** high
 
@@ -929,14 +940,14 @@ points an integration at a secret it does not own.
 
 **Severity.** high
 
-## CTX-36 Failed sign-ins throttle in storage; auth sessions have two lifetimes
+## CTX-36 Wrong codes throttle in storage; auth sessions have two lifetimes
 
-**Principle.** Sign-in has a defense that does not fail open: the
-tenancy manager counts failed sign-ins in its own storage, keyed on
-the email's digest, and each failure doubles the delay before the next
-attempt for that email is checked, up to a cap. An attempt inside the
-delay is refused `429` before its password is checked, and a success
-resets it. An unknown email is delayed like a known one. Every auth
+**Principle.** The second factor has a defense that does not fail
+open: the tenancy manager counts wrong second-factor codes in its own
+storage, keyed on the digest of the identity's email. Past a few free
+failures, each one doubles the delay before the next code for that
+email is checked, up to a cap. A code inside the delay is refused `429`
+before it is checked, and a right code clears the count. Every auth
 session has an idle and an absolute lifetime, both settings, and every
 API key an expiry. Only a sign-in starts the absolute lifetime: an auth
 session made from another, as a switch of tenant makes it, keeps the
@@ -945,21 +956,20 @@ deadline of the one it ends.
 **Source.** The Network Layer, Auth: the Gateway Verifies, the Tenancy
 Domain Owns.
 
-**Look for.** The sign-in transition and where it records a failure;
-what the count is keyed on, the delay it applies, its base and cap,
-and whether the refusal comes before the password check; the auth
-session's idle and absolute lifetimes in settings and where each is
-checked; the deadline an auth session takes when an auth session was
-presented to make it; the expiry on an API key.
+**Look for.** `verify_second_factor` and where it records a wrong code;
+what the count is keyed on, the delay it applies, its free failures,
+base, and cap, and whether the refusal comes before the code is
+checked; the auth session's idle and absolute lifetimes in settings and
+where each is checked; the deadline an auth session takes when an auth
+session was presented to make it; the expiry on an API key.
 
-**Violation.** A sign-in whose only defense is the per-address rate
-limit on the cache, which fails open; a failure count kept in the
-cache instead of the tenancy manager's storage; a count keyed on the
-identity, so an unknown email answers faster than a known one; an
-attempt inside the delay whose password is still checked; an auth
-session with no idle or no absolute lifetime; a switch that gives the new
-auth session a full lifetime, so an auth session renews itself with no
-sign-in; an API key with no expiry.
+**Violation.** A second factor whose only defense is the per-address
+rate limit on the cache, which fails open; a count of wrong codes kept
+in the cache instead of the tenancy manager's storage; a code inside
+the delay that is still checked, or a right code that leaves the count
+standing; an auth session with no idle or no absolute lifetime; a
+switch that gives the new auth session a full lifetime, so an auth
+session renews itself with no sign-in; an API key with no expiry.
 
 **Severity.** high
 
@@ -989,17 +999,17 @@ role comparison made once, when the key is minted, and never again.
 
 ## CTX-38 An agent reaches the operator plane with an operator token
 
-**Principle.** Agents and pipelines never sign in with a password. The
-traffic generator, the deployed smoke test, and a supporter agent use
-an operator token. An operator signed in with the second factor mints
-it, or the grant job does for the provisioner and the smoke identity.
-It carries one operator permission, expires within one hour, and is
-an auth session of kind `operator`, stored as its digest and shown once.
-The mint route is `POST /v1/admin/me/tokens`; the grant job writes its
-tokens into the secret store. `admit_operator` admits it as the one
-named exception to "a password alone never admits". The ops env file
-holds `<ROOT>_OPERATOR_TOKEN`, a `read` token, and no password, TOTP
-secret, or `write` token.
+**Principle.** Agents and pipelines never reach the operator plane on a
+person's sign-in. The traffic generator, the deployed smoke test, and a
+supporter agent use an operator token. An operator signed in with the
+second factor mints it, or the grant job does for the provisioner and
+the smoke identity. It carries one operator permission, expires within
+one hour, and is an auth session of kind `operator`, stored as its
+digest and shown once. The mint route is `POST /v1/admin/me/tokens`;
+the grant job writes its tokens into the secret store. `admit_operator`
+admits it as the one named exception to "a sign-in alone never admits".
+The ops env file holds `<ROOT>_OPERATOR_TOKEN`, a `read` token, and no
+TOTP secret or `write` token.
 
 **Source.** TenantContext, The Operator Context; The Network Layer, The
 Gateway; Deployment, Migrating a Deployed Database; Operations,
@@ -1015,12 +1025,13 @@ token; where the grant job puts the token it mints; what
 `admit_operator` accepts; the keys in each ops env file, and which
 file each skill sources.
 
-**Violation.** An agent or a pipeline that signs in with a password or
-holds a TOTP secret; an operator token with more than one permission,
-an expiry past one hour, or a value stored in the clear; a token
-minted by a sign-in with no second factor, or by another token; a
-grant job that prints a token instead of writing it into the secret
-store; a `write` token in the file a reading skill sources; a gate that
-admits some other credential without a second factor.
+**Violation.** An agent or a pipeline that reaches the operator plane
+on a person's sign-in or holds a TOTP secret; an operator token with
+more than one permission, an expiry past one hour, or a value stored in
+the clear; a token minted by a sign-in with no second factor, or by
+another token; a grant job that prints a token instead of writing it
+into the secret store; a `write` token in the file a reading skill
+sources; a gate that admits some other credential without a second
+factor.
 
 **Severity.** high

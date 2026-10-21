@@ -127,10 +127,11 @@ up` instead of its steps, or a shortcut with no step behind it.
 
 **Principle.** An external service has one interface and at least two
 impls: the real client and a deterministic twin with the same wire
-shapes. Tests, the local stack, and CI run against the twin; the real
-client is proven against fixtures and a non-gating sandbox workflow. A
-twin refuses to run outside `local` and names its provenance on every
-record.
+shapes. Tests, the local stack, and CI run against the twin, save a
+person's sign-in on the local stack, which goes through the identity
+provider; the real client is proven against fixtures and a non-gating
+sandbox workflow. A twin refuses to run outside `local` and names its
+provenance on every record.
 
 **Source.** Deployment, Twins for External Services.
 
@@ -870,27 +871,30 @@ in the compose file.
 
 **Severity.** medium
 
-## DEL-34 The README lists every local URL and the seeded sign-in
+## DEL-34 The README lists every local URL and the seeded people
 
 **Principle.** The repository's `README.md` lists every local URL a
 developer opens: each dashboard, each service's interactive API docs,
-each browser app. `make seed` runs `bootstrap` with a development org
-and owner read from `.env` (an `.example` address, a development
-password), changes nothing when run again, and the `README.md` lists
-the command and the seeded sign-in next to the URLs.
+each browser app. `make seed` runs `bootstrap` with development orgs
+and people, and changes nothing when run again. Each seeded person has
+a plus-address of one base address read from `.env`, so the identity
+provider delivers their email code to the developer, and no password is
+seeded. The `README.md` lists the command and the seeded people next
+to the URLs.
 
 **Source.** Deployment, Local: Docker Compose.
 
 **Look for.** The local URLs in `README.md` against the dashboards,
 services, and apps the tree holds; the `seed` target and the
 `bootstrap` subcommand it runs; the seed settings in `.env.example`;
-the seeded sign-in in `README.md`.
+the seeded people in `README.md`.
 
 **Violation.** A dashboard, a service's API docs, or a browser app
 whose local URL the `README.md` does not list; no `seed` target, so a
 developer creates the first org and user by hand; a seed that fails or
-duplicates on a second run; a seed owner on a routable domain; seeded
-credentials the `README.md` does not show.
+duplicates on a second run; a seeded person at an address that is not
+the developer's own, or a seeded password; seeded people the
+`README.md` does not show.
 
 **Severity.** medium
 
