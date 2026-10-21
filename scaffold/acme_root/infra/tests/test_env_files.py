@@ -15,6 +15,8 @@ import stat
 import subprocess
 from pathlib import Path
 
+import pytest
+
 ROOT = Path(__file__).resolve().parents[2]
 URL = "ACME_DATABASE_MIGRATION_URL"
 IN_DOTENV = "postgresql+asyncpg://acme_migration:acme_migration@127.0.0.1:55432/from_dotenv"
@@ -138,3 +140,51 @@ def test_with_no_base_the_seed_takes_gits_address(tmp_path: Path) -> None:
     git_config.write_text("[user]\n\temail = me@example.org\n")
     shell = _shell(GIT_CONFIG_GLOBAL=str(git_config), GIT_CONFIG_NOSYSTEM="1")
     assert _seeded(checkout, shell)[0] == "me+acme+local+ajax@example.org"
+
+
+def _seed(checkout: Path, env: dict[str, str]) -> tuple[subprocess.CompletedProcess[str], list[str]]:
+    """`make seed` in the copy, with a `uv` that records the arguments of each
+    command it is handed in place of running it, and a home of its own."""
+    bin_dir = checkout / "bin"
+    bin_dir.mkdir(exist_ok=True)
+    ran = checkout / "ran"
+    fake = bin_dir / "uv"
+    fake.write_text(f'#!/bin/sh\necho "$*" >> "{ran}"\n')
+    fake.chmod(fake.stat().st_mode | stat.S_IEXEC)
+    path = f"{bin_dir}{os.pathsep}{env.get('PATH', os.defpath)}"
+    done = subprocess.run(
+        ["make", "-s", "-f", "Makefile", "seed"],
+        cwd=checkout,
+        env={**env, "PATH": path, "HOME": str(checkout)},
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    return done, ran.read_text().splitlines() if ran.exists() else []
+
+
+@pytest.mark.parametrize(
+    "base", ["owner@example.test", "me@acme.example", "me@acme.invalid", "me@localhost"]
+)
+def test_the_seed_refuses_a_base_on_a_domain_that_takes_no_mail(tmp_path: Path, base: str) -> None:
+    """A checkout whose `.env` still names an address on a reserved domain
+    would seed people WorkOS can send no code to. The seed refuses it before
+    it writes anything, naming the line to change, and `make reset` for a
+    database seeded before, whose orgs the seed would keep."""
+    checkout = _checkout(tmp_path)
+    (checkout / ".env").write_text(f"SEED_EMAIL={base}\n")
+    done, ran = _seed(checkout, _shell())
+    assert done.returncode == 2, done.stderr
+    assert f"make seed: {base} is on a domain that takes no mail" in done.stderr
+    assert "the SEED_EMAIL= line in .env" in done.stderr
+    assert "`make reset`" in done.stderr
+    assert ran == []
+
+
+def test_the_seed_takes_a_base_that_takes_mail(tmp_path: Path) -> None:
+    checkout = _checkout(tmp_path)
+    (checkout / ".env").write_text("SEED_EMAIL=dev@example.com\n")
+    done, ran = _seed(checkout, _shell())
+    assert done.returncode == 0, done.stderr
+    assert "--email dev+acme+local+ajax@example.com" in ran[0]
+

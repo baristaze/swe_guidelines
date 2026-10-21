@@ -55,7 +55,9 @@ commits; without it, git's `user.email`. Each person is
 `<local>+acme+local+<tag>@<domain>`. The owner of the first org takes its
 slug. The owner of the second org, who is an admin of the first and an
 operator on the local allowlist, takes the second org's slug. The member
-takes `personal`. WorkOS delivers each one's code to the base's mailbox.
+takes `personal`. WorkOS delivers each one's code to the base's mailbox,
+so the seed refuses a base on a domain that takes no mail (`.test`,
+`.example`, `.invalid`, `.localhost`).
 
 ## Consequences
 

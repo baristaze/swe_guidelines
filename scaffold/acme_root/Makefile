@@ -212,7 +212,9 @@ migrate: ## Make the database logins, then apply every role's migration chain to
 # The SEED_* values come from .env (or .env.example); override any of them
 # there or on the command line, e.g. `make seed SEED_EMAIL=you@example.com`.
 # Each person's address is a plus-address of SEED_EMAIL (see the top of this
-# file), so WorkOS delivers their code to its owner's mailbox.
+# file), so WorkOS delivers their code to its owner's mailbox. A base on a
+# domain that takes no mail (.test, .example, .invalid, .localhost) is
+# refused before anything is written.
 # The admin owns the second org, joins the first as an admin, and is an
 # operator on the local allowlist: one person with two memberships, each
 # under a different role, who signs in to the operator plane as everyone
@@ -227,7 +229,12 @@ migrate: ## Make the database logins, then apply every role's migration chain to
 # since each lasts an hour.
 .PHONY: seed
 seed: ## Create two local orgs with an owner, a member, and an admin of both to sign in as, and the two local operators; a no-op once they exist
-	@case "$(SEED_EMAIL)" in ?*@?*) ;; *) echo "make seed: no base address; set SEED_EMAIL in .env to your own, or git's user.email" >&2; exit 2 ;; esac
+	@case "$(SEED_EMAIL)" in \
+		*[@.]test|*[@.]example|*[@.]invalid|*[@.]localhost) \
+			echo "make seed: $(SEED_EMAIL) is on a domain that takes no mail, so WorkOS can send its people no code. Set the SEED_EMAIL= line in .env to your own address, then run \`make reset\` if this database was seeded before: the seed keeps an org that exists, and its owner" >&2; exit 2 ;; \
+		?*@?*) ;; \
+		*) echo "make seed: no base address; set SEED_EMAIL in .env to your own, or git's user.email" >&2; exit 2 ;; \
+	esac
 	uv run --package acme-api acme-api bootstrap --if-absent \
 		--org "$(SEED_ORG)" --slug "$(SEED_SLUG)" --name "$(SEED_NAME)" \
 		--email "$(SEED_OWNER_EMAIL)"
