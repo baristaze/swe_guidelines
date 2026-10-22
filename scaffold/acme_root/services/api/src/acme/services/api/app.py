@@ -1,5 +1,5 @@
 """create_app: boot (settings, logging, trust store, tracing), then the
-container, middleware in a fixed order, routers under /v1, health routes,
+container, routers under /v1, middleware in a fixed order, health routes,
 and the lifespan that starts and closes the container."""
 
 import asyncio
@@ -14,7 +14,7 @@ from fastapi.routing import APIRoute
 
 from acme.infra.observability import metrics_exposition
 from acme.services.api.container import AppContainer, boot
-from acme.services.api.gateway.admission import AdmissionMiddleware
+from acme.services.api.gateway.admission import AdmissionMiddleware, HolderCalls
 from acme.services.api.gateway.edge import EdgeClientMiddleware
 from acme.services.api.gateway.errors import register_error_handlers
 from acme.services.api.gateway.observability import RequestIdMiddleware
@@ -54,6 +54,14 @@ def create_app(container: AppContainer | None = None) -> FastAPI:
     )
     app.state.container = container
 
+    api = APIRouter(prefix=API_PREFIX)
+    for router in all_routers(settings.namespaces):
+        api.include_router(router)
+    app.include_router(api)
+    # A provider's deliveries sit outside /v1: their shape is versioned by the
+    # provider, on the endpoint it delivers to.
+    app.include_router(webhooks.router)
+
     # Middleware, innermost first. CORS is outermost, so every answer a
     # browser gets carries the headers that let it read the body: the request
     # id middleware writes the 500 envelope itself, and outside CORS that
@@ -73,7 +81,9 @@ def create_app(container: AppContainer | None = None) -> FastAPI:
     # the same reason it is not logged. What admission leaves outside itself
     # is only the little the two middlewares above it do, and it takes its
     # lane's bound before routing, the request body, and every dependency:
-    # the lane is the method's, which the scope carries this far out.
+    # the lane is the method's, which the scope carries this far out, or the
+    # holds lane for a route marked a holder's call, matched by its path with
+    # the pattern it is routed by: the routers are mounted above for that.
     # Innermost of all: the relay of a request's outbox rows, once its answer
     # is sent (`gateway/relay.py`). Inside admission, so a relay holds its
     # request's slot; inside the request id, so it runs under the request's
@@ -83,6 +93,8 @@ def create_app(container: AppContainer | None = None) -> FastAPI:
         AdmissionMiddleware,
         limit_reads=settings.admission_limit_reads,
         limit_writes=settings.admission_limit_writes,
+        limit_holds=settings.admission_limit_holds,
+        holder_calls=HolderCalls.of(app.routes),
         retry_after=timedelta(seconds=settings.admission_retry_after_seconds),
         deadline=timedelta(seconds=settings.request_deadline_seconds),
     )
@@ -105,13 +117,6 @@ def create_app(container: AppContainer | None = None) -> FastAPI:
         )
     register_error_handlers(app)
 
-    api = APIRouter(prefix=API_PREFIX)
-    for router in all_routers(settings.namespaces):
-        api.include_router(router)
-    app.include_router(api)
-    # A provider's deliveries sit outside /v1: their shape is versioned by the
-    # provider, on the endpoint it delivers to.
-    app.include_router(webhooks.router)
 
     @app.get("/healthz", include_in_schema=False)
     async def healthz() -> dict[str, str]:

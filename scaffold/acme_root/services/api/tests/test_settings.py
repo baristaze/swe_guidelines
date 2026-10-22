@@ -62,6 +62,7 @@ LOCAL_DEFAULT_SERVES_THE_CLOUD = {
     "login_rate_window_seconds": "the local window is the window",
     "credential_rate_limit_reads": "the local budget is the budget",
     "credential_rate_limit_writes": "the local budget is the budget",
+    "credential_rate_limit_holds": "the local budget is the budget",
     "credential_rate_window_seconds": "the local window is the window",
     "failed_authentication_limit": "the local budget is the budget",
     "failed_authentication_window_seconds": "the local window is the window",
@@ -83,6 +84,7 @@ LOCAL_DEFAULT_SERVES_THE_CLOUD = {
     "readiness_timeout_seconds": "shorter than every probe interval the deployment sets",
     "admission_limit_reads": "the local bound is the bound until a replica is measured",
     "admission_limit_writes": "the local bound is the bound until a replica is measured",
+    "admission_limit_holds": "the local bound is the bound until a replica is measured",
     "admission_retry_after_seconds": "the local wait is the wait",
     "request_deadline_seconds": "the local deadline is the deadline, under the clients' 30 s",
 }

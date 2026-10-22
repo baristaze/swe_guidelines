@@ -1,15 +1,16 @@
 """Admission: the process refuses past the bound of what it has in flight,
-fast and in the unavailable shape, counting reads and writes apart so that a
-storm in one lane leaves the other its slots, and never refuses the probes
-that say so."""
+fast and in the unavailable shape, counting reads, writes, and a holder's
+calls apart so that a storm in one lane leaves the others their slots, and
+never refuses the probes that say so."""
 
 import asyncio
 import itertools
 from pathlib import Path
+from typing import Any
 
 import httpx
 import pytest
-from api_support import build_container
+from api_support import a_held_lease, build_container
 from fastapi import FastAPI
 
 from acme.services.api.container import AppContainer
@@ -20,14 +21,22 @@ READS = 1
 WRITES = 2
 """Two writes, so each lane is held to a bound of its own and not to one."""
 
+HOLDS = 1
+"""One of a holder's calls, so a second renewal is the refused one."""
+
 paths = itertools.count()
 
 
 @pytest.fixture
 def container(tmp_path: Path) -> AppContainer:
     """Overrides the container of `conftest`, so the `app` and `client`
-    fixtures above run against a process whose lanes are one and two."""
-    return build_container(tmp_path, admission_limit_reads=READS, admission_limit_writes=WRITES)
+    fixtures above run against a process whose lanes are one, two, and one."""
+    return build_container(
+        tmp_path,
+        admission_limit_reads=READS,
+        admission_limit_writes=WRITES,
+        admission_limit_holds=HOLDS,
+    )
 
 
 def holding_route(app: FastAPI, path: str, entered: asyncio.Event, release: asyncio.Event) -> None:
@@ -146,7 +155,8 @@ async def test_the_probes_answer_while_admission_is_saturated(
 ) -> None:
     """A saturated process must still be able to say that it is saturated, and
     the collector must still be able to read the counter that says by how much.
-    Both lanes are full here: the probes are outside each of them."""
+    The read and the write lanes are full here: the probes are outside every
+    lane."""
     read, release, _ = await hold(app, client)
     first, ends_first, _ = await hold(app, client, "POST")
     second, ends_second, _ = await hold(app, client, "POST")
@@ -159,3 +169,63 @@ async def test_the_probes_answer_while_admission_is_saturated(
     ends_first.set()
     ends_second.set()
     assert [(await held).status_code for held in (read, first, second)] == [200, 200, 200]
+
+
+async def test_a_full_write_lane_still_admits_a_holders_calls(
+    app: FastAPI, client: httpx.AsyncClient, container: AppContainer, owner: dict[str, str]
+) -> None:
+    """What the holds lane is for: a slowdown that fills the write lane sheds
+    the writes, and the renewal that keeps a lease is still admitted, and so
+    is the release that hands it on. Shed with the writes, they would make
+    the slowdown a wave of lost leases."""
+    lease_id = await a_held_lease(client, container, owner)
+    first, ends_first, _ = await hold(app, client, "POST")
+    second, ends_second, path = await hold(app, client, "POST")
+    assert (await client.post(path)).status_code == 503
+
+    renewed = await client.post(f"/v1/leases/{lease_id}/renew", headers=owner)
+    released = await client.post(f"/v1/leases/{lease_id}/release", headers=owner)
+
+    assert renewed.status_code == 200 and renewed.json()["status"] == "active"
+    assert released.status_code == 200 and released.json()["status"] == "released"
+    ends_first.set()
+    ends_second.set()
+    assert [(await held).status_code for held in (first, second)] == [200, 200]
+
+
+async def test_the_holds_lane_refuses_at_its_own_bound(
+    app: FastAPI,
+    client: httpx.AsyncClient,
+    container: AppContainer,
+    owner: dict[str, str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A holder's calls have a bound of their own, not none: past it a
+    renewal is refused like any request, and the write lane, which it never
+    takes from, still admits."""
+    lease_id = await a_held_lease(client, container, owner)
+    entered, release = asyncio.Event(), asyncio.Event()
+    leases = container.managers.leases
+    renew_now = leases.renew
+
+    async def slow_renew(*args: Any, **kwargs: Any) -> Any:
+        entered.set()
+        await release.wait()
+        return await renew_now(*args, **kwargs)
+
+    monkeypatch.setattr(leases, "renew", slow_renew)
+    renew = f"/v1/leases/{lease_id}/renew"
+    held = asyncio.create_task(client.post(renew, headers=owner))
+    await asyncio.wait_for(entered.wait(), timeout=5)
+
+    # Bounded, so a renewal admitted past the bound fails here, not hangs.
+    refused = await asyncio.wait_for(client.post(renew, headers=owner), timeout=5)
+    written, ends, _ = await hold(app, client, "POST")
+
+    assert refused.status_code == 503
+    assert refused.json()["error"]["message"] == "the process is at its bound of holds in flight"
+    assert refused.headers["Retry-After"] == "1"
+    ends.set()
+    assert (await written).status_code == 200
+    release.set()
+    assert (await held).status_code == 200

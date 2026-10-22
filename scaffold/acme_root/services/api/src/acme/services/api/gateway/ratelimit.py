@@ -4,9 +4,12 @@ bearer:
 
 - A route's budget. The sign-in routes carry `rate_limited("login")`, keyed
   on the client address, since no credential exists yet.
-- A credential's budget, reads apart from writes, keyed on the session or
-  key id. Every authenticated request spends it, after the credential
-  resolves, in one increment.
+- A credential's budget, reads, writes, and a holder's calls apart, keyed
+  on the session or key id. Every authenticated request spends the budget
+  of the lane admission counted it in, after the credential resolves, in one
+  increment. So a holder's own writes never spend the renewals that keep
+  its lease, and the holds budget still bounds a client that renews too
+  often.
 - An address's budget of failed authentications. Once it is spent, a
   request from that address is refused before the credential is looked up.
 
@@ -30,7 +33,7 @@ from acme.infra.observability import OUTCOMES
 from acme.om.base import EMPTY_UUID, OmBase
 from acme.om.context import CredentialScope, IdentityContext, TenantContext
 from acme.om.exceptions import NotAuthenticated, OmException
-from acme.services.api.gateway.admission import READ_METHODS
+from acme.services.api.gateway.admission import lane_name_of
 from acme.services.api.gateway.resolve import container_of
 
 FAILED_AUTHENTICATIONS = "auth-failed"
@@ -57,10 +60,16 @@ class RateLimitOptions(OmBase):
     login: RateLimit
     reads: RateLimit
     writes: RateLimit
+    holds: RateLimit
     failed_authentications: RateLimit
 
     def of(self, route: str) -> RateLimit:
-        budgets = {"login": self.login, "reads": self.reads, "writes": self.writes}
+        budgets = {
+            "login": self.login,
+            "reads": self.reads,
+            "writes": self.writes,
+            "holds": self.holds,
+        }
         return budgets[route]
 
 
@@ -116,10 +125,11 @@ async def count(request: Request, route: str, org_id: UUID, subject: str) -> Non
 
 
 async def spend_credential(request: Request, ctx: TenantContext | IdentityContext) -> None:
-    """The credential's own budget: reads (GET, HEAD) apart from writes, the
-    split admission uses. A session or key counts under its tenant; a sign-in
-    or operator credential, which has none, under the system scope."""
-    route = "reads" if request.method in READ_METHODS else "writes"
+    """The credential's own budget: the one named by the lane admission
+    counted the request in, reads (GET, HEAD), writes, or a holder's calls. A
+    session or key counts under its tenant; a sign-in or operator credential,
+    which has none, under the system scope."""
+    route = lane_name_of(request.scope)
     org_id = ctx.org_id if isinstance(ctx, TenantContext) else EMPTY_UUID
     await count(request, route, org_id, credential_of(ctx))
 

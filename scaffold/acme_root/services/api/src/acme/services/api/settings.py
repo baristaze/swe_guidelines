@@ -69,8 +69,16 @@ class ApiSettings(StorageSettings, InfraSettings, IntegrationsSettings):
     # sized for the busiest honest client: a tab that loads a page, follows
     # its hints, and refetches on focus, or a traffic run's stress profile at
     # its fastest. An integration that polls once a second spends 60 of it.
+    #
+    # A holder's calls, a lease's renewal and its release, have a budget of
+    # their own, apart from the writes, so a holder that streams its output
+    # never spends the renewals that keep its lease. It is sized to the
+    # cadence a lease asks for: a holder renews at half of what is left, and
+    # at most once a second. Ten leases renewed at that pace spend it all,
+    # and a hundred on the default term of a minute spend a third of it.
     credential_rate_limit_reads: int = Field(default=3000, gt=0)
     credential_rate_limit_writes: int = Field(default=1200, gt=0)
+    credential_rate_limit_holds: int = Field(default=600, gt=0)
     credential_rate_window_seconds: int = Field(default=60, gt=0)
     # Each address has a budget of failed authentications: a bearer the API
     # looked up and refused, because it is unknown, expired, or revoked. Once
@@ -158,7 +166,7 @@ class ApiSettings(StorageSettings, InfraSettings, IntegrationsSettings):
     # instead of making it stop answering. Seconds.
     readiness_timeout_seconds: float = 2.0
     # Admission: the requests this process keeps in flight at once, counted
-    # in two budgets, and what a refusal past either tells the client to
+    # in three budgets, and what a refusal past any tells the client to
     # wait. Reads (GET, HEAD) and writes are budgeted apart so that a read
     # storm, which is what a client that was offline replaying its backlog
     # is, cannot take every slot from the commands. Together they are the one
@@ -169,8 +177,16 @@ class ApiSettings(StorageSettings, InfraSettings, IntegrationsSettings):
     # checkout, which has a bound of its own, and only a flood is refused; it
     # is not the rate limits above, which are fairness between subjects and
     # fail open.
+    #
+    # A holder's calls have the third lane, so a slowdown that fills the
+    # write lane still admits the renewals that keep a lease. Shed with the
+    # writes, they would turn the slowdown into a wave of lost leases, each
+    # with its work revoked mid-run. A renewal is one short write, and
+    # holders are few beside the writers, so the lane is a quarter of the
+    # write lane, and it still has a bound of its own.
     admission_limit_reads: int = Field(default=400, gt=0)
     admission_limit_writes: int = Field(default=200, gt=0)
+    admission_limit_holds: int = Field(default=50, gt=0)
     admission_retry_after_seconds: int = 1
     # The deadline of an admitted request, from the moment it takes its slot:
     # every call it makes to a provider or to AWS shares it, and a call still

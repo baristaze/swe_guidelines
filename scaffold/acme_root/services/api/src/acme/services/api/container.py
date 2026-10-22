@@ -99,6 +99,10 @@ def rate_limit_options(settings: ApiSettings) -> RateLimitOptions:
             limit=settings.credential_rate_limit_writes,
             window=timedelta(seconds=settings.credential_rate_window_seconds),
         ),
+        holds=RateLimit(
+            limit=settings.credential_rate_limit_holds,
+            window=timedelta(seconds=settings.credential_rate_window_seconds),
+        ),
         failed_authentications=RateLimit(
             limit=settings.failed_authentication_limit,
             window=timedelta(seconds=settings.failed_authentication_window_seconds),
