@@ -5,55 +5,33 @@ included, stay on its GitHub release. Releases are tagged
 `vMAJOR.MINOR.PATCH`; see `CONTRIBUTING.md` for what bumps which
 number.
 
-## 0.63.0 (2026-10-21)
+## 0.64.0 (2026-10-22)
 
-A person signs in through the identity provider alone, on every stack,
-and nothing keeps a password. Minor, with two reversals: the guideline's
-password sign-in, and the scaffold's sign-in by an address alone.
+A copy's gates take less time: its suites run on every core and side by
+side, and the work they repeated runs once. Minor.
 
 ### Changed
 
-- The guideline keeps no password. A person signs in through the
-  identity provider, by an email code, an OAuth provider (Google,
-  Microsoft, Apple, GitHub), or the org's single sign-on. A first
-  sign-in is the sign-up, an address the provider has not verified is
-  refused, and recovery is the provider's email code. Every stack signs
-  in through the provider, a local one through its development
-  environment. The per-address delay in storage guards the second
-  factor. CTX-28, CTX-36, CTX-38, NET-09, NET-11, NET-35, OPS-07,
-  OPS-20, DEL-05, and DEL-34 follow (reversal: open sign-up, the
-  operator's password reset, and the password sign-in leave the
-  guideline).
-- The scaffold signs in only through WorkOS, the local stack through
-  the Staging application, and answers `503` there without its key. The
-  WorkOS runbook names the methods: email code, Google, Microsoft,
-  Apple, GitHub, and single sign-on, with passwords off.
-- Every test suite signs in through the identity twin, with one helper
-  per suite. Each id the twin mints carries a mark of its instance, so
-  a fresh twin over a shared database matches no earlier person.
-- `make seed` makes each seeded person a plus-address of one base
-  address, `SEED_EMAIL` in `.env` (git's `user.email` when unset):
-  `<local>+acme+local+ajax@<domain>` owns Ajax, the second org's owner
-  is an admin of Ajax and a local operator, and `+personal` is a member.
-  It refuses a base on a domain that takes no mail. A copy's CI
-  telemetry job sets its own base. An existing checkout sets
-  `SEED_EMAIL` in `.env` and runs `make reset`.
-- An unmatched portal path shows a "Page not found" page, and a sign-in
-  the provider cannot serve says so.
+- A copy's `make test-unit` runs on one worker per core (`-n auto`,
+  pytest-xdist in the dev group), names its workers, and ends on its ten
+  slowest tests; `PYTEST_XDIST_AUTO_NUM_WORKERS` sets the count. ADR
+  0105: a unit test holds nothing another test can reach, and its id is
+  fixed at collection. The integration and telemetry suites keep one
+  process.
+- A copy's CI starts its integration, telemetry, and image jobs beside
+  the fast gate rather than after it, so a run takes about its longest
+  job. A red fast gate no longer spares their runner minutes.
+- This repository's CI runs each copy's fast gate, its integration
+  suite, and the release-before step as jobs of their own, side by side.
+- An integration test empties only the tables written since the last
+  wipe, in one statement a database, the databases side by side, on
+  engines that live for the run. A test still starts on empty tables.
 
-### Added
+### Fixed
 
-- `acme-api mint-local-login --email ...`, the local mint: it prints a
-  sign-in token for each address, from the local database, and refuses
-  at boot outside `local` and `test` (`ACME_LOCAL_LOGIN_MINT`). It has
-  no route and no page. The traffic generator mints a run's people with
-  it in one process. ADR 0104.
-
-### Removed
-
-- The sign-in by an address alone: `POST /v1/auth/dev-sign-in`,
-  `ACME_DEV_SIGN_IN_ENABLED`, the portal's `/login/dev`, and
-  `--dev-email` on `acme login`, `acme-ops token`, and `acme-ops work
-  requeue` (reversal: ADR 0029 is removed). `SEED_MEMBER_EMAIL` and
-  `SEED_ADMIN_EMAIL` are no longer set on their own: the seed derives
-  them from the base.
+- `make openapi` and the documents test cut the app's schema in linear
+  time: a schema is matched to its type by name, never by an expression
+  compiled for each pair, and one process writes every TypeScript file.
+- arch-check walks each module's tree once, and its rules read what that
+  walk found; its output is unchanged. A copy takes it when its
+  arch-check pin moves.
