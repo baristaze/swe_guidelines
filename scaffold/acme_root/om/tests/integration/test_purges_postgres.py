@@ -11,14 +11,19 @@ copy of it. Each is explained with sequential scans switched off: on a
 table this small the planner would read the heap whatever indexes exist,
 and the question here is whether an index can serve the statement at all.
 A predicate no index serves, such as `done_at < x OR failed_at < x` with no
-index on `failed_at`, still plans a sequential scan then.
+index on `failed_at`, still plans a sequential scan then. Nor does a table
+this small decide between two indexes on the retention column, the one that
+column leads and the one org_id leads: they cost the same, and the planner
+takes either. So a statement here passes on any index that holds its
+retention column.
 
 Whether the plan cache keeps an index is a second question, asked of tables
 with rows and statistics. The driver prepares each statement once per
 connection, and after five runs Postgres may keep a generic plan. So a purge
 runs as the sweep runs it, on one connection: a backlog first, then a pass
 with nothing to purge, and the plan read is the one that connection holds
-for the idle pass. Sequential scans stay on there.
+for the idle pass. Sequential scans stay on there, and with the statistics
+each statement must read the index that org_id does not lead.
 """
 
 from collections.abc import AsyncIterator, Awaitable, Callable
@@ -126,8 +131,9 @@ async def plans(
     return [await plan(sessions, role, org_id, s) for s in await sent(engines, call)]
 
 
-def served(found: str, index: str) -> bool:
-    return index in found and "Seq Scan" not in found
+def served(found: str, *indexes: str) -> bool:
+    """Whether the plan reads one of `indexes` and no table whole."""
+    return any(index in found for index in indexes) and "Seq Scan" not in found
 
 
 async def test_the_outbox_purge_is_two_statements_each_on_its_own_index(
@@ -177,11 +183,12 @@ a statement captured with it deletes nothing, and a case's own rows behind it
 are the case's."""
 
 
-async def test_every_purge_across_tenants_reads_an_index_led_by_its_retention(
+async def test_every_purge_across_tenants_reads_an_index_on_its_retention(
     watched: tuple[LoginSessions, list[AsyncEngine]],
 ) -> None:
     """Each statement of each namespace's purge past its retention, as the
-    sweep sends it once a pass for every tenant, in the system scope."""
+    sweep sends it once a pass for every tenant, in the system scope, reads
+    an index that holds its retention column."""
     sessions = watched[0]
     cut = utcnow() - ANCIENT
     system = EMPTY_UUID
@@ -193,19 +200,27 @@ async def test_every_purge_across_tenants_reads_an_index_led_by_its_retention(
         DatabaseRole.CORE,
         lambda: MediaStoragePostgresImpl(sessions).read_purgeable(cut, cut, 1000),
     )
-    assert served(files, "ix_files_deleted_at"), files
-    assert served(files, "ix_files_created_at_pending"), files
+    assert served(files, "ix_files_deleted_at", "ix_files_org_id_deleted_at"), files
+    assert served(files, "ix_files_created_at_pending", "ix_files_org_id_status_created_at"), files
     users, memberships, keys, tenancy_sessions, tickets, invitations = await across(
         DatabaseRole.CORE,
         lambda: TenancyStoragePostgresImpl(sessions).purge_deleted(cut, cut, 1000),
     )
-    assert served(users, "ix_users_deleted_at"), users
-    assert served(memberships, "ix_memberships_deleted_at"), memberships
+    assert served(users, "ix_users_deleted_at", "ix_users_org_id_deleted_at"), users
+    assert served(memberships, "ix_memberships_deleted_at", "ix_memberships_org_id_deleted_at"), (
+        memberships
+    )
     assert served(keys, "ix_api_keys_deleted_at") and "ix_api_keys_expires_at" in keys, keys
-    assert served(tenancy_sessions, "ix_auth_sessions_expires_at"), tenancy_sessions
-    assert served(tickets, "ix_socket_tickets_expires_at"), tickets
+    assert served(
+        tenancy_sessions, "ix_auth_sessions_expires_at", "ix_auth_sessions_org_id_expires_at"
+    ), tenancy_sessions
+    assert served(tickets, "ix_socket_tickets_expires_at", "ix_socket_tickets_org_id_expires_at"), (
+        tickets
+    )
     assert served(invitations, "ix_invitations_updated_at"), invitations
-    assert "ix_invitations_expires_at" in invitations, invitations
+    assert served(invitations, "ix_invitations_expires_at", "ix_invitations_org_id_expires_at"), (
+        invitations
+    )
     (records,) = await across(
         DatabaseRole.CORE,
         lambda: IdempotencyStoragePostgresImpl(sessions).purge_records(cut, new_id(), 1000),
@@ -221,7 +236,9 @@ async def test_every_purge_across_tenants_reads_an_index_led_by_its_retention(
         DatabaseRole.CORE,
         lambda: OrchestrationsStoragePostgresImpl(sessions).purge_settled(cut, 1000),
     )
-    assert served(settled, "ix_orchestrations_status_updated_at"), settled
+    assert served(
+        settled, "ix_orchestrations_status_updated_at", "ix_orchestrations_org_id_status_updated_at"
+    ), settled
 
 
 async def test_the_queue_purge_reads_its_index(
