@@ -61,6 +61,10 @@ A holder whose writes are spent still renews, and a renewal past its
 own budget answers 429 and spends no write. A full write lane still
 admits a renewal and a release.
 
+The lane stops at admission. An admitted renewal takes its connection
+from the pool the writes use, under the same checkout bound, and a pool
+that frees none in time answers it 503 as it answers them.
+
 A client that renews too often is refused by its own budget, and a
 flood of renewals by the holds lane's bound. Neither takes anything
 from the writes.

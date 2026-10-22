@@ -181,9 +181,11 @@ class ApiSettings(StorageSettings, InfraSettings, IntegrationsSettings):
     # A holder's calls have the third lane, so a slowdown that fills the
     # write lane still admits the renewals that keep a lease. Shed with the
     # writes, they would turn the slowdown into a wave of lost leases, each
-    # with its work revoked mid-run. A renewal is one short write, and
-    # holders are few beside the writers, so the lane is a quarter of the
-    # write lane, and it still has a bound of its own.
+    # with its work revoked mid-run. Admitted, a renewal still takes its
+    # connection from the pool the writes use, under the same checkout
+    # bound. A renewal is one short write, and holders are few beside the
+    # writers, so the lane is a quarter of the write lane, and it still
+    # has a bound of its own.
     admission_limit_reads: int = Field(default=400, gt=0)
     admission_limit_writes: int = Field(default=200, gt=0)
     admission_limit_holds: int = Field(default=50, gt=0)

@@ -973,10 +973,11 @@ in, matched before routing from that mark, and the budget its credential
 spends; the settings behind the lane and the budget.
 
 **Violation.** A renewal or a heartbeat counted in the write lane or
-spending the write budget, so a burst of the holder's own output or a
-slowdown loses it the lease and its work mid-run; a holder's lane or
-budget with no bound; the routes listed again beside the middleware,
-apart from the mark on the route; a bulk write marked a holder's call.
+spending the write budget, so a burst of the holder's own output, or a
+slowdown that fills the write lane, loses it the lease and its work
+mid-run; a holder's lane or budget with no bound; the routes listed
+again beside the middleware, apart from the mark on the route; a bulk
+write marked a holder's call.
 
 **Severity.** high
 

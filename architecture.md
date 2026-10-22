@@ -1512,10 +1512,11 @@ get through: a lease's renewal and its release, a heartbeat, a work
 item's result, a report on the work. So a system marks each such route
 a holder's call, and it is counted apart from every other write: in a
 lane of its own at admission, and in a budget of its own per
-credential, sized to the cadence a lease asks for. Neither a burst of
-the holder's own writes nor a slowdown that fills the write lane
-refuses a renewal. The lane and the budget each keep a bound, so a
-client that renews too often is still refused.
+credential, sized to the cadence a lease asks for. A write budget the
+holder's own writes have spent does not refuse a renewal at the rate
+limit, and a full write lane does not refuse it at admission. The lane
+and the budget each keep a bound, so a client that renews too often is
+still refused.
 
 **Edge idempotency.** A creating `POST` accepts an `Idempotency-Key`,
 and an `IdempotencyRecord`, the marker, owns the retry

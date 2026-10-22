@@ -10,8 +10,8 @@ The bound is three bounds, one lane each for reads, for writes, and for a
 holder's calls, so that a storm in one lane cannot take every slot from
 another. A client back from an outage replays its backlog with reads, and the
 commands behind it are still admitted. A slowdown that fills the write lane
-still admits the renewal that keeps a lease, so it never becomes a wave of
-lost leases whose work is revoked mid-run.
+still admits the renewal that keeps a lease. Admitted, the renewal takes its
+connection from the pool the writes use, under the same checkout bound.
 
 A request admitted also gets its deadline: the instant, counted from when it
 takes its slot, that every call it makes outside the process shares (ADR
