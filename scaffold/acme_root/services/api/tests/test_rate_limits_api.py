@@ -1,8 +1,9 @@
 """The limits on authenticated routes (ADR 0059): each credential spends a
-budget of reads and one of writes once it resolves, and each address spends
-a budget of failed authentications, past which its requests are refused
-before any credential is looked up. Both answer 429 with Retry-After in the
-one envelope, and both fail open when the cache cannot count."""
+budget of reads, one of writes, and one of a holder's calls once it resolves
+(ADR 0106), and each address spends a budget of failed authentications, past
+which its requests are refused before any credential is looked up. Both
+answer 429 with Retry-After in the one envelope, and both fail open when the
+cache cannot count."""
 
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -12,7 +13,16 @@ from typing import Any
 
 import httpx
 import pytest
-from api_support import OWNER, SMALL_BUDGET, build_container, seed_request, sign_in, sign_in_as
+from api_support import (
+    OWNER,
+    SMALL_BUDGET,
+    a_held_lease,
+    ask,
+    build_container,
+    seed_request,
+    sign_in,
+    sign_in_as,
+)
 
 from acme.infra.cache import CacheScope
 from acme.services.api.app import create_app
@@ -136,6 +146,71 @@ async def test_a_credential_past_its_write_budget_is_refused(tmp_path: Path) -> 
     assert read.status_code == 200
 
 
+def holder_budgets(tmp_path: Path) -> AppContainer:
+    """A container whose credentials have small budgets of writes and of a
+    holder's calls, so a test can spend each to its end."""
+    return build_container(
+        tmp_path,
+        credential_rate_limit_writes=SMALL_BUDGET,
+        credential_rate_limit_holds=SMALL_BUDGET,
+    )
+
+
+async def other_writes(client: httpx.AsyncClient, owner: dict[str, str], n: int) -> list[int]:
+    """The answers to n writes of the holder's own that are not a holder's
+    call: asks that wait in line for a label no resource offers."""
+    return [(await ask(client, owner, labels=["elsewhere"])).status_code for _ in range(n)]
+
+
+async def test_a_holder_whose_writes_are_spent_still_renews_in_a_budget_of_its_own(
+    tmp_path: Path,
+) -> None:
+    """A holder that streams its output spends its writes on it. The renewal
+    that keeps its lease is counted apart, so the lease outlives the burst;
+    and it is counted, not free, since that budget has an end of its own."""
+    container = holder_budgets(tmp_path)
+    async with clients_of(container) as clients:
+        client = clients[PEER]
+        owner = await sign_in(client, container)
+        lease_id = await a_held_lease(client, container, owner)
+        # The ask that took the lease spent the first write.
+        writes = await other_writes(client, owner, SMALL_BUDGET)
+        renew = f"/v1/leases/{lease_id}/renew"
+        renewals = [await client.post(renew, headers=owner) for _ in range(SMALL_BUDGET)]
+        past = await client.post(renew, headers=owner)
+    assert writes == [201] * (SMALL_BUDGET - 1) + [429]
+    assert [r.status_code for r in renewals] == [200] * SMALL_BUDGET
+    assert all(r.json()["status"] == "active" for r in renewals)
+    assert past.status_code == 429
+    assert past.json()["error"]["code"] == "rate_limited"
+
+
+async def test_renewals_past_their_budget_are_refused_and_spend_none_of_the_writes(
+    tmp_path: Path,
+) -> None:
+    """The holds budget bounds a client that renews too often: past it, a
+    renewal and a release are refused with Retry-After. None of them spent a
+    write: the writes the holder had left are all still there."""
+    container = holder_budgets(tmp_path)
+    async with clients_of(container) as clients:
+        client = clients[PEER]
+        owner = await sign_in(client, container)
+        lease_id = await a_held_lease(client, container, owner)
+        renew = f"/v1/leases/{lease_id}/renew"
+        renewals = [
+            (await client.post(renew, headers=owner)).status_code for _ in range(SMALL_BUDGET)
+        ]
+        refused = [await client.post(renew, headers=owner) for _ in range(SMALL_BUDGET)]
+        released = await client.post(f"/v1/leases/{lease_id}/release", headers=owner)
+        writes = await other_writes(client, owner, SMALL_BUDGET)
+    assert renewals == [200] * SMALL_BUDGET
+    assert [r.status_code for r in refused] == [429] * SMALL_BUDGET
+    assert 1 <= int(refused[0].headers["Retry-After"]) <= 60
+    assert released.status_code == 429
+    # The ask that took the lease spent one write, and nothing else did.
+    assert writes == [201] * (SMALL_BUDGET - 1) + [429]
+
+
 async def test_a_bad_token_flood_stops_reaching_the_lookup(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -239,4 +314,6 @@ def test_the_credential_budgets_are_generous() -> None:
     settings = ApiSettings.model_validate({"_env_file": None})
     assert settings.credential_rate_limit_reads >= 1200
     assert settings.credential_rate_limit_writes >= 600
+    # Ten leases renewed once a second, the fastest pace a holder renews at.
+    assert settings.credential_rate_limit_holds >= 600
     assert settings.failed_authentication_limit >= 500

@@ -199,7 +199,8 @@ shape on rejection.
 limit keyed on a raw secret; a rejection without `Retry-After` or
 outside the envelope; a limit that rejects every request when the
 cache is down; a rate limit relied on as a security boundary. (A cache
-that fails closed anywhere else is ASY-06.)
+that fails closed anywhere else is ASY-06; a holder's call that spends
+the write budget is NET-37.)
 
 **Severity.** medium
 
@@ -827,25 +828,26 @@ replay with no header saying the secret is absent.
 
 ## NET-32 A process bounds what it has in flight and refuses past it
 
-**Principle.** A process bounds what it has in flight in two budgets,
-one for reads and one for writes, each named in settings, and refuses
-past either at once, in the unavailable shape. Health, readiness, and
-metrics stay outside both. It is not the rate limit beside it: that is
+**Principle.** A process bounds what it has in flight in a budget per
+lane, reads apart from writes, each named in settings, and refuses past
+any at once, in the unavailable shape. Health, readiness, and metrics
+stay outside every lane. It is not the rate limit beside it: that is
 per-subject fairness and fails open.
 
 **Source.** The Network Layer, The Gateway (Rate limits, Admission).
 
 **Look for.** The middleware or dependency that counts what is in
-flight, which methods it counts against which budget, and the two
-settings fields behind them; what a refusal answers with, and which
-routes are exempt; the rate-limit dependency beside it and how the two
-are told apart.
+flight, which requests it counts against which budget, and the settings
+fields behind them; what a refusal answers with, and which routes are
+exempt; the rate-limit dependency beside it and how the two are told
+apart.
 
 **Violation.** One budget for reads and writes together, so a storm of
 replayed reads takes every slot from the commands; a process that
 accepts whatever arrives, so load turns into a queue of requests whose
 callers have gone; a probe refused by admission; a bound hard-coded
-instead of read from settings, or a refusal presented as a 500.
+instead of read from settings, or a refusal presented as a 500. (A
+holder's call counted in the write lane is NET-37.)
 
 **Severity.** medium
 
@@ -952,3 +954,33 @@ namespace's types.
 
 **Shape.** `scaffold/acme_root/services/api/src/acme/services/api/openapi.py`
 and `scaffold/acme_root/clients/openapi`
+
+## NET-37 A holder's calls are counted apart from its writes
+
+**Principle.** A route whose refusal costs its caller what it holds is
+a holder's call: a lease's renewal and its release, a heartbeat, a work
+item's result, a report on the work. The system marks it on the route,
+and it is counted apart from every other write, in a lane of its own at
+admission and in a budget of its own per credential, the budget sized
+to the cadence a lease asks for. Both are named in settings and keep a
+bound, so a client that renews too often is still refused.
+
+**Source.** The Network Layer, The Gateway (A holder's calls).
+
+**Look for.** Each route a holder calls to keep or settle what it holds,
+and the mark it carries (`HOLDER_CALL`); the lane admission counts it
+in, matched before routing from that mark, and the budget its credential
+spends; the settings behind the lane and the budget.
+
+**Violation.** A renewal or a heartbeat counted in the write lane or
+spending the write budget, so a burst of the holder's own output, or a
+slowdown that fills the write lane, loses it the lease and its work
+mid-run; a holder's lane or budget with no bound; the routes listed
+again beside the middleware, apart from the mark on the route; a bulk
+write marked a holder's call.
+
+**Severity.** high
+
+**Shape.**
+`scaffold/acme_root/services/api/src/acme/services/api/gateway/admission.py`
+and `scaffold/acme_root/services/api/src/acme/services/api/routers/leases.py`

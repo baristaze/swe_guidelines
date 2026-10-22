@@ -41,9 +41,12 @@ pass the file with `--tarball`:
     gh api repos/<owner>/<repo>/tarball/<ref> > source.tar.gz
 
 The commit the script writes names the source commit the tarball holds and
-the name the render took. A render whose tree is the branch head's commits
-nothing. The script moves only `scaffold`: it never touches the working tree,
-the index, or another branch, and it pushes nothing.
+the name the render took. It holds the render's files that the render's own
+`.gitignore` files keep. A tarball holds only the files of the ref, so this is
+what a copy's first commit holds of its checkout, and no local secret and
+nothing a tool wrote enters the branch. A render whose tree is the branch
+head's commits nothing. The script moves only `scaffold`: it never touches the
+working tree, the index, or another branch, and it pushes nothing.
 
 Standard library only, as `new.py` is.
 """
@@ -92,6 +95,15 @@ NAME = re.compile(r"^[a-z][a-z0-9]*(?:_[a-z][a-z0-9]*)?$")
 ARCH_CHECK_PACKAGE = re.compile(r'^\[tool\.arch-check\]\s*$(?:(?!^\[).)*?^package\s*=\s*"([^"]+)"', re.M | re.S)
 """The copy's package under `[tool.arch-check]` in its root `pyproject.toml`,
 which is its name."""
+
+KEPT = ("ls-files", "-z", "--others", "--exclude-per-directory=.gitignore")
+"""Lists the files of the render, with nothing staged, that its own
+`.gitignore` files keep. What they ignore stays out: a local secret, and what a
+stack or a tool wrote beside the scaffold. Neither the machine's ignore rules
+nor the repository's `info/exclude` is read, so no file of the scaffold is left
+out for them."""
+STAGE = ("add", "--force", "--pathspec-from-file=-", "--pathspec-file-nul")
+"""Stages each path `KEPT` lists, read as literal pathspecs, and no other."""
 
 TRAILER_SOURCE = "Scaffold-Source"
 TRAILER_COMMIT = "Scaffold-Commit"
@@ -370,8 +382,9 @@ def commit_render(repo: Path, made: Render, name: str, ref: str, source: str, he
     git_dir = git(repo, "rev-parse", "--absolute-git-dir")
     with tempfile.TemporaryDirectory() as scratch:
         env = {**os.environ, "GIT_INDEX_FILE": str(Path(scratch) / "index")}
-        tree_of = ["--git-dir", git_dir, "--work-tree", str(made.folder)]
-        git(made.folder, *tree_of, "add", "--all", "--force", made.taken, env=env)
+        tree_of = ["--git-dir", git_dir, "--work-tree", str(made.folder), "--literal-pathspecs"]
+        kept = git(made.folder, *tree_of, *KEPT, "--", made.taken, env=env)
+        git(made.folder, *tree_of, *STAGE, env=env, stdin=kept)
         tree = git(made.folder, *tree_of, "write-tree", env=env)
     if head is not None and git(repo, "rev-parse", f"{head}^{{tree}}") == tree:
         point(repo, head)

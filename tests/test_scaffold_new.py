@@ -420,8 +420,8 @@ def test_a_copy_is_formatted_as_rendered_and_keeps_every_line_within_its_lint(tm
 
 
 def staged_tree(dest: Path) -> str:
-    """The tree `dest` gives when staged whole, as new.py stages a copy's base
-    and base.py a render."""
+    """The tree `dest` gives when staged whole, ignored files and all, so a
+    file no render may hold shows in it."""
     env = {**os.environ, "GIT_INDEX_FILE": str(dest.parent / "index")}
     for args in (("add", "--all", "--force", "."), ("write-tree",)):
         done = subprocess.run(["git", "-C", str(dest), *args], capture_output=True, text=True, env=env, check=True)
@@ -453,12 +453,14 @@ GUIDE = {"name": "swe-guidelines", "version": "9.8.7", "repository": "https://gi
 
 
 def checkout(tmp_path: Path, manifest: dict[str, str] = GUIDE, origin: str | None = None) -> tuple[Path, Path, str]:
-    """A clean git checkout of a guideline, or of a layer: its scaffold, its plugin manifest, and its head."""
+    """A clean git checkout of a guideline, or of a layer: its scaffold with the scaffold's own `.gitignore`, its
+    plugin manifest, and its head."""
     repo = tmp_path / "swe_guidelines"
     source = repo / "scaffold" / "acme_root"
     (source / "om/src/acme/om").mkdir(parents=True)
     (source / "om/src/acme/om/__init__.py").write_text("from acme.om import base\n", encoding="utf-8")
     (source / "README.md").write_text("# Acme\n", encoding="utf-8")
+    shutil.copy(SCAFFOLD / "acme_root" / ".gitignore", source / ".gitignore")
     plugin = repo / ".claude-plugin" / "plugin.json"
     plugin.parent.mkdir()
     plugin.write_text(json.dumps(manifest), encoding="utf-8")
@@ -507,6 +509,56 @@ def test_the_base_a_copy_starts_at_names_what_base_py_reads(tmp_path, identity):
     found = base.trailers(git_out(dest, "log", "-1", "--format=%B"))
     assert found == {base.TRAILER_SOURCE: "https://github.com/o/guide", base.TRAILER_COMMIT: head, base.TRAILER_NAME: "pressroom"}
     assert base.base_of(dest) == git_out(dest, "rev-parse", "HEAD") and new.BRANCH == base.BRANCH
+
+
+LOCAL_STATE = (".env", ".local/secrets.env", ".local/agents/run-1/notes.md")
+"""What a stack writes in a checkout of the scaffold: settings, the local secrets backend, and a file a tool wrote under
+`.local/`, each ignored by the scaffold's `.gitignore`."""
+
+
+def tracked_as(source: Path, name: str) -> set[str]:
+    """The files the checkout tracks in `source`, under the paths a copy named `name` gives them."""
+    names = new.Names(name)
+    return {"/".join(new.rename(part, names) for part in rel.split("/")) for rel in git_out(source, "ls-files").splitlines()}
+
+
+def test_a_copys_first_commit_holds_every_tracked_file_and_none_of_the_stacks_local_files(tmp_path, monkeypatch, identity):
+    source, plugin, head = checkout(tmp_path)
+    for rel in LOCAL_STATE:
+        (source / rel).parent.mkdir(parents=True, exist_ok=True)
+        (source / rel).write_text("ACME_SECRET=mine\n", encoding="utf-8")
+    # the machine ignores every Markdown file, which must not drop the scaffold's
+    (tmp_path / "excludes").write_text("*.md\n", encoding="utf-8")
+    (tmp_path / "gitconfig").write_text(f"[core]\n\texcludesFile = {tmp_path / 'excludes'}\n", encoding="utf-8")
+    monkeypatch.setenv("GIT_CONFIG_GLOBAL", str(tmp_path / "gitconfig"))
+    dest = tmp_path / "pressroom"
+    assert new.main([str(dest)], source=source, plugin=plugin) == 0
+    assert f"Scaffold-Commit: {head}" in git_out(dest, "log", "-1", "--format=%B")
+    committed = set(git_out(dest, "ls-tree", "-r", "--name-only", "HEAD").splitlines())
+    assert committed == tracked_as(source, "pressroom") == {".gitignore", "README.md", "om/src/pressroom/om/__init__.py"}
+    assert not committed & {".env", ".local/secrets.env"} and not any(rel.startswith(".local/") for rel in committed)
+
+
+def test_a_copys_first_commit_holds_exactly_the_tracked_files_whatever_hides_the_rest(tmp_path, monkeypatch, identity):
+    source, plugin, head = checkout(tmp_path)
+    hidden = (".claude/settings.local.json", "om/scratch.env")
+    for rel in hidden:
+        (source / rel).parent.mkdir(parents=True, exist_ok=True)
+        (source / rel).write_text("ACME_SECRET=mine\n", encoding="utf-8")
+    # the scaffold's `.gitignore` names neither: the machine hides one, and the repository the other
+    (tmp_path / "excludes").write_text("**/.claude/settings.local.json\n", encoding="utf-8")
+    (tmp_path / "gitconfig").write_text(f"[core]\n\texcludesFile = {tmp_path / 'excludes'}\n", encoding="utf-8")
+    monkeypatch.setenv("GIT_CONFIG_GLOBAL", str(tmp_path / "gitconfig"))
+    exclude = source.parent.parent / ".git" / "info" / "exclude"
+    exclude.parent.mkdir(parents=True, exist_ok=True)
+    exclude.write_text("scratch.env\n", encoding="utf-8")
+    assert git_out(source, "status", "--porcelain") == ""
+    dest = tmp_path / "pressroom"
+    assert new.main([str(dest)], source=source, plugin=plugin) == 0
+    assert f"Scaffold-Commit: {head}" in git_out(dest, "log", "-1", "--format=%B")
+    assert all((dest / rel).is_file() for rel in hidden)  # copied, and still never committed
+    committed = set(git_out(dest, "ls-tree", "-r", "--name-only", "HEAD").splitlines())
+    assert committed == tracked_as(source, "pressroom") == {".gitignore", "README.md", "om/src/pressroom/om/__init__.py"}
 
 
 @pytest.mark.parametrize(

@@ -12,12 +12,15 @@ acts through the manager, not a route (`/v1/leases/requests`,
 `/v1/leases`, `/v1/leases/{lease_id}`, `.../renew`, `.../release`,
 `.../revoke`; ADRs 0086, 0094, and 0098). Each function is one call into the
 leases service; the ask runs under the idempotency record, whose id is the
-request's key."""
+request's key. The renewal and the release are a holder's calls, counted
+apart from the holder's other writes, at admission and in its credential's
+budget (ADR 0106)."""
 
 from uuid import UUID
 
 from fastapi import APIRouter, Response
 
+from acme.services.api.gateway.admission import HOLDER_CALL
 from acme.services.api.gateway.auth import Ctx
 from acme.services.api.gateway.idempotency import Idem
 from acme.services.api.gateway.resolve import LeasesService
@@ -94,7 +97,9 @@ async def get_lease(ctx: Ctx, leases: LeasesService, lease_id: UUID) -> LeaseVie
     return await leases.get_lease(ctx, lease_id)
 
 
-@router.post("/{lease_id}/renew", response_model=LeaseView, responses=ENDED)
+@router.post(
+    "/{lease_id}/renew", response_model=LeaseView, responses=ENDED, dependencies=[HOLDER_CALL]
+)
 async def renew(
     ctx: Ctx, leases: LeasesService, lease_id: UUID, body: RenewRequest | None = None
 ) -> LeaseView:
@@ -103,7 +108,9 @@ async def renew(
     return await leases.renew(ctx, lease_id, body)
 
 
-@router.post("/{lease_id}/release", response_model=LeaseView, responses=ENDED)
+@router.post(
+    "/{lease_id}/release", response_model=LeaseView, responses=ENDED, dependencies=[HOLDER_CALL]
+)
 async def release(ctx: Ctx, leases: LeasesService, lease_id: UUID) -> LeaseView:
     """Its holder's: the resource goes to its line."""
     return await leases.release(ctx, lease_id)

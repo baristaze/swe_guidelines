@@ -1,7 +1,7 @@
-"""Helpers the API tests share: the test container and the sign-in flow,
+"""Helpers the API tests share: the test container, the sign-in flow,
 which goes through the identity provider's twin as the portal's goes through
-the provider: the twin issues the code a browser brings back, and the
-callback route exchanges it."""
+the provider (the twin issues the code a browser brings back, and the
+callback route exchanges it), and a lease to hold."""
 
 import asyncio
 import base64
@@ -10,7 +10,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs, urlparse
-from uuid import UUID
+from uuid import UUID, uuid4
 
 import httpx
 from store_support import local_store
@@ -19,8 +19,9 @@ from acme.infra.impl.local import InfraLocalImpl
 from acme.integrations.identity.twin import IdentityProviderTwinImpl
 from acme.integrations.impl.configured import IntegrationsOverImpl
 from acme.integrations.root import IntegrationsInterface
-from acme.om.base import new_id, utcnow
+from acme.om.base import EMPTY_UUID, new_id, utcnow
 from acme.om.context import AppContext, AppType, OperatorRole, RequestContext, Role
+from acme.om.leases.types.leasable_resource import LeasableResource, LeasableResourceKind
 from acme.om.storage.impl.memory import StorageMemoryImpl
 from acme.om.storage.root import StorageInterface
 from acme.om.tenancy.rules import totp_code, totp_step
@@ -251,6 +252,44 @@ async def enrolled_sign_in(
     )
     assert login.status_code == 200, login.text
     return bearer(login.json()["token"]), secret
+
+
+async def a_dock(container: AppContainer, org_id: UUID, *labels: str) -> LeasableResource:
+    """A resource its owner namespace registers, as no route does."""
+    ctx = await container.managers.tenancy.service_context(seed_request(), org_id, EMPTY_UUID)
+    now = utcnow()
+    return await container.managers.leases.register(
+        ctx,
+        LeasableResource(
+            id=new_id(), created_at=now, updated_at=now, created_by=EMPTY_UUID,
+            updated_by=EMPTY_UUID, kind=LeasableResourceKind.NOOP, ref_id=new_id(), labels=labels,
+        ),
+    )  # fmt: skip
+
+
+async def ask(
+    client: httpx.AsyncClient, headers: dict[str, str], key: str | None = None, **body: Any
+) -> httpx.Response:
+    return await client.post(
+        "/v1/leases/requests",
+        headers={**headers, "Idempotency-Key": key or str(uuid4())},
+        json={"kind": "noop", **body},
+    )
+
+
+async def a_held_lease(
+    client: httpx.AsyncClient, container: AppContainer, headers: dict[str, str]
+) -> str:
+    """The id of a lease the caller holds: a resource of the caller's org,
+    asked for and granted at once, since no one waits for it. The org is read
+    from the credential, not from a route, so no budget but the ask's write
+    is spent."""
+    token = headers["Authorization"].removeprefix("Bearer ")
+    ctx = await container.managers.tenancy.authenticate(seed_request(), token)
+    dock = await a_dock(container, ctx.org_id)
+    granted = await ask(client, headers, leasable_resource_id=str(dock.id))
+    assert granted.status_code == 201, granted.text
+    return str(granted.json()["lease"]["id"])
 
 
 SMALL_BUDGET = 5

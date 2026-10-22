@@ -71,6 +71,7 @@ def guideline(tmp_path: Path) -> Path:
     (root / "specs/architecture.md").write_text("(pinned at release `v0.1.0`)\n", encoding="utf-8")
     (root / ".agents/skills/acme-watch/SKILL.md").write_text("# acme-watch\n", encoding="utf-8")
     (root / ".claude/skills").symlink_to("../.agents/skills")
+    shutil.copy(SCAFFOLD / "acme_root" / ".gitignore", root / ".gitignore")
     (repo / ".claude-plugin").mkdir()
     (repo / ".claude-plugin/plugin.json").write_text(json.dumps({"name": "swe-guidelines", "version": "0.1.0"}), encoding="utf-8")
     (repo / "architecture.md").write_text("# The guideline\n", encoding="utf-8")
@@ -80,12 +81,15 @@ def guideline(tmp_path: Path) -> Path:
     return repo
 
 
-def tarball(repo: Path, out: Path) -> tuple[Path, str]:
-    """The tarball GitHub serves for the repository's head, and the head's commit."""
+def tarball(repo: Path, out: Path, *untracked: str) -> tuple[Path, str]:
+    """The tarball GitHub serves for the repository's head, and the head's commit; with `untracked`, it also holds
+    those files of the working tree at their paths."""
     commit = git(repo, "rev-parse", "HEAD")
+    top = f"swe_guidelines-{commit[:7]}/"
+    added = [arg for rel in untracked for arg in (f"--prefix={top}{Path(rel).parent.as_posix()}/", f"--add-file={repo / rel}")]
     with out.open("wb") as handle:
         subprocess.run(
-            ["git", "-C", str(repo), "archive", "--format=tar.gz", f"--prefix=swe_guidelines-{commit[:7]}/", commit],
+            ["git", "-C", str(repo), "archive", "--format=tar.gz", *added, f"--prefix={top}", commit],
             stdout=handle,
             check=True,
         )
@@ -135,6 +139,45 @@ def test_a_later_render_is_a_child_of_the_one_before(tmp_path):
     assert git(repo, "rev-parse", "scaffold^") == first
     assert f"Scaffold-Commit: {commit}" in git(repo, "log", "-1", "--format=%B", "scaffold")
     assert git(repo, "show", "scaffold:README.md") == "# Pressroom\n\nMore."
+
+
+LOCAL_STATE = (
+    "scaffold/acme_root/.env",
+    "scaffold/acme_root/.local/secrets.env",
+    "scaffold/acme_root/.local/agents/run-1/notes.md",
+)
+"""What a stack writes in a checkout of the scaffold, each ignored by the scaffold's `.gitignore`."""
+
+
+def with_local_state(source: Path, out: Path) -> Path:
+    """A tarball of the guideline's head that also holds what a stack wrote in its scaffold."""
+    for rel in LOCAL_STATE:
+        (source / rel).parent.mkdir(parents=True, exist_ok=True)
+        (source / rel).write_text("ACME_SECRET=mine\n", encoding="utf-8")
+    tar, _ = tarball(source, out, *LOCAL_STATE)
+    with tarfile.open(tar) as archive:
+        held = {name.partition("/")[2] for name in archive.getnames()}
+    assert set(LOCAL_STATE) <= held
+    return tar
+
+
+def test_a_copys_render_holds_every_file_of_the_ref_and_none_of_a_stacks_local_files(tmp_path):
+    tar = with_local_state(guideline(tmp_path), tmp_path / "one.tar.gz")
+    repo = copy(tmp_path)
+    # the repository ignores every Markdown file, which must not drop the scaffold's
+    (Path(git(repo, "rev-parse", "--absolute-git-dir")) / "info" / "exclude").write_text("*.md\n", encoding="utf-8")
+    assert run(repo, tar, "--name", "pressroom") == 0
+    files = set(git(repo, "ls-tree", "-r", "--name-only", "scaffold").splitlines())
+    kept = {".gitignore", "README.md", "specs/architecture.md", ".agents/skills/pressroom-watch/SKILL.md", ".claude/skills"}
+    assert files == kept
+
+
+def test_a_layers_render_holds_the_refs_scaffold_folder_and_none_of_a_stacks_local_files(tmp_path):
+    source = guideline(tmp_path)
+    tar = with_local_state(source, tmp_path / "one.tar.gz")
+    repo = a_layer(tmp_path)
+    assert run(repo, tar, "--layer") == 0
+    assert git(repo, "rev-parse", "scaffold:scaffold") == git(source, "rev-parse", "HEAD:scaffold")
 
 
 def test_a_render_with_the_heads_tree_commits_nothing(tmp_path, capsys):
