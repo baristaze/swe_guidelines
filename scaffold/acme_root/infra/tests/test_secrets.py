@@ -91,7 +91,11 @@ async def test_a_tenant_never_resolves_another_tenants_secret(tmp_path: Path) ->
     assert not await overridden.has(other, "carrier_key")
 
 
-@pytest.mark.parametrize("name", ["", " x", "a/b", f"../{new_id()}/carrier_key", "..", "."])
+# A literal, never new_id(): each worker collects the ids, and they must agree (ADR 0105).
+CLIMBS = "../00000000-0000-0000-0000-000000000001/carrier_key"
+
+
+@pytest.mark.parametrize("name", ["", " x", "a/b", CLIMBS, "..", "."])
 async def test_a_name_never_climbs_out_of_its_tenant(tmp_path: Path, name: str) -> None:
     secrets = SecretsLocalImpl(tmp_path / "secrets.env")
     with pytest.raises(InvalidSecretName):
