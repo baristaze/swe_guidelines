@@ -262,6 +262,27 @@ async def test_a_confirm_short_of_the_declared_size_is_refused_and_nothing_lands
         await media.issue_download(ctx, created.id)
 
 
+async def test_a_confirm_after_the_store_completed_finds_the_object(
+    media: MediaManagerImpl, infra: InfraLocalImpl
+) -> None:
+    """A complete that landed before its row was written is stored on the
+    next confirm; an upload the store dropped, with no object, is no upload
+    under way."""
+    ctx = context(Role.MEMBER)
+    buckets = infra.get_buckets()
+    bucket = Buckets.USER_FILE_UPLOADS
+    landed = await media.create_file(ctx, a_file(ctx))
+    await send_parts(buckets, (await media.issue_upload(ctx, landed.id)).parts, PDF)
+    assert landed.upload_id is not None
+    await buckets.complete_upload(ctx.org_id, bucket, landed.key, landed.upload_id, len(PDF))
+    assert (await media.confirm_file(ctx, landed.id)).status is FileStatus.STORED
+    dropped = await media.create_file(ctx, a_file(ctx))
+    assert dropped.upload_id is not None
+    await buckets.abort_upload(ctx.org_id, bucket, dropped.key, dropped.upload_id)
+    with pytest.raises(ValidationFailed, match="no upload under way"):
+        await media.confirm_file(ctx, dropped.id)
+
+
 async def test_an_upload_is_its_starters(media: MediaManagerImpl) -> None:
     org = make_org()
     ann, bob = context(Role.MEMBER, org), context(Role.MEMBER, org)

@@ -2,7 +2,8 @@ from datetime import timedelta
 from itertools import accumulate
 from uuid import UUID
 
-from acme.infra.buckets import Buckets, BucketsInterface, UploadNotFound, part_sizes
+from acme.infra.buckets import Buckets, BucketsInterface, part_sizes
+from acme.infra.exceptions import InfraException
 from acme.infra.flags import Flag, FlagsInterface
 from acme.om.base import OmBase, utcnow
 from acme.om.context import Permission, TenantContext
@@ -156,11 +157,14 @@ class MediaManagerImpl(MediaManagerInterface):
                 file.size_bytes,
                 deadline=ctx.deadline,
             )
-        except UploadNotFound:
-            # A complete that landed before its row was written is found by its
-            # object; an upload the store no longer holds and no object is not.
+        except InfraException as error:
+            # The store holds no such upload. A complete that landed before its
+            # row was written is found by its object; with no object, there is
+            # no upload under way. Any other refusal stands as it is.
+            if error.http_status != 404:
+                raise
             if not await self._buckets.exists(ctx.org_id, BUCKET, file.key, deadline=ctx.deadline):
-                raise ValidationFailed(f"file {file_id} has no upload under way") from None
+                raise ValidationFailed(f"file {file_id} has no upload under way") from error
         stored = file.model_copy(
             update={"status": FileStatus.STORED, "updated_at": utcnow(), "updated_by": ctx.user_id}
         )
