@@ -8,37 +8,35 @@ from uuid import UUID
 from acme.om.context import TenantContext, stageless
 from acme.om.media.types.file import File, FilePurpose
 from acme.om.media.types.page import FilePage
-from acme.om.media.types.transfer import DownloadLink, UploadForm
+from acme.om.media.types.transfer import DownloadLink, IssuedUpload
 from acme.om.media.types.usage import StorageUsage
 
 
 class MediaManagerInterface(ABC):
     @abstractmethod
     async def create_file(self, ctx: TenantContext, file: File) -> File:
-        """Starts an upload: the row lands pending, bounded by the purpose's
+        """Starts an upload: the store starts a multipart upload of the file's
+        key, and the row lands pending with its id, bounded by the purpose's
         size and types (`media.rules.upload_refusal`). The key, the extension,
-        the status, and the provenance are the manager's. No bytes move yet."""
+        the status, the upload id, and the provenance are the manager's. No
+        bytes move yet."""
         ...
 
     @abstractmethod
-    async def issue_upload(self, ctx: TenantContext, file_id: UUID) -> UploadForm:
-        """A form the uploader posts straight to the store, signed for this
-        file's key, content type, and size, with a short expiry. Only the
-        person who started the upload gets one, and only while it is pending.
-        A form with no URL means the store cannot presign: the bytes go
-        through `put_content` instead."""
-        ...
-
-    @abstractmethod
-    async def put_content(self, ctx: TenantContext, file_id: UUID, data: bytes) -> File:
-        """The bytes of a pending upload moved through the API, for a store that
-        cannot presign; held to the same bounds the form carries."""
+    async def issue_upload(self, ctx: TenantContext, file_id: UUID) -> IssuedUpload:
+        """The parts the store does not hold yet, each signed for its own
+        number and length with a short expiry, at most a window of them:
+        the uploader sends them straight to the store. Asked again, it lists
+        what the store holds and signs only what is missing, under the same
+        upload id, so an upload cut off resumes. Only the person who started
+        the upload gets one, and only while it is pending."""
         ...
 
     @abstractmethod
     async def confirm_file(self, ctx: TenantContext, file_id: UUID) -> File:
-        """The upload is done: the object is looked for in the store, and the
-        row turns stored only when it is there. Confirming a stored file
+        """The upload is done: the store completes it from the parts it holds,
+        refused with nothing landing unless they sum to the declared size,
+        and only then does the row turn stored. Confirming a stored file
         answers it as it is."""
         ...
 
@@ -67,14 +65,7 @@ class MediaManagerInterface(ABC):
     ) -> DownloadLink:
         """A short-lived link to a stored file's object, answered under its
         stored type: `inline` for a preview the page shows, else an
-        attachment saved under the file's name. A link with no URL means the
-        store cannot presign: the bytes come from `get_content`."""
-        ...
-
-    @abstractmethod
-    async def get_content(self, ctx: TenantContext, file_id: UUID) -> bytes:
-        """A stored file's bytes, through the API, for a store that cannot
-        presign."""
+        attachment saved under the file's name."""
         ...
 
     @abstractmethod

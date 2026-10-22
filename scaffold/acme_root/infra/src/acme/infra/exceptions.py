@@ -68,10 +68,18 @@ class InvalidBucketKey(InfraValidationFailed):
 
 
 class UploadRefused(InfraValidationFailed):
-    """An upload outside the bounds it was presigned with: another content
-    type, or a body larger than `max_bytes`."""
+    """An upload outside the bounds it was signed for: a part of another
+    length than its URL names, or a complete whose parts are not the plan of
+    the declared size."""
 
     code = "upload_refused"
+
+
+class UploadNotFound(InfraNotFound):
+    """A multipart upload the store does not hold: completed, aborted, or
+    never started."""
+
+    code = "upload_not_found"
 
 
 class InvalidSecretName(InfraValidationFailed):

@@ -1,7 +1,8 @@
 from datetime import timedelta
+from itertools import accumulate
 from uuid import UUID
 
-from acme.infra.buckets import Buckets, BucketsInterface
+from acme.infra.buckets import Buckets, BucketsInterface, UploadNotFound, part_sizes
 from acme.infra.flags import Flag, FlagsInterface
 from acme.om.base import OmBase, utcnow
 from acme.om.context import Permission, TenantContext
@@ -17,7 +18,7 @@ from acme.om.media.rules import content_disposition, extension_of, object_key, u
 from acme.om.media.storage import MediaStorageInterface
 from acme.om.media.types.file import File, FilePurpose, FileStatus
 from acme.om.media.types.page import FilePage
-from acme.om.media.types.transfer import DownloadLink, UploadForm
+from acme.om.media.types.transfer import DownloadLink, IssuedPart, IssuedUpload
 from acme.om.media.types.usage import StorageUsage
 from acme.om.outbox import OutboxRelayInterface
 from acme.om.outbox.types.row import outbox_row
@@ -30,10 +31,14 @@ tenant's prefix and then `media/<purpose>/`."""
 
 class MediaOptions(OmBase):
     max_limit: int = 200
-    # A form lives long enough for a slow link to post a file at the ceiling,
-    # and a link long enough for a download to start; neither longer.
+    # A part's URL lives long enough for a slow link to send the window of
+    # parts it came with, and a link long enough for a download to start;
+    # neither longer. A part whose URL expired is signed again on the next ask.
     upload_ttl: timedelta = timedelta(minutes=15)
     download_ttl: timedelta = timedelta(minutes=5)
+    # The most parts one ask signs: the answer stays small whatever the
+    # file's size, and the uploader asks again for the rest.
+    parts_per_issue: int = 100
     # An upload started and not confirmed by then is abandoned: the sweep
     # removes whatever object it left and its row.
     pending_expiry: timedelta = timedelta(days=1)
@@ -72,11 +77,19 @@ class MediaManagerImpl(MediaManagerInterface):
         if refusal is not None:
             raise ValidationFailed(refusal)
         now = utcnow()
+        key = object_key(file.purpose, file.id)
+        # The store's upload first, then the row that names it: a crash
+        # between the two leaves an upload no row names, which the bucket's
+        # lifecycle aborts; the other order would leave a row with no upload.
+        upload_id = await self._buckets.start_upload(
+            ctx.org_id, BUCKET, key, file.content_type, deadline=ctx.deadline
+        )
         created = file.model_copy(
             update={
-                "key": object_key(file.purpose, file.id),
+                "key": key,
                 "extension": extension_of(file.name),
                 "status": FileStatus.PENDING,
+                "upload_id": upload_id,
                 "created_at": now,
                 "updated_at": now,
                 "created_by": ctx.user_id,
@@ -87,7 +100,9 @@ class MediaManagerImpl(MediaManagerInterface):
         )
         rows = (outbox_row(ctx, "media.file.created", created.id, {}),)  # ids only
         if not await self._storage.create_file(ctx.org_id, created, rows):
-            # A retry under the same id: the row as stored is the answer.
+            # A retry under the same id: the row as stored is the answer, and
+            # the upload this attempt started is no one's.
+            await self._buckets.abort_upload(ctx.org_id, BUCKET, key, upload_id)
             existing = await self._storage.read_file(ctx.org_id, created.id)
             if existing is None:
                 raise TenantMismatch(f"file {created.id} is not in {ctx.org_id}")
@@ -95,29 +110,35 @@ class MediaManagerImpl(MediaManagerInterface):
         await self._relay.relay_all(ctx.org_id, rows)
         return created
 
-    async def issue_upload(self, ctx: TenantContext, file_id: UUID) -> UploadForm:
+    async def issue_upload(self, ctx: TenantContext, file_id: UUID) -> IssuedUpload:
         ctx.require(Permission.WRITE)
         file = await self._pending(ctx, file_id)
+        upload_id = self._upload_id(file)
+        plan = part_sizes(file.size_bytes)
+        held = await self._buckets.list_parts(
+            ctx.org_id, BUCKET, file.key, upload_id, len(plan), deadline=ctx.deadline
+        )
+        have = {part.number: part.size_bytes for part in held}
+        offsets = (0, *accumulate(plan))
+        missing = [n for n, size in enumerate(plan, 1) if have.get(n) != size]
         ttl = self._options.upload_ttl
-        post = await self._buckets.presign_post(
-            ctx.org_id, BUCKET, file.key, file.content_type, file.size_bytes, ttl
+        parts = [
+            IssuedPart(
+                number=n,
+                offset=offsets[n - 1],
+                size_bytes=plan[n - 1],
+                url=await self._buckets.presign_part(
+                    ctx.org_id, BUCKET, file.key, upload_id, n, plan[n - 1], ttl
+                ),
+            )
+            for n in missing[: self._options.parts_per_issue]
+        ]
+        return IssuedUpload(
+            upload_id=upload_id,
+            parts=tuple(parts),
+            remaining=len(missing),
+            expires_at=utcnow() + ttl,
         )
-        expires_at = utcnow() + ttl
-        if post is None:
-            return UploadForm(url=None, expires_at=expires_at)
-        return UploadForm(url=post.url, fields=post.fields, expires_at=expires_at)
-
-    async def put_content(self, ctx: TenantContext, file_id: UUID, data: bytes) -> File:
-        ctx.require(Permission.WRITE)
-        file = await self._pending(ctx, file_id)
-        # The bounds the form would carry: the size as a ceiling, the type as
-        # declared. The local store holds a presigned key to them as well.
-        if len(data) > file.size_bytes:
-            raise ValidationFailed(f"the upload is {len(data)} bytes, over {file.size_bytes}")
-        await self._buckets.put(
-            ctx.org_id, BUCKET, file.key, data, file.content_type, deadline=ctx.deadline
-        )
-        return file
 
     async def confirm_file(self, ctx: TenantContext, file_id: UUID) -> File:
         ctx.require(Permission.WRITE)
@@ -125,8 +146,21 @@ class MediaManagerImpl(MediaManagerInterface):
         if file.status is FileStatus.STORED:
             return file
         self._own(ctx, file)
-        if not await self._buckets.exists(ctx.org_id, BUCKET, file.key, deadline=ctx.deadline):
-            raise ValidationFailed(f"file {file_id} has not arrived in the store")
+        try:
+            # Refused, with nothing landing, unless the parts are the size's plan.
+            await self._buckets.complete_upload(
+                ctx.org_id,
+                BUCKET,
+                file.key,
+                self._upload_id(file),
+                file.size_bytes,
+                deadline=ctx.deadline,
+            )
+        except UploadNotFound:
+            # A complete that landed before its row was written is found by its
+            # object; an upload the store no longer holds and no object is not.
+            if not await self._buckets.exists(ctx.org_id, BUCKET, file.key, deadline=ctx.deadline):
+                raise ValidationFailed(f"file {file_id} has no upload under way") from None
         stored = file.model_copy(
             update={"status": FileStatus.STORED, "updated_at": utcnow(), "updated_by": ctx.user_id}
         )
@@ -170,10 +204,6 @@ class MediaManagerImpl(MediaManagerInterface):
         )
         return DownloadLink(url=url, expires_at=utcnow() + ttl)
 
-    async def get_content(self, ctx: TenantContext, file_id: UUID) -> bytes:
-        file = await self._stored(ctx, file_id)
-        return await self._buckets.get(ctx.org_id, BUCKET, file.key, deadline=ctx.deadline)
-
     async def delete_file(self, ctx: TenantContext, file_id: UUID) -> File:
         ctx.require(Permission.WRITE)
         file = await self.get_file(ctx, file_id)
@@ -212,7 +242,7 @@ class MediaManagerImpl(MediaManagerInterface):
         # which the store answers as done. The other order would leave an
         # object no row names, which nothing would ever find.
         for org_id, file in files:
-            await self._buckets.delete(org_id, BUCKET, file.key)
+            await self._remove_object(org_id, file)
         return await self._storage.purge_files_across_tenants([f.id for _, f in files])
 
     async def purge_tenant(self, ctx: TenantContext) -> int:
@@ -223,8 +253,17 @@ class MediaManagerImpl(MediaManagerInterface):
         # not, a batch per sweep, the objects first as above.
         files = await self._storage.read_every_file(ctx.org_id, None, self._options.purge_batch)
         for file in files:
-            await self._buckets.delete(ctx.org_id, BUCKET, file.key)
+            await self._remove_object(ctx.org_id, file)
         return await self._storage.purge_files(ctx.org_id, [f.id for f in files])
+
+    async def _remove_object(self, org_id: UUID, file: File) -> None:
+        """What a file keeps in the store: its object, and while it is pending
+        the parts of its upload, which go at once rather than with the
+        bucket's lifecycle. The store answers either one already gone as
+        done."""
+        if file.status is FileStatus.PENDING and file.upload_id is not None:
+            await self._buckets.abort_upload(org_id, BUCKET, file.key, file.upload_id)
+        await self._buckets.delete(org_id, BUCKET, file.key)
 
     async def _pending(self, ctx: TenantContext, file_id: UUID) -> File:
         file = await self.get_file(ctx, file_id)
@@ -240,9 +279,17 @@ class MediaManagerImpl(MediaManagerInterface):
         return file
 
     @staticmethod
+    def _upload_id(file: File) -> str:
+        """The store's upload of a pending file. A row that names none has no
+        upload under way to sign or complete, and the sweep removes it."""
+        if file.upload_id is None:
+            raise ValidationFailed(f"file {file.id} has no upload under way")
+        return file.upload_id
+
+    @staticmethod
     def _own(ctx: TenantContext, file: File) -> None:
-        """An upload is its starter's: nobody else signs a form for it, moves
-        its bytes, or confirms it."""
+        """An upload is its starter's: nobody else signs its parts or
+        confirms it."""
         if file.created_by != ctx.user_id:
             raise NotAuthorized(f"file {file.id} is being uploaded by someone else")
 

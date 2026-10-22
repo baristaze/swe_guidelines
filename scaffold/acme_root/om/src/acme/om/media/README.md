@@ -21,20 +21,25 @@ one of the kinds of thing [Acme is made of](../../../../README.md).
 
 ## What can happen
 
-- **Start an upload** (`POST /v1/media/files`). A pending record is
-  made. No bytes move yet.
-- **Upload.** The uploader gets a form their browser posts straight to
-  the store, good for a few minutes and for this one file. A store that
-  cannot sign a form takes the bytes through the API instead.
-- **Confirm.** Acme looks for the object; only then is the file stored.
+- **Start an upload** (`POST /v1/media/files`). The store starts a
+  multipart upload of the file, and a pending record is made that names
+  it. No bytes move yet.
+- **Upload** (`POST /v1/media/files/{id}/upload`). The uploader gets the
+  parts the store does not hold yet, each a link good for a few minutes
+  and for one part of this one file, and sends each part straight to the
+  store. Asked again, Acme signs only the parts still missing, under the
+  same upload, so an upload cut off resumes where it stopped. No route
+  of the API takes a file's bytes.
+- **Confirm.** The store puts the parts together into the file; only
+  then is the file stored.
 - **List** a purpose's or a subject's stored files, oldest first, a
   page at a time (`GET /v1/media/files`).
 - **Download** through a link that works for a few minutes, under the
-  file's own name and type.
+  file's own name and type, straight from the store.
 - **Remove.** The file is hidden at once and stops counting.
 - **Sweep.** A removed file's object goes, then its record, a day
-  later. An upload never confirmed goes a day after it started. A
-  purged org's files all go.
+  later. An upload never confirmed goes a day after it started, with
+  every part the store held of it. A purged org's files all go.
 
 ## The rules
 
@@ -44,8 +49,10 @@ one of the kinds of thing [Acme is made of](../../../../README.md).
   purpose accepts, the extension must fit the type, the name is a name
   and never a path, and the size is within the purpose's ceiling. The
   numbers are illustrative.
-- **The store holds the upload to its bounds.** The form names the type
-  and the size, and the store refuses anything else.
+- **The store holds the upload to its bounds.** Each part's link is
+  signed for that part's length, and the store refuses a longer one. The
+  confirm is refused unless the parts add up to the declared size, and
+  nothing lands then.
 - **Only the uploader finishes an upload.**
 - **Some fields are never the caller's**: the key, the extension, and
   the status are Acme's.

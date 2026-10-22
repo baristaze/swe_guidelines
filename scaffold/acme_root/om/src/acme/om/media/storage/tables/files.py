@@ -39,3 +39,4 @@ class Files(IdentifiableMixin, NamedMixin, TrackableMixin, SoftDeletableMixin, B
     purpose: Mapped[str]
     subject_id: Mapped[UUID | None]
     status: Mapped[str]
+    upload_id: Mapped[str | None]

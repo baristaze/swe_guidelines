@@ -8,28 +8,39 @@ from botocore.config import Config
 from acme.infra.aws_clients import AwsClientHolder, client_config
 from acme.infra.aws_errors import ClientError, error_code, translated
 from acme.infra.buckets import (
+    MAX_PARTS,
     BlobNotFound,
     Buckets,
     BucketsInterface,
-    PresignedPost,
+    UploadNotFound,
+    UploadPart,
+    UploadRefused,
+    held_to_plan,
     object_key,
 )
 from acme.infra.deadline import bounded, unreachable
 
 NOT_FOUND_CODES = frozenset({"404", "NoSuchKey", "NotFound"})
+NO_SUCH_UPLOAD = "NoSuchUpload"
 MAX_KEYS_PER_CALL = 1000
 """The most keys one ListObjectsV2 call returns."""
+MAX_PARTS_PER_CALL = 1000
+"""The most parts one ListParts call returns."""
 
 
 class BucketsS3Impl(BucketsInterface):
     """One client, opened by `start()` and closed by `close()` through the
     holder; every call borrows it.
 
-    A presigned URL names the host the browser will reach, and a signature
-    over a GET covers that host, so a store the process reaches at one
-    address and a browser at another (MinIO inside the compose network, at a
-    host port outside it) signs with a second client aimed at the browser's
-    address. Signing makes no request, so that client never connects.
+    A presigned URL names the host the client will reach, and its signature
+    covers that host, so a store the process reaches at one address and a
+    client at another (MinIO inside the compose network, at a host port
+    outside it) signs with a second client aimed at the client's address.
+    Signing makes no request, so that client never connects.
+
+    Every URL is signed with SigV4, which signs the headers a request must
+    carry: a part's `Content-Length` among them, so the store refuses a body
+    of any other length. The older signature signs no length.
 
     With no endpoint named, the store is AWS, and a URL names the bucket's
     regional host (`<bucket>.s3.<region>.amazonaws.com`). The global host
@@ -49,7 +60,7 @@ class BucketsS3Impl(BucketsInterface):
     ) -> None:
         self._endpoint_url = endpoint_url
         self._region = region
-        config = client_config(timeout)
+        config = client_config(timeout).merge(Config(signature_version="s3v4"))
         if endpoint_url is None:
             config = config.merge(Config(s3={"addressing_style": "virtual"}))
         self._holder = AwsClientHolder(
@@ -167,7 +178,7 @@ class BucketsS3Impl(BucketsInterface):
         *,
         content_type: str | None = None,
         content_disposition: str | None = None,
-    ) -> str | None:
+    ) -> str:
         params: dict[str, Any] = {"Bucket": self._bucket(bucket), "Key": object_key(org_id, key)}
         if content_type is not None:
             params["ResponseContentType"] = content_type
@@ -181,33 +192,146 @@ class BucketsS3Impl(BucketsInterface):
                 ExpiresIn=int(ttl.total_seconds()),
             )
 
-    async def presign_post(
+    async def start_upload(
         self,
         org_id: UUID,
         bucket: Buckets,
         key: str,
         content_type: str,
-        max_bytes: int,
+        *,
+        deadline: datetime | None = None,
+    ) -> str:
+        async with bounded(deadline, unreachable("s3", "start_upload")):
+            with translated("s3", "start_upload"):
+                s3 = self._client()
+                started = await s3.create_multipart_upload(
+                    Bucket=self._bucket(bucket),
+                    Key=object_key(org_id, key),
+                    ContentType=content_type,
+                )
+                return str(started["UploadId"])
+
+    async def presign_part(
+        self,
+        org_id: UUID,
+        bucket: Buckets,
+        key: str,
+        upload_id: str,
+        number: int,
+        size_bytes: int,
         ttl: timedelta,
-    ) -> PresignedPost | None:
-        """A presigned POST, not a PUT: a signed PUT can fix a length but never
-        bound one, and the policy of a POST carries both conditions, which
-        the store enforces on the body it receives."""
-        if max_bytes <= 0:
-            raise ValueError(f"an upload is bounded by a positive size, not {max_bytes}")
-        with translated("s3", "presign_post"):
+    ) -> str:
+        """`ContentLength` is signed into the URL as a header the PUT must
+        carry, so the store answers a body of any other length with a
+        signature that does not match."""
+        if not 1 <= number <= MAX_PARTS or size_bytes <= 0:
+            raise ValueError(f"part {number} of {size_bytes} bytes is outside an upload")
+        with translated("s3", "presign_part"):
             s3 = self._signing_client()
-            post = await s3.generate_presigned_post(
-                Bucket=self._bucket(bucket),
-                Key=object_key(org_id, key),
-                Fields={"Content-Type": content_type},
-                Conditions=[
-                    {"Content-Type": content_type},
-                    ["content-length-range", 0, max_bytes],
-                ],
+            return await s3.generate_presigned_url(
+                "upload_part",
+                Params={
+                    "Bucket": self._bucket(bucket),
+                    "Key": object_key(org_id, key),
+                    "UploadId": upload_id,
+                    "PartNumber": number,
+                    "ContentLength": size_bytes,
+                },
                 ExpiresIn=int(ttl.total_seconds()),
             )
-        return PresignedPost(url=post["url"], fields=tuple(sorted(post["fields"].items())))
+
+    async def _held(
+        self, org_id: UUID, bucket: Buckets, key: str, upload_id: str, limit: int, operation: str
+    ) -> list[dict[str, Any]]:
+        """The store's parts of the upload, with the entity tags a complete
+        names, a page of a thousand at a time up to `limit`."""
+        limit = min(limit, MAX_PARTS)
+        request: dict[str, Any] = {
+            "Bucket": self._bucket(bucket),
+            "Key": object_key(org_id, key),
+            "UploadId": upload_id,
+        }
+        parts: list[dict[str, Any]] = []
+        with translated("s3", operation):
+            s3 = self._client()
+            while len(parts) < limit:
+                try:
+                    page = await s3.list_parts(
+                        **request, MaxParts=min(limit - len(parts), MAX_PARTS_PER_CALL)
+                    )
+                except ClientError as error:
+                    if error_code(error) == NO_SUCH_UPLOAD:
+                        raise UploadNotFound(f"{bucket.value}/{key}") from None
+                    raise
+                parts.extend(page.get("Parts", []))
+                if not page.get("IsTruncated"):
+                    break
+                request["PartNumberMarker"] = page["NextPartNumberMarker"]
+        return parts[:limit]
+
+    async def list_parts(
+        self,
+        org_id: UUID,
+        bucket: Buckets,
+        key: str,
+        upload_id: str,
+        limit: int,
+        *,
+        deadline: datetime | None = None,
+    ) -> list[UploadPart]:
+        async with bounded(deadline, unreachable("s3", "list_parts")):
+            held = await self._held(org_id, bucket, key, upload_id, limit, "list_parts")
+        return [UploadPart(number=p["PartNumber"], size_bytes=p["Size"]) for p in held]
+
+    async def complete_upload(
+        self,
+        org_id: UUID,
+        bucket: Buckets,
+        key: str,
+        upload_id: str,
+        size_bytes: int,
+        *,
+        deadline: datetime | None = None,
+    ) -> None:
+        """The parts are the store's own listing, never the client's word, so
+        the complete names exactly what the store holds."""
+        async with bounded(deadline, unreachable("s3", "complete_upload")):
+            held = await self._held(org_id, bucket, key, upload_id, MAX_PARTS, "complete_upload")
+            refusal = held_to_plan(
+                [UploadPart(number=p["PartNumber"], size_bytes=p["Size"]) for p in held],
+                size_bytes,
+            )
+            if refusal is not None:
+                raise UploadRefused(f"upload of {key!r} is not complete: {refusal}")
+            with translated("s3", "complete_upload"):
+                s3 = self._client()
+                try:
+                    await s3.complete_multipart_upload(
+                        Bucket=self._bucket(bucket),
+                        Key=object_key(org_id, key),
+                        UploadId=upload_id,
+                        MultipartUpload={
+                            "Parts": [
+                                {"PartNumber": p["PartNumber"], "ETag": p["ETag"]}
+                                for p in sorted(held, key=lambda p: p["PartNumber"])
+                            ]
+                        },
+                    )
+                except ClientError as error:
+                    if error_code(error) == NO_SUCH_UPLOAD:
+                        raise UploadNotFound(f"{bucket.value}/{key}") from None
+                    raise
+
+    async def abort_upload(self, org_id: UUID, bucket: Buckets, key: str, upload_id: str) -> None:
+        with translated("s3", "abort_upload"):
+            s3 = self._client()
+            try:
+                await s3.abort_multipart_upload(
+                    Bucket=self._bucket(bucket), Key=object_key(org_id, key), UploadId=upload_id
+                )
+            except ClientError as error:
+                if error_code(error) != NO_SUCH_UPLOAD:
+                    raise
 
     def describe(self) -> str:
         return f"buckets=s3({self._endpoint_url or self._region})"
