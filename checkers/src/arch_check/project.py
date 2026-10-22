@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import ast
 import contextlib
+import weakref
 from collections.abc import Collection, Iterator
 from dataclasses import dataclass
 from functools import cached_property
@@ -211,7 +212,7 @@ class Project:
                     self._trees[file.rel] = None
                     self.parse_errors[file.rel] = (1, f"nests deeper than the {MAX_DEPTH} levels arch-check walks")
                 elif tree is not None:
-                    self._owners.update((id(n), file) for n in ast.walk(tree) if isinstance(n, ast.ClassDef))
+                    self._owners.update((id(n), file) for n in classes(tree))
         return self._trees[file.rel]
 
     def trees(self, *prefixes: str) -> Iterator[tuple[SourceFile, ast.Module]]:
@@ -384,10 +385,22 @@ def last(name: str | None) -> str | None:
     return name.rpartition(".")[2] if name else None
 
 
+_CLASSES: weakref.WeakKeyDictionary[ast.AST, tuple[ast.ClassDef, ...]] = weakref.WeakKeyDictionary()
+"""The classes `classes` found under each tree, kept while the tree lives."""
+
+
 def classes(tree: ast.AST) -> list[ast.ClassDef]:
-    """Every class defined anywhere under `tree`, nested ones included, in source order."""
-    found = [n for n in ast.walk(tree) if isinstance(n, ast.ClassDef)]
-    return sorted(found, key=lambda n: (n.lineno, n.col_offset))
+    """Every class defined anywhere under `tree`, nested ones included, in source order.
+
+    The rules ask for a module's classes tens of times each, so the tree
+    is walked on the first call alone, and later calls read what it
+    found. No rule edits a tree. Each call returns a list of its own.
+    """
+    found = _CLASSES.get(tree)
+    if found is None:
+        walked = [n for n in ast.walk(tree) if isinstance(n, ast.ClassDef)]
+        found = _CLASSES[tree] = tuple(sorted(walked, key=lambda n: (n.lineno, n.col_offset)))
+    return list(found)
 
 
 def top_classes(tree: ast.Module) -> list[ast.ClassDef]:
