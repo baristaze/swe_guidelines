@@ -25,9 +25,11 @@ guideline manifest, or one of its own: its copy keeps the pins its scaffold
 holds, the guideline release the layer took. When the checkout is a clean git
 checkout, the repository's first commit is the scaffold as copied, on the
 branch `scaffold` and the main branch, naming the commit it came from and its
-repository: the guideline's, or for a layer its `origin` on GitHub. That is
-the copy's base, which `scaffold/base.py` moves forward. Otherwise nothing is
-committed, and the first move grafts the base. It prints the next step.
+repository: the guideline's, or for a layer its `origin` on GitHub. The commit
+holds what the copy's own `.gitignore` files keep, so no local secret and
+nothing a stack wrote in the checkout enters it. That is the copy's base,
+which `scaffold/base.py` moves forward. Otherwise nothing is committed, and
+the first move grafts the base. It prints the next step.
 
 Standard library only, so it runs before anything is installed but uv,
 which runs the formatter, and which every copy's setup needs.
@@ -282,6 +284,23 @@ def git(where: Path, *args: str, stdin: str | None = None) -> subprocess.Complet
     return subprocess.run(["git", "-C", str(where), *args], capture_output=True, text=True, input=stdin, check=False)
 
 
+KEPT = ("ls-files", "-z", "--others", "--exclude-per-directory=.gitignore")
+"""Lists the files of a repository with nothing staged that its own `.gitignore`
+files keep. What they ignore stays out: a local secret, and what a stack or a
+tool wrote beside the scaffold. Neither the machine's ignore rules nor the
+repository's `info/exclude` is read, so no file of the scaffold is left out
+for them."""
+STAGE = ("add", "--force", "--pathspec-from-file=-", "--pathspec-file-nul")
+"""Stages each path `KEPT` lists, read as literal pathspecs, and no other."""
+
+
+def stage(where: Path) -> subprocess.CompletedProcess[str]:
+    """Stages what `where` keeps, as `KEPT` lists it; returns the step that
+    failed, or the one that staged it."""
+    kept = git(where, *KEPT)
+    return git(where, "--literal-pathspecs", *STAGE, stdin=kept.stdout) if kept.returncode == 0 else kept
+
+
 def checkout_commit(source: Path, plugin: Path) -> str | None:
     """The commit `source` is, when it sits clean in a git checkout of the
     guideline or of a layer; None otherwise: an archive, a staged plugin, or a
@@ -323,11 +342,15 @@ def record_base(dest: Path, names: Names, commit: str | None, source: str | None
         f"The scaffold at {commit[:9]}, as {names.snake}\n\n"
         f"Scaffold-Source: {source}\nScaffold-Commit: {commit}\nScaffold-Name: {names.snake}\n"
     )
-    for args, stdin in ((("add", "--all", "--force", "."), None), (("commit", "--quiet", "-F", "-"), message)):
-        done = git(dest, *args, stdin=stdin)
+    steps = (
+        ("add", lambda: stage(dest)),
+        ("commit", lambda: git(dest, "commit", "--quiet", "-F", "-", stdin=message)),
+    )
+    for step, run in steps:
+        done = run()
         if done.returncode != 0:
             git(dest, "read-tree", "--empty")
-            return f"base: not recorded, since git {args[0]} failed: {done.stderr.strip()}"
+            return f"base: not recorded, since git {step} failed: {done.stderr.strip()}"
     git(dest, "branch", BRANCH)
     return f"base: the first commit, on {BRANCH} and the main branch, is the scaffold at {commit[:9]}"
 
