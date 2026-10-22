@@ -100,14 +100,17 @@ budget ([ADR 0059](../adr/0059-authenticated-routes-have-limits.md)):
 | Message | Budget | Setting |
 |---------|--------|---------|
 | `rate limit exceeded`, on a sign-in route | the address's sign-ins | `ACME_LOGIN_RATE_LIMIT` |
+| `rate limit exceeded`, on a lease's renewal or release | the credential's holder's calls | `ACME_CREDENTIAL_RATE_LIMIT_HOLDS` |
 | `rate limit exceeded`, elsewhere | the credential's reads or writes | `ACME_CREDENTIAL_RATE_LIMIT_READS`, `ACME_CREDENTIAL_RATE_LIMIT_WRITES` |
 | `too many failed authentications from this address` | the address's failed lookups | `ACME_FAILED_AUTHENTICATION_LIMIT` |
 
 A window is a minute, and the refusal lifts when it ends. A credential's
 budget spent is usually a client polling too fast: ask it to listen on
-the realtime channel. An address's budget spent is a client holding a
-revoked key, or someone trying tokens; everyone behind that address
-waits out the window. Raise a budget only when honest traffic needs it,
+the realtime channel. Its holder's calls spent is a holder renewing far
+faster than its leases ask, which is at half of what is left. An
+address's budget spent is a client holding a revoked key, or someone
+trying tokens; everyone behind that address waits out the window.
+Raise a budget only when honest traffic needs it,
 through the environment's `app_environment` and a deploy. The limits
 fail open while the cache is down.
 

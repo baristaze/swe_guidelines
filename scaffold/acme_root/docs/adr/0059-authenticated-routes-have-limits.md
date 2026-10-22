@@ -22,8 +22,10 @@ error envelope, and the limits fail open.
 
 **Each credential has a budget of its own.** Every auth session and API key
 spends one unit per request, once the credential resolves. Reads (`GET`,
-`HEAD`) and writes have separate budgets, split the way admission splits
-its lanes. The key is the credential id under the credential's tenant
+`HEAD`), writes, and a holder's calls have separate budgets, split the
+way admission splits its lanes
+([ADR 0106](0106-a-holders-calls-are-counted-apart-from-its-writes.md)).
+The key is the credential id under the credential's tenant
 (`reads:cred:<id>`), counted with the cache's one increment, so the
 check is one Valkey round trip. A sign-in or operator credential has no
 tenant and counts under the system scope. The defaults are 3,000 reads

@@ -76,11 +76,19 @@ route are in no document:
   trace. A relay that fails, or whose push the bus drops, is logged,
   and the maintenance sweep relays the rows. The latency a route reports is the time to its
   answer.
-- **Admission.** The process bounds what it has in flight. Past the
-  bound a request is refused at once with a 503 and a `Retry-After`,
-  so a saturated process answers and says why instead of queueing
-  work it cannot start. Admission fails closed and is counted in the
-  process's own memory.
+- **Admission.** The process bounds what it has in flight, in three
+  lanes: reads, writes, and a holder's calls. Past a lane's bound a
+  request is refused at once with a 503 and a `Retry-After`, so a
+  saturated process answers and says why instead of queueing work it
+  cannot start. Admission fails closed and is counted in the process's
+  own memory.
+- **A holder's calls.** A route that keeps or settles what its caller
+  holds carries `HOLDER_CALL` in its dependencies: the lease's renewal
+  and its release. It is counted in the holds lane
+  (`ACME_ADMISSION_LIMIT_HOLDS`) and spends its credential's holds
+  budget (`ACME_CREDENTIAL_RATE_LIMIT_HOLDS`), so neither a burst of
+  the holder's own writes nor a full write lane refuses it
+  ([ADR 0106](../../docs/adr/0106-a-holders-calls-are-counted-apart-from-its-writes.md)).
 - **A deadline on every admitted request.** A request gets one when it
   takes its slot, `ACME_REQUEST_DEADLINE_SECONDS` (20) from then, and
   every call it makes to WorkOS or AWS shares it. A
@@ -94,10 +102,11 @@ route are in no document:
   `rate_limited`, in the one envelope, with a `Retry-After` in
   seconds: the time left on the window. There are three budgets.
   - **Per credential.** Every auth session and API key has a budget of
-    reads (`GET`, `HEAD`) and one of writes, spent once the credential
-    resolves (`ACME_CREDENTIAL_RATE_LIMIT_READS`, `_WRITES`, over
-    `ACME_CREDENTIAL_RATE_WINDOW_SECONDS`). Two people behind one
-    address never share it.
+    reads (`GET`, `HEAD`), one of writes, and one of a holder's calls,
+    spent once the credential resolves, in the lane admission counted
+    the request in (`ACME_CREDENTIAL_RATE_LIMIT_READS`, `_WRITES`,
+    `_HOLDS`, over `ACME_CREDENTIAL_RATE_WINDOW_SECONDS`). Two people
+    behind one address never share it.
   - **Per address, on failed authentications.** A bearer that is
     unknown, expired, or revoked answers 401 and counts against the
     client address (`ACME_FAILED_AUTHENTICATION_LIMIT`). Once that is

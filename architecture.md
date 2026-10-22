@@ -1504,8 +1504,18 @@ is `429` with `Retry-After`. The limits fail open: fairness, not a
 security boundary.
 
 **Admission.** A process bounds the requests it has in flight, one
-budget for reads and one for writes, and refuses past either at once.
-That is self-defense, and it fails closed.
+budget for reads, one for writes, and one for a holder's calls, and
+refuses past any at once. That is self-defense, and it fails closed.
+
+**A holder's calls.** A holder keeps what it holds only while its calls
+get through: a lease's renewal and its release, a heartbeat, a work
+item's result, a report on the work. So a system marks each such route
+a holder's call, and it is counted apart from every other write: in a
+lane of its own at admission, and in a budget of its own per
+credential, sized to the cadence a lease asks for. Neither a burst of
+the holder's own writes nor a slowdown that fills the write lane
+refuses a renewal. The lane and the budget each keep a bound, so a
+client that renews too often is still refused.
 
 **Edge idempotency.** A creating `POST` accepts an `Idempotency-Key`,
 and an `IdempotencyRecord`, the marker, owns the retry
@@ -2020,12 +2030,14 @@ from the lease's next renewal.
 A **lease** is one grant of one leasable resource to one principal,
 under a fencing token one above the anchor's. Its holder renews it, for
 a length it names or for its term again, within the bound, and releases
-it. It ends when a manager revokes it, or once its expiry and a skew
-margin have passed, so a holder whose clock runs slow has stopped before
-the leasable resource goes on. Whatever acts on the leasable resource
-for a holder presents the token. A fence on the leasable resource's own
-side keeps the highest token it has seen: it refuses a lower one, and
-stops and resets the leasable resource before it admits a higher one
+it. Both are [a holder's calls](#the-gateway), counted apart from its
+other writes. It ends when a manager revokes it, or once its expiry and
+a skew margin have passed, so a holder whose clock runs slow has
+stopped before the leasable resource goes on. Whatever acts on the
+leasable resource for a holder presents the token. A fence on the
+leasable resource's own side keeps the highest token it has seen: it
+refuses a lower one, and stops and resets the leasable resource before
+it admits a higher one
 ([`leases.py`](scaffold/acme_root/clients/python/src/acme/client/leases.py)).
 
 A holder whose work runs through a [worker](#shape-of-a-worker) asks for

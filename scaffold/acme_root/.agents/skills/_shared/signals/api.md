@@ -5,7 +5,8 @@ requests in flight and limits each caller's rate.
 
 ## Outcomes
 
-- `admission_reads` and `admission_writes`: `admitted`, or `refused`
+- `admission_reads`, `admission_writes`, and `admission_holds` (a
+  holder's calls, such as a lease's renewal): `admitted`, or `refused`
   past the lane's bound of requests in flight, answered as unavailable
   with a `Retry-After`: load the process could not take.
 - `rate_limit`: `allowed`, or `rejected`, a caller past its budget;
