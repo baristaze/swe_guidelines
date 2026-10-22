@@ -29,8 +29,10 @@ from acme.infra.exceptions import InfraUnavailable
 request_id_var: ContextVar[str | None] = ContextVar("acme_request_id", default=None)
 """Set at the entry point that builds the context, so log lines get it for free.
 
-This is the one piece of ambient state in the system, and it is ambient only
-to the log and error sinks in this module. The authoritative request id is
+This is one of the two pieces of ambient state in the system, and it is ambient
+only to the log and error sinks in this module. The other marks a holder's call
+for the storage funnel, under the same kind of boundary
+(`acme.om.storage.reserve`). The authoritative request id is
 `request_id` on the context, which every stage inherits and every operation is
 handed; nothing decides anything from this variable. So the boundary is a rule:
 it is read only here, and an entry point that sets it resets its token in a

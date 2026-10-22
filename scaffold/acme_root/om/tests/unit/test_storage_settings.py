@@ -87,6 +87,15 @@ def test_a_zero_bound_is_refused_rather_than_read_as_unset(field: str) -> None:
         StorageSettings.model_validate({"_env_file": None, field: 0})
 
 
+@pytest.mark.parametrize("field", ["database_pool_reserve", "database_pool_reserve_core"])
+@pytest.mark.parametrize("value", [-1, "a few"])
+def test_a_reserve_that_is_no_count_is_refused(field: str, value: object) -> None:
+    """A reserve is a count of connections, zero included: anything else
+    stops the process at boot, before a pool is opened on it."""
+    with pytest.raises(ValueError):
+        StorageSettings.model_validate({"_env_file": None, field: value})
+
+
 LOCAL = "postgresql+asyncpg://{login}:{login}-pw@127.0.0.1:55432/acme"
 
 

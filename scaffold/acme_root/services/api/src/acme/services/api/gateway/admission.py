@@ -10,8 +10,9 @@ The bound is three bounds, one lane each for reads, for writes, and for a
 holder's calls, so that a storm in one lane cannot take every slot from
 another. A client back from an outage replays its backlog with reads, and the
 commands behind it are still admitted. A slowdown that fills the write lane
-still admits the renewal that keeps a lease. Admitted, the renewal takes its
-connection from the pool the writes use, under the same checkout bound.
+still admits the renewal that keeps a lease. Admitted, the renewal runs marked
+a holder's call (`acme.om.storage.reserve`), so a pool the writes have filled
+serves it from its reserve.
 
 A request admitted also gets its deadline: the instant, counted from when it
 takes its slot, that every call it makes outside the process shares (ADR
@@ -30,6 +31,7 @@ from starlette.routing import BaseRoute
 from acme.infra.base import utcnow
 from acme.infra.observability import OUTCOMES
 from acme.om.exceptions import Unavailable
+from acme.om.storage.reserve import as_holder_call
 from acme.services.api.gateway.envelope import error_response
 from acme.services.api.gateway.observability import (
     ASGIApp,
@@ -82,11 +84,13 @@ async def holder_call() -> None:
     `dependencies=[HOLDER_CALL]`. A holder keeps what it holds only while
     these calls get through: a lease's renewal and its release, a heartbeat,
     a work item's result, a report on the work. Admission counts a route that
-    carries the mark in the holds lane, and its credential spends the holds
-    budget, so neither a burst of the holder's own writes nor a full write
-    lane refuses it. A system marks its own routes the same way, and nothing
-    here changes. The mark does nothing when the route runs: it is read where
-    the app is built (`HolderCalls.of`)."""
+    carries the mark in the holds lane, its credential spends the holds
+    budget, and every connection it checks out may come from the pool's
+    reserve, so neither a burst of the holder's own writes, nor a full write
+    lane, nor a pool the writes have filled refuses it. A system marks its
+    own routes the same way, and nothing here changes. The mark does nothing
+    when the route runs: it is read where the app is built
+    (`HolderCalls.of`)."""
 
 
 HOLDER_CALL = Depends(holder_call)
@@ -142,7 +146,8 @@ class AdmissionMiddleware:
     """Counts the HTTP requests in flight, reads, writes, and a holder's calls
     apart, and refuses past any bound with the unavailable shape and a
     `Retry-After`. A request it admits carries its deadline and its lane from
-    there on.
+    there on, and one it admits in the holds lane runs marked a holder's call,
+    for the pool's reserve.
     A count is a plain integer: one event loop owns it, and it is read and
     written with no await in between, so nothing interleaves. A socket is not
     counted: it is held open for as long as its subscriber wants it, and a
@@ -187,7 +192,11 @@ class AdmissionMiddleware:
         state[LANE_KEY] = lane.name
         lane.in_flight += 1
         try:
-            await self.app(scope, receive, send)
+            if lane is self.holds:
+                with as_holder_call():
+                    await self.app(scope, receive, send)
+            else:
+                await self.app(scope, receive, send)
         finally:
             lane.in_flight -= 1
 

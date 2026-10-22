@@ -1,13 +1,15 @@
 """The Postgres base every namespace storage shares: per-statement role
-routing, the funnel that names the scope of every transaction and translates a
-database that did not answer in time, and the write primitives: an upsert that
-checks the tenant and lands the core row's outbox rows in the same commit, and
-an insert that refuses an existing id."""
+routing, the funnel that names the scope of every transaction, takes a holder's
+call to the pool's reserve, and translates a database that did not answer in
+time, and the write primitives: an upsert that checks the tenant and lands the
+core row's outbox rows in the same commit, and an insert that refuses an
+existing id."""
 
 import logging
 import re
 from collections.abc import AsyncIterator, Iterator, Mapping
 from contextlib import asynccontextmanager
+from dataclasses import dataclass
 from typing import Any, cast
 from uuid import UUID
 
@@ -16,6 +18,7 @@ from sqlalchemy import ColumnElement, CursorResult, Delete, Result, Table, delet
 from sqlalchemy.exc import DBAPIError, IntegrityError
 from sqlalchemy.exc import TimeoutError as PoolTimeoutError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+from sqlalchemy.pool import QueuePool
 from sqlalchemy.sql.util import find_tables
 
 from acme.infra.observability import OUTCOMES
@@ -29,6 +32,7 @@ from acme.om.exceptions import (
 )
 from acme.om.outbox.storage.tables.outbox_rows import OutboxRows
 from acme.om.outbox.types.row import OutboxRow
+from acme.om.storage.reserve import in_holder_call
 from acme.om.storage.roles import DatabaseRole, role_for
 from acme.om.storage.scopes import IDENTITY_SETTING, ORG_SETTING, USER_SETTING
 from acme.om.storage.utils.translation import apply_row, to_row, undeletes
@@ -38,19 +42,46 @@ SessionFactory = async_sessionmaker[AsyncSession]
 log = logging.getLogger(__name__)
 
 
+@dataclass(frozen=True)
+class Reserve:
+    """The connections beside one pool that only a holder's call takes. The
+    pool is read before each of its checkouts: while it has a connection to
+    give without a wait, the call takes that one, and only a pool with none
+    sends it here. The read and the checkout run with no await between them,
+    on the one event loop, so nothing takes the connection the read saw. The
+    reserve is an engine of its own under the pool's bounds, so no checkout
+    outside a holder's call reaches it, and it opens a connection only when a
+    holder's call needs one."""
+
+    pool: QueuePool
+    sessions: SessionFactory
+
+    def for_holder_call(self, general: SessionFactory) -> SessionFactory:
+        if self.pool.checkedout() < self.pool.size():
+            return general
+        return self.sessions
+
+
 class LoginSessions(Mapping[DatabaseRole, SessionFactory]):
     """The session factories of every role under the two logins a process
     holds: the runtime login's, which is what the mapping itself answers, and
     the system login's beside them, which only the system scope opens. The
-    system login's URL names another login, so its pool is its own."""
+    system login's URL names another login, so its pool is its own. Each pool
+    may have a reserve, under the same login, which `factory` hands a holder's
+    call when the pool is full; a role with no reserve has no entry."""
 
     def __init__(
         self,
         runtime: Mapping[DatabaseRole, SessionFactory],
         system: Mapping[DatabaseRole, SessionFactory],
+        *,
+        reserves: Mapping[DatabaseRole, Reserve] | None = None,
+        system_reserves: Mapping[DatabaseRole, Reserve] | None = None,
     ) -> None:
         self._runtime = dict(runtime)
         self.system: Mapping[DatabaseRole, SessionFactory] = dict(system)
+        self._reserves = dict(reserves or {})
+        self._system_reserves = dict(system_reserves or {})
 
     def __getitem__(self, role: DatabaseRole) -> SessionFactory:
         return self._runtime[role]
@@ -60,6 +91,16 @@ class LoginSessions(Mapping[DatabaseRole, SessionFactory]):
 
     def __len__(self) -> int:
         return len(self._runtime)
+
+    def factory(self, role: DatabaseRole, *, system: bool, holder_call: bool) -> SessionFactory:
+        """The sessions one statement opens: the role's pool under the login
+        its scope names, or that pool's reserve for a holder's call that finds
+        the pool full. Any other call waits on the pool, under its bound."""
+        general = (self.system if system else self)[role]
+        reserve = (self._system_reserves if system else self._reserves).get(role)
+        if not holder_call or reserve is None:
+            return general
+        return reserve.for_holder_call(general)
 
 
 SCOPE_SETTINGS: tuple[tuple[str, str], ...] = (
@@ -377,7 +418,10 @@ class PgStorageBase:
         The system scope runs on the system login's pool and every other
         scope on the runtime login's. The policies admit the system scope to
         the system login alone, so a runtime connection that names
-        `EMPTY_UUID` reads nothing.
+        `EMPTY_UUID` reads nothing. A holder's call (`reserve.py`) takes that
+        pool's reserve when the pool has no connection to give, under either
+        login: its authentication reads under the system login, and the rest
+        of it under the runtime login.
 
         The settings go out in the message that begins the transaction, so
         they land before anything else, and that message is the one that may
@@ -391,8 +435,7 @@ class PgStorageBase:
         (`not_in_time`), never as the driver's own error."""
         role = role_of(target)
         system = org_id == EMPTY_UUID
-        logins = self._sessions.system if system else self._sessions
-        factory = logins[role]
+        factory = self._sessions.factory(role, system=system, holder_call=in_holder_call())
         try:
             async with await scoped_session(factory, org_id, user_id, identity_id) as session:
                 yield session

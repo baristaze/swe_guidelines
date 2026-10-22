@@ -7,19 +7,27 @@ the shape the portal and the command line read as "try again". Each is logged
 as a warning and counted, and neither is an unhandled error, which is what an
 ERROR line or an escaped exception would report to the error tracker.
 
-The bounds here are a fraction of a second, so each case ends at once; the
+A lease's renewal is the call that must not wait on a full pool: it is served
+from the pool's reserve, within its deadline. Any other request, a read or a
+write, waits on the pool alone and is refused past the bound with the reserve
+free beside it, so the bulk work that filled the pool never drains the
+reserve.
+
+The bounds here are a second at most, so each case ends quickly; the
 defaults are not changed by anything here.
 """
 
 import logging
+import time
 from collections.abc import AsyncIterator
-from contextlib import asynccontextmanager
+from contextlib import AsyncExitStack, asynccontextmanager
 from pathlib import Path
 from typing import Any
+from uuid import uuid4
 
 import httpx
 import pytest
-from api_support import OWNER, client_over, seed_request, sign_in_as
+from api_support import OWNER, a_held_lease, ask, client_over, seed_request, sign_in_as
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine
 
@@ -165,3 +173,71 @@ async def test_a_checkout_past_its_bound_answers_unavailable(
     )
     # The pool serves again once the other checkout lets go.
     assert (await client.get("/v1/media/files", headers=owner)).status_code == 200
+
+
+CHECKOUT_BOUND = 1.0
+"""How long a call waits on a full pool before it answers 503, in the cases
+of the reserve: long enough that a call which waited on a pool shows it."""
+
+
+@pytest.fixture
+async def pools_of_one_and_a_reserve(tmp_path: Path) -> AsyncIterator[Served]:
+    """One connection per pool, a reserve of one beside each, and a checkout
+    waits a second."""
+    async with over_postgres(
+        tmp_path,
+        database_pool_size=1,
+        database_pool_reserve=1,
+        database_checkout_timeout_seconds=CHECKOUT_BOUND,
+    ) as served:
+        yield served
+
+
+@asynccontextmanager
+async def every_pool_held(container: AppContainer) -> AsyncIterator[None]:
+    """Another checkout holds the one connection of every pool the process
+    opened, on every role and under both logins, as a slow database's writes
+    do. The reserves are left free."""
+    engines = container.storage._engines  # type: ignore[attr-defined]
+    async with AsyncExitStack() as stack:
+        for (_, _, reserve), engine in engines.items():
+            if not reserve:
+                await stack.enter_async_context(engine.connect())
+        yield
+
+
+async def test_a_renewal_beside_full_pools_is_served_from_the_reserve_in_time(
+    pools_of_one_and_a_reserve: Served,
+) -> None:
+    container, client, owner = pools_of_one_and_a_reserve
+    lease_id = await a_held_lease(client, container, owner)
+
+    async with every_pool_held(container):
+        started = time.monotonic()
+        renewed = await client.post(f"/v1/leases/{lease_id}/renew", headers=owner)
+        served = time.monotonic() - started
+
+    assert renewed.status_code == 200, renewed.text
+    assert renewed.json()["status"] == "active"
+    # It never waited on a pool: one wait would have cost the whole bound.
+    assert served < CHECKOUT_BOUND
+
+
+@pytest.mark.parametrize("method", ["GET", "POST"])
+async def test_a_request_outside_the_holds_lane_never_takes_the_reserve(
+    pools_of_one_and_a_reserve: Served, method: str
+) -> None:
+    """A read and a write, each in its own lane, beside the same full pools
+    and the same free reserves: each waits the bound and is refused."""
+    container, client, owner = pools_of_one_and_a_reserve
+
+    async with every_pool_held(container):
+        started = time.monotonic()
+        if method == "GET":
+            answer = await client.get("/v1/leases", headers=owner)
+        else:
+            answer = await ask(client, owner, leasable_resource_id=str(uuid4()))
+        waited = time.monotonic() - started
+
+    assert_unavailable(answer)
+    assert waited >= CHECKOUT_BOUND

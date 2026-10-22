@@ -13,6 +13,7 @@ import pytest
 from api_support import a_held_lease, build_container
 from fastapi import FastAPI
 
+from acme.om.storage.reserve import in_holder_call
 from acme.services.api.container import AppContainer
 
 READS = 1
@@ -229,3 +230,44 @@ async def test_the_holds_lane_refuses_at_its_own_bound(
     assert (await written).status_code == 200
     release.set()
     assert (await held).status_code == 200
+
+
+async def test_a_holders_call_runs_marked_for_the_reserve_and_nothing_else_does(
+    app: FastAPI,
+    client: httpx.AsyncClient,
+    container: AppContainer,
+    owner: dict[str, str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The one mark picks the lane and the reserve: a renewal and a release
+    run marked, so their statements may take the pool's reserve, and a read
+    or a write in its own lane runs unmarked, so it never can. The mark ends
+    with the call."""
+    lease_id = await a_held_lease(client, container, owner)
+    seen: dict[str, bool] = {}
+    leases = container.managers.leases
+
+    def watched(name: str) -> Any:
+        call = getattr(leases, name)
+
+        async def recording(*args: Any, **kwargs: Any) -> Any:
+            seen[name] = in_holder_call()
+            return await call(*args, **kwargs)
+
+        return recording
+
+    for name in ("renew", "release"):
+        monkeypatch.setattr(leases, name, watched(name))
+
+    async def marked() -> dict[str, bool]:
+        return {"marked": in_holder_call()}
+
+    app.get("/v1/marked", include_in_schema=False)(marked)
+    app.post("/v1/marked", include_in_schema=False)(marked)
+
+    assert (await client.post(f"/v1/leases/{lease_id}/renew", headers=owner)).status_code == 200
+    assert (await client.post(f"/v1/leases/{lease_id}/release", headers=owner)).status_code == 200
+    assert seen == {"renew": True, "release": True}
+    for method in ("GET", "POST"):
+        assert (await client.request(method, "/v1/marked")).json() == {"marked": False}
+    assert in_holder_call() is False

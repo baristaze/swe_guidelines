@@ -33,15 +33,18 @@ module "environment" {
   # below is what differs from staging: the graph does not. The pool is
   # sized to the instance at the autoscaling ceilings, so the flip below is
   # safe: a db.t4g.small takes about 180 connections, and
-  # (2 x 3 API + 1 worker) x 2 pools x 10 + 8 for the one-off tasks is 148. The API task has half a
-  # vCPU, and the 1 GB Fargate requires at that size: the collector sidecar
-  # shares its CPU, and a page load's reads arrive together.
+  # (2 x 3 API + 1 worker) x 2 pools x 10, plus 2 x 3 API x 2 pools x 2
+  # reserved for a holder's calls, + 8 for the one-off tasks is 172. The
+  # API task has half a vCPU, and the 1 GB Fargate requires at that size:
+  # the collector sidecar shares its CPU, and a page load's reads arrive
+  # together.
   vpc_cidr                     = "10.20.0.0/16"
   bucket_prefix                = "acme-production"
   database_instance_class      = "db.t4g.small"
   database_multi_az            = false
   database_deletion_protection = true
   database_pool_size           = 10
+  database_pool_reserve        = 2
   cache_node_type              = "cache.t4g.micro"
   cache_node_count             = 1
   api_desired_count            = 1

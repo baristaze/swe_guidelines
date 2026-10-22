@@ -90,6 +90,10 @@ route are in no document:
   holder's own writes have spent does not refuse it at the rate limit,
   and a full write lane does not refuse it at admission
   ([ADR 0106](../../docs/adr/0106-a-holders-calls-are-counted-apart-from-its-writes.md)).
+  Admitted, it takes a connection of the pool when one is free and the
+  pool's reserve (`ACME_DATABASE_POOL_RESERVE`) when none is, so a slow
+  database that fills the pool with writes still serves it
+  ([ADR 0108](../../docs/adr/0108-a-holders-call-has-a-reserve-at-the-database-pool.md)).
 - **A deadline on every admitted request.** A request gets one when it
   takes its slot, `ACME_REQUEST_DEADLINE_SECONDS` (20) from then, and
   every call it makes to WorkOS or AWS shares it. A

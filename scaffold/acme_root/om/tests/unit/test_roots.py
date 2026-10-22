@@ -53,8 +53,9 @@ async def test_postgres_root_opens_one_engine_per_distinct_url_and_login() -> No
     pools = settings.role_pools()
     root = StoragePostgresImpl(settings.role_urls(), pools, system_urls=settings.system_role_urls())
     assert isinstance(root.get_tenancy_storage(), TenancyStorageInterface)
-    # One pool under the runtime login and one under the system login.
-    assert len(root._engines) == 2
+    # One pool under the runtime login and one under the system login, each
+    # with its reserve beside it.
+    assert sorted(reserve for _, _, reserve in root._engines) == [False, False, True, True]
     await root.close()
 
     split = StorageSettings.model_validate(
@@ -66,7 +67,7 @@ async def test_postgres_root_opens_one_engine_per_distinct_url_and_login() -> No
         }
     )
     root = StoragePostgresImpl(split.role_urls(), pools, system_urls=split.system_role_urls())
-    assert len(root._engines) == 4
+    assert len([key for key in root._engines if not key[2]]) == 4
     await root.close()
 
 

@@ -40,13 +40,15 @@ bounded by its lease.
 **It is one instant for the request, never a deadline per call, and it
 rides the context.** Calls made one after another share what is left. A
 deadline per call bounds one call, not three in turn. The guideline
-allows one context variable, the request id for the logs (CTX-07), so
-the deadline is a field of `RequestContext`, and a manager hands it to
-each call as an argument. A call takes a deadline exactly when a
-request can make it: the identity provider's sign-ins, organizations,
-invitations, and admin portal link; and AWS's queue send, secret reads
-and writes, and object put, get, and head. A test scans the managers
-and the API's services for such a call without one.
+allows a context variable only for what decides nothing a call returns:
+the request id for the logs, and the mark that takes a holder's call to
+the pool's reserve (CTX-07). A deadline decides, so it is a field of
+`RequestContext`, and a manager hands it to each call as an argument.
+A call takes a deadline exactly when a request can make it: the
+identity provider's sign-ins, organizations, invitations, and admin
+portal link; and AWS's queue send, secret reads and writes, and object
+put, get, and head. A test scans the managers and the API's services
+for such a call without one.
 
 **Each client keeps to it** (`acme.infra.deadline.bounded`):
 

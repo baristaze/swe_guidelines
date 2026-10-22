@@ -40,11 +40,14 @@ ends inside its own."""
 class RolePool:
     """The bounds one role's pool runs under: how many connections it opens, how
     long a checkout waits before it fails, and the deadline every statement on
-    it carries. Both bounds are in seconds."""
+    it carries. Both bounds are in seconds. The reserve is the connections
+    beside the pool that only a holder's call takes, under the same two
+    bounds; zero is none (`impl/pg_base.py`, `Reserve`)."""
 
     size: int
     checkout_timeout_seconds: float
     statement_timeout_seconds: float
+    reserve: int = 0
 
 
 class StorageSettings(BaseSettings):
@@ -88,6 +91,20 @@ class StorageSettings(BaseSettings):
     database_statement_timeout_seconds_activity: float | None = Field(default=None, gt=0)
     database_statement_timeout_seconds_queue: float | None = Field(default=None, gt=0)
     database_statement_timeout_seconds_admin: float | None = Field(default=None, gt=0)
+
+    # Beside every pool, a reserve of a few connections that only a holder's
+    # call takes: a lease's renewal or release, a heartbeat, a result. Such a
+    # call takes a connection of the pool when one is free and the reserve
+    # only when none is, so a slow database that fills the pool still serves
+    # the call that keeps a lease, and the requests that filled it never
+    # reach the reserve. The reserve opens no connection until a holder's
+    # call needs one, so a process that serves none opens none. Zero is no
+    # reserve, so a role's own zero is read as zero, never as unset.
+    database_pool_reserve: int = Field(default=2, ge=0)
+    database_pool_reserve_core: int | None = Field(default=None, ge=0)
+    database_pool_reserve_activity: int | None = Field(default=None, ge=0)
+    database_pool_reserve_queue: int | None = Field(default=None, ge=0)
+    database_pool_reserve_admin: int | None = Field(default=None, ge=0)
 
     def refuse_remote(self) -> None:
         """For a development command (the seed, `make migrate`, the integration
@@ -157,6 +174,16 @@ class StorageSettings(BaseSettings):
             DatabaseRole.QUEUE: self.database_statement_timeout_seconds_queue,
             DatabaseRole.ADMIN: self.database_statement_timeout_seconds_admin,
         }
+        # A reserve of zero is no reserve, so a role's own zero stands.
+        reserves = {
+            role: self.database_pool_reserve if own is None else own
+            for role, own in {
+                DatabaseRole.CORE: self.database_pool_reserve_core,
+                DatabaseRole.ACTIVITY: self.database_pool_reserve_activity,
+                DatabaseRole.QUEUE: self.database_pool_reserve_queue,
+                DatabaseRole.ADMIN: self.database_pool_reserve_admin,
+            }.items()
+        }
         return {
             role: RolePool(
                 size=sizes[role] or self.database_pool_size,
@@ -166,6 +193,7 @@ class StorageSettings(BaseSettings):
                 statement_timeout_seconds=(
                     statements[role] or self.database_statement_timeout_seconds
                 ),
+                reserve=reserves[role],
             )
             for role in DatabaseRole
         }

@@ -31,7 +31,8 @@ module "environment" {
   # Everything below is what makes this environment the smaller one. The
   # pool is sized to the instance at the autoscaling ceilings, so the flip
   # below is safe: a db.t4g.micro takes about 80 connections, and
-  # (2 x 2 API + 1 worker) x 2 pools x 6 + 8 for the one-off tasks is 68.
+  # (2 x 2 API + 1 worker) x 2 pools x 6, plus 2 x 2 API x 2 pools x 1
+  # reserved for a holder's calls, + 8 for the one-off tasks is 76.
   # The API task has half a vCPU, and the 1 GB Fargate requires at that
   # size: the collector sidecar shares its CPU, and a page load's reads
   # arrive together.
@@ -41,6 +42,7 @@ module "environment" {
   database_multi_az            = false
   database_deletion_protection = false
   database_pool_size           = 6
+  database_pool_reserve        = 1
   cache_node_type              = "cache.t4g.micro"
   cache_node_count             = 1
   api_desired_count            = 1

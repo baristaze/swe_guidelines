@@ -5,15 +5,17 @@ These cases prove the numbers do what they say on a real connection: every
 contract case over Postgres runs under the settings' own deadline, a
 statement past its deadline is cancelled by the database, and a checkout past
 the pool waits its bound and fails. Through the storage funnel, both leave as
-`Unavailable`, on every role and under both logins. The cases after the first
-set small bounds of their own, so each answers in a fraction of a second; the
-defaults are not changed by anything here.
+`Unavailable`, on every role and under both logins. Beside a full pool, a
+holder's call is served from the pool's reserve and nothing else is. The cases
+after the first set small bounds of their own, so each answers in a fraction
+of a second; the defaults are not changed by anything here.
 """
 
 import logging
 import time
-from collections.abc import AsyncIterator
-from typing import Any
+from collections.abc import AsyncIterator, Mapping
+from dataclasses import dataclass
+from typing import Any, cast
 from uuid import UUID
 
 import pytest
@@ -21,14 +23,16 @@ from sqlalchemy import event, text
 from sqlalchemy.engine import Dialect
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.exc import TimeoutError as PoolTimeoutError
-from sqlalchemy.pool import ConnectionPoolEntry
+from sqlalchemy.ext.asyncio import AsyncEngine
+from sqlalchemy.pool import ConnectionPoolEntry, QueuePool
 
 from acme.om.base import EMPTY_UUID, new_id
 from acme.om.change_events.storage.tables.change_events import ChangeEvents
 from acme.om.exceptions import Unavailable
 from acme.om.media.storage.tables.files import Files
-from acme.om.storage.impl.pg_base import LoginSessions, PgStorageBase
-from acme.om.storage.impl.postgres import login_sessions
+from acme.om.storage.impl.pg_base import LoginSessions, PgStorageBase, SessionFactory
+from acme.om.storage.impl.postgres import EngineKey, login_sessions
+from acme.om.storage.reserve import as_holder_call
 from acme.om.storage.roles import DatabaseRole
 from acme.om.storage.settings import MigrationSettings, RolePool
 from acme.om.tenancy.storage.tables.system_sizes import SystemSizes
@@ -166,6 +170,111 @@ async def test_a_checkout_past_its_bound_leaves_the_funnel_unavailable(
         refused.value.message
     )
     assert isinstance(refused.value.__cause__, PoolTimeoutError)
+
+
+RESERVED = RolePool(size=1, checkout_timeout_seconds=0.3, statement_timeout_seconds=0.3, reserve=1)
+"""One connection per pool, a reserve of one beside it, and the short bounds
+of `tight_sessions`."""
+
+
+@dataclass
+class Reserved:
+    """The sessions of both logins over pools of `RESERVED`, the URL each
+    login's role is on, and the engines behind them by their key."""
+
+    sessions: LoginSessions
+    urls: dict[str, dict[DatabaseRole, str]]
+    engines: dict[EngineKey, AsyncEngine]
+
+    def pool(self, role: DatabaseRole, login: str, *, reserve: bool = False) -> QueuePool:
+        """The pool a call of the role under the login draws on, or its reserve."""
+        return cast(QueuePool, self.engines[(self.urls[login][role], RESERVED, reserve)].pool)
+
+    def general(self, login: str) -> Mapping[DatabaseRole, SessionFactory]:
+        """The sessions of the login's pools, as a test that holds one opens them."""
+        return self.sessions.system if login == "system" else self.sessions
+
+
+@pytest.fixture
+async def reserved(
+    migration_settings: MigrationSettings, migrated: dict[DatabaseRole, str]
+) -> AsyncIterator[Reserved]:
+    """As `tight_sessions`, with a reserve of one beside each pool."""
+    urls = {
+        "runtime": migration_settings.role_urls(),
+        "system": migration_settings.system_role_urls(),
+    }
+    sessions, engines = login_sessions(
+        urls["runtime"], dict.fromkeys(DatabaseRole, RESERVED), system_urls=urls["system"]
+    )
+    opening = migration_settings.database_checkout_timeout_seconds
+
+    def open_within_the_settings_bound(
+        dialect: Dialect, record: ConnectionPoolEntry, args: list[Any], params: dict[str, Any]
+    ) -> None:
+        params["timeout"] = opening
+
+    for engine in engines.values():
+        event.listen(engine.sync_engine, "do_connect", open_within_the_settings_bound)
+    yield Reserved(sessions, urls, engines)
+    for engine in engines.values():
+        await engine.dispose()
+
+
+@pytest.mark.parametrize("login", LOGINS)
+@pytest.mark.parametrize("role", list(DatabaseRole))
+async def test_a_holders_call_beside_a_full_pool_is_served_from_its_reserve(
+    reserved: Reserved, role: DatabaseRole, login: str
+) -> None:
+    """Another checkout holds the pool's one connection, as a slow database's
+    writes do. A holder's call does not wait on it: the reserve serves it at
+    once, well inside the checkout bound it would otherwise wait out."""
+    storage = PgStorageBase(reserved.sessions)
+    async with reserved.general(login)[role]() as holder:
+        await holder.connection()
+        assert reserved.pool(role, login).checkedout() == 1
+        started = time.monotonic()
+        with as_holder_call():
+            async with storage._session_for(A_TABLE_OF[role], org_id=scope_of(login)) as session:
+                assert (await session.execute(text("SELECT 1"))).scalar_one() == 1
+                assert reserved.pool(role, login, reserve=True).checkedout() == 1
+        served = time.monotonic() - started
+    assert served < RESERVED.checkout_timeout_seconds
+
+
+@pytest.mark.parametrize("login", LOGINS)
+async def test_a_holders_call_takes_the_pool_while_it_has_a_connection_to_give(
+    reserved: Reserved, login: str
+) -> None:
+    """The reserve is for a full pool only: a pool with a connection free
+    serves a holder's call, and the reserve opens none."""
+    storage = PgStorageBase(reserved.sessions)
+    role = DatabaseRole.CORE
+    with as_holder_call():
+        async with storage._session_for(A_TABLE_OF[role], org_id=scope_of(login)) as session:
+            await session.execute(text("SELECT 1"))
+            assert reserved.pool(role, login).checkedout() == 1
+            assert reserved.pool(role, login, reserve=True).checkedout() == 0
+
+
+@pytest.mark.parametrize("login", LOGINS)
+@pytest.mark.parametrize("role", list(DatabaseRole))
+async def test_a_call_outside_a_holders_never_takes_the_reserve(
+    reserved: Reserved, role: DatabaseRole, login: str
+) -> None:
+    """With the pool full and its reserve free, any other call waits the
+    checkout bound on the pool and is refused: bulk work cannot drain the
+    reserve, however long it waits."""
+    storage = PgStorageBase(reserved.sessions)
+    async with reserved.general(login)[role]() as holder:
+        await holder.connection()
+        with pytest.raises(Unavailable) as refused:
+            async with storage._session_for(A_TABLE_OF[role], org_id=scope_of(login)) as session:
+                await session.execute(text("SELECT 1"))
+        assert reserved.pool(role, login, reserve=True).checkedout() == 0
+    assert f"no connection to the {role.value} role ({login} login) within the checkout bound" in (
+        refused.value.message
+    )
 
 
 async def test_a_failing_statement_is_logged_without_the_values_bound_to_it(

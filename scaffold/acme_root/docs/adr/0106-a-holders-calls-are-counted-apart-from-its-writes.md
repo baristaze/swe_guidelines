@@ -61,9 +61,11 @@ A holder whose writes are spent still renews, and a renewal past its
 own budget answers 429 and spends no write. A full write lane still
 admits a renewal and a release.
 
-The lane stops at admission. An admitted renewal takes its connection
-from the pool the writes use, under the same checkout bound, and a pool
-that frees none in time answers it 503 as it answers them.
+The lane stops at admission, and the same mark carries the call on to
+the database: an admitted renewal takes a connection of the pool when
+one is free and the pool's reserve when none is, so a pool the writes
+have filled still serves it
+([ADR 0108](0108-a-holders-call-has-a-reserve-at-the-database-pool.md)).
 
 A client that renews too often is refused by its own budget, and a
 flood of renewals by the holds lane's bound. Neither takes anything
