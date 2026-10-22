@@ -74,6 +74,10 @@ def test_the_printed_logins_exchange_for_sessions_in_a_seeded_org(
     """What the traffic generator reads: one login a line, in the order the
     addresses were given, each exchanged for a session in the seeded org."""
     monkeypatch.setenv("ACME_ENVIRONMENT", "test")
+    # The process counts as booted, so neither the command nor the app below
+    # configures its logging: a boot here would bind the process's handler to
+    # this test's captured stream, which closes when the test ends.
+    monkeypatch.setattr("acme.services.api.container._booted", True)
     storage = StorageMemoryImpl()
     seeding = build_container(clean_env, storage)
     _, org = run(
