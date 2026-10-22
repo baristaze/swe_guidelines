@@ -20,7 +20,7 @@ import re
 from collections.abc import Iterator
 
 from arch_check.model import Violation
-from arch_check.project import Project, SourceFile, decorator_names, dotted, is_under, last, methods, parameters
+from arch_check.project import Project, SourceFile, decorator_names, dotted, is_under, last, methods, nodes, parameters
 from arch_check.registry import rule
 from arch_check.rules._om_util import (
     MIXIN_FIELDS,
@@ -301,7 +301,7 @@ def mixins_declare_exactly_their_fields(project: Project) -> Iterator[Violation]
     for file, tree in project.trees(*above_storage(project)):
         if file.module == idx.base_module:
             continue
-        for node in ast.walk(tree):
+        for node in nodes(tree):
             target = None
             if isinstance(node, ast.Assign):
                 target = next((t for t in node.targets if isinstance(t, ast.Name) and t.id == "PROVENANCE_FIELDS"), None)
@@ -470,7 +470,7 @@ def filters_are_typed(project: Project) -> Iterator[Violation]:
     an `order_by` is not read. Whether one filter type travels through both
     interfaces is judged."""
     for file, tree in project.trees(project.sub("om")):
-        for cls in (n for n in ast.walk(tree) if isinstance(n, ast.ClassDef)):
+        for cls in (n for n in nodes(tree) if isinstance(n, ast.ClassDef)):
             if not cls.name.endswith(("ManagerInterface", "StorageInterface")):
                 continue
             for fn in methods(cls):
@@ -543,7 +543,7 @@ def entities_are_immutable(project: Project) -> Iterator[Violation]:
             yield Violation.at(info.file.rel, node, f"{info.node.name} unfreezes itself; an entity is a frozen snapshot")
     for file, tree in project.trees(*above_storage(project)):
         reported: set[int] = set()
-        for fn in (n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef | ast.AsyncFunctionDef)):
+        for fn in (n for n in nodes(tree) if isinstance(n, ast.FunctionDef | ast.AsyncFunctionDef)):
             entities = chain_params(idx, file.module, fn)
             dumped: set[str] = set()
             for node in ast.walk(fn):
@@ -638,7 +638,7 @@ def ids_are_minted_by_new_id(project: Project) -> Iterator[Violation]:
                 for name in imp.names:
                     if name in OTHER_FACTORIES or (name == "uuid7" and not in_base):
                         yield Violation.at(file.rel, imp.node, f"{file.module} imports uuid.{name}; every id comes from new_id()")
-        for node in ast.walk(tree):
+        for node in nodes(tree):
             # A call and a reference alike: `uuid.uuid4()`, and `Field(default_factory=uuid.uuid4)`,
             # which mints the same id later. A bare `uuid4` is reported at its import;
             # `u.uuid4` after `import uuid as u` is read through it.
@@ -712,7 +712,7 @@ def empty_uuid_defined_once(project: Project) -> Iterator[Violation]:
             yield Violation(base.rel, getattr(found, "lineno", 1), 1, f"{idx.base_module} defines no EMPTY_UUID = UUID(int=0)")
     for file, tree in project.trees(*above_storage(project)):
         in_base = file.module == idx.base_module
-        for node in ast.walk(tree):
+        for node in nodes(tree):
             if isinstance(node, ast.Assign | ast.AnnAssign):
                 targets = node.targets if isinstance(node, ast.Assign) else [node.target]
                 if not in_base and any(isinstance(t, ast.Name) and t.id == "EMPTY_UUID" for t in targets):
@@ -854,7 +854,7 @@ def rules_are_pure(project: Project) -> Iterator[Violation]:
                         file.rel, imp.node, f"{file.module} imports {target}; a rule reads no storage, settings, or clock"
                     )
                     break
-        for node in ast.walk(tree):
+        for node in nodes(tree):
             if isinstance(node, ast.AsyncFunctionDef):
                 yield Violation.at(file.rel, node, f"async def {node.name}: a rule is a plain function over values")
             elif isinstance(node, ast.Call):

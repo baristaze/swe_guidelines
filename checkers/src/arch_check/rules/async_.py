@@ -18,7 +18,19 @@ import re
 from collections.abc import Collection, Iterator
 
 from arch_check.model import Violation
-from arch_check.project import Import, Project, SourceFile, base_names, classes, dotted, is_under, last, methods, parameters
+from arch_check.project import (
+    Import,
+    Project,
+    SourceFile,
+    base_names,
+    classes,
+    dotted,
+    is_under,
+    last,
+    methods,
+    nodes,
+    parameters,
+)
 from arch_check.registry import rule
 from arch_check.rules._storage_util import (
     call_name,
@@ -263,7 +275,7 @@ def no_ambient_infra(project: Project) -> Iterator[Violation]:
             called = builds(node.value if isinstance(node, ast.Assign | ast.AnnAssign) else None)
             if called:
                 yield Violation.at(file.rel, node, f"a module-level {called}(); an infra handle arrives through a constructor")
-        for fn in ast.walk(tree):
+        for fn in nodes(tree):
             if not isinstance(fn, ast.FunctionDef | ast.AsyncFunctionDef | ast.Lambda):
                 continue
             for default in [*fn.args.defaults, *fn.args.kw_defaults]:
@@ -411,7 +423,7 @@ def caches_are_scoped(project: Project) -> Iterator[Violation]:
     for f, tree in project.trees():
         if is_under(f.module, infra):
             continue
-        for node in ast.walk(tree):
+        for node in nodes(tree):
             if not (isinstance(node, ast.Call) and last(dotted(node.func)) == "get_cache"):
                 continue
             if f.rel in managers:
@@ -455,7 +467,7 @@ def storage_never_caches(project: Project) -> Iterator[Violation]:
             if hit:
                 node = next(
                     n
-                    for n in ast.walk(tree)
+                    for n in nodes(tree)
                     if (isinstance(n, ast.Name) and n.id == hit)
                     or (isinstance(n, ast.Attribute) and n.attr == hit)
                     or (isinstance(n, ast.Constant) and n.value == hit)
@@ -514,7 +526,7 @@ def buckets_are_an_enum(project: Project) -> Iterator[Violation]:
     for f, tree in project.trees():
         if is_under(f.module, infra):
             continue
-        for node in ast.walk(tree):
+        for node in nodes(tree):
             if isinstance(node, ast.Call):
                 value = kwarg(node, "bucket")
                 if isinstance(value, ast.Constant) and isinstance(value.value, str):
@@ -589,7 +601,7 @@ def topics_are_fixed(project: Project) -> Iterator[Violation]:
     for f, t in project.trees():
         if is_under(f.module, infra):
             continue
-        for node in ast.walk(t):
+        for node in nodes(t):
             if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and node.func.attr == "publish":
                 topic = node.args[0] if node.args else kwarg(node, "topic")
                 if isinstance(topic, ast.Constant) and isinstance(topic.value, str):
@@ -638,7 +650,7 @@ EDGE = ["*.realtime", "*.realtime.*"]
 def bindings(tree: ast.Module) -> dict[str, str]:
     """Each name an import binds in a module, to the dotted name it stands for."""
     out: dict[str, str] = {}
-    for node in ast.walk(tree):
+    for node in nodes(tree):
         if isinstance(node, ast.Import):
             for a in node.names:
                 if a.asname:
@@ -669,7 +681,7 @@ def held(tree: ast.Module, bound: dict[str, str]) -> tuple[set[str], set[str]]:
     """
     loops: set[str] = set()
     executors: set[str] = set()
-    for node in ast.walk(tree):
+    for node in nodes(tree):
         value: ast.expr | None = None
         targets: list[ast.expr] = []
         if isinstance(node, ast.Assign):
@@ -763,8 +775,8 @@ def services_spawn_nothing(project: Project) -> Iterator[Violation]:
                 yield Violation.at(file.rel, imp.node, f"a web service imports {imp.module}; recurring work is a worker")
         bound = bindings(tree)
         loops, executors = held(tree, bound)
-        awaited = {id(n.value) for n in ast.walk(tree) if isinstance(n, ast.Await)}
-        for node in ast.walk(tree):
+        awaited = {id(n.value) for n in nodes(tree) if isinstance(n, ast.Await)}
+        for node in nodes(tree):
             if isinstance(node, ast.Call):
                 name = resolved(node.func, bound)
                 attr = node.func.attr if isinstance(node.func, ast.Attribute) else None
@@ -1035,7 +1047,7 @@ def secrets_files_are_private(project: Project) -> Iterator[Violation]:
     of the file's content, in the reading function itself or in a function of the same module it calls first.
     Opening the file is not yet the read: an `fstat` of the open handle before reading it is the check."""
     for file, tree in project.trees(f"{project.sub('infra')}.secrets"):
-        fns = [n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef | ast.AsyncFunctionDef)]
+        fns = [n for n in nodes(tree) if isinstance(n, ast.FunctionDef | ast.AsyncFunctionDef)]
         helpers = {fn.name for fn in fns if checks_mode([n for s in fn.body for n in ast.walk(s)])}
         for fn in fns:
             body = [n for s in fn.body for n in ast.walk(s)]

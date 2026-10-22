@@ -28,6 +28,7 @@ from arch_check.project import (
     is_under,
     last,
     methods,
+    nodes,
     top_classes,
 )
 from arch_check.registry import rule
@@ -427,7 +428,7 @@ def authorization_in_managers(project: Project) -> Iterator[Violation]:
     for file, tree in project.trees():
         if not (in_om_storage(project, file.module) or service_part(project, file.module) == "routers"):
             continue
-        for node in ast.walk(tree):
+        for node in nodes(tree):
             # `Permission.WRITE` is a read; `RolePermission.role_id` is a column of a row that shares the suffix
             if (
                 isinstance(node, ast.Attribute)
@@ -567,7 +568,7 @@ def payloads_carry_the_tenant(project: Project) -> Iterator[Violation]:
         for cls in classes(tree):
             if cls.name == "TopicPayload" and not carries_org_id(cls):
                 yield Violation.at(file.rel, cls, "TopicPayload declares no org_id; every payload carries the tenant")
-        for node in ast.walk(tree):
+        for node in nodes(tree):
             target: ast.expr | None = node.target if isinstance(node, ast.AnnAssign) else None
             if isinstance(node, ast.Assign) and len(node.targets) == 1:
                 target = node.targets[0]
@@ -668,7 +669,7 @@ def stage_hierarchy(project: Project) -> Iterator[Violation]:
 def annotation_names(tree: ast.Module) -> set[str]:
     """Every name spelled in an annotation of a module, and in a class's bases."""
     found: set[str] = set()
-    for node in ast.walk(tree):
+    for node in nodes(tree):
         if isinstance(node, ast.arg | ast.AnnAssign):
             found |= names_in(node.annotation)
         elif isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef):
@@ -741,7 +742,7 @@ def operator_writes_own_provenance(project: Project) -> Iterator[Violation]:
     for file, tree in project.trees():
         aliases = imported_names(project, file)
         names = stage_names(project, file, tree)
-        for fn in (n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef | ast.AsyncFunctionDef)):
+        for fn in (n for n in nodes(tree) if isinstance(n, ast.FunctionDef | ast.AsyncFunctionDef)):
             args = [*fn.args.posonlyargs, *fn.args.args]
             if args and args[0].arg in {"self", "cls"}:
                 args = args[1:]

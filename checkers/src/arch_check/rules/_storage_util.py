@@ -18,7 +18,7 @@ import re
 from collections.abc import Iterator
 from dataclasses import dataclass, field
 
-from arch_check.project import Project, SourceFile, base_names, classes, dotted, is_under, keywords, last, methods
+from arch_check.project import Project, SourceFile, base_names, classes, dotted, is_under, keywords, last, methods, nodes
 from arch_check.rules._text_util import kwarg
 
 SQL_DIR = "om/migrations/sql"
@@ -110,14 +110,14 @@ def is_docstring(node: ast.stmt) -> bool:
     return isinstance(node, ast.Expr) and isinstance(node.value, ast.Constant) and isinstance(node.value.value, str)
 
 
-def string_constants(tree: ast.AST) -> Iterator[ast.Constant]:
+def string_constants(tree: ast.Module) -> Iterator[ast.Constant]:
     """Every string constant of a tree that is not a docstring."""
     docs = {
         id(n.value)
-        for n in ast.walk(tree)
+        for n in nodes(tree)
         if isinstance(n, ast.Expr) and isinstance(n.value, ast.Constant) and isinstance(n.value.value, str)
     }
-    for n in ast.walk(tree):
+    for n in nodes(tree):
         if isinstance(n, ast.Constant) and isinstance(n.value, str) and id(n) not in docs:
             yield n
 

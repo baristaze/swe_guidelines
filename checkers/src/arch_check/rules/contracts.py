@@ -17,7 +17,7 @@ from collections.abc import Iterator
 
 from arch_check.config import ConfigError
 from arch_check.model import ToJudge, Violation
-from arch_check.project import Function, Project, SourceFile, classes, decorator_names, dotted, is_under, last, methods
+from arch_check.project import Function, Project, SourceFile, classes, decorator_names, dotted, is_under, last, methods, nodes
 from arch_check.registry import rule
 from arch_check.rules._contracts_util import (
     HTTP_VERBS,
@@ -261,7 +261,7 @@ def memory_impls_are_whole(project: Project) -> Iterator[Violation]:
     for file, tree in project.trees(project.sub("om"), project.sub("infra")):
         if not is_memory_module(project, file):
             continue
-        for node in ast.walk(tree):
+        for node in nodes(tree):
             if isinstance(node, ast.Raise) and raises_not_implemented(node):
                 yield Violation.at(file.rel, node, "a memory impl raises NotImplementedError; it is a full implementation")
         for cls in classes(tree):
@@ -693,7 +693,7 @@ def routers_bind_only(project: Project) -> Iterator[Violation]:
     for file, tree in project.trees(project.sub("services")):
         if service_part(project, file.module) != "routers":
             continue
-        for node in ast.walk(tree):
+        for node in nodes(tree):
             if not isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef) or route_verb(node) is None:
                 continue
             if not one_awaited_call(node) and not route_paths(node) & PROBE_PATHS:

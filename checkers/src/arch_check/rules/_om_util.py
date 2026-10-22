@@ -20,7 +20,7 @@ import weakref
 from collections.abc import Iterator
 from dataclasses import dataclass
 
-from arch_check.project import Project, SourceFile, dotted, is_under, last
+from arch_check.project import Project, SourceFile, dotted, is_under, last, nodes
 
 Key = tuple[str, str]
 """A class by (module, name)."""
@@ -76,7 +76,7 @@ class Index:
         self.stars: dict[str, list[str]] = {}
         for file, tree in project.trees():
             names: dict[str, str] = {}
-            for node in ast.walk(tree):
+            for node in nodes(tree):
                 if isinstance(node, ast.Import):
                     for a in node.names:
                         if a.asname:

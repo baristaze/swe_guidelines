@@ -247,7 +247,7 @@ class Project:
         out: list[Import] = []
         t = self.tree(file)
         if t is not None:
-            for node in ast.walk(t):
+            for node in nodes(t):
                 if isinstance(node, ast.Import):
                     out.extend(Import(module=a.name, names=(), node=node) for a in node.names)
                 elif isinstance(node, ast.ImportFrom):
@@ -385,20 +385,37 @@ def last(name: str | None) -> str | None:
     return name.rpartition(".")[2] if name else None
 
 
+_NODES: weakref.WeakKeyDictionary[ast.Module, tuple[ast.AST, ...]] = weakref.WeakKeyDictionary()
+"""The nodes `nodes` found in each module, kept while the module lives."""
+
 _CLASSES: weakref.WeakKeyDictionary[ast.AST, tuple[ast.ClassDef, ...]] = weakref.WeakKeyDictionary()
 """The classes `classes` found under each tree, kept while the tree lives."""
+
+
+def nodes(tree: ast.Module) -> tuple[ast.AST, ...]:
+    """Every node of a module, in the order `ast.walk` yields them.
+
+    Most rules walk every module, so a module is walked on the first
+    call alone, and later calls read what it found. No rule edits a
+    tree. A part of a module (a class, a function) is walked with
+    `ast.walk`, since few are walked twice.
+    """
+    found = _NODES.get(tree)
+    if found is None:
+        found = _NODES[tree] = tuple(ast.walk(tree))
+    return found
 
 
 def classes(tree: ast.AST) -> list[ast.ClassDef]:
     """Every class defined anywhere under `tree`, nested ones included, in source order.
 
-    The rules ask for a module's classes tens of times each, so the tree
-    is walked on the first call alone, and later calls read what it
-    found. No rule edits a tree. Each call returns a list of its own.
+    The rules ask for a module's classes tens of times each, so they are
+    found on the first call alone, and later calls read what it found.
+    Each call returns a list of its own.
     """
     found = _CLASSES.get(tree)
     if found is None:
-        walked = [n for n in ast.walk(tree) if isinstance(n, ast.ClassDef)]
+        walked = [n for n in (nodes(tree) if isinstance(tree, ast.Module) else ast.walk(tree)) if isinstance(n, ast.ClassDef)]
         found = _CLASSES[tree] = tuple(sorted(walked, key=lambda n: (n.lineno, n.col_offset)))
     return list(found)
 

@@ -11,7 +11,7 @@ from __future__ import annotations
 import ast
 from collections.abc import Iterator
 
-from arch_check.project import Function, Project, SourceFile, classes, dotted, is_under, last, methods
+from arch_check.project import Function, Project, SourceFile, classes, dotted, is_under, last, methods, nodes
 
 STAGES = ("RequestContext", "IdentityContext", "TenantContext", "OperatorContext")
 """The four stages, by the names the guideline gives them (TenantContext, Stages)."""
@@ -196,7 +196,7 @@ def stage_file_of(project: Project, node: ast.AST) -> SourceFile | None:
     """The file of the stage package whose tree holds a node: a class, or a field inside one."""
     for file in stage_files(project):
         tree = project.tree(file)
-        if tree is not None and any(n is node for n in ast.walk(tree)):
+        if tree is not None and any(n is node for n in nodes(tree)):
             return file
     return None
 

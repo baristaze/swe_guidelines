@@ -16,7 +16,7 @@ import sys
 from collections.abc import Iterator
 
 from arch_check.model import Violation
-from arch_check.project import Project, SourceFile, base_names, classes, dotted, is_under, last
+from arch_check.project import Project, SourceFile, base_names, classes, dotted, is_under, last, nodes
 from arch_check.registry import rule
 from arch_check.rules._text_util import (
     Instruction,
@@ -683,7 +683,7 @@ def infra_exception_root(project: Project) -> Iterator[Violation]:
         if is_under(file.module, infra):
             continue
         names = imported_names(project, file)
-        for node in ast.walk(tree):
+        for node in nodes(tree):
             if not isinstance(node, ast.ExceptHandler):
                 continue
             for expr, written in except_names(node):
@@ -713,10 +713,10 @@ BOOT_MODULES = [
 LOGGING_LIBRARIES = ("structlog", "loguru", "eliot", "logbook")
 
 
-def logging_objects(tree: ast.AST, names: dict[str, str]) -> set[str]:
+def logging_objects(tree: ast.Module, names: dict[str, str]) -> set[str]:
     """The names a module binds to something built by `logging`: `log = logging.getLogger(__name__)`."""
     out: set[str] = set()
-    for node in ast.walk(tree):
+    for node in nodes(tree):
         if (
             isinstance(node, ast.Assign | ast.AnnAssign)
             and isinstance(node.value, ast.Call)
@@ -775,7 +775,7 @@ def standard_logging(project: Project) -> Iterator[Violation]:
             continue
         names = imported_names(project, file)
         bound = logging_objects(tree, names)
-        for node in ast.walk(tree):
+        for node in nodes(tree):
             if not isinstance(node, ast.Call):
                 continue
             full = call_name(node, names) or ""
@@ -1065,7 +1065,7 @@ def bounded_labels(project: Project) -> Iterator[Violation]:
     """
     for file, tree in project.trees():
         names = imported_names(project, file)
-        for node in ast.walk(tree):
+        for node in nodes(tree):
             if not isinstance(node, ast.Call):
                 continue
             full = call_name(node, names) or ""

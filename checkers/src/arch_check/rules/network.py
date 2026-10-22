@@ -15,7 +15,7 @@ import re
 from collections.abc import Iterator
 
 from arch_check.model import Violation
-from arch_check.project import Project, SourceFile, base_names, classes, dotted, is_under, last
+from arch_check.project import Project, SourceFile, base_names, classes, dotted, is_under, last, nodes
 from arch_check.registry import rule
 from arch_check.rules._storage_util import config_value, is_true
 from arch_check.rules._text_util import (
@@ -59,7 +59,7 @@ def service_files(project: Project, *parts: str) -> list[SourceFile]:
 
 def routes(tree: ast.Module) -> Iterator[tuple[ast.FunctionDef | ast.AsyncFunctionDef, ast.Call, str]]:
     """(function, decorator call, verb) for every function decorated `@<router>.<verb>(...)`."""
-    for node in ast.walk(tree):
+    for node in nodes(tree):
         if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef):
             for d in node.decorator_list:
                 if isinstance(d, ast.Call) and isinstance(d.func, ast.Attribute) and d.func.attr in VERBS:
@@ -127,7 +127,7 @@ def request_params(fn: ast.FunctionDef | ast.AsyncFunctionDef | ast.Lambda, name
     return out
 
 
-def header_reads(tree: ast.AST, names: dict[str, str]) -> Iterator[ast.Attribute]:
+def header_reads(tree: ast.Module, names: dict[str, str]) -> Iterator[ast.Attribute]:
     """Every `.headers` read on a request parameter, judged in the function that has the parameter.
 
     A name is a request only where a function takes it (a closure inside
@@ -136,7 +136,7 @@ def header_reads(tree: ast.AST, names: dict[str, str]) -> Iterator[ast.Attribute
     """
     stores = written(tree)
     seen: set[int] = set()
-    for fn in ast.walk(tree):
+    for fn in nodes(tree):
         if not isinstance(fn, ast.FunctionDef | ast.AsyncFunctionDef | ast.Lambda):
             continue
         inbound = request_params(fn, names)
@@ -154,10 +154,10 @@ def header_reads(tree: ast.AST, names: dict[str, str]) -> Iterator[ast.Attribute
                 yield node
 
 
-def written(tree: ast.AST) -> set[int]:
+def written(tree: ast.Module) -> set[int]:
     """The ids of `.headers` nodes a statement writes into: `response.headers["Location"] = ...`."""
     out: set[int] = set()
-    for node in ast.walk(tree):
+    for node in nodes(tree):
         if isinstance(node, ast.Subscript) and isinstance(node.ctx, ast.Store | ast.Del):
             out.add(id(node.value))
     return out
@@ -204,7 +204,7 @@ def no_headers_below_the_gateway(project: Project) -> Iterator[Violation]:
         names = imported_names(project, file)
         for read in header_reads(tree, imported_names(project, file)):
             yield Violation.at(file.rel, read, "reads `.headers`; the gateway parses headers, nothing below it does")
-        for node in ast.walk(tree):
+        for node in nodes(tree):
             if isinstance(node, ast.Call) and is_fastapi_header(call_name(node, names)):
                 yield Violation.at(file.rel, node, "takes a `Header(...)` parameter; the gateway parses headers")
             elif isinstance(node, ast.Call) and is_fastapi_security(call_name(node, names)):
@@ -224,7 +224,7 @@ def no_headers_below_the_gateway(project: Project) -> Iterator[Violation]:
         tree = project.tree(file)
         if tree is None:
             continue
-        for node in ast.walk(tree):
+        for node in nodes(tree):
             if not isinstance(node, ast.Call) or not node.args or last(dotted(node.args[0])) != "CORSMiddleware":
                 continue
             origins = kwarg(node, "allow_origins")
@@ -277,7 +277,7 @@ def one_error_handler(project: Project) -> Iterator[Violation]:
         if tree is None:
             continue
         names = imported_names(project, file)
-        for node in ast.walk(tree):
+        for node in nodes(tree):
             if isinstance(node, ast.Raise) and node.exc is not None:
                 target = resolved(dotted(node.exc), names)
                 if last(target) in {"HTTPException", "StarletteHTTPException"}:
@@ -300,7 +300,7 @@ def one_error_handler(project: Project) -> Iterator[Violation]:
         services = project.sub("services") + "."
         group = file.module[len(services) :].split(".")[0] if file.module.startswith(services) else "gateway"
         names = imported_names(project, file)
-        for node in ast.walk(tree):
+        for node in nodes(tree):
             if not (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)):
                 continue
             if node.func.attr == "add_exception_handler" and from_a_gateway(project, node, names):
@@ -349,7 +349,7 @@ def posts(tree: ast.Module) -> Iterator[tuple[ast.FunctionDef | ast.AsyncFunctio
         if verb == "post" or (verb == "api_route" and names_post(call)):
             yield fn, call
     functions = {n.name: n for n in tree.body if isinstance(n, ast.FunctionDef | ast.AsyncFunctionDef)}
-    for node in ast.walk(tree):
+    for node in nodes(tree):
         if not (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and node.func.attr == "add_api_route"):
             continue
         if not names_post(node):
@@ -446,7 +446,7 @@ def creating_posts_take_a_key(project: Project) -> Iterator[Violation]:
         if tree is None:
             continue
         idem, names = idem_names(file), imported_names(project, file)
-        for node in ast.walk(tree):
+        for node in nodes(tree):
             if (
                 isinstance(node, ast.Call)
                 and last(dotted(node.func)) == "include_router"
@@ -463,7 +463,7 @@ def creating_posts_take_a_key(project: Project) -> Iterator[Violation]:
         idem = idem_names(file)
         covered = {  # router variables declared with the dependency, annotated or not
             t.id
-            for node in ast.walk(tree)
+            for node in nodes(tree)
             if isinstance(node, ast.Assign | ast.AnnAssign)
             and isinstance(node.value, ast.Call)
             and last(dotted(node.value.func)) == "APIRouter"
@@ -510,7 +510,7 @@ def operational_endpoints_outside_the_prefix(project: Project) -> Iterator[Viola
             path = const_str(call.args[0]) if call.args else const_str(kwarg(call, "path"))
             if path is not None:
                 paths.append((call, path))
-        for node in ast.walk(tree):
+        for node in nodes(tree):
             if isinstance(node, ast.Call) and last(dotted(node.func)) == "APIRouter":
                 prefix = const_str(kwarg(node, "prefix"))
                 if prefix is not None:

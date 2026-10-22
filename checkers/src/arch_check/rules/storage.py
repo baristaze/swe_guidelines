@@ -19,7 +19,7 @@ from collections.abc import Callable, Iterator
 from typing import TypeVar
 
 from arch_check.model import Violation
-from arch_check.project import Project, SourceFile, base_names, classes, dotted, is_under, keywords, last, parameters
+from arch_check.project import Project, SourceFile, base_names, classes, dotted, is_under, keywords, last, nodes, parameters
 from arch_check.registry import rule
 from arch_check.rules._storage_util import (
     DROP_TABLES,
@@ -98,7 +98,7 @@ def no_database_relationships(project: Project) -> Iterator[Violation]:
     for file, tree in project.trees(project.sub("om")):
         if not in_tables(project, file.module):
             continue
-        for node in ast.walk(tree):
+        for node in nodes(tree):
             if not isinstance(node, ast.Call):
                 continue
             name = call_name(node)
@@ -135,7 +135,7 @@ def no_transaction_above_storage(project: Project) -> Iterator[Violation]:
         tree = project.tree(file)
         if tree is None:
             continue
-        for node in ast.walk(tree):
+        for node in nodes(tree):
             if (
                 isinstance(node, ast.Call)
                 and isinstance(node.func, ast.Attribute)
@@ -179,7 +179,7 @@ def locking_stays_in_one_method(project: Project) -> Iterator[Violation]:
     for file, tree in project.trees():
         if in_storage_impl(project, file.module):
             continue
-        for node in ast.walk(tree):
+        for node in nodes(tree):
             if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and node.func.attr == "with_for_update":
                 yield Violation.at(file.rel, node, "with_for_update() outside a storage impl; a lock lives inside one method")
         for const in string_constants(tree):
@@ -1157,7 +1157,7 @@ def pools_declare_their_bounds(project: Project) -> Iterator[Violation]:
     for file, tree in project.trees(project.sub("om")):
         if not in_storage_impl(project, file.module):
             continue
-        for node in ast.walk(tree):
+        for node in nodes(tree):
             if not (isinstance(node, ast.Call) and call_name(node) in ENGINE_CALLS):
                 continue
             if any(k.arg is None for k in node.keywords):
