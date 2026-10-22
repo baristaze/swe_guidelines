@@ -122,8 +122,9 @@ table's sibling by scope, with its policy in its role's first migration:
    version plus one, and a mismatch raises `PreconditionFailed` (412).
    At the edge, the get answers the version as a strong `ETag`,
    `"<version>"`, set by a response type of `types/<ns>.py` that the
-   service impl returns, as `FileContentResponse` in `types/media.py`
-   sets its headers; the route declares the view as its
+   service impl returns: a subclass of FastAPI's `JSONResponse` whose
+   constructor takes the view, renders its `model_dump(mode="json")` as
+   the body, and sets the header; the route declares the view as its
    `response_model` and returns the response as it is, never setting a
    header itself. The `PATCH` takes the expected version from `If-Match`
    or the body's `expected_version`, and refuses a request with neither,
