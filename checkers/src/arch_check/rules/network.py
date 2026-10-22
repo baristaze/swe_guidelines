@@ -127,7 +127,7 @@ def request_params(fn: ast.FunctionDef | ast.AsyncFunctionDef | ast.Lambda, name
     return out
 
 
-def header_reads(tree: ast.Module, names: dict[str, str]) -> Iterator[ast.Attribute]:
+def header_reads(tree: ast.AST, names: dict[str, str]) -> Iterator[ast.Attribute]:
     """Every `.headers` read on a request parameter, judged in the function that has the parameter.
 
     A name is a request only where a function takes it (a closure inside
@@ -154,7 +154,7 @@ def header_reads(tree: ast.Module, names: dict[str, str]) -> Iterator[ast.Attrib
                 yield node
 
 
-def written(tree: ast.Module) -> set[int]:
+def written(tree: ast.AST) -> set[int]:
     """The ids of `.headers` nodes a statement writes into: `response.headers["Location"] = ...`."""
     out: set[int] = set()
     for node in nodes(tree):

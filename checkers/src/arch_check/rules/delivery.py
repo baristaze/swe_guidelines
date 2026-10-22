@@ -713,7 +713,7 @@ BOOT_MODULES = [
 LOGGING_LIBRARIES = ("structlog", "loguru", "eliot", "logbook")
 
 
-def logging_objects(tree: ast.Module, names: dict[str, str]) -> set[str]:
+def logging_objects(tree: ast.AST, names: dict[str, str]) -> set[str]:
     """The names a module binds to something built by `logging`: `log = logging.getLogger(__name__)`."""
     out: set[str] = set()
     for node in nodes(tree):

@@ -6,6 +6,7 @@ under `acme.om` that imports `acme.services`. Counts and lists of rules
 come from the registry, never from a number written down.
 """
 
+import ast
 import re
 from pathlib import Path
 
@@ -17,7 +18,7 @@ from arch_check import __version__, registry
 from arch_check.config import ConfigError, find_root, glob_match, load
 from arch_check.lenses import LENSES
 from arch_check.model import Violation
-from arch_check.project import Project, parameters
+from arch_check.project import Project, classes, nodes, parameters
 from arch_check_fixtures import ADR, BASE, PYPROJECT, WORKSPACE, check, check_json, rules_found, write, write_project
 
 REPO = Path(__file__).resolve().parent.parent
@@ -453,7 +454,7 @@ def test_signature_helpers(tmp_path):
     project = Project(load(tmp_path))
     [(_, tree)] = list(project.trees("acme.om.sig"))
     fn = tree.body[0]
-    assert isinstance(fn, __import__("ast").FunctionDef)
+    assert isinstance(fn, ast.FunctionDef)
     params = parameters(fn)
     assert [(p.name, p.annotation, p.kind, p.has_default) for p in params] == [
         ("self", None, "positional", False),
@@ -463,6 +464,20 @@ def test_signature_helpers(tmp_path):
         ("key", "str", "keyword", False),
         ("kw", None, "varkw", False),
     ]
+
+
+def test_a_module_is_walked_once_and_read_as_ast_walk_reads_it(tmp_path):
+    write(tmp_path, "om/src/acme/om/shapes.py", "class A:\n    class B: ...\n\n\nclass C:\n    def f(self) -> None: ...\n")
+    write_project(tmp_path)
+    project = Project(load(tmp_path))
+    [(_, tree)] = list(project.trees("acme.om.shapes"))
+    assert nodes(tree) is nodes(tree)
+    assert list(nodes(tree)) == list(ast.walk(tree))
+    [_, c] = tree.body
+    assert list(nodes(c)) == list(ast.walk(c))
+    found = classes(tree)
+    found.clear()  # each call returns a list of its own, so a rule that edits one never edits another's
+    assert [n.name for n in classes(tree)] == ["A", "B", "C"]
 
 
 def test_load_raises_config_error_for_a_missing_root(tmp_path):

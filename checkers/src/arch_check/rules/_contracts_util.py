@@ -221,7 +221,7 @@ def declared_fields(cls: ast.ClassDef) -> dict[str, ast.AST]:
 
 
 def calls(node: ast.AST) -> Iterator[ast.Call]:
-    for sub in ast.walk(node):
+    for sub in nodes(node):
         if isinstance(sub, ast.Call):
             yield sub
 

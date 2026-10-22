@@ -110,7 +110,7 @@ def is_docstring(node: ast.stmt) -> bool:
     return isinstance(node, ast.Expr) and isinstance(node.value, ast.Constant) and isinstance(node.value.value, str)
 
 
-def string_constants(tree: ast.Module) -> Iterator[ast.Constant]:
+def string_constants(tree: ast.AST) -> Iterator[ast.Constant]:
     """Every string constant of a tree that is not a docstring."""
     docs = {
         id(n.value)

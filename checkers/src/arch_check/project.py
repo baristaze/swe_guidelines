@@ -15,7 +15,7 @@ from __future__ import annotations
 import ast
 import contextlib
 import weakref
-from collections.abc import Collection, Iterator
+from collections.abc import Collection, Iterable, Iterator
 from dataclasses import dataclass
 from functools import cached_property
 from pathlib import Path
@@ -392,14 +392,16 @@ _CLASSES: weakref.WeakKeyDictionary[ast.AST, tuple[ast.ClassDef, ...]] = weakref
 """The classes `classes` found under each tree, kept while the tree lives."""
 
 
-def nodes(tree: ast.Module) -> tuple[ast.AST, ...]:
-    """Every node of a module, in the order `ast.walk` yields them.
+def nodes(tree: ast.AST) -> Iterable[ast.AST]:
+    """Every node under `tree`, in the order `ast.walk` yields them.
 
     Most rules walk every module, so a module is walked on the first
     call alone, and later calls read what it found. No rule edits a
-    tree. A part of a module (a class, a function) is walked with
-    `ast.walk`, since few are walked twice.
+    tree. Any other node, a class or a function, is walked on every
+    call.
     """
+    if not isinstance(tree, ast.Module):
+        return ast.walk(tree)
     found = _NODES.get(tree)
     if found is None:
         found = _NODES[tree] = tuple(ast.walk(tree))
@@ -415,7 +417,7 @@ def classes(tree: ast.AST) -> list[ast.ClassDef]:
     """
     found = _CLASSES.get(tree)
     if found is None:
-        walked = [n for n in (nodes(tree) if isinstance(tree, ast.Module) else ast.walk(tree)) if isinstance(n, ast.ClassDef)]
+        walked = [n for n in nodes(tree) if isinstance(n, ast.ClassDef)]
         found = _CLASSES[tree] = tuple(sorted(walked, key=lambda n: (n.lineno, n.col_offset)))
     return list(found)
 
@@ -442,7 +444,7 @@ def decorator_names(node: ast.ClassDef | Function) -> list[str]:
 
 def functions(node: ast.AST) -> list[Function]:
     """Every function or method defined anywhere under `node`, in source order."""
-    found = [n for n in ast.walk(node) if isinstance(n, ast.FunctionDef | ast.AsyncFunctionDef)]
+    found = [n for n in nodes(node) if isinstance(n, ast.FunctionDef | ast.AsyncFunctionDef)]
     return sorted(found, key=lambda n: (n.lineno, n.col_offset))
 
 
