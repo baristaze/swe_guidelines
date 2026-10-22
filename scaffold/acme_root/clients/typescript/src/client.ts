@@ -102,21 +102,9 @@ export interface RequestOptions {
   signal?: AbortSignal;
 }
 
-/** A body of bytes, sent as they are with their type, not as JSON. */
-export class BytesBody {
-  constructor(
-    readonly bytes: Blob,
-    readonly contentType: string,
-  ) {}
-}
-
 export interface ApiClient {
   readonly baseUrl: string;
   request<T>(method: string, path: string, body?: unknown, options?: RequestOptions): Promise<T>;
-  /** A file's bytes through the API, for a store that cannot take a form post; answers JSON. */
-  putBytes<T>(path: string, bytes: Blob, contentType: string, options?: RequestOptions): Promise<T>;
-  /** A file's bytes from the API, for a store that cannot sign a link. */
-  getBlob(path: string, options?: RequestOptions): Promise<Blob>;
   get<T>(path: string, options?: RequestOptions): Promise<T>;
   post<T>(path: string, body?: unknown, options?: RequestOptions): Promise<T>;
   patch<T>(path: string, body?: unknown, options?: RequestOptions): Promise<T>;
@@ -183,7 +171,6 @@ export function createClient(options: ClientOptions): ApiClient {
     path: string,
     body?: unknown,
     requestOptions: RequestOptions = {},
-    asBlob = false,
   ): Promise<T> {
     const headers = new Headers({
       Accept: "application/json",
@@ -192,9 +179,7 @@ export function createClient(options: ClientOptions): ApiClient {
     });
     const token = requestOptions.token === undefined ? options.getToken() : requestOptions.token;
     if (token) headers.set("Authorization", `Bearer ${token}`);
-    const raw = body instanceof BytesBody ? body : undefined;
-    if (raw) headers.set("Content-Type", raw.contentType);
-    else if (body !== undefined) headers.set("Content-Type", "application/json");
+    if (body !== undefined) headers.set("Content-Type", "application/json");
     if (requestOptions.idempotencyKey) headers.set("Idempotency-Key", requestOptions.idempotencyKey);
     if (requestOptions.ifMatch !== undefined) headers.set("If-Match", `"${requestOptions.ifMatch}"`);
 
@@ -212,17 +197,15 @@ export function createClient(options: ClientOptions): ApiClient {
     else callerSignal?.addEventListener("abort", forwardAbort, { once: true });
 
     let response: Response;
-    let text = "";
-    let blob: Blob | undefined;
+    let text: string;
     try {
       response = await fetchImpl(`${baseUrl}${path}`, {
         method,
         headers,
-        body: raw ? raw.bytes : body === undefined ? undefined : JSON.stringify(body),
+        body: body === undefined ? undefined : JSON.stringify(body),
         signal: controller.signal,
       });
-      if (asBlob && response.ok) blob = await response.blob();
-      else text = response.status === 204 ? "" : await response.text();
+      text = response.status === 204 ? "" : await response.text();
     } catch (error) {
       // A fetch aborted by the deadline reports the reason it was aborted with.
       throw controller.signal.aborted ? controller.signal.reason : error;
@@ -253,7 +236,6 @@ export function createClient(options: ClientOptions): ApiClient {
       }
       throw new ApiError(response.status, "unknown_error", statusMessage(response), requestId, retryAfterMs);
     }
-    if (blob !== undefined) return blob as T;
     if (response.status === 204 || text === "") return undefined as T;
     if (parsed === undefined) {
       throw new ApiError(response.status, "not_json", `${method} ${path} answered with something other than JSON`, requestId);
@@ -271,13 +253,12 @@ export function createClient(options: ClientOptions): ApiClient {
     path: string,
     body?: unknown,
     requestOptions: RequestOptions = {},
-    asBlob = false,
   ): Promise<T> {
     const bound = mayRetryRequest(method, requestOptions.idempotencyKey) ? retryAttempts : 0;
     const retries = new Retries(retryPolicy);
     for (;;) {
       try {
-        return await attempt<T>(method, path, body, requestOptions, asBlob);
+        return await attempt<T>(method, path, body, requestOptions);
       } catch (error) {
         const spent = retries.failures >= bound;
         if (spent || requestOptions.signal?.aborted || !isRetryableFailure(error)) throw error;
@@ -296,9 +277,6 @@ export function createClient(options: ClientOptions): ApiClient {
     post: (path, body, requestOptions) => request("POST", path, body, requestOptions),
     patch: (path, body, requestOptions) => request("PATCH", path, body, requestOptions),
     del: (path, requestOptions) => request("DELETE", path, undefined, requestOptions),
-    putBytes: (path, bytes, contentType, requestOptions) =>
-      request("PUT", path, new BytesBody(bytes, contentType), requestOptions),
-    getBlob: (path, requestOptions) => request<Blob>("GET", path, undefined, requestOptions, true),
     websocketUrl: (path) => baseUrl.replace(/^http/, "ws") + path,
   };
 }

@@ -3,6 +3,7 @@ refusal into a typed error, and which call it sends again."""
 
 import json
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from typing import Any, cast
 from uuid import UUID, uuid4
 
@@ -615,49 +616,120 @@ async def test_a_file_is_read_and_deleted_by_its_id_and_the_usage_read() -> None
     ]
 
 
-async def test_the_bytes_go_through_the_api_when_the_store_cannot_sign() -> None:
+def parts_of(*parts: tuple[int, int, int]) -> dict[str, Any]:
+    """An issued upload: each part as (number, offset, size), signed at the store."""
+    return {
+        "upload_id": "u-1",
+        "parts": [
+            {"number": n, "offset": o, "size_bytes": z, "url": f"http://store.test/p{n}?sig=x"}
+            for n, o, z in parts
+        ],
+        "remaining": len(parts),
+        "expires_at": "2026-09-18T12:15:00Z",
+    }
+
+
+def media_api(*issues: dict[str, Any]) -> tuple[Any, list[httpx.Request]]:
+    """The API for one upload: the issues in turn, then the confirm and the
+    link. Every request is kept."""
     file_id = UUID(FILE["id"])
     base = f"/v1/media/files/{file_id}"
-    stored = FILE | {"status": "stored"}
-    no_form = {"url": None, "fields": [], "expires_at": "2026-09-18T12:15:00Z"}
-    no_link = {"url": None, "expires_at": "2026-09-18T12:15:00Z"}
+    answers = list(issues)
     seen: list[httpx.Request] = []
 
     def answer(request: httpx.Request) -> httpx.Response:
         seen.append(request)
         match (request.method, request.url.path):
             case ("POST", path) if path == f"{base}/upload":
-                return httpx.Response(200, json=no_form)
-            case ("PUT", path) if path == f"{base}/content":
-                return httpx.Response(200, json=FILE)
+                return httpx.Response(200, json=answers.pop(0))
             case ("POST", path) if path == f"{base}/confirm":
-                return httpx.Response(200, json=stored)
+                return httpx.Response(200, json=FILE | {"status": "stored"})
             case ("GET", path) if path == f"{base}/download":
-                return httpx.Response(200, json=no_link)
-            case ("GET", path) if path == f"{base}/content":
-                return httpx.Response(200, content=b"%PDF-1.7 the spec")
+                link = {"url": "http://store.test/o?sig=y", "expires_at": "2026-09-18T12:05:00Z"}
+                return httpx.Response(200, json=link)
         raise AssertionError(request.url)
+
+    return answer, seen
+
+
+async def test_a_file_goes_up_in_parts_straight_to_the_store_and_never_through_the_api(
+    tmp_path: Path,
+) -> None:
+    """The parts go by their signed URLs, each a PUT of its own slice of the
+    file at its declared length, read a chunk at a time. The API answers the
+    issue and the confirm and receives none of the bytes; the download comes
+    straight from the store."""
+    data = b"%PDF-1.7 the spec"
+    spec = tmp_path / "spec.pdf"
+    spec.write_bytes(data)
+    api, seen = media_api(parts_of((1, 0, 10), (2, 10, 7)), parts_of())
+    stored: list[httpx.Request] = []
+
+    def store(request: httpx.Request) -> httpx.Response:
+        stored.append(request)
+        if request.method == "GET":
+            return httpx.Response(200, content=data)
+        return httpx.Response(200, headers={"ETag": '"e"'})
 
     async with ApiClient(
         "http://test",
         app="cli",
         app_version="cli@test",
         token="ses_1",
-        transport=httpx.MockTransport(answer),
+        transport=httpx.MockTransport(api),
+        store_transport=httpx.MockTransport(store),
     ) as client:
-        confirmed = await client.upload(FileView.model_validate(FILE), b"%PDF-1.7 the spec")
-        fetched = await client.download(file_id)
-    assert confirmed.status.value == "stored" and fetched == b"%PDF-1.7 the spec"
-    put = seen[1]
-    assert put.headers["content-type"] == "application/octet-stream"
-    assert put.read() == b"%PDF-1.7 the spec"
+        confirmed = await client.upload(FileView.model_validate(FILE), spec)
+        fetched = await client.download(UUID(FILE["id"]))
+    assert confirmed.status.value == "stored" and fetched == data
+    base = f"/v1/media/files/{FILE['id']}"
     assert [(r.method, r.url.path.removeprefix(base)) for r in seen] == [
         ("POST", "/upload"),
-        ("PUT", "/content"),
+        ("POST", "/upload"),
         ("POST", "/confirm"),
         ("GET", "/download"),
-        ("GET", "/content"),
     ]
+    assert all(r.content == b"" for r in seen), "no request to the API carries the file"
+    puts = [r for r in stored if r.method == "PUT"]
+    assert [(r.url.path, r.headers["content-length"], r.content) for r in puts] == [
+        ("/p1", "10", data[:10]),
+        ("/p2", "7", data[10:]),
+    ]
+    assert all("authorization" not in r.headers for r in stored), "the URL is the credential"
+
+
+async def test_a_part_the_store_refuses_or_keeps_no_copy_of_ends_the_upload() -> None:
+    data = b"%PDF-1.7 the spec"
+    started = FileView.model_validate(FILE)
+
+    def refusing(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(403, text="SignatureDoesNotMatch")
+
+    api, _ = media_api(parts_of((1, 0, 17)))
+    async with ApiClient(
+        "http://test",
+        app="cli",
+        app_version="cli@test",
+        transport=httpx.MockTransport(api),
+        store_transport=httpx.MockTransport(refusing),
+    ) as client:
+        with pytest.raises(ApiError) as refused:
+            await client.upload(started, data)
+    assert (refused.value.status, refused.value.code) == (403, "part_refused")
+    # The store said yes, and the next issue names the same part again.
+    api, seen = media_api(parts_of((1, 0, 17)), parts_of((1, 0, 17)))
+    async with ApiClient(
+        "http://test",
+        app="cli",
+        app_version="cli@test",
+        transport=httpx.MockTransport(api),
+        store_transport=httpx.MockTransport(lambda _: httpx.Response(200)),
+    ) as client:
+        with pytest.raises(ApiError, match="kept no part 1"):
+            await client.upload(started, data)
+        with pytest.raises(ValueError, match="started at 17"):
+            await client.upload(started, data + b"!")
+    assert [r.url.path.rsplit("/", 1)[1] for r in seen] == ["upload", "upload"]
 
 
 # The operator plane: each method sends the route it stands for, under the

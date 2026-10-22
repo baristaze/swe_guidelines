@@ -15,6 +15,7 @@ from collections.abc import Callable, Coroutine
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 from typing import Annotated, Any, NoReturn
+from uuid import UUID
 
 import httpx
 import typer
@@ -25,6 +26,7 @@ from acme.apps.cli.model import choose_org, human_size, org_lines
 from acme.client.client import ApiClient
 from acme.client.realtime import ChannelRefused
 from acme.client.transport import ApiError
+from acme.client.types.media import FileView
 from acme.client.types.tenancy import IssuedAuthSessionView, IssuedLoginView
 
 EXIT_REFUSED = 1
@@ -357,19 +359,46 @@ def upload(
     content_type: Annotated[
         str | None, typer.Option("--type", help="Its type, else guessed from the name.")
     ] = None,
+    resume: Annotated[
+        UUID | None,
+        typer.Option("--resume", help="The id of an upload of this file that stopped."),
+    ] = None,
     as_json: Json = False,
     api: Api = None,
 ) -> None:
-    """Upload a file the org keeps. The bytes go straight to the store, or
-    through the API where the store takes no form."""
+    """Upload a file the org keeps. Its parts go straight to the store, read
+    from the file a chunk at a time, and never through the API. An upload
+    that stopped goes on with `--resume`, which sends only the parts the
+    store does not hold."""
     kind = content_type or mimetypes.guess_type(path.name)[0]
-    if kind is None:
+    if kind is None and resume is None:
         _fail(f"cannot tell the type of {path.name}; give --type", EXIT_USAGE)
-    data = path.read_bytes()
+    size = path.stat().st_size
+
+    async def begin(client: ApiClient) -> FileView:
+        """The upload this command sends: a new one, or the one it resumes,
+        which must be of this file's size."""
+        if resume is None:
+            return await client.start_upload(path.name, kind or "", size)
+        started = await client.file(resume)
+        if started.size_bytes != size:
+            _fail(
+                f"{path.name} is {size} bytes; upload {resume} is of {started.size_bytes}",
+                EXIT_USAGE,
+            )
+        return started
 
     async def go(client: ApiClient) -> None:
-        started = await client.start_upload(path.name, kind, len(data))
-        stored = await client.upload(started, data)
+        started = await begin(client)
+        try:
+            stored = await client.upload(started, path)
+        except ApiError, httpx.TransportError:
+            typer.echo(
+                f"the upload of {path.name} stopped; "
+                f"`acme upload {path} --resume {started.id}` sends the rest",
+                err=True,
+            )
+            raise
         if as_json:
             typer.echo(stored.model_dump_json(indent=2))
         else:

@@ -6,10 +6,10 @@ from acme.client.schema.media import (
     FileStatus,
     FileView,
     IssuedDownloadView,
+    IssuedPartView,
     IssuedUploadView,
     PurposeUsageView,
     StorageUsageView,
-    UploadFieldView,
 )
 
 __all__ = [
@@ -18,8 +18,8 @@ __all__ = [
     "FileStatus",
     "FileView",
     "IssuedDownloadView",
+    "IssuedPartView",
     "IssuedUploadView",
     "PurposeUsageView",
     "StorageUsageView",
-    "UploadFieldView",
 ]

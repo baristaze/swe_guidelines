@@ -336,31 +336,3 @@ describe("the transport client's one retry", () => {
     expect(fetchImpl).toHaveBeenCalledTimes(1);
   });
 });
-
-describe("transport client bytes", () => {
-  it("sends a file's bytes with their own type and reads the JSON answer", async () => {
-    const seen: RequestInit[] = [];
-    const bytes = new Blob(["%PDF!"]);
-    const answer = await client({
-      fetchImpl: async (_input, init) => {
-        seen.push(init!);
-        return jsonResponse(200, { id: "f1" });
-      },
-    }).putBytes<{ id: string }>("/v1/media/files/f1/content", bytes, "application/pdf");
-    expect(answer).toEqual({ id: "f1" });
-    expect(seen[0]!.method).toBe("PUT");
-    expect(seen[0]!.body).toBe(bytes);
-    expect(new Headers(seen[0]!.headers).get("content-type")).toBe("application/pdf");
-  });
-
-  it("reads a file's bytes as a blob, and a refusal still as the envelope", async () => {
-    const got = await client({
-      fetchImpl: async () => new Response("%PDF!", { status: 200, headers: { "content-type": "application/pdf" } }),
-    }).getBlob("/v1/media/files/f1/content");
-    expect(await got.text()).toBe("%PDF!");
-    const refused = client({
-      fetchImpl: async () => jsonResponse(404, { error: { code: "not_found", message: "file f1 not found", request_id: "r1" } }),
-    }).getBlob("/v1/media/files/f1/content");
-    await expect(refused).rejects.toMatchObject({ status: 404, code: "not_found" });
-  });
-});

@@ -4,6 +4,8 @@ and the switch, a file's upload, JSON output, and the exit codes."""
 import asyncio
 import json
 from pathlib import Path
+from urllib.parse import parse_qs
+from uuid import UUID
 
 import httpx
 import pytest
@@ -13,6 +15,7 @@ from typer.testing import CliRunner
 
 from acme.apps.cli import config, main
 from acme.client.client import ApiClient
+from acme.infra.buckets import PART_BYTES
 from acme.om.context import Role
 
 
@@ -577,17 +580,39 @@ def test_switch_needs_a_kept_session(stack: Stack) -> None:
 
 
 def test_a_file_is_uploaded_and_kept_by_the_org(stack: Stack, tmp_path: Path) -> None:
-    """The whole upload over the in-process API, whose local store cannot sign
-    a form: the client moves the bytes through the API instead, held to the
-    same bounds, and the stored file is the org's."""
+    """The whole upload over the in-process API: a multipart upload whose
+    parts go straight to the store by their signed URLs, read from the file
+    a chunk at a time. No request to the API carries the file's bytes, and
+    the stored file is the org's."""
+    data = bytes(range(256)) * (PART_BYTES // 256) + b"%PDF the rest"
     spec = tmp_path / "spec.pdf"
-    spec.write_bytes(b"%PDF-1.7 the spec")
+    spec.write_bytes(data)
     uploaded = stack.acme("upload", str(spec))
     assert uploaded.exit_code == 0, uploaded.output
-    assert uploaded.output.startswith("uploaded spec.pdf (17 B) as ")
+    assert uploaded.output.startswith("uploaded spec.pdf (8.0 MB) as ")
     file_id = uploaded.output.split()[-1]
+    puts = [r for r in stack.store.sent if r.method == "PUT"]
+    assert [(parse_qs(r.url.query.decode())["partNumber"], len(r.content)) for r in puts] == [
+        (["1"], PART_BYTES),
+        (["2"], len(data) - PART_BYTES),
+    ]
+    assert all(r.headers["content-length"] == str(len(r.content)) for r in puts)
+    called = [
+        (r.method, r.url.path.removeprefix(f"/v1/media/files/{file_id}")) for r in stack.api.sent
+    ]
+    assert called == [
+        ("POST", "/v1/media/files"),
+        ("POST", "/upload"),
+        ("POST", "/upload"),
+        ("POST", "/confirm"),
+    ]
+    assert max(len(r.content) for r in stack.api.sent) < 200, (
+        "no request to the API carries the file"
+    )
 
-    as_json = stack.acme("upload", str(spec), "--json")
+    small = tmp_path / "small.pdf"
+    small.write_bytes(b"%PDF-1.7 the spec")
+    as_json = stack.acme("upload", str(small), "--json")
     assert as_json.exit_code == 0, as_json.output
     again = json.loads(as_json.output)
     assert again["status"] == "stored" and again["content_type"] == "application/pdf"
@@ -595,10 +620,50 @@ def test_a_file_is_uploaded_and_kept_by_the_org(stack: Stack, tmp_path: Path) ->
     async def read_back() -> tuple[list[str], bytes]:
         async with stack.client(stack.auth_session_token(BOB["email"])) as as_bob:
             page = await as_bob.files()
-            return [str(f.id) for f in page.items], await as_bob.download(page.items[0].id)
+            return [str(f.id) for f in page.items], await as_bob.download(page.items[1].id)
 
-    listed, data = asyncio.run(read_back())
-    assert listed == [file_id, again["id"]] and data == b"%PDF-1.7 the spec"
+    listed, fetched = asyncio.run(read_back())
+    assert listed == [file_id, again["id"]] and fetched == b"%PDF-1.7 the spec"
+
+
+def test_an_upload_that_stopped_resumes_with_only_the_missing_parts(
+    stack: Stack, tmp_path: Path
+) -> None:
+    """The wire drops on the second part. The command says how to go on, and
+    `--resume` sends the second and the third under the same upload, never
+    the first again."""
+    data = bytes(range(256)) * (2 * PART_BYTES // 256) + b"%PDF tail"
+    spec = tmp_path / "spec.pdf"
+    spec.write_bytes(data)
+    stack.store.cut_at = 2
+    stopped = stack.acme("upload", str(spec))
+    assert stopped.exit_code == main.EXIT_UNREACHABLE, stopped.output
+    hint = next(line for line in stopped.output.splitlines() if "--resume" in line)
+    file_id = hint.split("--resume ")[1].split("`")[0]
+    stack.store.cut_at = None
+    resumed = stack.acme("upload", str(spec), "--resume", file_id)
+    assert resumed.exit_code == 0, resumed.output
+    assert resumed.output.startswith(f"uploaded spec.pdf (16.0 MB) as {file_id}")
+    numbers = [
+        parse_qs(r.url.query.decode())["partNumber"][0]
+        for r in stack.store.sent
+        if r.method == "PUT"
+    ]
+    assert numbers == ["1", "2", "2", "3"], "the first part is sent once"
+    ids = {
+        parse_qs(r.url.query.decode())["uploadId"][0] for r in stack.store.sent if r.method == "PUT"
+    }
+    assert len(ids) == 1, "one upload, resumed under its id"
+
+    async def stored() -> bytes:
+        async with stack.client(stack.auth_session_token(BOB["email"])) as as_bob:
+            return await as_bob.download(UUID(file_id))
+
+    assert asyncio.run(stored()) == data
+    other = tmp_path / "other.pdf"
+    other.write_bytes(b"%PDF short")
+    mismatched = stack.acme("upload", str(other), "--resume", file_id)
+    assert mismatched.exit_code == main.EXIT_USAGE, mismatched.output
 
 
 def test_a_file_of_a_type_the_org_does_not_keep_is_refused(stack: Stack, tmp_path: Path) -> None:

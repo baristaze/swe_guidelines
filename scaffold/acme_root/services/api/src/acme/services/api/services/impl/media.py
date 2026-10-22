@@ -8,15 +8,14 @@ from acme.services.api.services.impl.tenancy import decode_cursor, encode_cursor
 from acme.services.api.services.media import MediaServiceInterface
 from acme.services.api.types.common import clamp_limit
 from acme.services.api.types.media import (
-    FileContentResponse,
     FilePageView,
     FileView,
     IssuedDownloadView,
+    IssuedPartView,
     IssuedUploadView,
     PurposeUsageView,
     StartUploadRequest,
     StorageUsageView,
-    UploadFieldView,
 )
 
 
@@ -57,15 +56,13 @@ class MediaServiceImpl(MediaServiceInterface):
         return file_view(await self._media.get_file(ctx, file_id))
 
     async def issue_upload(self, ctx: TenantContext, file_id: UUID) -> IssuedUploadView:
-        form = await self._media.issue_upload(ctx, file_id)
+        issued = await self._media.issue_upload(ctx, file_id)
         return IssuedUploadView(
-            url=form.url,
-            fields=[UploadFieldView(name=name, value=value) for name, value in form.fields],
-            expires_at=form.expires_at,
+            upload_id=issued.upload_id,
+            parts=[IssuedPartView.model_validate(part) for part in issued.parts],
+            remaining=issued.remaining,
+            expires_at=issued.expires_at,
         )
-
-    async def put_content(self, ctx: TenantContext, file_id: UUID, data: bytes) -> FileView:
-        return file_view(await self._media.put_content(ctx, file_id, data))
 
     async def confirm_file(self, ctx: TenantContext, file_id: UUID) -> FileView:
         return file_view(await self._media.confirm_file(ctx, file_id))
@@ -75,13 +72,6 @@ class MediaServiceImpl(MediaServiceInterface):
     ) -> IssuedDownloadView:
         link = await self._media.issue_download(ctx, file_id, inline=inline)
         return IssuedDownloadView(url=link.url, expires_at=link.expires_at)
-
-    async def get_content(
-        self, ctx: TenantContext, file_id: UUID, inline: bool
-    ) -> FileContentResponse:
-        file = await self._media.get_file(ctx, file_id)
-        data = await self._media.get_content(ctx, file_id)
-        return FileContentResponse(file.name, file.content_type, data, inline=inline)
 
     async def delete_file(self, ctx: TenantContext, file_id: UUID) -> FileView:
         return file_view(await self._media.delete_file(ctx, file_id))

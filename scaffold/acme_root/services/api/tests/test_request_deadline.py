@@ -4,9 +4,9 @@ provider or to AWS shares it. So a provider that hangs costs the request its
 deadline, not its timeouts times its retries: a sign-in through a WorkOS
 that never answers is unavailable by then; the three WorkOS calls of an
 invitation, each well inside its timeout, share one deadline; and an upload
-whose store did not take the bytes in time is unavailable and stays
-pending. A scan then holds every manager to handing each such call its
-context's deadline."""
+whose store did not complete it in time is unavailable and stays pending. A
+scan then holds every manager to handing each such call its context's
+deadline."""
 
 import ast
 import asyncio
@@ -230,7 +230,7 @@ async def test_the_calls_of_one_request_share_its_deadline(tmp_path: Path) -> No
     assert answered in (made, made[:-1]), (made, answered)
 
 
-# An upload, whose bytes go to the store on the request.
+# An upload, whose parts the store completes on the request.
 
 
 async def test_an_upload_whose_store_did_not_answer_in_time_is_unavailable(
@@ -239,12 +239,12 @@ async def test_an_upload_whose_store_did_not_answer_in_time_is_unavailable(
     owner: dict[str, str],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The store did not take the bytes by the request's deadline. The
-    answer is the refusal a client reads as "try again", the file is still
-    pending, and nothing confirms it until the bytes arrive."""
+    """The store did not complete the upload by the request's deadline. The
+    answer is the refusal a client reads as "try again", and the file is
+    still pending."""
 
     async def unreachable(*args: Any, **kwargs: Any) -> None:
-        raise BackendUnreachable("s3", "put", PASSED)
+        raise BackendUnreachable("s3", "complete_upload", PASSED)
 
     started = await client.post(
         "/v1/media/files",
@@ -253,14 +253,12 @@ async def test_an_upload_whose_store_did_not_answer_in_time_is_unavailable(
     )
     assert started.status_code == 201, started.text
     file_id = started.json()["id"]
-    monkeypatch.setattr(container.infra.get_buckets(), "put", unreachable)
-    put = await client.put(f"/v1/media/files/{file_id}/content", headers=owner, content=b"%PDF-")
-    assert put.status_code == 503, put.text
-    assert put.json()["error"]["code"] == "unavailable"
+    monkeypatch.setattr(container.infra.get_buckets(), "complete_upload", unreachable)
+    confirmed = await client.post(f"/v1/media/files/{file_id}/confirm", headers=owner)
+    assert confirmed.status_code == 503, confirmed.text
+    assert confirmed.json()["error"]["code"] == "unavailable"
     kept = await client.get(f"/v1/media/files/{file_id}", headers=owner)
     assert kept.json()["status"] == "pending"
-    confirmed = await client.post(f"/v1/media/files/{file_id}/confirm", headers=owner)
-    assert confirmed.status_code == 422, confirmed.text
 
 
 # Every call handed its deadline.
@@ -371,8 +369,9 @@ def test_every_call_a_manager_makes_to_a_provider_or_aws_is_handed_its_deadline(
         "IdentityProviderInterface.resend_invitation",
         "IdentityProviderInterface.revoke_invitation",
         "IdentityProviderInterface.portal_link",
-        "BucketsInterface.put",
-        "BucketsInterface.get",
+        "BucketsInterface.start_upload",
+        "BucketsInterface.list_parts",
+        "BucketsInterface.complete_upload",
         "BucketsInterface.exists",
         "QueuesInterface.send",
     }, "the scan no longer sees a call it used to; widen it before trusting it"

@@ -1,12 +1,12 @@
 """Media: the org's files, as references to objects in the store.
 
 Starting an upload, under an Idempotency-Key; the org's stored files a page
-at a time; a file, and deleting it; the form that posts its bytes straight to
-the store, or the bytes through the API where the store cannot take a form;
-the confirm once the upload is done; the link a download follows, or the
-bytes through the API; and the org's storage used (`/v1/media/files`,
-`/v1/media/files/{file_id}`, `.../upload`, `.../content`, `.../confirm`,
-`.../download`, `/v1/media/usage`). Each function is one call into the media
+at a time; a file, and deleting it; the parts of an upload the store does not
+hold yet, each signed for a PUT straight to the store; the confirm once the
+parts are there; the link a download follows straight from the store; and
+the org's storage used (`/v1/media/files`, `/v1/media/files/{file_id}`,
+`.../upload`, `.../confirm`, `.../download`, `/v1/media/usage`). No route
+takes or serves a file's bytes. Each function is one call into the media
 service; the start runs under the idempotency record. A file started here is
 of purpose `upload`: a file the org keeps, about no subject."""
 
@@ -15,12 +15,10 @@ from uuid import UUID
 from fastapi import APIRouter, Response
 
 from acme.services.api.gateway.auth import Ctx
-from acme.services.api.gateway.body import BoundedBody
 from acme.services.api.gateway.idempotency import Idem
 from acme.services.api.gateway.resolve import MediaService
 from acme.services.api.types.common import LIMIT_DEFAULT, ErrorResponse
 from acme.services.api.types.media import (
-    FileContentResponse,
     FilePageView,
     FileView,
     IssuedDownloadView,
@@ -48,8 +46,8 @@ async def get_usage(ctx: Ctx, media: MediaService) -> StorageUsageView:
 async def start_upload(
     ctx: Ctx, media: MediaService, body: StartUploadRequest, idem: Idem
 ) -> Response:
-    """A pending file, and nothing in the store yet: the upload form, the
-    bytes, and the confirm follow by its id."""
+    """A pending file, with the store's multipart upload of it started and
+    nothing in the store yet: the parts and the confirm follow by its id."""
     return await idem.run(201, lambda attempt: media.start_upload(ctx, body, attempt.target_id))
 
 
@@ -68,26 +66,22 @@ async def get_file(ctx: Ctx, media: MediaService, file_id: UUID) -> FileView:
 
 @router.post("/files/{file_id}/upload", response_model=IssuedUploadView)
 async def issue_upload(ctx: Ctx, media: MediaService, file_id: UUID) -> IssuedUploadView:
+    """The parts the store does not hold yet. Asked again after an upload
+    was cut off, it signs only the parts still missing, under the same
+    upload."""
     return await media.issue_upload(ctx, file_id)
 
 
-@router.put(
-    "/files/{file_id}/content",
+@router.post(
+    "/files/{file_id}/confirm",
     response_model=FileView,
-    openapi_extra={
-        "requestBody": {
-            "required": True,
-            "content": {
-                "application/octet-stream": {"schema": {"type": "string", "format": "binary"}}
-            },
-        }
+    responses={
+        422: {
+            "model": ErrorResponse,
+            "description": "upload_refused: the parts the store holds do not sum to the size",
+        },
     },
 )
-async def put_content(ctx: Ctx, media: MediaService, file_id: UUID, body: BoundedBody) -> FileView:
-    return await media.put_content(ctx, file_id, body)
-
-
-@router.post("/files/{file_id}/confirm", response_model=FileView)
 async def confirm_file(ctx: Ctx, media: MediaService, file_id: UUID) -> FileView:
     return await media.confirm_file(ctx, file_id)
 
@@ -104,15 +98,3 @@ async def issue_download(
 @router.delete("/files/{file_id}", response_model=FileView)
 async def delete_file(ctx: Ctx, media: MediaService, file_id: UUID) -> FileView:
     return await media.delete_file(ctx, file_id)
-
-
-@router.get(
-    "/files/{file_id}/content",
-    response_class=FileContentResponse,
-    status_code=200,
-    responses={200: {"content": {"application/octet-stream": {}}}},
-)
-async def get_content(
-    ctx: Ctx, media: MediaService, file_id: UUID, inline: bool = False
-) -> FileContentResponse:
-    return await media.get_content(ctx, file_id, inline)

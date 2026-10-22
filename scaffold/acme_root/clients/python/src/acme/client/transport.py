@@ -175,6 +175,7 @@ class Transport:
         app_version: str,
         token: str | None = None,
         transport: httpx.AsyncBaseTransport | None = None,
+        store_transport: httpx.AsyncBaseTransport | None = None,
         timeout: float = DEFAULT_TIMEOUT_SECONDS,
         retries: int = DEFAULT_RETRIES,
         backoff_seconds: float = RETRY.base,
@@ -184,6 +185,9 @@ class Transport:
         self.app_version = app_version
         self.token = token
         self.timeout = timeout  # seconds, per request; the socket's open shares it
+        # The object store a presigned URL names is reached apart from the API,
+        # by this transport when a test stands one in, else by the network.
+        self.store_transport = store_transport
         # The retry arrives with the rest, so it is one client's policy and no
         # caller adds a second round of attempts on top of it.
         self.retries = retries
@@ -229,8 +233,6 @@ class Transport:
         token: str | Unset | None = UNSET,
         idempotency_key: str | None = None,
         if_match: int | None = None,
-        content: bytes | None = None,
-        raw: bool = False,
     ) -> Any:
         """The one call every operation goes through, and the one place a
         request is sent again. Raises `ApiError` on any non-2xx; a 401 clears
@@ -253,8 +255,6 @@ class Transport:
                     token=token,
                     idempotency_key=idempotency_key,
                     if_match=if_match,
-                    content=content,
-                    raw=raw,
                 )
             except ApiError as error:
                 if attempt == bound or error.status not in RETRYABLE_STATUSES:
@@ -277,14 +277,12 @@ class Transport:
         token: str | Unset | None = UNSET,
         idempotency_key: str | None = None,
         if_match: int | None = None,
-        content: bytes | None = None,
-        raw: bool = False,
     ) -> Any:
         """One attempt: the headers this client puts on every call, the send,
         and the answer turned into a view or a typed error. `if_match` is the
-        version a write names, sent as the entity tag `If-Match` carries.
-        `content` is a body of bytes rather than JSON, and `raw` answers the
-        body's bytes rather than parsing it: a file's content, both ways."""
+        version a write names, sent as the entity tag `If-Match` carries. A
+        body is JSON: a file's bytes never cross the API, they go straight
+        to the store by a presigned URL."""
         headers: dict[str, str] = {}
         bearer = self.token if isinstance(token, Unset) else token
         if bearer:
@@ -293,18 +291,12 @@ class Transport:
             headers[IDEMPOTENCY_HEADER] = idempotency_key
         if if_match is not None:
             headers["If-Match"] = f'"{if_match}"'
-        if content is not None:
-            headers["Content-Type"] = "application/octet-stream"
-        response = await self._http.request(
-            method, path, json=json, params=params, headers=headers, content=content
-        )
+        response = await self._http.request(method, path, json=json, params=params, headers=headers)
         # A delayed refusal belongs to the bearer sent, never a newer sign-in.
         if response.status_code == 401 and isinstance(token, Unset) and self.token == bearer:
             self.token = None
         if response.is_error:
             raise _error_of(response)
-        if raw:
-            return response.content
         if not response.content:
             return None
         try:

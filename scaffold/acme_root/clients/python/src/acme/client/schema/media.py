@@ -45,13 +45,40 @@ class FileView(BaseModel):
 
 class IssuedDownloadView(BaseModel):
     """
-    A link to the file's bytes that works until `expires_at`. A null `url`
-    means the store cannot sign one: the bytes come from
-    `GET /v1/media/files/{id}/content`.
+    A link to the file's bytes, straight from the store, that works until
+    `expires_at`.
     """
 
     expires_at: Annotated[AwareDatetime, Field(title='Expires At')]
-    url: Annotated[str | None, Field(title='Url')]
+    url: Annotated[str, Field(title='Url')]
+
+
+class IssuedPartView(BaseModel):
+    """
+    One part to send: the `size_bytes` bytes of the file from `offset`, as
+    the body of a PUT to `url`, straight to the store. The URL is signed for
+    that length, and the store refuses a body of any other.
+    """
+
+    number: Annotated[int, Field(title='Number')]
+    offset: Annotated[int, Field(title='Offset')]
+    size_bytes: Annotated[int, Field(title='Size Bytes')]
+    url: Annotated[str, Field(title='Url')]
+
+
+class IssuedUploadView(BaseModel):
+    """
+    The parts of the upload the store does not hold yet, at most a window
+    of them, each good until `expires_at`. `remaining` counts every part
+    still missing, these included: send these and ask again while it is
+    above zero, then confirm. Asked again after an upload was cut off, it
+    signs only the parts still missing, under the same `upload_id`.
+    """
+
+    expires_at: Annotated[AwareDatetime, Field(title='Expires At')]
+    parts: Annotated[list[IssuedPartView], Field(title='Parts')]
+    remaining: Annotated[int, Field(title='Remaining')]
+    upload_id: Annotated[str, Field(title='Upload Id')]
 
 
 class PurposeUsageView(BaseModel):
@@ -92,11 +119,6 @@ class StorageUsageView(BaseModel):
     total_size_bytes: Annotated[int, Field(title='Total Size Bytes')]
 
 
-class UploadFieldView(BaseModel):
-    name: Annotated[str, Field(title='Name')]
-    value: Annotated[str, Field(title='Value')]
-
-
 class FilePageView(BaseModel):
     """
     One page of the org's stored files, oldest first. `next_cursor` fetches
@@ -105,18 +127,3 @@ class FilePageView(BaseModel):
 
     items: Annotated[list[FileView], Field(title='Items')]
     next_cursor: Annotated[str | None, Field(title='Next Cursor')]
-
-
-class IssuedUploadView(BaseModel):
-    """
-    A form to post the file with, straight to the store: every field, in
-    order, then the file as the last field, named `file`. The signed policy
-    holds the post to the file's type and at most its size, until
-    `expires_at`. A null `url` means the store cannot take a post: the bytes
-    go to `PUT /v1/media/files/{id}/content` instead. Then the upload is
-    confirmed.
-    """
-
-    expires_at: Annotated[AwareDatetime, Field(title='Expires At')]
-    fields: Annotated[list[UploadFieldView], Field(title='Fields')]
-    url: Annotated[str | None, Field(title='Url')]

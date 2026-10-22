@@ -19,8 +19,8 @@ export interface paths {
         put?: never;
         /**
          * Start Upload
-         * @description A pending file, and nothing in the store yet: the upload form, the
-         *     bytes, and the confirm follow by its id.
+         * @description A pending file, with the store's multipart upload of it started and
+         *     nothing in the store yet: the parts and the confirm follow by its id.
          */
         post: operations["start_upload"];
         delete?: never;
@@ -64,24 +64,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/v1/media/files/{file_id}/content": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Get Content */
-        get: operations["get_content"];
-        /** Put Content */
-        put: operations["put_content"];
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/v1/media/files/{file_id}/download": {
         parameters: {
             query?: never;
@@ -112,7 +94,12 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Issue Upload */
+        /**
+         * Issue Upload
+         * @description The parts the store does not hold yet. Asked again after an upload
+         *     was cut off, it signs only the parts still missing, under the same
+         *     upload.
+         */
         post: operations["issue_upload"];
         delete?: never;
         options?: never;
@@ -204,9 +191,8 @@ export interface components {
         };
         /**
          * IssuedDownloadView
-         * @description A link to the file's bytes that works until `expires_at`. A null `url`
-         *     means the store cannot sign one: the bytes come from
-         *     `GET /v1/media/files/{id}/content`.
+         * @description A link to the file's bytes, straight from the store, that works until
+         *     `expires_at`.
          */
         IssuedDownloadView: {
             /**
@@ -215,16 +201,31 @@ export interface components {
              */
             expires_at: string;
             /** Url */
-            url: string | null;
+            url: string;
+        };
+        /**
+         * IssuedPartView
+         * @description One part to send: the `size_bytes` bytes of the file from `offset`, as
+         *     the body of a PUT to `url`, straight to the store. The URL is signed for
+         *     that length, and the store refuses a body of any other.
+         */
+        IssuedPartView: {
+            /** Number */
+            number: number;
+            /** Offset */
+            offset: number;
+            /** Size Bytes */
+            size_bytes: number;
+            /** Url */
+            url: string;
         };
         /**
          * IssuedUploadView
-         * @description A form to post the file with, straight to the store: every field, in
-         *     order, then the file as the last field, named `file`. The signed policy
-         *     holds the post to the file's type and at most its size, until
-         *     `expires_at`. A null `url` means the store cannot take a post: the bytes
-         *     go to `PUT /v1/media/files/{id}/content` instead. Then the upload is
-         *     confirmed.
+         * @description The parts of the upload the store does not hold yet, at most a window
+         *     of them, each good until `expires_at`. `remaining` counts every part
+         *     still missing, these included: send these and ask again while it is
+         *     above zero, then confirm. Asked again after an upload was cut off, it
+         *     signs only the parts still missing, under the same `upload_id`.
          */
         IssuedUploadView: {
             /**
@@ -232,10 +233,12 @@ export interface components {
              * Format: date-time
              */
             expires_at: string;
-            /** Fields */
-            fields: components["schemas"]["UploadFieldView"][];
-            /** Url */
-            url: string | null;
+            /** Parts */
+            parts: components["schemas"]["IssuedPartView"][];
+            /** Remaining */
+            remaining: number;
+            /** Upload Id */
+            upload_id: string;
         };
         /** PurposeUsageView */
         PurposeUsageView: {
@@ -278,13 +281,6 @@ export interface components {
             total_count: number;
             /** Total Size Bytes */
             total_size_bytes: number;
-        };
-        /** UploadFieldView */
-        UploadFieldView: {
-            /** Name */
-            name: string;
-            /** Value */
-            value: string;
         };
         /** ValidationError */
         ValidationError: {
@@ -544,89 +540,13 @@ export interface operations {
                     "application/json": components["schemas"]["FileView"];
                 };
             };
-            /** @description Validation Error */
+            /** @description upload_refused: the parts the store holds do not sum to the size */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_content: {
-        parameters: {
-            query?: {
-                inline?: boolean;
-            };
-            header?: {
-                authorization?: string | null;
-                "x-app"?: string | null;
-                "x-app-version"?: string | null;
-            };
-            path: {
-                file_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/octet-stream": string;
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    put_content: {
-        parameters: {
-            query?: never;
-            header?: {
-                authorization?: string | null;
-                "x-app"?: string | null;
-                "x-app-version"?: string | null;
-            };
-            path: {
-                file_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/octet-stream": string;
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["FileView"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
         };

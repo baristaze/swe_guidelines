@@ -2,9 +2,8 @@ from datetime import datetime
 from uuid import UUID
 
 from pydantic import Field
-from starlette.responses import Response
 
-from acme.om.media.rules import MAX_NAME_LENGTH, content_disposition
+from acme.om.media.rules import MAX_NAME_LENGTH
 from acme.om.media.types.file import FilePurpose, FileStatus
 from acme.services.api.types.common import RequestBody, View
 
@@ -45,30 +44,35 @@ class StartUploadRequest(RequestBody):
     size_bytes: int = Field(gt=0)
 
 
-class UploadFieldView(View):
-    name: str
-    value: str
+class IssuedPartView(View):
+    """One part to send: the `size_bytes` bytes of the file from `offset`, as
+    the body of a PUT to `url`, straight to the store. The URL is signed for
+    that length, and the store refuses a body of any other."""
+
+    number: int
+    offset: int
+    size_bytes: int
+    url: str
 
 
 class IssuedUploadView(View):
-    """A form to post the file with, straight to the store: every field, in
-    order, then the file as the last field, named `file`. The signed policy
-    holds the post to the file's type and at most its size, until
-    `expires_at`. A null `url` means the store cannot take a post: the bytes
-    go to `PUT /v1/media/files/{id}/content` instead. Then the upload is
-    confirmed."""
+    """The parts of the upload the store does not hold yet, at most a window
+    of them, each good until `expires_at`. `remaining` counts every part
+    still missing, these included: send these and ask again while it is
+    above zero, then confirm. Asked again after an upload was cut off, it
+    signs only the parts still missing, under the same `upload_id`."""
 
-    url: str | None
-    fields: list[UploadFieldView]
+    upload_id: str
+    parts: list[IssuedPartView]
+    remaining: int
     expires_at: datetime
 
 
 class IssuedDownloadView(View):
-    """A link to the file's bytes that works until `expires_at`. A null `url`
-    means the store cannot sign one: the bytes come from
-    `GET /v1/media/files/{id}/content`."""
+    """A link to the file's bytes, straight from the store, that works until
+    `expires_at`."""
 
-    url: str | None
+    url: str
     expires_at: datetime
 
 
@@ -89,21 +93,3 @@ class StorageUsageView(View):
     total_count: int
     total_size_bytes: int
     pending_size_bytes: int
-
-
-class FileContentResponse(Response):
-    """A file's bytes on the wire: its own type, shown inline for a preview or
-    saved under its own name. `nosniff`, so a browser never reads the bytes
-    as another type."""
-
-    media_type = "application/octet-stream"
-
-    def __init__(self, name: str, content_type: str, data: bytes, *, inline: bool = False) -> None:
-        super().__init__(
-            content=data,
-            media_type=content_type,
-            headers={
-                "Content-Disposition": content_disposition(name, inline),
-                "X-Content-Type-Options": "nosniff",
-            },
-        )

@@ -13,6 +13,7 @@ from urllib.parse import parse_qs, urlparse
 from uuid import UUID
 
 import httpx
+from store_support import local_store
 
 from acme.infra.impl.local import InfraLocalImpl
 from acme.integrations.identity.twin import IdentityProviderTwinImpl
@@ -273,3 +274,59 @@ async def client_over(container: AppContainer) -> AsyncIterator[httpx.AsyncClien
 def run[T](coro: Coroutine[Any, Any, T]) -> T:
     """For the few sync tests that need a manager call before the app runs."""
     return asyncio.run(coro)
+
+
+async def send_parts(container: AppContainer, issued: dict[str, Any], data: bytes) -> list[int]:
+    """Each part an issue answered, its slice of `data` PUT straight to the
+    local store by its signed URL, as a browser sends it, and never through
+    the API. Answers the numbers it sent."""
+    sent: list[int] = []
+    async with local_store(container.infra.get_buckets()) as store:
+        for part in issued["parts"]:
+            body = data[part["offset"] : part["offset"] + part["size_bytes"]]
+            put = await store.put(part["url"], content=body)
+            assert put.status_code == 200, put.text
+            sent.append(part["number"])
+    return sent
+
+
+async def send_upload(
+    client: httpx.AsyncClient,
+    container: AppContainer,
+    headers: dict[str, str],
+    file_id: str,
+    data: bytes,
+) -> None:
+    """The bytes of a started upload: ask for the parts the store does not
+    hold, send each straight to the store, and ask again until none is
+    missing. The confirm is the caller's."""
+    while True:
+        issued = await client.post(f"/v1/media/files/{file_id}/upload", headers=headers)
+        assert issued.status_code == 200, issued.text
+        if not issued.json()["parts"]:
+            return
+        await send_parts(container, issued.json(), data)
+
+
+async def upload_file(
+    client: httpx.AsyncClient,
+    container: AppContainer,
+    headers: dict[str, str],
+    data: bytes,
+    *,
+    name: str = "report.pdf",
+    content_type: str = "application/pdf",
+) -> dict[str, Any]:
+    """The whole flow a client makes: start, ask for the parts, send each
+    straight to the store, ask again until none is missing, confirm."""
+    started = await client.post(
+        "/v1/media/files",
+        headers={**headers, "Idempotency-Key": str(new_id())},
+        json={"name": name, "content_type": content_type, "size_bytes": len(data)},
+    )
+    assert started.status_code == 201, started.text
+    file_id = started.json()["id"]
+    await send_upload(client, container, headers, file_id, data)
+    confirmed = await client.post(f"/v1/media/files/{file_id}/confirm", headers=headers)
+    assert confirmed.status_code == 200, confirmed.text
+    return confirmed.json()

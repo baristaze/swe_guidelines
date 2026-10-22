@@ -5,7 +5,7 @@ from datetime import timedelta
 from pathlib import Path
 
 import httpx
-from api_support import OWNER, build_container, callback_body, run, seed_request
+from api_support import OWNER, build_container, callback_body, run, seed_request, send_upload
 from starlette.testclient import TestClient
 
 from acme.om.base import utcnow
@@ -15,11 +15,12 @@ from acme.services.api.container import AppContainer
 REPORT = {"name": "report.pdf", "content_type": "application/pdf", "size_bytes": 5}
 
 
-async def test_events_are_paged_by_seq(client: httpx.AsyncClient, owner: dict[str, str]) -> None:
+async def test_events_are_paged_by_seq(
+    client: httpx.AsyncClient, container: AppContainer, owner: dict[str, str]
+) -> None:
     created = await client.post("/v1/media/files", headers=owner, json=REPORT)
     file_id = created.json()["id"]
-    put = await client.put(f"/v1/media/files/{file_id}/content", headers=owner, content=b"%PDF-")
-    assert put.status_code == 200, put.text
+    await send_upload(client, container, owner, file_id, b"%PDF-")
     confirmed = await client.post(f"/v1/media/files/{file_id}/confirm", headers=owner)
     assert confirmed.status_code == 200, confirmed.text
     await client.delete(f"/v1/media/files/{file_id}", headers=owner)

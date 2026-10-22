@@ -8,6 +8,8 @@ from datetime import timedelta
 from pathlib import Path
 from uuid import UUID
 
+from store_support import send_parts
+
 from acme.infra.cache import CacheScope
 from acme.infra.impl.local import InfraLocalImpl
 from acme.integrations.identity.twin import IdentityProviderTwinImpl
@@ -95,8 +97,9 @@ async def upload(
     container: WorkerContainer, ctx: TenantContext, name: str = "photo.png", *, confirm: bool = True
 ) -> File:
     """A file the person stored in the org: its row, and its object in the
-    store. Unconfirmed, the upload is started and never finished: a pending
-    row, and no object."""
+    store, its parts sent straight to the store. Unconfirmed, the upload is
+    started and never finished: a pending row, the parts the store holds of
+    it, and no object."""
     data = b"\x89PNG\r\n\x1a\n" + b"0" * 64
     now = utcnow()
     media = container.managers.media
@@ -114,9 +117,10 @@ async def upload(
             purpose=FilePurpose.UPLOAD,
         ),
     )
+    issued = await media.issue_upload(ctx, file.id)
+    await send_parts(container.infra.get_buckets(), issued.parts, data)
     if not confirm:
         return file
-    await media.put_content(ctx, file.id, data)
     return await media.confirm_file(ctx, file.id)
 
 

@@ -1,7 +1,9 @@
 """The whole API in-process behind the CLI: Starlette's TestClient runs the
 app with its lifespan on its own thread, and a transport hops each of the
 CLI's requests over to it, so every command runs under its own `asyncio.run`
-the way it does in a terminal."""
+the way it does in a terminal. The local store stands where the object store
+does: a request to a URL it signed reaches it apart from the API, as a PUT
+of a part reaches the object store."""
 
 import asyncio
 from collections.abc import Iterator
@@ -16,6 +18,7 @@ from typer.testing import CliRunner
 
 from acme.apps.cli import main
 from acme.client.client import ApiClient
+from acme.infra.buckets.local import BucketsLocalImpl
 from acme.integrations.identity.twin import IdentityProviderTwinImpl
 from acme.integrations.impl.configured import IntegrationsOverImpl
 from acme.om.context import Role
@@ -26,12 +29,16 @@ BOB = {"email": "bob@example.test"}
 
 
 class Hop(httpx.AsyncBaseTransport):
-    """Sends the CLI's request through the TestClient, on a worker thread."""
+    """Sends the CLI's request through the TestClient, on a worker thread,
+    and keeps each one it sent."""
 
     def __init__(self, tc: TestClient) -> None:
         self._tc = tc
+        self.sent: list[httpx.Request] = []
 
     async def handle_async_request(self, request: httpx.Request) -> httpx.Response:
+        self.sent.append(request)
+
         # The test client answers with its own response type, which is read
         # for its parts and rebuilt as the one the CLI's transport returns.
         def send() -> Any:
@@ -48,6 +55,27 @@ class Hop(httpx.AsyncBaseTransport):
         )
 
 
+class Store(httpx.AsyncBaseTransport):
+    """The local store, reached as the object store is: each request goes to
+    the local impl's store app, and is kept. `cut_at`, when set, is the
+    count of a PUT the wire drops before the store sees it."""
+
+    def __init__(self, container: AppContainer) -> None:
+        buckets = container.infra.get_buckets()
+        assert isinstance(buckets, BucketsLocalImpl)
+        self._store = httpx.ASGITransport(app=buckets.store)
+        self.sent: list[httpx.Request] = []
+        self.cut_at: int | None = None
+
+    async def handle_async_request(self, request: httpx.Request) -> httpx.Response:
+        self.sent.append(request)
+        puts = sum(1 for r in self.sent if r.method == "PUT")
+        if request.method == "PUT" and puts == self.cut_at:
+            raise httpx.ConnectError("the wire dropped", request=request)
+        await request.aread()  # kept whole, so a test reads what was sent
+        return await self._store.handle_async_request(request)
+
+
 class Stack:
     def __init__(
         self, tc: TestClient, container: AppContainer, org_id: Any, twin: IdentityProviderTwinImpl
@@ -57,11 +85,18 @@ class Stack:
         self.container = container
         self.org_id = org_id
         self.runner = CliRunner()
+        self.api = Hop(tc)
+        self.store = Store(container)
         self._tokens: dict[str, str] = {}
 
     def client(self, token: str | None) -> ApiClient:
         return ApiClient(
-            "http://test", app="cli", app_version="cli@test", token=token, transport=Hop(self.tc)
+            "http://test",
+            app="cli",
+            app_version="cli@test",
+            token=token,
+            transport=self.api,
+            store_transport=self.store,
         )
 
     def auth_session_token(self, email: str) -> str:

@@ -10,7 +10,7 @@ from uuid import UUID
 
 import httpx
 import pytest
-from api_support import OWNER, enrol_operator, sign_in_as
+from api_support import OWNER, enrol_operator, send_upload, sign_in_as
 
 from acme.om.base import new_id, utcnow
 from acme.om.context import AppContext, AppType, OperatorRole, RequestContext
@@ -40,7 +40,7 @@ async def reader(client: httpx.AsyncClient, container: AppContainer) -> dict[str
 
 
 @pytest.fixture
-async def org_id(client: httpx.AsyncClient, owner: dict[str, str]) -> str:
+async def org_id(client: httpx.AsyncClient, container: AppContainer, owner: dict[str, str]) -> str:
     """The seeded tenant, with three uploads started and the third one stored,
     over its owner: four records on its stream."""
     current = await client.get("/v1/orgs/current", headers=owner)
@@ -53,10 +53,7 @@ async def org_id(client: httpx.AsyncClient, owner: dict[str, str]) -> str:
         assert created.status_code == 201, created.text
         if name == "third.pdf":
             file_id = created.json()["id"]
-            put = await client.put(
-                f"/v1/media/files/{file_id}/content", headers=owner, content=b"%PDF-"
-            )
-            assert put.status_code == 200, put.text
+            await send_upload(client, container, owner, file_id, b"%PDF-")
             stored = await client.post(f"/v1/media/files/{file_id}/confirm", headers=owner)
             assert stored.status_code == 200, stored.text
     return current.json()["id"]

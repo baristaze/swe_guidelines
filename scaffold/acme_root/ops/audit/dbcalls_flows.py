@@ -18,8 +18,10 @@ from pathlib import Path
 from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "services" / "api" / "tests"))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "infra" / "tests"))
 
 from api_support import add_member, callback_body, seed_request
+from store_support import local_store
 
 from acme.om.base import new_id
 from acme.om.context import AppContext, AppType, RequestContext, Role
@@ -353,17 +355,15 @@ async def files(w: Any) -> None:
     body = {"name": "notes.pdf", "content_type": "application/pdf", "size_bytes": len(PDF)}
     r = await w.http(area, "POST /v1/media/files", "POST", "/v1/media/files", headers=h, json=body)
     fid = r.json()["id"]
-    await w.http(
+    issued = await w.http(
         area, "POST /v1/media/files/{id}/upload", "POST", f"/v1/media/files/{fid}/upload", headers=h
     )
-    await w.http(
-        area,
-        "PUT /v1/media/files/{id}/content",
-        "PUT",
-        f"/v1/media/files/{fid}/content",
-        headers=h,
-        content=PDF,
-    )
+    # The parts go straight to the store, as a browser sends them: no route,
+    # so nothing of the database to count.
+    async with local_store(w.infra.get_buckets()) as store:
+        for part in issued.json()["parts"]:
+            body = PDF[part["offset"] : part["offset"] + part["size_bytes"]]
+            assert (await store.put(part["url"], content=body)).status_code == 200
     await w.http(
         area,
         "POST /v1/media/files/{id}/confirm",

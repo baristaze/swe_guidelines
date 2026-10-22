@@ -128,7 +128,7 @@
         "type": "object"
       },
       "IssuedDownloadView": {
-        "description": "A link to the file's bytes that works until `expires_at`. A null `url`\nmeans the store cannot sign one: the bytes come from\n`GET /v1/media/files/{id}/content`.",
+        "description": "A link to the file's bytes, straight from the store, that works until\n`expires_at`.",
         "properties": {
           "expires_at": {
             "format": "date-time",
@@ -136,15 +136,8 @@
             "type": "string"
           },
           "url": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Url"
+            "title": "Url",
+            "type": "string"
           }
         },
         "required": [
@@ -154,36 +147,63 @@
         "title": "IssuedDownloadView",
         "type": "object"
       },
+      "IssuedPartView": {
+        "description": "One part to send: the `size_bytes` bytes of the file from `offset`, as\nthe body of a PUT to `url`, straight to the store. The URL is signed for\nthat length, and the store refuses a body of any other.",
+        "properties": {
+          "number": {
+            "title": "Number",
+            "type": "integer"
+          },
+          "offset": {
+            "title": "Offset",
+            "type": "integer"
+          },
+          "size_bytes": {
+            "title": "Size Bytes",
+            "type": "integer"
+          },
+          "url": {
+            "title": "Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "number",
+          "offset",
+          "size_bytes",
+          "url"
+        ],
+        "title": "IssuedPartView",
+        "type": "object"
+      },
       "IssuedUploadView": {
-        "description": "A form to post the file with, straight to the store: every field, in\norder, then the file as the last field, named `file`. The signed policy\nholds the post to the file's type and at most its size, until\n`expires_at`. A null `url` means the store cannot take a post: the bytes\ngo to `PUT /v1/media/files/{id}/content` instead. Then the upload is\nconfirmed.",
+        "description": "The parts of the upload the store does not hold yet, at most a window\nof them, each good until `expires_at`. `remaining` counts every part\nstill missing, these included: send these and ask again while it is\nabove zero, then confirm. Asked again after an upload was cut off, it\nsigns only the parts still missing, under the same `upload_id`.",
         "properties": {
           "expires_at": {
             "format": "date-time",
             "title": "Expires At",
             "type": "string"
           },
-          "fields": {
+          "parts": {
             "items": {
-              "$ref": "#/components/schemas/UploadFieldView"
+              "$ref": "#/components/schemas/IssuedPartView"
             },
-            "title": "Fields",
+            "title": "Parts",
             "type": "array"
           },
-          "url": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Url"
+          "remaining": {
+            "title": "Remaining",
+            "type": "integer"
+          },
+          "upload_id": {
+            "title": "Upload Id",
+            "type": "string"
           }
         },
         "required": [
-          "url",
-          "fields",
+          "upload_id",
+          "parts",
+          "remaining",
           "expires_at"
         ],
         "title": "IssuedUploadView",
@@ -281,24 +301,6 @@
           "pending_size_bytes"
         ],
         "title": "StorageUsageView",
-        "type": "object"
-      },
-      "UploadFieldView": {
-        "properties": {
-          "name": {
-            "title": "Name",
-            "type": "string"
-          },
-          "value": {
-            "title": "Value",
-            "type": "string"
-          }
-        },
-        "required": [
-          "name",
-          "value"
-        ],
-        "title": "UploadFieldView",
         "type": "object"
       }
     }
@@ -417,7 +419,7 @@
         ]
       },
       "post": {
-        "description": "A pending file, and nothing in the store yet: the upload form, the\nbytes, and the confirm follow by its id.",
+        "description": "A pending file, with the store's multipart upload of it started and\nnothing in the store yet: the parts and the confirm follow by its id.",
         "operationId": "start_upload",
         "parameters": [
           {
@@ -793,215 +795,14 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "common.json#/components/schemas/HTTPValidationError"
+                  "$ref": "common.json#/components/schemas/ErrorResponse"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "upload_refused: the parts the store holds do not sum to the size"
           }
         },
         "summary": "Confirm File",
-        "tags": [
-          "media"
-        ]
-      }
-    },
-    "/v1/media/files/{file_id}/content": {
-      "get": {
-        "operationId": "get_content",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "file_id",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "title": "File Id",
-              "type": "string"
-            }
-          },
-          {
-            "in": "query",
-            "name": "inline",
-            "required": false,
-            "schema": {
-              "default": false,
-              "title": "Inline",
-              "type": "boolean"
-            }
-          },
-          {
-            "in": "header",
-            "name": "authorization",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Authorization"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-app",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-App"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-app-version",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-App-Version"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/octet-stream": {
-                "schema": {
-                  "type": "string"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "common.json#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Get Content",
-        "tags": [
-          "media"
-        ]
-      },
-      "put": {
-        "operationId": "put_content",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "file_id",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "title": "File Id",
-              "type": "string"
-            }
-          },
-          {
-            "in": "header",
-            "name": "authorization",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Authorization"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-app",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-App"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-app-version",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-App-Version"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/octet-stream": {
-              "schema": {
-                "format": "binary",
-                "type": "string"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/FileView"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "common.json#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Put Content",
         "tags": [
           "media"
         ]
@@ -1111,6 +912,7 @@
     },
     "/v1/media/files/{file_id}/upload": {
       "post": {
+        "description": "The parts the store does not hold yet. Asked again after an upload\nwas cut off, it signs only the parts still missing, under the same\nupload.",
         "operationId": "issue_upload",
         "parameters": [
           {
@@ -1284,7 +1086,7 @@
   },
   "tags": [
     {
-      "description": "Media: the org's files, as references to objects in the store.\n\nStarting an upload, under an Idempotency-Key; the org's stored files a page\nat a time; a file, and deleting it; the form that posts its bytes straight to\nthe store, or the bytes through the API where the store cannot take a form;\nthe confirm once the upload is done; the link a download follows, or the\nbytes through the API; and the org's storage used (`/v1/media/files`,\n`/v1/media/files/{file_id}`, `.../upload`, `.../content`, `.../confirm`,\n`.../download`, `/v1/media/usage`). Each function is one call into the media\nservice; the start runs under the idempotency record. A file started here is\nof purpose `upload`: a file the org keeps, about no subject.",
+      "description": "Media: the org's files, as references to objects in the store.\n\nStarting an upload, under an Idempotency-Key; the org's stored files a page\nat a time; a file, and deleting it; the parts of an upload the store does not\nhold yet, each signed for a PUT straight to the store; the confirm once the\nparts are there; the link a download follows straight from the store; and\nthe org's storage used (`/v1/media/files`, `/v1/media/files/{file_id}`,\n`.../upload`, `.../confirm`, `.../download`, `/v1/media/usage`). No route\ntakes or serves a file's bytes. Each function is one call into the media\nservice; the start runs under the idempotency record. A file started here is\nof purpose `upload`: a file the org keeps, about no subject.",
       "name": "media"
     }
   ]
