@@ -380,24 +380,27 @@ def context_is_immutable(project: Project) -> Iterator[Violation]:
 
 # --- CTX-07
 
-LOG_MODULES = ("infra.observability", "gateway.observability")
-"""The log modules, below the package, that may declare the one context variable."""
+AMBIENT_MODULES = ("infra.observability", "gateway.observability", "om.storage.reserve")
+"""The modules, below the package, that may declare a context variable: the
+log modules, for the request id, and the reserve's, for a holder's call."""
 
 
 @rule(
     "CTX-07",
     options=("modules",),
     coverage="partial",
-    summary="A ContextVar lives only in the log module; nothing uses a thread local.",
+    summary="A ContextVar lives only in the log module or the reserve's; nothing uses a thread local.",
 )
 def no_ambient_state(project: Project) -> Iterator[Violation]:
-    """`ContextVar(...)` is called only in the log module, and nothing
-    calls `threading.local()`. Option `[tool.arch-check.options.CTX-07]`:
-    `modules`, the modules below the package allowed to hold a context
-    variable (default `infra.observability` and `gateway.observability`,
-    where the gateway middleware sets the request id for the log
-    filter). What a context variable is read for is judged."""
-    defaults = list(LOG_MODULES)
+    """`ContextVar(...)` is called only in the log module or the reserve's,
+    and nothing calls `threading.local()`. Option
+    `[tool.arch-check.options.CTX-07]`: `modules`, the modules below the
+    package allowed to hold a context variable (default
+    `infra.observability` and `gateway.observability`, where the gateway
+    middleware sets the request id for the log filter, and
+    `om.storage.reserve`, where admission marks a holder's call for the
+    storage funnel). What a context variable is read for is judged."""
+    defaults = list(AMBIENT_MODULES)
     allowed = {f"{project.package}.{m}" for m in project.option("CTX-07", "modules", defaults, {"modules"})}
     for file, tree in project.trees():
         # Through the imports, so `import threading as th; th.local()` and

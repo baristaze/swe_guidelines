@@ -963,21 +963,27 @@ item's result, a report on the work. The system marks it on the route,
 and it is counted apart from every other write, in a lane of its own at
 admission and in a budget of its own per credential, the budget sized
 to the cadence a lease asks for. Both are named in settings and keep a
-bound, so a client that renews too often is still refused.
+bound, so a client that renews too often is still refused. Beside each
+database pool, a reserve sized in settings serves a holder's call when
+the pool has no connection free, and serves nothing else.
 
 **Source.** The Network Layer, The Gateway (A holder's calls).
 
 **Look for.** Each route a holder calls to keep or settle what it holds,
 and the mark it carries (`HOLDER_CALL`); the lane admission counts it
 in, matched before routing from that mark, and the budget its credential
-spends; the settings behind the lane and the budget.
+spends; the reserve its statements may take, chosen by the same mark in
+the storage funnel; the settings behind the lane, the budget, and the
+reserve.
 
 **Violation.** A renewal or a heartbeat counted in the write lane or
 spending the write budget, so a burst of the holder's own output, or a
 slowdown that fills the write lane, loses it the lease and its work
-mid-run; a holder's lane or budget with no bound; the routes listed
-again beside the middleware, apart from the mark on the route; a bulk
-write marked a holder's call.
+mid-run; a holder's call that waits on a pool the writes have filled
+with no reserve to take; a reserve any other call can take, so the bulk
+work that filled the pool drains it too; a holder's lane or budget with
+no bound; the routes listed again beside the middleware, apart from the
+mark on the route; a bulk write marked a holder's call.
 
 **Severity.** high
 

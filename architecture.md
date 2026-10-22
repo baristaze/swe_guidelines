@@ -1055,8 +1055,10 @@ local stack runs each role on an instance of its own, so every local run
 proves that nothing crosses a role
 ([Local: Docker Compose](#local-docker-compose)). A login and a grant
 live on one instance, so the migrate command makes them on each one a
-role lives on. Each role's pool declares its size and its wait bound,
-and the connection budget counts every process that can run at once.
+role lives on. Each role's pool declares its size, its wait bound, and
+the reserve a holder's call takes when it is full
+([The Gateway](#the-gateway)), and the connection budget counts every
+process that can run at once.
 
 Nothing crosses a role, so a handoff after a core write is never a
 second write a manager remembers. The manager writes the core row and
@@ -1529,12 +1531,23 @@ refuses past any at once. That is self-defense, and it fails closed.
 get through: a lease's renewal and its release, a heartbeat, a work
 item's result, a report on the work. So a system marks each such route
 a holder's call, and it is counted apart from every other write: in a
-lane of its own at admission, and in a budget of its own per
-credential, sized to the cadence a lease asks for. A write budget the
-holder's own writes have spent does not refuse a renewal at the rate
-limit, and a full write lane does not refuse it at admission. The lane
-and the budget each keep a bound, so a client that renews too often is
-still refused.
+lane of its own at admission, in a budget of its own per credential,
+sized to the cadence a lease asks for, and in a reserve of its own at
+the database pool. A write budget the holder's own writes have spent
+does not refuse a renewal at the rate limit, and a full write lane does
+not refuse it at admission. The lane and the budget each keep a bound,
+so a client that renews too often is still refused.
+
+The reserve is a few connections beside each pool that only a holder's
+call takes, sized in settings beside the pool. The call takes a
+connection of the pool when one is free and the reserve only when none
+is. So a slow database that fills the pool with writes still serves the
+renewal that keeps a lease, and the writes never reach the reserve. The
+mark reaches every statement of the call, its authentication included,
+as a context variable that admission sets and only the storage funnel
+reads
+([`reserve.py`](scaffold/acme_root/om/src/acme/om/storage/reserve.py)).
+It chooses connections and decides nothing the call returns.
 
 **Edge idempotency.** A creating `POST` accepts an `Idempotency-Key`,
 and an `IdempotencyRecord`, the marker, owns the retry

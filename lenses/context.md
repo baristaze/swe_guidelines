@@ -185,7 +185,8 @@ the with or override helper; the rest is judged.
 thread locals, or hidden lookups. Everything ambient flows through the
 context.
 
-**Source.** TenantContext; Telemetry, Logs.
+**Source.** TenantContext; Telemetry, Logs; The Network Layer, The
+Gateway (A holder's calls).
 
 **Look for.** Module-level globals holding a current user, tenant, or
 request; thread-local or context-variable reads of identity, tenant,
@@ -193,15 +194,17 @@ or request in managers, storage, or workers.
 
 **Violation.** A manager reading the current tenant from a context
 variable; a storage impl reading a global "current org"; a request id
-read from a context variable where the context is in hand. The one
-allowed context variable carries the request id, and the request that
-caused it, for log enrichment only, and the authoritative value stays
-on the context.
+read from a context variable where the context is in hand. Two context
+variables are allowed, and neither decides what a call returns: one
+carries the request id, and the request that caused it, for log
+enrichment only, while the authoritative value stays on the context;
+the other marks a holder's call, set by admission alone and read by the
+storage funnel alone, to choose the pool's reserve.
 
 **Severity.** medium
 
 **Check.** `arch-check` decides the context variable outside the log
-module and the thread local; the rest is judged.
+module and the reserve's, and the thread local; the rest is judged.
 
 ## CTX-08 Authorization lives in managers
 

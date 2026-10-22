@@ -260,6 +260,13 @@ def test_a_context_variable_in_the_log_module_passes_ctx_07(tmp_path):
     assert code == 0
 
 
+def test_the_reserves_module_holds_the_mark_of_a_holders_call_under_ctx_07(tmp_path):
+    src = "from contextvars import ContextVar\n\nholder_call_var = ContextVar('holder_call', default=False)\n"
+    files = {f"{OM}/storage/reserve.py": src, f"{OM}/storage/impl/pg_base.py": src}
+    code, found, _ = run(tmp_path, "CTX-07", files)
+    assert (code, [p for _, p, _ in found]) == (1, [f"{OM}/storage/impl/pg_base.py"])
+
+
 def test_a_context_variable_or_a_thread_local_elsewhere_is_ctx_07(tmp_path):
     files = {
         f"{OM}/tasks/impl/manager.py": "import contextvars\n\ncurrent_org = contextvars.ContextVar('org')\n",
