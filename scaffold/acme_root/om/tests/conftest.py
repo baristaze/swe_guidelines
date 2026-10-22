@@ -95,7 +95,7 @@ async def pg_sessions(
 
 
 # A table written since its last truncate, in a role's schema, and every one
-# that names it in a foreign key, emptied in one round trip. A truncate leaves
+# that names it in a foreign key, emptied by one statement. A truncate leaves
 # a table no pages, and a row written in it adds one, so a table with none
 # holds no row. Its size is the test, not its rows: the migration login is
 # bound by each tenant table's fence, so it sees none of their rows, while a
