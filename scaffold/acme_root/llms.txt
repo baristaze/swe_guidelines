@@ -19,7 +19,7 @@ served to it. Exposure is by listing, never by folder.
 - [Work items](om/src/acme/om/work/README.md): background jobs, the claim, the lease, and the dead letter
 - [Orchestrations](om/src/acme/om/orchestrations/README.md): long-running records, a step at a time, that park or fail
 - [Leases](om/src/acme/om/leases/README.md): a leasable resource one holder uses at a time, its lease under a fencing token, and the wait line in front of it
-- [Files](om/src/acme/om/media/README.md): files as references, the bounded upload straight to the store, and the sweep
+- [Files](om/src/acme/om/media/README.md): files as references, the multipart upload straight to the store and its resume, and the sweep
 - [Infrastructure](infra/README.md): the capabilities the system asks for, what each promises, and which twin runs where
 - [Integrations](integrations/README.md): the outside providers, their twins, the absent provider, and the webhook check
 - [Timing](libs/timing/README.md): the wait between attempts every loop and client shares, and the reader of a server's Retry-After

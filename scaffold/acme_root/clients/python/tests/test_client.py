@@ -577,8 +577,8 @@ async def test_the_count_and_the_delay_arrive_through_the_constructor() -> None:
     assert len(seen) == 1
 
 
-# Media: the org's files. The in-process store cannot sign a form or a link,
-# so the bytes go through the API's content route both ways.
+# Media: the org's files. The bytes go straight between the client and the
+# store, by the URLs the API signed, and never through the API.
 
 
 async def test_the_files_are_paged_with_the_cursor_they_are_given() -> None:

@@ -76,7 +76,7 @@ run "names_the_object_store_a_signed_url_points_at" {
 
   assert {
     condition     = strcontains(aws_cloudfront_response_headers_policy.security.security_headers_config[0].content_security_policy[0].content_security_policy, "connect-src 'self' wss://app.example.test https://acme-test-user-file-uploads.s3.us-east-2.amazonaws.com;")
-    error_message = "the page posts files to the store, so its origin joins connect-src, and nothing broader"
+    error_message = "the page sends files to the store, so its origin joins connect-src, and nothing broader"
   }
 
   assert {

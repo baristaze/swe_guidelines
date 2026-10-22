@@ -85,6 +85,8 @@ These are the invariants. Each links the section that states it.
 - [Infrastructure is capabilities behind
   interfaces](#infrastructure-principles); the object model imports
   them, never the reverse.
+- [A blob crosses by a presigned URL](#buckets), never through a
+  service, and every upload is multipart, so it resumes.
 - [The gateway is the only edge](#the-gateway), and it mints the
   context.
 - [Domain services are stateless](#stateless-vs-stateful-services).
@@ -1286,20 +1288,36 @@ is named the same way or it does not exist.
 ### Buckets
 
 Buckets hold large blobs, with an S3-like shape: put, get, exists, a
-bounded list in key order that pages after the last key, delete, and
-presigns
+bounded list in key order that pages after the last key, delete, a
+multipart upload, and presigns
 ([`buckets/`](scaffold/acme_root/infra/src/acme/infra/buckets/)). Every
-call takes `org_id`, which prefixes the key. A short-lived presigned URL
-moves bytes between a browser and the store, so no service holds a large
-upload. An upload is `presign_post`, whose signed policy carries the
-content type and `max_bytes`, so a form cannot fill the bucket.
+call takes `org_id`, which prefixes the key.
+
+Every blob that crosses between a client and a bucket goes by a
+short-lived presigned URL, whatever its size. No route takes or serves a
+blob's bytes, so no service holds a transfer, and one path serves every
+size. A download is a presigned GET. A service's own write, such as a
+worker's export, is a put.
+
+Every upload is multipart, so every upload resumes. The service starts
+the upload for a declared size and type, and signs each part for its own
+number and length. The client sends the parts straight to the store,
+which refuses a part longer than its URL names. A client cut off asks
+again: the service lists the parts the store holds and signs only the
+missing ones, under the same upload id. The complete is refused unless
+the parts sum to the declared size, and then nothing lands. A bucket
+that takes uploads aborts one left incomplete within days, so no part is
+kept forever.
 
 <!-- agents-only
-A presign returns `None` when its backend cannot sign, and the caller
-moves the bytes through `put` and `get` under the same bounds. The
-local filesystem impl holds an upload to the same content type and
-`max_bytes`, and refuses a key that is absolute or climbs out of its
-root with `..`.
+No presign returns `None`: every backend signs, the local one included.
+A part's URL is SigV4, with `Content-Length` among its signed headers;
+the older signature signs no length. `part_sizes` plans the parts from
+the size alone, so the signer, the client, and the complete agree, and
+an issue signs a bounded window of the missing parts. The local impl
+signs with a key of its own and answers its URLs with its own store app,
+which a test mounts as the store's host and no service route serves. It
+refuses a key that is absolute or climbs out of its root with `..`.
 -->
 
 ### Topics

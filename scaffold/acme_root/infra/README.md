@@ -11,7 +11,7 @@ interface alone, and infra imports nothing from the object model.
 | Capability | What it promises | Locally | In the cloud |
 |------------|------------------|---------|--------------|
 | Cache | Named scopes, so unrelated consumers never share a key; one atomic windowed counter for rate limits and generations; a read cache under the tenant's generation; fails open | In-process, or Valkey | Valkey (ElastiCache) |
-| Buckets | Blobs under the tenant's prefix, one bucket per member of `Buckets`: put, get, exists, list, delete, a presigned download, and a presigned form upload bounded by type and size | A folder, or MinIO | S3, one private versioned bucket each |
+| Buckets | Blobs under the tenant's prefix, one bucket per member of `Buckets`: put, get, exists, list, delete, a presigned download, and a multipart upload whose every part is presigned for its own length; a client's bytes never pass through a service | A folder that signs its own URLs (the tests), or MinIO | S3, one private versioned bucket each, aborting an incomplete upload after a day |
 | Topics | Wake-ups and live updates, one per member of `Topics`, best effort; a publish answers whether the bus took it | In-process, or Valkey pub/sub | Valkey pub/sub |
 | Queues | Work whose producer is outside the system, such as a provider's delivery, one queue per member of `Queues`; at least once, so the consumer is idempotent | In-process, or ElasticMQ | SQS, with a dead-letter queue |
 | Secrets | Get, has, put, and delete by name; the object model holds a name, never a value | The settings, from `.env` and the environment | Secrets Manager |

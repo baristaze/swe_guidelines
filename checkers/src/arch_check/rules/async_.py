@@ -30,6 +30,7 @@ from arch_check.project import (
     methods,
     nodes,
     parameters,
+    returns,
 )
 from arch_check.registry import rule
 from arch_check.rules._storage_util import (
@@ -488,16 +489,23 @@ def storage_never_caches(project: Project) -> Iterator[Violation]:
 CLOUD_SDKS = ("boto3", "aioboto3", "botocore", "aiobotocore", "google.cloud", "azure", "minio")
 """The SDKs of a cloud object store: an impl whose module imports one is not the local impl."""
 CLOUD_NAMES = ("S3", "Gcs", "GCS", "Azure", "Aws", "AWS", "Cloud", "Minio")
+NONE_ANSWER = re.compile(r"\bNone\b|\bOptional\[")
+"""A return annotation that admits None."""
 
 
 @rule(
     "ASY-08",
     coverage="partial",
-    summary="Buckets is an enum, every bucket parameter is typed with it, none is a string literal, and a local impl exists.",
+    summary=(
+        "Buckets is an enum, every bucket parameter is typed with it, none is a string literal, no presign"
+        " answers None, and a local impl exists."
+    ),
 )
 def buckets_are_an_enum(project: Project) -> Iterator[Violation]:
     """A local impl is any subclass of the bucket interface that neither imports a cloud SDK nor names a cloud
-    store: `BucketsLocalImpl` and `BucketsFilesystemImpl` both count, `BucketsS3Impl` does not."""
+    store: `BucketsLocalImpl` and `BucketsFilesystemImpl` both count, `BucketsS3Impl` does not. A presign is an
+    interface method whose name starts with `presign`; one whose return may be None leaves a caller to move the
+    bytes itself."""
     infra = project.sub("infra")
     file, decls = package_declarations(project, f"{infra}.buckets")
     if file is None or not declared_interfaces(decls):
@@ -512,6 +520,8 @@ def buckets_are_an_enum(project: Project) -> Iterator[Violation]:
             for p in parameters(fn):
                 if p.name == "bucket" and last(p.annotation) != "Buckets":
                     yield Violation.at(where.rel, fn, f"{i.name}.{fn.name} takes bucket as {p.annotation}; it takes Buckets")
+            if fn.name.startswith("presign") and NONE_ANSWER.search(returns(fn) or ""):
+                yield Violation.at(where.rel, fn, f"{i.name}.{fn.name} may answer None; every backend signs")
     index = class_index(project, infra)
     names = {i.name for _, i in interfaces}
 

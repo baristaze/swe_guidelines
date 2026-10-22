@@ -14,7 +14,7 @@ variable "buckets" {
 }
 
 variable "browser_buckets" {
-  description = "The buckets a browser posts to and reads from with a presigned URL, and so the ones that answer its preflight. Each is one of var.buckets."
+  description = "The buckets a browser sends an upload's parts to and reads from with a presigned URL, and so the ones that answer its preflight. Each is one of var.buckets."
   type        = list(string)
   default     = []
 
@@ -31,7 +31,7 @@ variable "browser_origins" {
 
   validation {
     condition     = !contains(var.browser_origins, "*")
-    error_message = "a browser bucket names its origins; a wildcard would let any page post a form it was handed."
+    error_message = "a browser bucket names its origins; a wildcard would let any page send a part it was handed."
   }
 }
 

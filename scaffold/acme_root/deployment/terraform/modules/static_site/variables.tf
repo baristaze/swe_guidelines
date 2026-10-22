@@ -72,7 +72,7 @@ variable "api_edge_secret" {
 }
 
 variable "store_origins" {
-  description = "The object store's origins the page posts a file to and fetches one from, by a URL the API signed. They join connect-src, and img-src, media-src, and frame-src for a preview. Empty for a page that holds no files."
+  description = "The object store's origins the page sends a file's parts to and fetches one from, by a URL the API signed. They join connect-src, and img-src, media-src, and frame-src for a preview. Empty for a page that holds no files."
   type        = list(string)
   default     = []
 

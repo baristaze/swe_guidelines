@@ -8,7 +8,7 @@ uv run acme login --org ajax        # confirm the code in the browser, on every 
 uv run acme whoami
 uv run acme orgs                    # * marks the auth session's org
 uv run acme switch fabrikam         # the old auth session ends
-uv run acme upload spec.pdf         # --type, --json
+uv run acme upload spec.pdf         # --type, --json; --resume ID goes on with one that stopped
 uv run acme listen                  # who did what to which record
 uv run acme logout
 ```

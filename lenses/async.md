@@ -173,37 +173,46 @@ the storage layer; the rest is judged.
 
 ## ASY-08 Buckets carry blobs, keyed by a fixed enum, moved by presigned URLs
 
-**Principle.** Large blobs live in buckets named by an enum, laid out
-under keys the manager chooses, with presigned URLs for direct upload
-and download so the service never proxies a large transfer through its
-own memory. An upload is a presigned POST, `presign_post`, because a
-presigned PUT cannot bound the size: its policy carries the content
-type and a `content-length-range` up to `max_bytes`. A local
-filesystem impl with the same layout serves development and tests. It
-enforces the same bound and refuses a key with `..`.
+**Principle.** Large blobs live in buckets named by an enum, under keys
+the manager chooses. Every blob that crosses between a client and a
+bucket goes by a presigned URL, whatever its size: no route takes or
+serves its bytes, and no presign answers `None`. A download is a
+presigned GET. An upload is multipart: each part is signed for its
+number and length, a resume signs only the parts the store lacks, and
+the complete is refused unless the store's parts sum to the declared
+size. A bucket that takes uploads aborts an incomplete one within days.
+The local impl signs and answers its own URLs to the same bounds, and
+refuses a key with `..`.
 
 **Source.** Infrastructure, Buckets.
 
-**Look for.** The `Buckets` enum; the bucket interface, and
-`presign_post(org_id, bucket, key, content_type, max_bytes, ttl) ->
-PresignedPost | None`, a `PresignedPost` being a URL and its fields;
-how uploads and downloads
-reach clients, and what a caller does when a presign returns `None`;
-the local impl, its size check, and its key check.
+**Look for.** The `Buckets` enum; the bucket interface, its
+`presign_get(...) -> str`, `start_upload`, `presign_part(org_id,
+bucket, key, upload_id, number, size_bytes, ttl) -> str`, `list_parts`,
+`complete_upload(..., size_bytes)`, and `abort_upload`; the part plan;
+the routes that start an upload, issue its parts, confirm it, and issue
+a download; how each client sends parts and resumes; the lifecycle rule
+on every bucket that takes uploads; the local impl, its signature, its
+length check, and its key check.
 
 **Violation.** A large blob stored in a column or on a service's disk,
-a bucket name passed as a free string, or a route that streams a large
-upload through the process instead of handing out a presigned URL; an
-upload through a presigned PUT, or a POST policy with no content type
-or no `content-length-range`; a `None` from a presign that the caller
-does not answer by moving the bytes itself under the same bounds, or a
-local impl that accepts a longer body, a key with `..`, or needs the
-cloud object store to run tests.
+or a bucket name passed as a free string; a route that takes or serves
+a blob's bytes, at any size, or a size threshold under which bytes go
+through the service; a presign that may answer `None`, or a caller that
+moves a client's bytes itself when one does; a single-request upload,
+such as a presigned POST or PUT of the whole file, or a part URL that
+does not sign its length; a complete that trusts the client's list of
+parts or its sum rather than the store's; an upload that restarts from
+zero when cut off; a bucket that takes uploads with no rule aborting an
+incomplete one; or a local impl that cannot sign, accepts a longer
+part, takes a key with `..`, or needs the cloud object store to run
+tests.
 
 **Severity.** medium
 
 **Check.** `arch-check` decides the `Buckets` enum, the bucket
-parameters, and the local impl; the rest is judged.
+parameters, a presign that may answer `None`, and the local impl; the
+rest is judged.
 
 ## ASY-09 Topics are a fixed enum with a typed payload map
 

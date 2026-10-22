@@ -99,7 +99,7 @@ With every provider hanging, at the default timeouts:
 | `POST /v1/invitations/{id}/resend`, `DELETE /v1/invitations/{id}` | WorkOS resend or revoke | 50.5 s | 20 s |
 | `POST /v1/orgs/current/sso-link` | WorkOS organization (the first link), the portal link | 151.5 s | 20 s |
 | `POST /webhooks/identity` | SQS send (and the queue's address, the first per process) | 130 s | 20 s |
-| `PUT` and `GET /v1/media/files/{id}/content`, `POST .../confirm` | S3 put, get, or head | 65 s | 20 s |
+| `POST /v1/media/files`, `POST .../upload`, `POST .../confirm` | S3's start of an upload, its list of parts, or its list and complete | 65 s; 130 s | 20 s |
 
 Without the deadline, every one is past the 30 seconds a client waits.
 

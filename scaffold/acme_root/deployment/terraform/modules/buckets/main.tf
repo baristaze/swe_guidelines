@@ -49,11 +49,11 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "this" {
 
 # What leaves a bucket on its own. A delete in a versioned bucket keeps the
 # previous version, so that version expires after a while and the delete
-# marker it leaves goes with it. An upload the application abandoned (a form
-# posted and never confirmed) is deleted by the maintenance sweep, a day
-# later, and then expires here like any other; a multipart upload nobody
-# completed, which no form makes but a client with the role could, is aborted
-# after a day.
+# marker it leaves goes with it. Every upload is multipart, and its parts are
+# billed until it completes or is aborted: the maintenance sweep aborts an
+# upload never confirmed a day after it started, and this rule aborts any
+# upload still incomplete a day after it began, one the sweep never saw
+# among them, so no part is kept beyond it.
 resource "aws_s3_bucket_lifecycle_configuration" "this" {
   for_each = aws_s3_bucket.this
 
@@ -81,18 +81,18 @@ resource "aws_s3_bucket_lifecycle_configuration" "this" {
   depends_on = [aws_s3_bucket_versioning.this]
 }
 
-# A browser posts a presigned form to a browser bucket and follows a presigned
-# link from it (a download, or a preview: an image, a video in ranges, a
-# sound, a PDF), from the portal's origin: the two methods, from those origins
-# only. The form and the link carry the authority; this only lets the page
-# read the answer.
+# A browser PUTs each part of an upload to a browser bucket by its presigned
+# URL and follows a presigned link from it (a download, or a preview: an
+# image, a video in ranges, a sound, a PDF), from the portal's origin: the two
+# methods, from those origins only. The URL and the link carry the authority;
+# this only lets the page send the part and read the answer.
 resource "aws_s3_bucket_cors_configuration" "this" {
   for_each = length(var.browser_origins) == 0 ? toset([]) : toset(var.browser_buckets)
 
   bucket = aws_s3_bucket.this[each.key].id
 
   cors_rule {
-    allowed_methods = ["POST", "GET"]
+    allowed_methods = ["PUT", "GET"]
     allowed_origins = var.browser_origins
     allowed_headers = ["*"]
     # A player reads a video in ranges; the page may read how much it got.
@@ -107,11 +107,19 @@ data "aws_iam_policy_document" "use" {
     resources = [for bucket in aws_s3_bucket.this : bucket.arn]
   }
 
-  # A presigned form or link acts as the role that signed it, so this is
-  # also everything a browser holding one can reach, and a bucket that names
-  # a key pattern is granted that pattern and no more.
+  # A presigned part or link acts as the role that signed it, for the one
+  # operation it names, so this is also everything a browser holding one can
+  # reach, and a bucket that names a key pattern is granted that pattern and
+  # no more. PutObject covers a multipart upload's start, its parts, and its
+  # complete; the service lists an upload's parts and aborts an abandoned one.
   statement {
-    actions = ["s3:GetObject", "s3:PutObject", "s3:DeleteObject"]
+    actions = [
+      "s3:GetObject",
+      "s3:PutObject",
+      "s3:DeleteObject",
+      "s3:ListMultipartUploadParts",
+      "s3:AbortMultipartUpload",
+    ]
     resources = [
       for name, bucket in aws_s3_bucket.this : "${bucket.arn}/${lookup(var.object_key_patterns, name, "*")}"
     ]

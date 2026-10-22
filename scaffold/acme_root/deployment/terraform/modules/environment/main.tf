@@ -168,8 +168,8 @@ module "buckets" {
   prefix      = var.bucket_prefix
   buckets     = ["user-file-uploads", "exports"] # acme.infra.buckets.Buckets
   destroyable = var.destroyable
-  # The portal posts a file straight to the uploads bucket with a form the
-  # API signed, and fetches it back by a signed link.
+  # The portal sends each part of a file straight to the uploads bucket by
+  # a URL the API signed, and fetches it back by a signed link.
   browser_buckets = ["user-file-uploads"]
   browser_origins = concat(["https://${var.app_domain_name}"], var.cors_origins)
   # Every key the media namespace writes is <org_id>/media/<purpose>/<id>.

@@ -36,7 +36,7 @@ locals {
   # What the page may reach: its own origin (the API included, when it is
   # behind this distribution; its socket is named as wss:// on the same host
   # as well, for a browser that does not read 'self' as the websocket's
-  # scheme too), the object store a signed form or link names, and the error
+  # scheme too), the object store a signed part or link names, and the error
   # reporter (the DSN is scheme://key@host/project; only its origin is
   # named). Nothing else, so a script the site did not ship neither runs nor
   # phones home. Neither build has an inline script or style, so no unsafe

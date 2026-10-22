@@ -22,7 +22,8 @@ it, and nothing else in Python calls `/v1/*`.
 
 ```python
 async with ApiClient(url, app="cli", app_version="cli@0.1.0", token=token) as api:
-    stored = await api.upload(await api.start_upload("spec.pdf", "application/pdf", size), data)
+    started = await api.start_upload("spec.pdf", "application/pdf", path.stat().st_size)
+    stored = await api.upload(started, path)  # the parts go straight to the store
     async for change in Channel(api):
         print(change.kind, change.target_id, change.actor_id)
 ```

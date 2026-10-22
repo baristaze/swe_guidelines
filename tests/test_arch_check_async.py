@@ -147,6 +147,9 @@ class BucketsInterface(ABC):
     async def list(self, org_id, bucket: Buckets, prefix: str, limit: int) -> list[str]: ...
 
     @abstractmethod
+    async def presign_get(self, org_id, bucket: Buckets, key: str, ttl) -> str: ...
+
+    @abstractmethod
     def describe(self) -> str: ...
 """,
     f"{INFRA}/buckets/local.py": """\
@@ -421,6 +424,14 @@ def test_asy_08_a_string_bucket_and_an_untyped_parameter(tmp_path):
         "BucketsInterface.get takes bucket as str; it takes Buckets",
         "a bucket named by a string; name it by a Buckets member",
     ]
+
+
+def test_asy_08_a_presign_that_may_answer_none(tmp_path):
+    for answer in ("str | None", "Optional[str]"):
+        files = edit(BUCKETS, "ttl) -> str: ...", f"ttl) -> {answer}: ...")
+        code, report = run(tmp_path, "ASY-08", files)
+        assert code == 1
+        assert messages(report) == ["BucketsInterface.presign_get may answer None; every backend signs"]
 
 
 def test_asy_08_no_local_impl(tmp_path):
