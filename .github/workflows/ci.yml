@@ -89,12 +89,13 @@ jobs:
       - name: build the wheel and run the arch-check entry point from it
         run: make checkers-dist
 
-  scaffold:
-    # A copy of the scaffold, made the way a project starts, passes its own
-    # gates: the fast gate, the integration suite over its compose stack,
-    # and arch-check from this checkout. So the scaffold stays runnable as
-    # the guideline moves.
-    name: a copy of the scaffold as ${{ matrix.name }} passes its own gates
+  # A copy of the scaffold, made the way a project starts, passes its own
+  # gates: the fast gate with arch-check from this checkout, and the
+  # integration suite over its compose stack. So the scaffold stays runnable
+  # as the guideline moves. The two are jobs of their own that start at
+  # once, so a copy takes as long as the longer of them, not both.
+  scaffold-check:
+    name: a copy of the scaffold as ${{ matrix.name }} passes its fast gate
     runs-on: ubuntu-26.04
     timeout-minutes: 30
     strategy:
@@ -133,6 +134,39 @@ jobs:
       - name: make check, with arch-check from this checkout
         working-directory: ${{ env.COPY }}
         run: make check ARCH_CHECK="uv run --no-project --python $(cat .python-version) python $GITHUB_WORKSPACE/checkers/arch_check.py"
+
+  scaffold-integration:
+    name: a copy of the scaffold as ${{ matrix.name }} passes its integration suite
+    runs-on: ubuntu-26.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        # The names scaffold-check takes.
+        name: [pressroom, free_journalism, independent_press]
+    env:
+      COPY: ${{ github.workspace }}/../${{ matrix.name }}
+      # uv sync and uv run fail instead of rewriting a stale uv.lock.
+      UV_LOCKED: "1"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: read the tool pins
+        id: pins
+        run: echo "uv=$(sed -n 's|^uv==||p' .github/pins/requirements.txt)" >> "$GITHUB_OUTPUT"
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        with:
+          version: ${{ steps.pins.outputs.uv }}
+          enable-cache: true
+          cache-dependency-glob: scaffold/acme_root/uv.lock
+      - name: copy the scaffold under a name of its own
+        run: time python3 scaffold/new.py "$COPY"
+      # The Python packages alone, as the copy's own integration job installs
+      # them: the suite runs no Node and no pnpm.
+      - name: install the copy's packages
+        working-directory: ${{ env.COPY }}
+        run: uv sync --all-packages
       - name: the integration suite over the copy's compose stack
         working-directory: ${{ env.COPY }}
         run: |
