@@ -512,8 +512,14 @@ def test_the_base_a_copy_starts_at_names_what_base_py_reads(tmp_path, identity):
 
 
 LOCAL_STATE = (".env", ".local/secrets.env", ".local/agents/run-1/notes.md")
-"""What a stack writes in a checkout of the scaffold: settings, the local secrets backend, and an agent's workspace,
-each ignored by the scaffold's `.gitignore`."""
+"""What a stack writes in a checkout of the scaffold: settings, the local secrets backend, and a file a tool wrote under
+`.local/`, each ignored by the scaffold's `.gitignore`."""
+
+
+def tracked_as(source: Path, name: str) -> set[str]:
+    """The files the checkout tracks in `source`, under the paths a copy named `name` gives them."""
+    names = new.Names(name)
+    return {"/".join(new.rename(part, names) for part in rel.split("/")) for rel in git_out(source, "ls-files").splitlines()}
 
 
 def test_a_copys_first_commit_holds_every_tracked_file_and_none_of_the_stacks_local_files(tmp_path, monkeypatch, identity):
@@ -529,10 +535,30 @@ def test_a_copys_first_commit_holds_every_tracked_file_and_none_of_the_stacks_lo
     assert new.main([str(dest)], source=source, plugin=plugin) == 0
     assert f"Scaffold-Commit: {head}" in git_out(dest, "log", "-1", "--format=%B")
     committed = set(git_out(dest, "ls-tree", "-r", "--name-only", "HEAD").splitlines())
-    names = new.Names("pressroom")
-    tracked = {"/".join(new.rename(part, names) for part in rel.split("/")) for rel in git_out(source, "ls-files").splitlines()}
-    assert committed == tracked == {".gitignore", "README.md", "om/src/pressroom/om/__init__.py"}
+    assert committed == tracked_as(source, "pressroom") == {".gitignore", "README.md", "om/src/pressroom/om/__init__.py"}
     assert not committed & {".env", ".local/secrets.env"} and not any(rel.startswith(".local/") for rel in committed)
+
+
+def test_a_copys_first_commit_holds_exactly_the_tracked_files_whatever_hides_the_rest(tmp_path, monkeypatch, identity):
+    source, plugin, head = checkout(tmp_path)
+    hidden = (".claude/settings.local.json", "om/scratch.env")
+    for rel in hidden:
+        (source / rel).parent.mkdir(parents=True, exist_ok=True)
+        (source / rel).write_text("ACME_SECRET=mine\n", encoding="utf-8")
+    # the scaffold's `.gitignore` names neither: the machine hides one, and the repository the other
+    (tmp_path / "excludes").write_text("**/.claude/settings.local.json\n", encoding="utf-8")
+    (tmp_path / "gitconfig").write_text(f"[core]\n\texcludesFile = {tmp_path / 'excludes'}\n", encoding="utf-8")
+    monkeypatch.setenv("GIT_CONFIG_GLOBAL", str(tmp_path / "gitconfig"))
+    exclude = source.parent.parent / ".git" / "info" / "exclude"
+    exclude.parent.mkdir(parents=True, exist_ok=True)
+    exclude.write_text("scratch.env\n", encoding="utf-8")
+    assert git_out(source, "status", "--porcelain") == ""
+    dest = tmp_path / "pressroom"
+    assert new.main([str(dest)], source=source, plugin=plugin) == 0
+    assert f"Scaffold-Commit: {head}" in git_out(dest, "log", "-1", "--format=%B")
+    assert all((dest / rel).is_file() for rel in hidden)  # copied, and still never committed
+    committed = set(git_out(dest, "ls-tree", "-r", "--name-only", "HEAD").splitlines())
+    assert committed == tracked_as(source, "pressroom") == {".gitignore", "README.md", "om/src/pressroom/om/__init__.py"}
 
 
 @pytest.mark.parametrize(

@@ -41,11 +41,12 @@ pass the file with `--tarball`:
     gh api repos/<owner>/<repo>/tarball/<ref> > source.tar.gz
 
 The commit the script writes names the source commit the tarball holds and
-the name the render took. It holds what the render's own `.gitignore` files
-keep, so no local secret and nothing a tool wrote enters the branch. A render
-whose tree is the branch head's commits nothing. The script moves only
-`scaffold`: it never touches the working tree, the index, or another branch,
-and it pushes nothing.
+the name the render took. It holds the render's files that the render's own
+`.gitignore` files keep. A tarball holds only the files of the ref, so this is
+what a copy's first commit holds of its checkout, and no local secret and
+nothing a tool wrote enters the branch. A render whose tree is the branch
+head's commits nothing. The script moves only `scaffold`: it never touches the
+working tree, the index, or another branch, and it pushes nothing.
 
 Standard library only, as `new.py` is.
 """
