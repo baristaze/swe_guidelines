@@ -36,6 +36,7 @@ acme-ops = { workspace = true }
 dev = [
     "pytest>=9.1",
     "pytest-asyncio>=1.4",
+    "pytest-xdist>=3.8",
     "ruff>=0.16.8",
     "pyright>=1.1.414",
     "httpx>=0.28.1",
