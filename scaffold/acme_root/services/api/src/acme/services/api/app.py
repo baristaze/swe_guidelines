@@ -117,7 +117,6 @@ def create_app(container: AppContainer | None = None) -> FastAPI:
         )
     register_error_handlers(app)
 
-
     @app.get("/healthz", include_in_schema=False)
     async def healthz() -> dict[str, str]:
         return {"status": "ok", "version": settings.version}

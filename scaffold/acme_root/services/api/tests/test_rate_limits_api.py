@@ -176,7 +176,7 @@ async def test_a_holder_whose_writes_are_spent_still_renews_in_a_budget_of_its_o
         # The ask that took the lease spent the first write.
         writes = await other_writes(client, owner, SMALL_BUDGET)
         renew = f"/v1/leases/{lease_id}/renew"
-        renewals = [(await client.post(renew, headers=owner)) for _ in range(SMALL_BUDGET)]
+        renewals = [await client.post(renew, headers=owner) for _ in range(SMALL_BUDGET)]
         past = await client.post(renew, headers=owner)
     assert writes == [201] * (SMALL_BUDGET - 1) + [429]
     assert [r.status_code for r in renewals] == [200] * SMALL_BUDGET
@@ -197,7 +197,9 @@ async def test_renewals_past_their_budget_are_refused_and_spend_none_of_the_writ
         owner = await sign_in(client, container)
         lease_id = await a_held_lease(client, container, owner)
         renew = f"/v1/leases/{lease_id}/renew"
-        renewals = [(await client.post(renew, headers=owner)).status_code for _ in range(SMALL_BUDGET)]
+        renewals = [
+            (await client.post(renew, headers=owner)).status_code for _ in range(SMALL_BUDGET)
+        ]
         refused = [await client.post(renew, headers=owner) for _ in range(SMALL_BUDGET)]
         released = await client.post(f"/v1/leases/{lease_id}/release", headers=owner)
         writes = await other_writes(client, owner, SMALL_BUDGET)
