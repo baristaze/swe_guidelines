@@ -13,9 +13,9 @@ from collections.abc import AsyncIterator
 from pathlib import Path
 
 import pytest
-from sqlalchemy import text
+import pytest_asyncio
 from sqlalchemy.engine import make_url
-from sqlalchemy.ext.asyncio import create_async_engine
+from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 
 from acme.om.storage.impl.pg_base import LoginSessions
 from acme.om.storage.impl.postgres import login_sessions
@@ -94,8 +94,58 @@ async def pg_sessions(
         await engine.dispose()
 
 
+# A table written since its last truncate, in a role's schema, and every one
+# that names it in a foreign key, emptied in one round trip. A truncate leaves
+# a table no pages, and a row written in it adds one, so a table with none
+# holds no row. Its size is the test, not its rows: the migration login is
+# bound by each tenant table's fence, so it sees none of their rows, while a
+# truncate passes the fence. The version table of each role says where the
+# schema stands and is not this suite's to clear.
+EMPTY_WRITTEN_TABLES = f"""
+DO $$
+DECLARE
+    written text;
+BEGIN
+    SELECT string_agg(format('%I.%I', n.nspname, c.relname), ', ') INTO written
+    FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+    WHERE n.nspname IN ({", ".join(f"'{role.value}'" for role in DatabaseRole)})
+    AND c.relkind = 'r' AND c.relname <> '{VERSION_TABLE}'
+    AND pg_relation_size(c.oid) > 0;
+    IF written IS NOT NULL THEN
+        EXECUTE 'TRUNCATE ' || written || ' RESTART IDENTITY CASCADE';
+    END IF;
+END
+$$"""
+
+
+@pytest_asyncio.fixture(scope="session", loop_scope="session")
+async def wipe_engines(migrated: dict[DatabaseRole, str]) -> AsyncIterator[list[AsyncEngine]]:
+    """One engine per database under the migration login, for the whole run.
+    Each test has an event loop of its own, and a connection belongs to the
+    loop that opened it, so these live on the session's loop, and so does the
+    wipe. Each statement commits on its own."""
+    engines = [
+        create_async_engine(url, isolation_level="AUTOCOMMIT")
+        for url in dict.fromkeys(migrated.values())
+    ]
+    yield engines
+    for engine in engines:
+        await engine.dispose()
+
+
+async def empty_written_tables(engine: AsyncEngine) -> None:
+    async with engine.connect() as connection:
+        await connection.exec_driver_sql(EMPTY_WRITTEN_TABLES)
+
+
+@pytest_asyncio.fixture(loop_scope="session")
+async def emptied(wipe_engines: list[AsyncEngine]) -> None:
+    """Every database's written tables emptied, the databases side by side."""
+    await asyncio.gather(*(empty_written_tables(engine) for engine in wipe_engines))
+
+
 @pytest.fixture(autouse=True)
-async def empty_schemas(request: pytest.FixtureRequest) -> None:
+def empty_schemas(request: pytest.FixtureRequest) -> None:
     """Every integration test starts on empty tables.
 
     These suites are the contract cases, and each one is written as if it owns
@@ -108,30 +158,11 @@ async def empty_schemas(request: pytest.FixtureRequest) -> None:
     Truncating is the whole isolation this suite needs, since no case depends
     on what another wrote, and it is what makes `make test-integration`
     re-runnable without `make reset` in front of it.
+
+    Only a table written since its last truncate is truncated, with its
+    identity restarted. A table the wipe passes over has had no row written
+    since then, so it holds none. A unit test reaches no database, so it asks
+    for none of this.
     """
-    if request.node.get_closest_marker("integration") is None:
-        return
-    urls: dict[DatabaseRole, str] = request.getfixturevalue("migrated")
-    for url in dict.fromkeys(urls.values()):
-        engine = create_async_engine(url)
-        try:
-            async with engine.begin() as connection:
-                schemas = ", ".join(f"'{role.value}'" for role in DatabaseRole)
-                # Every table but each role's migration bookkeeping, which
-                # says where the schema stands and is not this suite's to
-                # clear.
-                rows = await connection.execute(
-                    text(
-                        "SELECT table_schema, table_name FROM information_schema.tables"
-                        f" WHERE table_schema IN ({schemas}) AND table_type = 'BASE TABLE'"
-                        " AND table_name <> :version_table"
-                    ),
-                    {"version_table": VERSION_TABLE},
-                )
-                tables = [f'{schema}."{name}"' for schema, name in rows]
-                if tables:
-                    await connection.execute(
-                        text(f"TRUNCATE {', '.join(tables)} RESTART IDENTITY CASCADE")
-                    )
-        finally:
-            await engine.dispose()
+    if request.node.get_closest_marker("integration") is not None:
+        request.getfixturevalue("emptied")
