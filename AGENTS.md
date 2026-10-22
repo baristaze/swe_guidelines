@@ -46,9 +46,10 @@ cites the changed text changes with it.
   `tests/test_scaffold_new.py` and `tests/test_scaffold_base.py` hold
   them. The repository's ruff and mypy read the two scripts alone;
   markdownlint, the links, and the leaks read the whole scaffold. In CI,
-  a fresh copy runs its own gates in two jobs side by side:
-  `scaffold-check` its `make check`, with arch-check from `checkers/`,
-  and `scaffold-integration` its integration suite.
+  a fresh copy runs its own gates in jobs side by side: `scaffold-check`
+  its `make check`, with arch-check from `checkers/`,
+  `scaffold-integration` its integration suite, and
+  `scaffold-release-before` its release-before job.
 - `lenses/<group>.md` holds one group of lenses in the format
   `lenses/README.md` defines. `make lenses` holds the format, the
   citations, every identifier a lens quotes to the section it cites, and

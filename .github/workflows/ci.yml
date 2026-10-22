@@ -90,10 +90,11 @@ jobs:
         run: make checkers-dist
 
   # A copy of the scaffold, made the way a project starts, passes its own
-  # gates: the fast gate with arch-check from this checkout, and the
-  # integration suite over its compose stack. So the scaffold stays runnable
-  # as the guideline moves. The two are jobs of their own that start at
-  # once, so a copy takes as long as the longer of them, not both.
+  # gates: the fast gate with arch-check from this checkout, the integration
+  # suite over its compose stack, and its release-before job. So the
+  # scaffold stays runnable as the guideline moves. Each is a job of its own,
+  # and all start at once, so a copy takes as long as its longest job, not
+  # their sum.
   scaffold-check:
     name: a copy of the scaffold as ${{ matrix.name }} passes its fast gate
     runs-on: ubuntu-26.04
@@ -175,17 +176,45 @@ jobs:
           make migrate
           make migrate-check
           make test-integration
-      # The copy's release-before job, on a branch that adds a migration. The
-      # copy as committed is the release before; the branch adds a revision to
-      # queue's chain that changes nothing, which no chain of the release
-      # before holds, so its suite runs only once the stamp works. One name
-      # stands for the three: the script is the same in each. The release
-      # before ends its queue chain on a revision of its own whose stamp sorts
-      # below its parent's, as a layer's own revision may. So the chain's head
-      # is not its highest stamp, and the step reads it by the parents, with
-      # the copy's own reader; a head read by sorting makes a second head.
+      - name: stop the copy's stack
+        if: always()
+        working-directory: ${{ env.COPY }}
+        run: make infra-down || true
+
+  # The copy's release-before job, on a branch that adds a migration. The
+  # copy as committed is the release before; the branch adds a revision to
+  # queue's chain that changes nothing, which no chain of the release
+  # before holds, so its suite runs only once the stamp works. One name
+  # stands for the three: the script is the same in each. The release
+  # before ends its queue chain on a revision of its own whose stamp sorts
+  # below its parent's, as a layer's own revision may. So the chain's head
+  # is not its highest stamp, and the step reads it by the parents, with
+  # the copy's own reader; a head read by sorting makes a second head.
+  scaffold-release-before:
+    name: a copy of the scaffold as free_journalism passes its release before
+    runs-on: ubuntu-26.04
+    timeout-minutes: 30
+    env:
+      COPY: ${{ github.workspace }}/../free_journalism
+      # uv sync and uv run fail instead of rewriting a stale uv.lock.
+      UV_LOCKED: "1"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: read the tool pins
+        id: pins
+        run: echo "uv=$(sed -n 's|^uv==||p' .github/pins/requirements.txt)" >> "$GITHUB_OUTPUT"
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        with:
+          version: ${{ steps.pins.outputs.uv }}
+          enable-cache: true
+          cache-dependency-glob: scaffold/acme_root/uv.lock
+      - name: copy the scaffold under a name of its own
+        run: time python3 scaffold/new.py "$COPY"
+      # The script brings the copy's stack up itself, as the copy's own
+      # release-before job runs it.
       - name: the copy's release before passes on a branch that adds a migration
-        if: matrix.name == 'free_journalism'
         working-directory: ${{ env.COPY }}
         env:
           GIT_AUTHOR_NAME: ci
