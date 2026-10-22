@@ -82,8 +82,9 @@ us-west-2 lists these services at about the same prices:
 A serving process opens two pools, the runtime login's and the system
 login's, each of up to `database_pool_size` connections. Beside each sits
 a reserve of `database_pool_reserve` connections that only a holder's
-call takes, such as a lease's renewal, so only the API opens it. The two
-one-off tasks, migrate and grant, hold at most 8 together. The rule every
+call takes, such as a lease's renewal, so only a service that serves such
+a call opens it. The two one-off tasks, migrate and grant, hold at most 8
+together. The rule every
 size keeps: (twice the API's ceiling, since a rollout may double it, plus
 the worker's ceiling) × 2 pools × the pool size, plus twice the API's
 ceiling × 2 pools × the reserve, + 8 stays under the instance's

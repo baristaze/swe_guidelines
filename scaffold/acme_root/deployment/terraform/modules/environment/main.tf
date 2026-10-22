@@ -55,7 +55,8 @@ locals {
     ACME_AWS_REGION          = var.region
     ACME_LOG_JSON            = "true"
     ACME_DATABASE_POOL_SIZE  = tostring(var.database_pool_size)
-    # Opened only by a holder's call, so only the API opens it.
+    # Opened only by a holder's call, so only a service that serves one
+    # opens it.
     ACME_DATABASE_POOL_RESERVE = tostring(var.database_pool_reserve)
     # Read by no code. A rotation (database_password_version raised) changes
     # the task definition through this line, so every service rolls and its

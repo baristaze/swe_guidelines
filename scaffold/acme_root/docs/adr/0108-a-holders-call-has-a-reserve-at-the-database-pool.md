@@ -55,10 +55,11 @@ route would get the reserve only where each of its storage calls passed
 it on. Admission alone sets it, and resets it when the call ends; the
 funnel alone reads it. A test holds both.
 
-**Only the API opens a reserve.** A reserve opens a connection only
-when a holder's call needs one, and only admission marks one. The
-connection budget counts the reserve for the API's replicas
-(`deployment/cloud/README.md`): 1 at XS and 2 from S up.
+**Only a service that serves a holder's call opens a reserve.** A
+reserve opens a connection only when a holder's call needs one, and only
+admission marks one. The connection budget counts the reserve, 1 at XS
+and 2 from S up, for the replicas of each service that serves such a
+call (`deployment/cloud/README.md`).
 
 ## Consequences
 
