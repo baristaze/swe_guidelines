@@ -65,8 +65,8 @@ A client that renews too often is refused by its own budget, and a
 flood of renewals by the holds lane's bound. Neither takes anything
 from the writes.
 
-A route marked by mistake gets a cheaper lane than it should. The mark
-is on the route, where a review reads it, and NET-37 names a bulk write
+A route marked by mistake gets a lane and a budget it should not. The
+mark sits on the route, in plain sight, and NET-37 names a bulk write
 marked a holder's call as a breach.
 
 A route added after the app is built is not read for the mark. Every
