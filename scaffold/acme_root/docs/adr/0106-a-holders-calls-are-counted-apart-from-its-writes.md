@@ -4,19 +4,21 @@
 
 ## Context
 
-A credential has one budget of writes, in a fixed window that starts at
-its first write: 1,200 a minute by default
+A credential's writes spend one budget, in a fixed window that starts
+at its first write: 1,200 a minute by default
 ([ADR 0059](0059-authenticated-routes-have-limits.md)). A process admits
 200 writes in flight at once. A holder that streams its output spends
 both on writes whose loss costs little. One push every quarter second
 per item it streams is 240 writes a minute, so five such items spend
-the budget. From then until the window ends, every renewal it sends is
-refused. A holder that cannot wait out the refusal inside its lease
-loses the lease, and the work it holds is revoked mid-run.
+the budget. Were a renewal one of those writes, every renewal from then
+until the window ends would be refused. A holder that cannot wait out
+the refusal inside its lease would lose the lease, and the work it
+holds would be revoked mid-run.
 
-When the database slows, the write lane fills, and admission sheds a
-renewal like any other write. The slowdown becomes a wave of lost
-leases, and every lost lease is work to start again.
+When the database slows, the write lane fills, and admission sheds
+what it has no slot for. A renewal shed with the writes turns the
+slowdown into a wave of lost leases, and every lost lease is work to
+start again.
 
 The guideline counts a holder's calls apart: in a lane of their own at
 admission and a budget of their own per credential (NET-37).
