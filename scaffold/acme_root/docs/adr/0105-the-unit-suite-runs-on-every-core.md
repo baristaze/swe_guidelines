@@ -36,9 +36,10 @@ drawn at import (`new_id()`, a clock, a random draw), and never read in
 a set's order, which changes from process to process. A value drawn per
 run goes inside the test, or behind an explicit `id`.
 
-**Each run names its ten slowest tests.** `--durations=10` closes every
-run of the unit suite, so a slow test shows on the run that made it
-slow.
+**Each run names its workers and its ten slowest tests.** The unit
+suite runs at pytest's default verbosity, which prints how many workers
+it started, and `--durations=10` closes every run, so a slow test shows
+on the run that made it slow.
 
 ## Consequences
 

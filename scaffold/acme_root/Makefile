@@ -304,11 +304,12 @@ typecheck: ## Pyright over every distribution and the scripts
 arch-check: ## The guideline's static checks, configured in pyproject.toml
 	$(ARCH_CHECK)
 
-# One worker per core of the machine (ADR 0105), and the ten slowest tests named
-# at the end of every run. PYTEST_XDIST_AUTO_NUM_WORKERS=<n> sets the count.
+# One worker per core of the machine (ADR 0105); PYTEST_XDIST_AUTO_NUM_WORKERS=<n>
+# sets the count. Not quiet, so the run names its workers, and it ends on the ten
+# slowest tests.
 .PHONY: test-unit
 test-unit: ## Unit tests over the memory impls, on every core
-	uv run pytest -q -n auto --durations=10 -m "not integration and not e2e and not telemetry"
+	uv run pytest -n auto --durations=10 -m "not integration and not e2e and not telemetry"
 
 .PHONY: test-integration
 test-integration: ## Integration tests over the compose stack
