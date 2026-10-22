@@ -140,17 +140,26 @@ def _schema_owners(app: FastAPI, names: set[str]) -> tuple[dict[str, str], dict[
     name, with its mode where the schema it reads and the one it writes
     differ, and by its module and qualified name, with an occurrence index,
     where two types would share a name. The document takes the short form,
-    since the file names the namespace."""
+    since the file names the namespace. Each schema is checked against the
+    types whose names it can take alone, looked up by name, so the cut grows
+    with the schemas and the types, not with their product."""
     types = [(model, modes, *_framework_names(ref)) for ref, (model, modes) in _types(app).items()]
+    named: dict[str, list[int]] = {}
+    for index, (_, _, short, qualified) in enumerate(types):
+        for suffix in MODES:
+            for candidate in {f"{short}{suffix}", f"{qualified}{suffix}"}:
+                named.setdefault(candidate, []).append(index)
     owner: dict[str, str] = {}
     name: dict[str, str] = {}
     for schema in names:
         if schema in FRAMEWORK:
             owner[schema], name[schema] = COMMON, schema
             continue
+        stem = _without_occurrence(schema)
+        candidates = {*named.get(schema, []), *(named.get(stem, []) if stem is not None else [])}
         matches = {
             model: local
-            for model, modes, short, qualified in types
+            for model, modes, short, qualified in (types[index] for index in sorted(candidates))
             if (local := _local_name(schema, modes, short, qualified)) is not None
         }
         if not matches:
@@ -212,14 +221,22 @@ def _local_name(schema: str, modes: set[str], short: str, qualified: str) -> str
     it to the type of these names, read or written in `modes`, else None.
     Pydantic's choices are the short name and the qualified one, each bare or
     with a mode the type takes, and the qualified one with an occurrence index."""
+    stem = _without_occurrence(schema)
     for suffix, mode in MODES.items():
         if mode is not None and mode not in modes:
             continue
         if schema == f"{short}{suffix}":
             return schema
-        if re.fullmatch(rf"{re.escape(qualified + suffix)}(__\d+)?", schema):
+        if f"{qualified}{suffix}" in (schema, stem):
             return f"{short}{suffix}"
     return None
+
+
+def _without_occurrence(schema: str) -> str | None:
+    """`schema` less the occurrence index pydantic appends to a qualified
+    name, `__` and one or more decimal digits, or None when it ends in none."""
+    stem, mark, index = schema.rpartition("__")
+    return stem if mark and index.isdecimal() else None
 
 
 def _refer(node: Any, here: str, owner: dict[str, str], name: dict[str, str]) -> Any:

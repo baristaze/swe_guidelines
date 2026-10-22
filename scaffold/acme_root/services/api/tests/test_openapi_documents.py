@@ -12,7 +12,7 @@ import sys
 from decimal import Decimal
 from enum import Enum, StrEnum
 from pathlib import Path
-from typing import Any, Generic, TypeVar
+from typing import Any, Generic, NamedTuple, TypeVar
 
 import pytest
 from api_support import build_container
@@ -67,31 +67,44 @@ def refs(node: Any) -> list[str]:
     return []
 
 
-@pytest.fixture(params=["the scaffold's app", "an enum-only document"])
-def app(request: pytest.FixtureRequest, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> FastAPI:
+class Built(NamedTuple):
+    app: FastAPI
+    emitted: dict[str, dict[str, Any]]
+    owners: dict[str, set[str]]
+
+
+@pytest.fixture(scope="module", params=["the scaffold's app", "an enum-only document"])
+def built(request: pytest.FixtureRequest, tmp_path_factory: pytest.TempPathFactory) -> Built:
     """The scaffold's app, and the app with one more media route whose answer
     holds an enum of an object-model package no router serves, as a copy's
-    wire type may: that package's document holds the enum alone."""
-    if request.param == "an enum-only document":
-        assert "orchestrations" not in HOSTED, "the enum's package is one no router serves"
-        media_types = importlib.import_module(f"{acme.services.api.types.__name__}.media")
-        answer = view("StatusProbeView", "media", status=OrchestrationStatus)
-        monkeypatch.setattr(media_types, "StatusProbeView", answer, raising=False)
-        probe = APIRouter(prefix="/media", tags=["media"])
-        probe.add_api_route("/status-probe", lambda: None, response_model=answer)
-        monkeypatch.setitem(HOSTED, "media", (*HOSTED["media"], probe))
-    return create_app(build_container(tmp_path))
+    wire type may: that package's document holds the enum alone. Each is
+    built once, with its documents and each type's defining namespaces, and
+    its patches end with the build, so no other test sees them."""
+    with pytest.MonkeyPatch.context() as monkeypatch:
+        if request.param == "an enum-only document":
+            assert "orchestrations" not in HOSTED, "the enum's package is one no router serves"
+            media_types = importlib.import_module(f"{acme.services.api.types.__name__}.media")
+            answer = view("StatusProbeView", "media", status=OrchestrationStatus)
+            monkeypatch.setattr(media_types, "StatusProbeView", answer, raising=False)
+            probe = APIRouter(prefix="/media", tags=["media"])
+            probe.add_api_route("/status-probe", lambda: None, response_model=answer)
+            monkeypatch.setitem(HOSTED, "media", (*HOSTED["media"], probe))
+        app = create_app(build_container(tmp_path_factory.mktemp("app")))
+        return Built(app, documents(app), defining_namespaces())
 
 
 @pytest.fixture
-def emitted(app: FastAPI) -> dict[str, dict[str, Any]]:
-    return documents(app)
+def app(built: Built) -> FastAPI:
+    return built.app
 
 
-def test_each_schema_is_defined_once_in_the_document_of_its_defining_module(
-    emitted: dict[str, dict[str, Any]],
-) -> None:
-    owners = defining_namespaces()
+@pytest.fixture
+def emitted(built: Built) -> dict[str, dict[str, Any]]:
+    return built.emitted
+
+
+def test_each_schema_is_defined_once_in_the_document_of_its_defining_module(built: Built) -> None:
+    emitted, owners = built.emitted, built.owners
     assert set(emitted) >= {COMMON, *HOSTED}
     for namespace, document in emitted.items():
         if namespace not in {COMMON, *HOSTED}:
@@ -186,6 +199,18 @@ def test_two_namespaces_may_each_name_a_type_alike() -> None:
     held = emitted["leases"]["components"]["schemas"]["ProbeHolder"]["properties"]
     assert held["own"] == {"$ref": "#/components/schemas/Probe"}
     assert held["other"] == {"$ref": "media.json#/components/schemas/Probe"}
+
+
+def test_two_types_of_one_module_named_alike_are_refused() -> None:
+    """Pydantic names the schemas of two types of one module and name by the
+    module, the name, and an occurrence index. Each such schema matches both
+    types, so the cut refuses it rather than pick one."""
+    one, two = view("Probe", "media", size=int), view("Probe", "media", label=str)
+    holder = view("ProbeHolder", "media", one=one, two=two)
+    router = APIRouter(tags=["media"])
+    router.add_api_route("/media/probe", lambda: None, response_model=holder)
+    with pytest.raises(ValueError, match=r"two types a route names are both \w+__Probe__\d+$"):
+        documents(app_of(router))
 
 
 def test_a_type_read_and_written_differently_has_a_schema_per_mode_in_its_document() -> None:
