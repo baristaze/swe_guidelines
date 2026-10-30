@@ -19,6 +19,7 @@ from arch_check.config import ConfigError
 from arch_check.model import ToJudge, Violation
 from arch_check.project import Function, Project, SourceFile, classes, decorator_names, dotted, is_under, last, methods, nodes
 from arch_check.registry import rule
+from arch_check.rules import _catalog_util as _catalog
 from arch_check.rules._contracts_util import (
     HTTP_VERBS,
     arguments,
@@ -382,12 +383,14 @@ def dependencies_are_injected(project: Project) -> Iterator[Violation]:
 
 LOOSE_TUNABLES = frozenset({"int", "float", "timedelta", "Decimal"})
 MANAGER_IMPL = re.compile(r"Manager\w*Impl$")
+CATALOG_OPTIONS = ("catalog", "generated", "typescript", "terraform", "review", "exclude")
 
 
 @rule(
     "CON-07",
+    options=CATALOG_OPTIONS,
     coverage="partial",
-    summary="No manager impl constructor takes a loose number or duration.",
+    summary="No manager impl constructor takes a loose number; with a catalog, no number is written outside it.",
 )
 def tunables_arrive_as_options(project: Project) -> Iterator[Violation]:
     """No parameter of a manager impl's constructor is annotated `int`,
@@ -396,9 +399,18 @@ def tunables_arrive_as_options(project: Project) -> Iterator[Violation]:
     `<Ns>ManagerImpl` (`OrderManagerImpl`; a manager carries one impl,
     since the twin below it is what runs without technology) or one
     that subclasses a `*ManagerInterface`. An infra impl named for its
-    technology (`SecretsAwsSecretsManagerImpl`) is none. Whether a module constant differs
-    between deployments, and whether the options object is frozen, is
-    judged."""
+    technology (`SecretsAwsSecretsManagerImpl`) is none.
+
+    A project that keeps its tunables in one catalog names it, and every
+    number written in place elsewhere is a finding (`_catalog_util.py`).
+    Options `[tool.arch-check.options.CON-07]`: `catalog`, the catalog's
+    path (none by default: the catalog checks do not run); `generated`, the
+    files written from it; `typescript` and `terraform`, the globs of the
+    TypeScript and the Terraform variables it holds too; `review`,
+    `"required"` to hold every entry to a person's review; `exclude`, the
+    globs of the tools that are no part of the system. Whether a module
+    constant differs between deployments, where there is no catalog, and
+    whether the options object is frozen, is judged."""
     om = project.sub("om")
     for file, cls in classes_named(project, ""):
         named = MANAGER_IMPL.search(cls.name) and is_under(file.module, om)
@@ -414,6 +426,22 @@ def tunables_arrive_as_options(project: Project) -> Iterator[Violation]:
                     arg,
                     f"{cls.name}.__init__ takes `{arg.arg}: {loose[0]}`; tunables arrive as a frozen options object",
                 )
+    allowed = set(CATALOG_OPTIONS)
+    catalog = project.option("CON-07", "catalog", "", allowed)
+    if not catalog:
+        return
+    generated = project.option("CON-07", "generated", [""], allowed)
+    typescript = project.option("CON-07", "typescript", ["apps/*/src/**/*.ts", "apps/*/src/**/*.tsx"], allowed)
+    terraform = project.option("CON-07", "terraform", "deployment/terraform/**/variables.tf", allowed)
+    review = project.option("CON-07", "review", "required", allowed) == "required"
+    exclude = project.option("CON-07", "exclude", [""], allowed)
+    if project.read(catalog) is None:
+        yield Violation(catalog, 1, 1, "the parameters' catalog CON-07 names is missing")
+        return
+    yield from _catalog.python_findings(project, catalog, generated, exclude)
+    yield from _catalog.typescript_findings(project, typescript, generated)
+    yield from _catalog.catalog_findings(project, catalog, review)
+    yield from _catalog.terraform_findings(project, catalog, terraform)
 
 
 # --- CON-08

@@ -2915,8 +2915,18 @@ entity. A release toggle or a kill switch is a [feature
 flag](#feature-flags), declared in code and evaluated through its
 infra interface.
 
+A system that keeps its tunables in one catalog declares each number
+there once: a rate limit, a timeout, a retry count, a cap, a retention,
+each with its default, the bounds an override keeps, its unit, and a
+person's review. A live one is read where it is used, through an infra
+interface, and an operator changes it with no deploy; every process holds
+the overrides in memory and takes each change from a push, so no check
+reads a store. A number that tunes nothing, a format's code or a unit,
+says why it is fixed where it is written.
+
 > **Principle:** One settings object per process, read once at boot.
-> Backends are chosen there; nothing below reads the environment.
+> Backends are chosen there; nothing below reads the environment. A
+> tunable number is declared once, and a live one changes with no deploy.
 
 ### The App Container
 

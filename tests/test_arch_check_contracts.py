@@ -428,6 +428,129 @@ def test_an_infra_impl_named_for_a_secrets_manager_is_not_con_07(tmp_path):
     assert (code, found) == (0, [])
 
 
+CATALOG = f"{INFRA}/parameters/catalog.py"
+CATALOG_TEXT = (
+    "from acme.infra.parameters import Parameter\n\n"
+    "LEASE_SECONDS = Parameter(\n"
+    '    name="worker.lease-seconds",\n'
+    "    default=60,\n"
+    "    minimum=5,\n"
+    "    maximum=3600,\n"
+    "    unit=Unit.SECONDS,\n"
+    "    applies=LIVE,\n"
+    '    summary="An item\'s lease from its claim.",\n'
+    '    review=Review(by="jo", on="2026-10-30"),\n'
+    ")\n"
+    "STOP_TIMEOUT = Parameter(\n"
+    '    name="terraform.service.stop-timeout-seconds",\n'
+    "    default=30,\n"
+    "    unit=Unit.SECONDS,\n"
+    "    applies=CODE,\n"
+    '    source="deployment/terraform/modules/service/variables.tf#stop_timeout_seconds",\n'
+    '    summary="Time between SIGTERM and SIGKILL.",\n'
+    '    review=Review(by="jo", on="2026-10-30"),\n'
+    ")\n"
+)
+WITH_CATALOG = PYPROJECT + f'\n[tool.arch-check.options.CON-07]\ncatalog = "{CATALOG}"\n'
+
+
+def catalog_run(tmp_path, files, pyproject=WITH_CATALOG):
+    return run(tmp_path, "CON-07", {CATALOG: CATALOG_TEXT, **files}, pyproject=pyproject)
+
+
+def test_without_a_catalog_a_number_in_place_is_not_con_07(tmp_path):
+    code, found, _ = run(tmp_path, "CON-07", {f"{OM}/tasks/rules.py": "LEASE_SECONDS = 60\n"})
+    assert (code, found) == (0, [])
+
+
+def test_with_a_catalog_a_number_in_place_is_con_07(tmp_path):
+    rules = (
+        "from datetime import timedelta\n\n"
+        "LEASE_SECONDS = 60\n"
+        "ARCHIVE_BYTES = 21 * GIB\n"
+        "WINDOW = timedelta(minutes=15)\n"
+        "PAD_RECORD = 2  # fixed: the file format's record type\n"
+        "LEASE = LEASE_SECONDS_PARAMETER.default\n"
+    )
+    code, found, messages = catalog_run(tmp_path, {f"{OM}/tasks/rules.py": rules})
+    assert code == 1
+    assert [line for _, _, line in found] == [3, 4, 5]
+    assert "LEASE_SECONDS is a number written in place" in messages[0]
+
+
+def test_with_a_catalog_a_tuning_keyword_or_default_or_wait_is_con_07(tmp_path):
+    impl = (
+        "import asyncio\n\n\n"
+        "async def fetch(client, timeout: float = 30.0, retries: int = 1) -> None:\n"
+        "    await client.get(timeout=15.0, limit=200)\n"
+        "    await asyncio.sleep(5)\n"
+        "    await asyncio.sleep(0)\n"
+        "    name = Field(max_length=200)\n"
+    )
+    code, found, _ = catalog_run(tmp_path, {f"{OM}/tasks/impl/fetch.py": impl})
+    assert code == 1
+    assert sorted(line for _, _, line in found) == [4, 5, 5, 6]
+
+
+def test_with_a_catalog_a_settings_or_options_default_is_con_07(tmp_path):
+    settings = (
+        "class ApiSettings(BaseSettings):\n"
+        "    port: int = 8000  # fixed: an address\n"
+        "    pool_size: int = Field(default=12, gt=0)\n"
+        "    lease_seconds: int = setting(LEASE_SECONDS)\n\n\n"
+        "class TasksOptions(OmBase):\n"
+        "    max_limit: int = 200\n\n\n"
+        "class Cadence:\n"
+        "    beat_seconds: float = 5.0\n"
+        "    label: str = 'beat'\n"
+    )
+    code, found, _ = catalog_run(tmp_path, {f"{OM}/tasks/settings.py": settings})
+    assert code == 1
+    assert [line for _, _, line in found] == [3, 8, 12]
+
+
+def test_with_a_catalog_typescript_and_terraform_are_held_too(tmp_path):
+    files = {
+        "apps/portal/src/queries.ts": (
+            'import { PORTAL_STALE_MS } from "./parameters.gen";\n'
+            "export const STALE_MS = PORTAL_STALE_MS;\n"
+            "export const POLL_MS = 5_000;\n"
+            "const GAP = 8; // fixed: the design's geometry\n"
+            "setInterval(tick, 1000);\n"
+        ),
+        "deployment/terraform/modules/service/variables.tf": (
+            'variable "stop_timeout_seconds" {\n  default = 45\n}\n'
+            'variable "memory" {\n  default = 512\n}\n'
+            'variable "port" {\n  # fixed: an address\n  default = 8000\n}\n'
+        ),
+    }
+    code, found, messages = catalog_run(tmp_path, files)
+    assert code == 1
+    assert sorted((path, line) for _, path, line in found) == [
+        ("apps/portal/src/queries.ts", 3),
+        ("apps/portal/src/queries.ts", 5),
+        ("deployment/terraform/modules/service/variables.tf", 1),
+        ("deployment/terraform/modules/service/variables.tf", 4),
+    ]
+    assert any("terraform.service.stop-timeout-seconds says 30" in m for m in messages)
+
+
+def test_with_a_catalog_every_entry_is_reviewed(tmp_path):
+    unreviewed = CATALOG_TEXT.replace('    review=Review(by="jo", on="2026-10-30"),\n', "", 1)
+    code, found, messages = run(tmp_path, "CON-07", {CATALOG: unreviewed}, pyproject=WITH_CATALOG)
+    assert (code, len(found)) == (1, 1)
+    assert "worker.lease-seconds is not reviewed" in messages[0]
+    report = WITH_CATALOG + 'review = "report"\n'
+    code, found, _ = run(tmp_path, "CON-07", {CATALOG: unreviewed}, pyproject=report)
+    assert (code, found) == (0, [])
+
+
+def test_a_catalog_named_and_missing_is_con_07(tmp_path):
+    code, _, messages = run(tmp_path, "CON-07", {}, pyproject=WITH_CATALOG)
+    assert code == 1
+    assert "catalog CON-07 names is missing" in messages[0]
+
+
 # --- CON-08
 
 
