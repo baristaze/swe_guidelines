@@ -192,26 +192,34 @@ a peer manager or storage as an argument.
 **Check.** `arch-check` decides the typed constructor, the impl built
 outside a root, and the peer taken by an interface; the rest is judged.
 
-## CON-07 Tunables arrive as a frozen options object
+## CON-07 Tunables arrive as a frozen options object, from one catalog
 
 **Principle.** A manager that has tunables (a default page size, a lease
 length, a threshold) takes a small frozen options object in its
-constructor, built once at boot from settings.
+constructor, built once at boot from settings. Where a system keeps its
+tunables in one catalog, each number is declared there once, with its
+default, its bounds, its unit, how it applies, and a person's review; a
+number that tunes nothing says why it is fixed.
 
-**Source.** Interfaces, Injectability.
+**Source.** Interfaces, Injectability; Cross-Cutting Conventions, Configuration.
 
 **Look for.** Constructor parameters that carry numbers, durations, or
 limits; module-level constants inside impls that differ between
-deployments; whether the options object is frozen and built once.
+deployments; whether the options object is frozen and built once; with a
+catalog, any number written in place outside it.
 
 **Violation.** A tunable is a hard-coded constant that differs between
 deployments; tunables arrive as loose positional numbers instead of one
-options object; an options object is mutable or is rebuilt per call.
+options object; an options object is mutable or is rebuilt per call; with
+a catalog, a constant, a field's default, a tuning argument, a wait, a
+TypeScript constant, or a Terraform default holds a number the catalog does
+not, or a catalog entry carries no review.
 
 **Severity.** medium
 
-**Check.** `arch-check` decides the loose number in a manager
-constructor; the rest is judged.
+**Check.** `arch-check` decides the loose number in a manager constructor
+and, once `[tool.arch-check.options.CON-07] catalog` names a catalog, every
+number written outside it; the rest is judged.
 
 ## CON-08 Cycles are broken above the managers
 
