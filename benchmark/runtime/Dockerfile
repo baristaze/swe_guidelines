@@ -10,7 +10,7 @@
 # run mounts the staged plugin payload read-only at /plugin, the target, when
 # there is one, read-only at /target, and the workspace read-write at
 # /workspace, and it hands the subject those paths, never the host's.
-FROM python:3.14-slim-bookworm
+FROM python:3.14-slim
 
 ENV DEBIAN_FRONTEND=noninteractive \
     PYTHONUNBUFFERED=1 \
