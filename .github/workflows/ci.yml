@@ -43,7 +43,7 @@ jobs:
           node-version: "24.21.0"
           cache: npm
           cache-dependency-path: .github/pins/package.json
-      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
         with:
           version: ${{ steps.pins.outputs.uv }}
           python-version: ${{ matrix.python }}
@@ -74,7 +74,7 @@ jobs:
       - name: read the tool pins
         id: pins
         run: echo "uv=$(sed -n 's|^uv==||p' .github/pins/requirements.txt)" >> "$GITHUB_OUTPUT"
-      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
         with:
           version: ${{ steps.pins.outputs.uv }}
           python-version: "3.11"
@@ -116,7 +116,7 @@ jobs:
       - name: read the tool pins
         id: pins
         run: echo "uv=$(sed -n 's|^uv==||p' .github/pins/requirements.txt)" >> "$GITHUB_OUTPUT"
-      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
         with:
           version: ${{ steps.pins.outputs.uv }}
           enable-cache: true
@@ -156,7 +156,7 @@ jobs:
       - name: read the tool pins
         id: pins
         run: echo "uv=$(sed -n 's|^uv==||p' .github/pins/requirements.txt)" >> "$GITHUB_OUTPUT"
-      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
         with:
           version: ${{ steps.pins.outputs.uv }}
           enable-cache: true
@@ -205,7 +205,7 @@ jobs:
       - name: read the tool pins
         id: pins
         run: echo "uv=$(sed -n 's|^uv==||p' .github/pins/requirements.txt)" >> "$GITHUB_OUTPUT"
-      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
         with:
           version: ${{ steps.pins.outputs.uv }}
           enable-cache: true
